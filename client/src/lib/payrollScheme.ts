@@ -12,10 +12,10 @@
 //                                 thức / giá trị / từng người / hằng tháng);
 //                                 `OFF` là bỏ dòng của cấp trên.
 //
-// Đi cây bằng đúng `unitLineage` mà KPI đang dùng (`lib/kpiSchemeFor.ts`).
+// Đi cây bằng `unitLineage` (`lib/orgUnits.ts`).
 // ============================================================================
 
-import { unitLineage, type ResolvableUnit } from './kpiSchemeFor';
+import { unitLineage, type ResolvableUnit } from './orgUnits';
 import { activeInPeriod, type MechanismRow } from './payroll';
 import { referencedCodes } from './formulaTokens';
 import { OWN_AMOUNT_CODE, type RowMode } from './payrollVariables';

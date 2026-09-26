@@ -62,12 +62,12 @@ Danh mục đầu mục → Tham số theo bảng → Cơ chế lương (mỗi �
 Chạy từng khối trong Supabase SQL Editor. Các câu dưới đây chỉ đọc dữ liệu.
 
 ```sql
--- 2.1 Có 6 nhóm hiển thị của danh mục
+-- 2.1 Có đúng 5 nhóm của danh mục khoản lương
 select code, name from public.payroll_component_categories order by sort_order;
 
--- 2.2 Không còn đầu mục "hệ thống tự tính", không đầu mục nào thiếu nhóm / tính chất
+-- 2.2 Không còn đầu mục "hệ thống tự tính", không khoản cộng / trừ nào thiếu nhóm
 select count(*) filter (where calc_source = 'ENGINE') as tu_tinh,
-       count(*) filter (where category_code is null or nature is null) as thieu
+       count(*) filter (where category_code is null and kind <> 'INFO') as thieu
 from public.payroll_components;
 
 -- 2.3 Mỗi bộ tham số đã có các bảng tham số
@@ -106,7 +106,7 @@ select 'tham so', p ->> 'code', p ->> 'note'
 
 | Mã | Kết quả mong đợi | KQ |
 |---|---|---|
-| S01 | 2.1 trả 6 dòng: Thu nhập cố định, Thu nhập biến đổi, Làm thêm giờ (OT & ca đêm), Thưởng phát sinh, Khấu trừ & phạt, Số liệu & dòng trung gian. | |
+| S01 | 2.1 trả 5 dòng: Thu nhập cố định, Thu nhập biến đổi, Làm thêm giờ (OT & ca đêm), Thưởng phát sinh, Khấu trừ & phạt. Không còn nhóm "Số liệu & dòng trung gian". | |
 | S02 | 2.2 trả `0 | 0`. | |
 | S03 | 2.3 có ít nhất dòng *Bộ tham số gốc* hiệu lực `2000-01-01`, `so_bang` từ 4 trở lên (Lương nền, Bảo hiểm, Thuế TNCN, Biểu thuế lũy tiến…). `net_rounding_unit = 1000`. | |
 | S04 | 2.4 có `BL01` (Khối Văn phòng / Kho / Vận chuyển) và `BL02` (Khối Kinh doanh). Nếu database có dữ liệu lương từ trước: có thêm `CO_CHE_CHUNG` (Cơ chế chung) và các cơ chế đang dùng đều có dòng Lương thời gian, BHXH-BHYT-BHTN, Thuế TNCN. | |
@@ -154,6 +154,102 @@ từng dòng với công thức đã thay số để đối chiếu.
 
 ---
 
+## 4. Chạy thử theo bảng lương tháng 8/2026
+
+Năm người lấy từ sheet BL01 / BL 02 của file *BANG LUONG GUI HRM*. Số kỳ vọng đã chạy qua
+engine với cơ chế sau migration `20261021130000`: khớp cột *Thực lĩnh* và *TN miễn thuế*
+của Excel từng đồng.
+
+Cần chạy đủ các migration `20261021100000` → `20261021130000`. Bộ tham số sau đó đã có sẵn
+giảm trừ 15,5 tr / 6,2 tr, biểu thuế 5 bậc, bảng hoa hồng, cắt mã / cắt lô 1%, quỹ 1%. Chỉ cần
+sửa tay **Đơn giá phạt mỗi lần đi muộn / về sớm = 5.000** (mặc định 0).
+
+**Cách chạy:** Cơ chế lương → chọn người → khai riêng theo 4.1 → *Chạy thử* trong form người
+đó → ô **Công chuẩn của tháng = 23,5** → nhập 4.2 → so *Thực lĩnh* ở 4.3. Ô công chuẩn chỉ đổi
+cho lần chạy thử, không đổi lịch làm việc.
+
+### 4.1 Khai riêng của từng người
+
+| Người (đơn vị) | Bậc lương | Dòng khác cần khai riêng | Người phụ thuộc |
+|---|---|---|---|
+| Phạm Phi Hùng (Kho vận, BL 01) | 8.000.000 | Mức trách nhiệm = 3.000.000; Phụ cấp khác = Ngày công thực tế × 50.000; Mức miễn thuế theo người = 500.000 (chỉ là phần đầu; cộng 1.200.000 phần sau ra 1.700.000 như Excel, đừng nhập 1.700.000) | 1 |
+| Nguyễn Thị Mùi (BL 01) | 8.000.000 | Mức trách nhiệm = 3.000.000; Phụ cấp khác = 500.000 | 2 |
+| Lưu Thị Vượng (BL 01) | 10.000.000 | Mức trách nhiệm = 5.000.000; Lương đóng bảo hiểm = 20.000.000 | 3 |
+| Vũ Thị Hòa (Kinh doanh, BL 02) | 8.000.000 | Lương đóng bảo hiểm = 0; Mức miễn thuế theo người = 500.000 | 2 |
+| Lương Xuân Tùng (Kinh doanh, BL 02) | 8.000.000 | Lương đóng bảo hiểm = 6.000.000; Mức miễn thuế theo người = 500.000 | 0 |
+
+- Trách nhiệm (BL 01) tự tính = mức trách nhiệm × tỷ lệ KPI. Ai đã khai riêng cả dòng *Trách
+  nhiệm* từ trước thì dòng đó vẫn thắng — bỏ khai riêng đó đi để dùng công thức chung.
+- Bậc lương KPI (BL 02) tự tính = bậc lương ÷ 3, không phải khai.
+- Lương đóng bảo hiểm khai riêng vì Excel lấy số bảo hiểm từ một bảng ngoài.
+- Mức miễn thuế theo người mặc định 1.000.000; Excel dùng 500.000 cho một số người.
+
+### 4.2 Số liệu nhập ở Chạy thử
+
+| Ô | Hùng | Mùi | Vượng | Hòa | Tùng |
+|---|---|---|---|---|---|
+| Công chuẩn của tháng | 23,5 | 23,5 | 23,5 | 23,5 | 23,5 |
+| Ngày công thực tế | 23,5 | 23 | 22,5 | 21,5 | 20,5 |
+| Ngày nghỉ phép có lương | 0 | 0,5 | 1 | 2 | 3 |
+| Số lần đi muộn | 0 | 0 | 5 | 0 | 0 |
+| Tỷ lệ KPI (%) | 100 | 90 | 102 | 48 | 38 |
+| Lương vận chuyển | 2.683.100 | 0 | 0 | — | — |
+| Doanh số | — | — | — | 54.281.319 | 175.066.960 |
+| Doanh số khoán | — | — | — | 300.000.000 | 250.000.000 |
+| Doanh số cắt mã | — | — | — | 0 | 5.500.000 |
+| Doanh số thu cắt lô | — | — | — | 171.424.800 | 19.810.000 |
+| Các ô còn lại | 0 | 0 | 0 | 0 | 0 |
+
+### 4.3 Kết quả mong đợi
+
+| Mã | Người | Điểm kiểm | Dòng cần thấy | Thực lĩnh | Đạt? |
+|---|---|---|---|---|---|
+| T01 | Phạm Phi Hùng | Lương vận chuyển vào lương và vào quỹ 1% | Trách nhiệm 3.000.000; Phụ cấp 1.175.000; Quỹ 106.831; BH 840.000; Miễn thuế 1.700.000 | **13.911.000** | |
+| T02 | Nguyễn Thị Mùi | Nửa ngày phép, trách nhiệm theo KPI 90% | Trách nhiệm 2.700.000; Lương phép 170.213; BH 840.000 | **10.282.000** | |
+| T03 | Lưu Thị Vượng | Phạt đi muộn, KPI trên 100%, BH theo lương 20 tr | Trách nhiệm 5.100.000; Phạt đi muộn 25.000; BH 2.100.000 | **12.879.000** | |
+| T04 | Vũ Thị Hòa | Tỷ lệ đạt 75,24% → bậc 1,5%; không đóng BH | Lương KPI 1.280.000; Lương doanh số 814.220; Cắt lô 1.714.248; BH 0 | **11.710.000** | |
+| T05 | Lương Xuân Tùng | Tỷ lệ đạt 77,95%, có cắt mã | Lương doanh số 2.681.004 (gồm cắt mã 55.000); Cắt lô 198.100; BH 630.000 | **11.164.000** | |
+
+Thuế TNCN của cả năm người đều bằng 0, vì thu nhập tính thuế âm sau giảm trừ.
+
+**Biến thể kinh doanh** (sửa số của Tùng rồi chạy lại):
+
+| Mã | Đổi | Mong đợi |
+|---|---|---|
+| T06 | Doanh số = 100.000.000, cắt lô = 50.000.000 (đạt 60%) | Dưới 75%: cắt lô 0, lương doanh số chỉ còn 55.000 (1% cắt mã, không xét tỷ lệ đạt); lương thời gian vẫn 6.978.723 |
+| T07 | Doanh số = 50.000.000, cắt lô = 0 (đạt 20%) | Dưới 30%: lương thời gian còn 70% = 4.885.106 |
+| T08 | Doanh số = 380.000.000 (đạt trên 150%) | Thưởng doanh số 150% = 4.000.000 (nửa bậc lương) |
+
+### 4.4 Bùi Thị Nhân Huệ (văn phòng, BL 01)
+
+Dòng 8 của BL01. Người này có thuế phải nộp, khác năm người trên (thuế của họ đều bằng 0).
+
+**Khai riêng** (*Cơ chế lương* → chọn Huệ → form khai riêng):
+
+| Dòng | Giá trị | Vì sao |
+|---|---|---|
+| Lương cơ bản | 10.000.000 | Bậc lương, cột C |
+| Mức trách nhiệm | 10.000.000 | Cột D của Excel là số cố định 10.000.000, không nhân KPI |
+| Lương đóng bảo hiểm | 20.000.000 | Excel trừ BH 2.100.000 = 10,5% × 20.000.000 (số lấy từ bảng ngoài) |
+| Số người phụ thuộc | 0 | Cột Giảm trừ = 0 |
+| Phụ cấp khác, Mức miễn thuế theo người | để mặc định | Không có phụ cấp; miễn thuế 1.000.000 + 1.200.000 = 2.200.000 |
+
+**Số nhập ở Chạy thử:** Công chuẩn của tháng 23,5; ngày công thực tế 23,5; **Tỷ lệ KPI 100** (bắt buộc, vì trách nhiệm = mức × KPI); các ô còn lại 0.
+
+Bảng chấm công trong file mẫu của Huệ ra toàn 0 vì liên kết sang file ngoài bị đứt. Số công 23,5 là số Excel đang dùng cho cột Lương thời gian.
+
+| Mã | Điểm kiểm | Dòng cần thấy | Thực lĩnh | Đạt? |
+|---|---|---|---|---|
+| T09 | Người có thuế phải nộp | Lương thời gian 10.000.000; Trách nhiệm 10.000.000; Tổng cộng 20.000.000; Miễn thuế 2.200.000; BH 2.100.000; Thu nhập tính thuế 200.000; Thuế 10.000; Quỹ 100.000 | **17.790.000** | |
+| T10 | Khớp từng đồng với Excel: khai riêng dòng Thuế TNCN = `THUE_LUY_TIEN(THU_NHAP_TINH_THUE) + 30000` | Thuế 40.000, các dòng khác như T09 | **17.760.000** | |
+| T11 | Có 1 người phụ thuộc (đổi Số người phụ thuộc = 1) | Thu nhập tính thuế 0; Thuế 0 | **17.800.000** | |
+
+- **T09 lệch Excel 30.000.** Công thức thuế trong Excel cộng tay `+30000` vào ô thuế của một số người (Huệ, Lưu Vũ Phong). Cộng tay này không có quy tắc, nên cơ chế chung không làm theo. Muốn đúng từng đồng thì dùng T10, nhưng chỉ nên giữ khi kế toán xác nhận khoản 30.000 là có thật.
+- **Làm tròn:** thực lĩnh làm tròn đến nghìn, nên T09 = 20.000.000 − 2.100.000 − 100.000 − 10.000 = 17.790.000 là số tròn sẵn.
+- **T11** không có trong Excel, chỉ để kiểm giảm trừ người phụ thuộc: 200.000 − 6.200.000 < 0 nên thuế về 0.
+
+---
+
 ## H. Dữ liệu cũ sau khi nâng cấp
 
 Chỉ chạy nếu database có dữ liệu lương từ trước khi nâng cấp (xem 1.2).
@@ -175,13 +271,13 @@ Chỉ chạy nếu database có dữ liệu lương từ trước khi nâng cấ
 
 | Mã | Bước | Kết quả mong đợi | KQ |
 |---|---|---|---|
-| A01 | Danh mục trống thì bấm *Khởi tạo danh mục chuẩn*. Đã có đầu mục thì bấm bổ sung đầu mục chuẩn còn thiếu, rồi xác nhận. | "Đã thêm N đầu mục chuẩn vào danh mục." Có đủ 26 đầu mục chuẩn. *Lương cơ bản / Bậc lương* có loại dòng **Chỉ để tính**. Đầu mục đã có từ trước giữ nguyên. | |
+| A01 | Danh mục trống thì bấm *Khởi tạo danh mục chuẩn*. Đã có đầu mục thì bấm bổ sung đầu mục chuẩn còn thiếu, rồi xác nhận. | "Đã thêm N đầu mục chuẩn vào danh mục." Có đủ 26 đầu mục chuẩn. *Lương cơ bản / Bậc lương* có loại dòng **Trung gian**. Đầu mục đã có từ trước giữ nguyên. | |
 | A02 | Bổ sung thêm lần nữa. | Không còn gì để bổ sung. Không sinh đầu mục trùng. | |
-| A03 | *Thêm mới*: tên "Phụ cấp xăng xe test", mã `TEST_XANG`, loại dòng *Cộng vào lương*, nhóm *Thu nhập cố định*, giá trị mặc định 500.000. Lưu. | "Đã lưu “Phụ cấp xăng xe test”." Đầu mục hiện đúng nhóm, có dấu "+". | |
+| A03 | *Thêm mới*: tên "Phụ cấp xăng xe test", mã `TEST_XANG`, loại dòng *Cộng vào lương*, nhóm *Thu nhập cố định*. Lưu. | "Đã lưu “Phụ cấp xăng xe test”." Đầu mục hiện đúng nhóm, có dấu "+". | |
 | A04 | Thêm đầu mục khác cũng mã `TEST_XANG`. | Ô Mã đỏ "Mã khoản lương đã tồn tại trên hệ thống." Không lưu. | |
 | A05 | Thêm đầu mục mã khác nhưng tên "phụ cấp xăng xe TEST" (khác hoa thường). | Ô Tên đỏ "Tên khoản lương đã tồn tại trên hệ thống." | |
 | A06 | Nhập mã `test xang`. | "Mã viết hoa không dấu, bắt đầu bằng chữ, chỉ gồm chữ, số và "_"." | |
-| A07 | Thêm "Số chuyến test" loại *Chỉ để tính*, đặt ở nhóm *Thu nhập cố định*. | Lưu được: nhóm chỉ để xếp danh mục, không ràng buộc loại dòng. | |
+| A07 | Ở thẻ *Dòng trung gian*, bấm *Thêm dòng trung gian*, nhập "Số chuyến test", để trống nhóm. Thử đổi loại sang *+ Cộng* mà vẫn để trống nhóm. | Dòng trung gian lưu được khi không có nhóm, nằm ở thẻ *Dòng trung gian*. Khoản *+ Cộng* không có nhóm thì ô Nhóm đỏ: "Khoản cộng / trừ phải thuộc một trong năm nhóm." | |
 | A08 | Thêm đầu mục mã `WORK_DAYS`. | Bị chặn: mã trùng tên dữ liệu hệ thống. | |
 | A09 | Mở *Lương thời gian* và *BHXH, BHYT, BHTN*. | Sửa được như mọi đầu mục (không còn khoản "hệ thống tự tính"). Mô tả không nhắc mã tài liệu đặc tả. Mục *Có trong cơ chế* liệt kê các cơ chế đang dùng. | |
 | A10 | Tạo đầu mục `TEST_XOA` rồi xoá ngay. | "Đã xoá “…”." | |
@@ -189,7 +285,7 @@ Chỉ chạy nếu database có dữ liệu lương từ trước khi nâng cấ
 | A12 | Xuất Excel, CSV và In / PDF. | File mở được, tiếng Việt không lỗi font, cột khớp màn hình. | |
 | A13 | Vào *Nhật ký hệ thống* (`/admin/audit`). | Có dòng tạo / sửa / xoá đầu mục của A03 và A10, đúng người, đúng giờ. | |
 | A14 | Sửa đầu mục *BHXH, BHYT, BHTN*, mở ô *Nhãn báo cáo*. | Đang là "Bảo hiểm người lao động đóng". Danh sách hiện thẻ "Báo cáo: …" dưới tên đầu mục. *Thuế TNCN* mang "Thuế thu nhập cá nhân", *Thu nhập tính thuế* mang "Thu nhập tính thuế", *BH doanh nghiệp đóng* mang "Doanh nghiệp đóng thêm". | |
-| A15 | Đổi *Nhãn báo cáo* của "Số chuyến test" (loại *Chỉ để tính*) sang "Thuế thu nhập cá nhân". Lưu. | Ô nhãn đỏ: nhãn này chỉ dùng với loại dòng "Trừ khỏi lương". Không lưu. Đổi sang "Thu nhập tính thuế" thì lưu được; gỡ nhãn thì lưu được. | |
+| A15 | Đổi *Nhãn báo cáo* của "Số chuyến test" (dòng trung gian) sang "Thuế thu nhập cá nhân". Lưu. | Ô nhãn đỏ: nhãn này chỉ dùng với loại dòng "Trừ khỏi lương". Không lưu. Đổi sang "Thu nhập tính thuế" thì lưu được; gỡ nhãn thì lưu được. | |
 | A16 | Chạy bảng lương tháng đang mở, rồi *Báo cáo nhân sự → Bảo hiểm & thuế* của tháng đó đã khoá và duyệt. | Cột BH người lao động, BH doanh nghiệp, Thuế TNCN và Thu nhập tính thuế bằng tổng các đầu mục mang nhãn tương ứng của mọi phiếu; đầu mục chưa gắn nhãn thì cột bằng 0. | |
 | A17 | Đăng nhập một nhân viên đã có phiếu phát hành, mở *Phiếu lương của tôi*. | Không thấy dòng "BH doanh nghiệp đóng" (dòng mang nhãn "Doanh nghiệp đóng thêm"). Các dòng khác như cũ. | |
 
@@ -281,7 +377,7 @@ Làm D01–D12 bằng **KT**.
 | D03 | Vào *Điều chỉnh lương*, thêm cho NV1 nhưng để trống lý do. | "Ghi lý do điều chỉnh — bắt buộc, để rà soát về sau." | |
 | D04 | Thêm điều chỉnh với số tiền 0. | "Nhập số tiền lớn hơn 0." | |
 | D05 | Thêm cho NV1: *Điều chỉnh tăng (+)* 500.000 "Bù thiếu tháng trước"; *Giảm (−)* 200.000 "Thu tạm ứng". | Lưu được, hiện đúng dấu + / −. Không còn ô "chịu thuế". | |
-| D06 | *Bảng lương* (`/admin/payroll`), tháng T, bấm *Tính lương (bản nháp)*. | "Đã tính N phiếu lương nháp tháng T." Mỗi đầu mục cộng / trừ là một cột; bật *Hiện dòng chỉ để tính* thì thấy cả Đơn giá ngày, Thu nhập tính thuế…; sau cùng là Tổng cộng, Tổng trừ, Thực nhận. Phiếu NV1 có Lương thời gian theo ngày công thật, dòng BHXH-BHYT-BHTN, các dòng ở C13/C17 và hai điều chỉnh; thuế tính lại theo mục 3. Mọi thực lĩnh chia hết cho 1.000; phần chênh nằm ở cột *Làm tròn*, không quá 500đ. | |
+| D06 | *Bảng lương* (`/admin/payroll`), tháng T, bấm *Tính lương (bản nháp)*. | "Đã tính N phiếu lương nháp tháng T." Mỗi đầu mục là một cột: cột khoản cộng / trừ có dấu + / −, cột dòng trung gian (Đơn giá ngày, Thu nhập tính thuế…) không có dấu và không cộng tổng; sau cùng là Tổng cộng, Tổng trừ, Thực nhận. Phiếu NV1 có Lương thời gian theo ngày công thật, dòng BHXH-BHYT-BHTN, các dòng ở C13/C17 và hai điều chỉnh; thuế tính lại theo mục 3. Mọi thực lĩnh chia hết cho 1.000; phần chênh nằm ở cột *Làm tròn*, không quá 500đ. | |
 | D07 | Xem khung *Kiểm tra trước khi khoá kỳ*. | Mục kỳ công tháng đã khoá màu đỏ. Nút *Khoá kỳ & trình BGĐ (2FA)* bị mờ. | |
 | D08 | Sửa một ô ở *Số liệu lương tháng* của NV2, quay lại Bảng lương. | Mục "Bộ phiếu đã tính khớp số liệu hiện tại" đỏ: "1 phiếu đã đổi — bấm Tính lại". | |
 | D09 | Bấm *Tính lại*. | Mục đó xanh lại. Số của NV2 đổi theo. | |
@@ -426,6 +522,7 @@ rollback;
 | Phần | Số ca | Đạt | Lỗi | Ghi chú |
 |---|---:|---:|---:|---|
 | 2. Sau migration | 9 | | | |
+| 4. Chạy thử theo bảng lương tháng 8 | 11 | | | |
 | H. Dữ liệu cũ sau nâng cấp | 6 | | | Chỉ khi có dữ liệu cũ |
 | A. Danh mục khoản lương | 17 | | | |
 | B. Tham số & thiết kế cơ chế | 30 | | | |
@@ -434,7 +531,7 @@ rollback;
 | E. Sau khi khoá kỳ | 11 | | | |
 | F. Phân quyền | 6 | | | |
 | G. Chặn ở database | 8 | | | |
-| **Cộng** | **134** | | | |
+| **Cộng** | **145** | | | |
 
 ### Danh sách lỗi
 

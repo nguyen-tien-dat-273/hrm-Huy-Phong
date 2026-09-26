@@ -2,6 +2,13 @@
    @import ở đây, vì @import bắt trình duyệt phải tải xong CSS này rồi mới biết
    đường đi lấy font. */
 @import 'tailwindcss';
+/* Ánh xạ class màu sáng -> tối (sinh bởi tools/gen-dark-theme.mjs) — HMR sync. */
+@import './dark-theme.css';
+
+/* Dark mode bật bằng class `.dark` trên <html> (ThemeContext), không theo
+   `prefers-color-scheme` của Tailwind mặc định — người dùng phải tự bấm nút
+   đổi giao diện và lựa chọn đó được nhớ lại, không phụ thuộc cấu hình máy. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
@@ -82,6 +89,25 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+.dark body {
+  background: #0b1120;
+  color: #e2e8f0;
+}
+
+/* Control chưa có class nền (ô lọc, ô ngày, select...) mặc định trắng của trình
+   duyệt. `:where` giữ specificity 0 nên class của từng ô vẫn thắng. */
+.dark { color-scheme: dark; }
+@layer base {
+  :where(.dark) :where(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='color']) {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    border-color: #334155;
+  }
+  :where(.dark) :where(input, textarea)::placeholder { color: #64748b; }
+  :where(.dark) option { background-color: #0f172a; color: #e2e8f0; }
+  :where(.dark) :where(th) { color: #94a3b8; }
+}
+
 /* ===== Application shell ===== */
 /* Sidebar nen sang.
    `background-image` o day de len lop `bg-white` cua Tailwind (anh nen ve
@@ -94,8 +120,19 @@ body {
   box-shadow: 14px 0 40px -38px rgb(15 23 42 / 0.35);
 }
 
+.dark .app-sidebar {
+  background-image:
+    radial-gradient(460px 280px at 12% -8%, rgb(59 130 246 / 0.12), transparent 64%),
+    linear-gradient(180deg, #0f172a 0%, #0b1120 100%);
+  box-shadow: 14px 0 40px -38px rgb(0 0 0 / 0.6);
+}
+
 .app-header {
   box-shadow: 0 8px 30px -28px rgb(15 23 42 / 0.55);
+}
+
+.dark .app-header {
+  box-shadow: 0 8px 30px -28px rgb(0 0 0 / 0.75);
 }
 
 .page-content h2 {
@@ -112,6 +149,10 @@ body {
 
 .page-content table tbody tr:hover {
   background-color: rgb(248 250 252 / 0.85);
+}
+
+.dark .page-content table tbody tr:hover {
+  background-color: rgb(30 41 59 / 0.6);
 }
 
 /* Giữ thanh thao tác/filter có thể cuộn ngang nhưng không lộ scrollbar thô. */
@@ -137,6 +178,9 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: content-box; }
 
+.dark ::-webkit-scrollbar-thumb { background: #334155; }
+.dark ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
 /* ===== Animations ===== */
 @keyframes pulse-ring {
   0% { box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.5); }
@@ -153,6 +197,11 @@ body {
   background: linear-gradient(90deg, #f1f5f9 25%, #e9eef5 50%, #f1f5f9 75%);
   background-size: 1000px 100%;
   animation: shimmer 2s infinite linear;
+}
+
+.dark .skeleton {
+  background: linear-gradient(90deg, #1e293b 25%, #273449 50%, #1e293b 75%);
+  background-size: 1000px 100%;
 }
 
 @keyframes slide-in-right {
@@ -306,6 +355,7 @@ body {
   transition: background-color 0.15s ease, transform 0.15s ease;
 }
 .table-row-hover:hover { background-color: #f8fafc; }
+.dark .table-row-hover:hover { background-color: #1e293b; }
 
 /* ===========================================================================
    Điều hướng bàn phím
@@ -363,6 +413,11 @@ summary:focus-visible,
     z-index: 10;
     background: #f8fafc;
     box-shadow: inset 0 -1px 0 #e2e8f0;
+  }
+
+  .dark .table-cards thead th {
+    background: #0f172a;
+    box-shadow: inset 0 -1px 0 #334155;
   }
 }
 
@@ -442,6 +497,10 @@ a,
     padding: 0.25rem 0;
     margin-bottom: 0.75rem;
     background: #fff;
+  }
+  .dark .table-cards tr {
+    border-color: #334155;
+    background: #1e293b;
   }
   .table-cards td {
     display: flex;
@@ -556,6 +615,13 @@ a,
     radial-gradient(1100px 520px at 88% -12%, rgb(59 130 246 / 0.07), transparent 62%),
     radial-gradient(900px 460px at -8% 18%, rgb(16 185 129 / 0.06), transparent 58%);
   background-attachment: fixed;
+}
+
+.dark .bg-ambient {
+  background-color: #0b1120;
+  background-image:
+    radial-gradient(1100px 520px at 88% -12%, rgb(59 130 246 / 0.1), transparent 62%),
+    radial-gradient(900px 460px at -8% 18%, rgb(16 185 129 / 0.08), transparent 58%);
 }
 
 /* Dashboard điều hành: một bề mặt sáng, có chiều sâu nhưng vẫn đủ yên để

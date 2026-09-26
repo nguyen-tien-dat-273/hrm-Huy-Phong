@@ -22,12 +22,13 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { formatVND } from '@/lib/utils';
 import { deletePayrollAdjustment, savePayrollAdjustment } from '@/lib/payrollData';
 import type { PayrollAdjustment } from '@/lib/payroll';
-import type { Profile } from '@/types';
+import { withKindSign } from '@/lib/formulaEntries';
+import type { PayComponentKind, Profile } from '@/types';
 
 interface AdjustmentsTabProps {
   profiles: Profile[];
   /** Danh mục đầu mục — để gọi tên khoản mà điều chỉnh gắn vào. */
-  components?: Array<{ code: string; name: string }>;
+  components?: Array<{ code: string; name: string; kind: PayComponentKind; is_active?: boolean; sort_order?: number }>;
   adjustments: PayrollAdjustment[];
   monthStart: string;
   monthLabel: string;
@@ -40,6 +41,8 @@ interface AdjustmentsTabProps {
 interface Draft {
   id?: string;
   user_id: string;
+  /** Đầu mục bị điều chỉnh; rỗng = dòng riêng ở cuối phiếu. */
+  component_code: string;
   kind: 'RECOVERY' | 'CLAWBACK';
   amount: string;
   reason: string;
@@ -66,6 +69,14 @@ export function AdjustmentsTab({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
 
+  /** Đầu mục chọn được: khoản cộng, khoản trừ và dòng trung gian (điều chỉnh giá trị). */
+  const targets = useMemo(
+    () => components
+      .filter((item) => item.is_active !== false && item.kind !== 'EMPLOYER_COST')
+      .sort((a, b) => (a.sort_order ?? 1e6) - (b.sort_order ?? 1e6) || a.name.localeCompare(b.name, 'vi')),
+    [components],
+  );
+
   const personById = useMemo(
     () => new Map(profiles.map((person) => [person.id, person])),
     [profiles],
@@ -79,6 +90,17 @@ export function AdjustmentsTab({
       .filter((item) => item.kind === 'CLAWBACK')
       .reduce((sum, item) => sum + Number(item.amount), 0),
   }), [adjustments]);
+
+  const targetKind = components.find((item) => item.code === draft?.component_code)?.kind ?? null;
+  /**
+   * `kind` luôn là chiều tác động lên THỰC NHẬN. Khi gắn vào đầu mục thì nói bằng ngôn ngữ của đầu mục:
+   * với khoản trừ, "tăng thực nhận" nghĩa là trừ bớt khoản đó.
+   */
+  const kindLabel = (kind: Draft['kind']) => {
+    if (!targetKind) return KIND_LABEL[kind];
+    const raisesItem = targetKind === 'DEDUCTION' ? kind === 'CLAWBACK' : kind === 'RECOVERY';
+    return raisesItem ? 'Cộng thêm vào khoản này' : 'Trừ bớt khỏi khoản này';
+  };
 
   const save = async () => {
     if (!draft) return;
@@ -104,6 +126,7 @@ export function AdjustmentsTab({
       user_id: draft.user_id,
       month_start: monthStart,
       origin_month: fromMonthInput(draft.origin_month),
+      component_code: draft.component_code || null,
       kind: draft.kind,
       amount,
       reason: draft.reason.trim(),
@@ -148,14 +171,10 @@ export function AdjustmentsTab({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-base font-bold text-slate-800">Điều chỉnh lương tháng {monthLabel}</h3>
-          <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
-            Điều chỉnh tăng (+) / giảm (−) trên bảng lương nháp. Mỗi dòng bắt buộc ghi lý do;
-            sai sót của kỳ đã khoá ghi ở kỳ này kèm kỳ phát sinh để về sau tra được.
-          </p>
         </div>
         {!readOnly && (
           <Button onClick={() => setDraft({
-            user_id: '', kind: 'RECOVERY', amount: '', reason: '', origin_month: '', taxable: true,
+            user_id: '', component_code: '', kind: 'RECOVERY', amount: '', reason: '', origin_month: '', taxable: true,
           })}>
             <Plus className="h-4 w-4" /> Thêm điều chỉnh
           </Button>
@@ -163,7 +182,7 @@ export function AdjustmentsTab({
       </div>
 
       {readOnly && (
-        <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+        <p className="rounded-none border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           Kỳ lương tháng {monthLabel} đã khoá nên không thêm / sửa điều chỉnh được. Sai sót
           phát hiện lúc này ghi vào điều chỉnh của kỳ đang mở.
         </p>
@@ -171,7 +190,7 @@ export function AdjustmentsTab({
 
       {adjustments.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Card>
+          <Card className="!rounded-none">
             <CardContent className="flex items-center gap-3 py-4">
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                 <ArrowUpRight className="h-4.5 w-4.5" />
@@ -184,7 +203,7 @@ export function AdjustmentsTab({
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="!rounded-none">
             <CardContent className="flex items-center gap-3 py-4">
               <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
                 <ArrowDownLeft className="h-4.5 w-4.5" />
@@ -200,7 +219,7 @@ export function AdjustmentsTab({
         </div>
       )}
 
-      <Card>
+      <Card className="!rounded-none">
         <CardContent className="p-0">
           {adjustments.length === 0 ? (
             <p className="px-5 py-10 text-center text-sm text-slate-400">
@@ -262,10 +281,10 @@ export function AdjustmentsTab({
         </CardContent>
       </Card>
 
-      <Modal open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? "Sửa điều chỉnh lương" : "Thêm điều chỉnh lương"} size="md">
+      <Modal square open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? "Sửa điều chỉnh lương" : "Thêm điều chỉnh lương"} size="md">
         {draft && (
           <div className="space-y-4">
-            <Select
+            <Select className="!rounded-none"
               label="Nhân sự"
               value={draft.user_id}
               onChange={(e) => setDraft({ ...draft, user_id: e.target.value })}
@@ -279,31 +298,55 @@ export function AdjustmentsTab({
             </Select>
 
             <div>
-              <Select
+              <Select className="!rounded-none"
+                label="Điều chỉnh vào đầu mục"
+                value={draft.component_code}
+                onChange={(e) => setDraft({ ...draft, component_code: e.target.value })}
+              >
+                <option value="">Không gắn đầu mục — dòng riêng cuối phiếu</option>
+                {targets.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.kind === 'INFO' ? `${item.name} (trung gian)` : withKindSign(item.kind, item.name)}
+                  </option>
+                ))}
+              </Select>
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                {draft.component_code
+                  ? targetKind === 'INFO'
+                    ? 'Đổi thẳng giá trị của đầu mục này, các khoản tính từ nó (thuế, bảo hiểm…) và thực nhận tự tính lại.'
+                    : 'Sửa thẳng số của đầu mục trên phiếu, tổng cộng / tổng trừ và thực nhận đổi theo.'
+                  : 'Không chọn đầu mục thì thêm một dòng điều chỉnh riêng ở cuối phiếu.'}
+              </p>
+            </div>
+
+            <div>
+              <Select className="!rounded-none"
                 label="Loại điều chỉnh"
                 value={draft.kind}
                 onChange={(e) => setDraft({ ...draft, kind: e.target.value as Draft['kind'] })}
               >
-                {Object.entries(KIND_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
+                {(['RECOVERY', 'CLAWBACK'] as const).map((value) => (
+                  <option key={value} value={value}>{kindLabel(value)}</option>
                 ))}
               </Select>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                {draft.kind === 'RECOVERY'
-                  ? 'Cộng vào thu nhập kỳ này. Truy lĩnh tiền lương là thu nhập chịu thuế của kỳ CHI TRẢ.'
-                  : 'Trừ vào thực nhận kỳ này. Không làm giảm thu nhập chịu thuế vì đây là thu hồi tiền đã trả.'}
-              </p>
+              {!draft.component_code && (
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                  {draft.kind === 'RECOVERY'
+                    ? 'Cộng vào thu nhập kỳ này. Truy lĩnh tiền lương là thu nhập chịu thuế của kỳ CHI TRẢ.'
+                    : 'Trừ vào thực nhận kỳ này. Không làm giảm thu nhập chịu thuế vì đây là thu hồi tiền đã trả.'}
+                </p>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <Input
+              <Input className="!rounded-none"
                 label="Số tiền (VND)"
                 inputMode="numeric"
                 placeholder="VD: 1500000"
                 value={draft.amount}
                 onChange={(e) => setDraft({ ...draft, amount: e.target.value.replace(/[^\d]/g, '') })}
               />
-              <Input
+              <Input className="!rounded-none"
                 label="Kỳ phát sinh (nếu bù / thu kỳ trước)"
                 type="month"
                 value={draft.origin_month}
@@ -314,7 +357,7 @@ export function AdjustmentsTab({
               <p className="-mt-2 text-xs text-slate-500">= {formatVND(Number(draft.amount))}</p>
             )}
 
-            <Textarea
+            <Textarea className="!rounded-none"
               label="Lý do điều chỉnh"
               required
               rows={2}
@@ -323,7 +366,7 @@ export function AdjustmentsTab({
               onChange={(e) => setDraft({ ...draft, reason: e.target.value })}
             />
 
-            <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
+            <p className="flex items-start gap-2 rounded-none bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
               <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
               Điều chỉnh này vào phiếu lương tháng <strong>{monthLabel}</strong>. Kỳ lương gốc
               đã duyệt giữ nguyên — đó là nguyên tắc để phiếu lương đã phát không đổi số.

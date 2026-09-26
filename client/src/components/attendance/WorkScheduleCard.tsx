@@ -1,33 +1,28 @@
 // ============================================================================
 // Khai báo giờ làm hành chính cố định theo từng khoảng hiệu lực.
 // ----------------------------------------------------------------------------
-// Đây là nơi trả lời tham số P02 của sheet "Đặc tả Lương – KPI". Công chuẩn
-// tháng không còn là một con số gõ tay: nó được SUY RA từ lịch, nên tháng nào
-// ra đúng số công của tháng đó. Thẻ hiện luôn kết quả cho tháng hiện tại để
-// người khai đối chiếu ngay với phiếu lương mẫu.
-//
-// Cũng là nơi duy nhất khai GIỜ VÀO CHUẨN — điều kiện cần để đo đi muộn.
+// Đây là nơi trả lời tham số P02 của sheet "Đặc tả Lương – KPI": công chuẩn
+// tháng được SUY RA từ lịch này (xem `MonthStandardCard` để đối chiếu và chỉnh
+// từng tháng). Cũng là nơi duy nhất khai GIỜ VÀO CHUẨN — điều kiện cần để đo
+// đi muộn.
 // ============================================================================
 
-import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { useState } from 'react';
+import { Lock, LockOpen, Pencil, Plus, TriangleAlert } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import {
-  EMPTY_SCHEDULES, fetchWorkSchedules, hoursPerDay, monthStandardDays,
-  type ScheduleSet, type WorkSchedule,
-} from '@/lib/workSchedule';
+import { hoursPerDay, type ScheduleSet, type WorkSchedule } from '@/lib/workSchedule';
 
 const SATURDAY_LABEL: Record<WorkSchedule['saturday_mode'], string> = {
-  OFF: 'Nghỉ cả ngày',
-  HALF: 'Làm nửa ngày',
-  FULL: 'Làm cả ngày',
+  OFF: 'Nghỉ',
+  HALF: 'Nửa ngày',
+  FULL: 'Cả ngày',
 };
 
 interface Draft {
@@ -52,31 +47,25 @@ const BLANK: Draft = {
 /** 'HH:MM:SS' từ database về 'HH:MM' cho ô input type=time. */
 const toInputTime = (value: string) => value.slice(0, 5);
 
-export function WorkScheduleCard() {
+/** '2026-04-01' → '01/04/2026'. */
+const toViDate = (iso: string) => iso.split('-').reverse().join('/');
+
+const TH = 'px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap';
+const TD = 'px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap';
+
+interface Props {
+  set: ScheduleSet;
+  loading: boolean;
+  /** Gọi sau khi thêm / sửa / xóa để trang nạp lại lịch. */
+  onChanged: () => void;
+}
+
+export function WorkScheduleCard({ set, loading, onChanged }: Props) {
   const { toast } = useToast();
   const confirm = useConfirm();
 
-  const [set, setSet] = useState<ScheduleSet>(EMPTY_SCHEDULES);
-  const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
-
-  const load = async () => {
-    setSet(await fetchWorkSchedules());
-    setLoading(false);
-  };
-
-  useEffect(() => { void load(); }, []);
-
-  // Đối chiếu ngay: khai lịch xong thấy luôn công chuẩn tháng này ra bao nhiêu.
-  const preview = useMemo(() => {
-    const now = new Date();
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return {
-      label: `${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`,
-      days: monthStandardDays(set, thisMonth),
-    };
-  }, [set]);
 
   const save = async () => {
     if (!draft || !supabase) return;
@@ -117,27 +106,33 @@ export function WorkScheduleCard() {
     }
     toast(`Đã lưu giờ làm "${draft.name}".`, 'success');
     setDraft(null);
-    void load();
+    onChanged();
   };
 
-  const remove = async (schedule: WorkSchedule) => {
-    const ok = await confirm({
-      title: `Xóa cấu hình "${schedule.name}"?`,
-      message:
-        'Những tháng đang dựa vào cấu hình này sẽ quay về ngày công chuẩn cố định trong Tham số lương, ' +
-        'và hệ thống ngừng đo đi muộn cho khoảng thời gian đó. Phiếu lương đã duyệt không đổi.',
-      confirmLabel: 'Xóa cấu hình',
-      danger: true,
-    });
-    if (!ok || !supabase) return;
+  // Không cho xóa: cấu hình đã dùng tính lương và đo đi muộn nên chỉ khóa / mở khóa.
+  const toggleLock = async (schedule: WorkSchedule) => {
+    if (schedule.is_active) {
+      const ok = await confirm({
+        title: `Khóa cấu hình "${schedule.name}"?`,
+        message:
+          'Những tháng đang dựa vào cấu hình này sẽ quay về ngày công chuẩn cố định trong Tham số lương, ' +
+          'và hệ thống ngừng đo đi muộn cho khoảng thời gian đó. Phiếu lương đã duyệt không đổi. ' +
+          'Có thể mở khóa lại bất cứ lúc nào.',
+        confirmLabel: 'Khóa cấu hình',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    if (!supabase) return;
 
-    const { error } = await supabase.from('work_schedules').delete().eq('id', schedule.id);
+    const { error } = await supabase.from('work_schedules')
+      .update({ is_active: !schedule.is_active }).eq('id', schedule.id);
     if (error) {
-      toast('Xóa thất bại: ' + describeDbError(error), 'error');
+      toast((schedule.is_active ? 'Khóa' : 'Mở khóa') + ' thất bại: ' + describeDbError(error), 'error');
       return;
     }
-    toast('Đã xóa cấu hình giờ làm.', 'success');
-    void load();
+    toast(schedule.is_active ? 'Đã khóa cấu hình giờ làm.' : 'Đã mở khóa cấu hình giờ làm.', 'success');
+    onChanged();
   };
 
   const openEdit = (schedule: WorkSchedule) => setDraft({
@@ -156,16 +151,17 @@ export function WorkScheduleCard() {
   // Migration chưa chạy — nói thẳng thay vì hiện một thẻ rỗng khó hiểu.
   if (!loading && !set.supported) {
     return (
-      <Card>
-        <CardHeader><CardTitle>Giờ làm chuẩn</CardTitle></CardHeader>
+      <Card className="!rounded-none">
+        <CardHeader><CardTitle>Giờ làm cố định</CardTitle></CardHeader>
         <CardContent>
-          <p className="flex items-start gap-2.5 py-2 text-sm leading-relaxed text-slate-500">
-            <TriangleAlert className="mt-0.5 h-4.5 w-4.5 flex-shrink-0 text-amber-500" />
-            Chưa bật quản lý giờ làm chuẩn. Chạy migration{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">
-              20260928110000_work_schedules.sql
-            </code>{' '}
-            để công chuẩn tính theo lịch từng tháng và đo được đi muộn.
+          <p className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-500">
+            <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+            <span>
+              Chưa bật quản lý giờ làm. Chạy migration{' '}
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">
+                20260928110000_work_schedules.sql
+              </code>.
+            </span>
           </p>
         </CardContent>
       </Card>
@@ -173,92 +169,102 @@ export function WorkScheduleCard() {
   }
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="!rounded-none">
+      <CardHeader className="!py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>Giờ làm cố định</CardTitle>
           <Button variant="outline" size="sm" onClick={() => setDraft({ ...BLANK })}>
-            <Plus className="h-3.5 w-3.5" /> Thêm cấu hình
+            <Plus className="h-3.5 w-3.5" /> Thêm
           </Button>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
-        <p className="text-xs leading-relaxed text-slate-500">
-          Khai báo giờ vào/ra cố định để đối chiếu dữ liệu máy chấm công, tính đi muộn, về sớm
-          và <strong>công chuẩn của từng tháng</strong>. Chỉ cần tạo cấu hình mới khi giờ làm thay đổi.
+      {loading ? (
+        <p className="py-6 text-center text-sm text-slate-400">Đang tải…</p>
+      ) : set.schedules.length === 0 ? (
+        <p className="px-4 py-6 text-center text-sm text-slate-500">
+          Chưa khai giờ làm — công chuẩn lấy theo Tham số lương, chưa đo được đi muộn.
         </p>
-
-        {preview.days != null && (
-          <p className="flex items-center gap-2 rounded-lg bg-emerald-50 px-3.5 py-2.5 text-xs text-emerald-800">
-            <CalendarClock className="h-4 w-4 flex-shrink-0" />
-            Công chuẩn tháng {preview.label} theo lịch này: <strong>{preview.days} công</strong>
-          </p>
-        )}
-
-        {loading ? (
-          <p className="py-4 text-center text-sm text-slate-400">Đang tải…</p>
-        ) : set.schedules.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
-            Chưa khai giờ làm. Công chuẩn đang lấy theo số cố định trong Tham số lương,
-            và hệ thống chưa đo được đi muộn.
-          </p>
-        ) : (
-          <ul className="divide-y divide-slate-50">
-            {set.schedules.map((schedule) => {
-              const perDay = hoursPerDay(schedule);
-              return (
-                <li key={schedule.id} className="flex items-start justify-between gap-3 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-slate-800">{schedule.name}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left">
+            <thead className="border-b border-slate-100 bg-slate-50/60">
+              <tr>
+                <th className={TH}>Tên</th>
+                <th className={TH}>Áp dụng</th>
+                <th className={TH}>Giờ làm</th>
+                <th className={`${TH} text-right`}>Giờ/ngày</th>
+                <th className={TH}>Thứ Bảy</th>
+                <th className={`${TH} text-right`}>Ân hạn</th>
+                <th className="w-20" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {set.schedules.map((schedule) => {
+                const perDay = hoursPerDay(schedule);
+                return (
+                  <tr
+                    key={schedule.id}
+                    className={schedule.is_active ? 'hover:bg-slate-50/50' : 'bg-slate-50/70 text-slate-400'}
+                  >
+                    <td className={`${TD} font-semibold ${schedule.is_active ? 'text-slate-800' : 'text-slate-400'}`} title={schedule.note ?? undefined}>
+                      {schedule.name}
+                      {!schedule.is_active && (
+                        <span className="ml-2 inline-flex items-center gap-1 bg-slate-200 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                          <Lock className="h-3 w-3" /> Đã khóa
+                        </span>
+                      )}
+                    </td>
+                    <td className={TD}>
+                      {toViDate(schedule.effective_from)}
+                      {' → '}
+                      {schedule.effective_to ? toViDate(schedule.effective_to) : '…'}
+                    </td>
+                    <td className={TD}>
                       {toInputTime(schedule.start_time)}–{toInputTime(schedule.end_time)}
-                      {perDay != null && ` · ${perDay} giờ/ngày`}
-                      {' · Thứ Bảy: '}{SATURDAY_LABEL[schedule.saturday_mode]}
-                      {schedule.grace_minutes > 0 && ` · ân hạn ${schedule.grace_minutes} phút`}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-400">
-                      Áp dụng từ {schedule.effective_from}
-                      {schedule.effective_to ? ` đến ${schedule.effective_to}` : ' (không giới hạn)'}
-                    </p>
-                    {schedule.note && (
-                      <p className="mt-1 text-xs leading-relaxed text-slate-400">{schedule.note}</p>
-                    )}
-                  </div>
-                  <div className="flex flex-shrink-0 items-center gap-1">
-                    <button
-                      onClick={() => openEdit(schedule)}
-                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
-                      aria-label={`Sửa ${schedule.name}`}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => remove(schedule)}
-                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                      aria-label={`Xóa ${schedule.name}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </CardContent>
+                      <span className="text-slate-400"> · nghỉ {schedule.break_minutes}′</span>
+                    </td>
+                    <td className={`${TD} text-right tabular-nums`}>{perDay ?? '—'}</td>
+                    <td className={TD}>{SATURDAY_LABEL[schedule.saturday_mode]}</td>
+                    <td className={`${TD} text-right tabular-nums`}>
+                      {schedule.grace_minutes > 0 ? `${schedule.grace_minutes} phút` : '—'}
+                    </td>
+                    <td className="px-2 text-right">
+                      <button
+                        onClick={() => openEdit(schedule)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                        aria-label={`Sửa ${schedule.name}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => void toggleLock(schedule)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600"
+                        title={schedule.is_active ? 'Khóa' : 'Mở khóa'}
+                        aria-label={`${schedule.is_active ? 'Khóa' : 'Mở khóa'} ${schedule.name}`}
+                      >
+                        {schedule.is_active ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <Modal
         open={!!draft}
         onClose={() => setDraft(null)}
-        title={draft?.id ? 'Sửa giờ làm' : 'Thiết lập giờ làm'}
+        title={draft?.id ? 'Sửa giờ làm' : 'Thêm giờ làm'}
         size="lg"
       >
         {draft && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             <Input
               label="Tên cấu hình"
-              placeholder="VD: Giờ làm hành chính"
+              placeholder="VD: Giờ mùa hè"
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             />
@@ -271,14 +277,14 @@ export function WorkScheduleCard() {
                 onChange={(e) => setDraft({ ...draft, effective_from: e.target.value })}
               />
               <Input
-                label="Đến ngày (trống = không giới hạn)"
+                label="Đến ngày (trống = mãi mãi)"
                 type="date"
                 value={draft.effective_to}
                 onChange={(e) => setDraft({ ...draft, effective_to: e.target.value })}
               />
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Input
                 label="Giờ vào"
                 type="time"
@@ -297,50 +303,37 @@ export function WorkScheduleCard() {
                 value={draft.break_minutes}
                 onChange={(e) => setDraft({ ...draft, break_minutes: e.target.value.replace(/[^\d]/g, '') })}
               />
+              <Input
+                label="Ân hạn muộn (phút)"
+                inputMode="numeric"
+                value={draft.grace_minutes}
+                onChange={(e) => setDraft({ ...draft, grace_minutes: e.target.value.replace(/[^\d]/g, '') })}
+              />
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Select
-                  label="Thứ Bảy"
-                  value={draft.saturday_mode}
-                  onChange={(e) => setDraft({ ...draft, saturday_mode: e.target.value as Draft['saturday_mode'] })}
-                >
-                  {Object.entries(SATURDAY_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </Select>
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                  Quyết định công chuẩn tháng. "Làm nửa ngày" cho ra 23,5 công tháng 8/2026 —
-                  đúng con số trên phiếu lương mẫu.
-                </p>
-              </div>
-              <div>
-                <Input
-                  label="Ân hạn đi muộn (phút)"
-                  inputMode="numeric"
-                  value={draft.grace_minutes}
-                  onChange={(e) => setDraft({ ...draft, grace_minutes: e.target.value.replace(/[^\d]/g, '') })}
-                />
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                  Vào trễ trong khoảng này không tính là muộn. Để 0 nếu công ty tính từ phút đầu.
-                </p>
-              </div>
+              <Select
+                label="Thứ Bảy"
+                value={draft.saturday_mode}
+                onChange={(e) => setDraft({ ...draft, saturday_mode: e.target.value as Draft['saturday_mode'] })}
+              >
+                {Object.entries(SATURDAY_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </Select>
+              <Input
+                label="Ghi chú"
+                value={draft.note}
+                onChange={(e) => setDraft({ ...draft, note: e.target.value })}
+              />
             </div>
-
-            <Textarea
-              label="Ghi chú"
-              rows={2}
-              value={draft.note}
-              onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-            />
 
             <div className="flex gap-3 pt-1">
               <Button variant="outline" onClick={() => setDraft(null)} className="flex-1" disabled={saving}>
                 Hủy
               </Button>
               <Button onClick={save} className="flex-1" disabled={saving}>
-                {saving ? 'Đang lưu…' : 'Lưu giờ làm'}
+                {saving ? 'Đang lưu…' : 'Lưu'}
               </Button>
             </div>
           </div>

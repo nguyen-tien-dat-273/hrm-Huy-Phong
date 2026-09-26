@@ -13,16 +13,27 @@ import {
 } from './payrollVariables';
 import type { PayComponent, PayComponentKind } from '@/types';
 
-export const KIND_SIGN: Record<PayComponentKind, string> = {
-  EARNING: '+', DEDUCTION: '−', INFO: '·', EMPLOYER_COST: '◦',
-};
-
 export const KIND_LABEL: Record<PayComponentKind, string> = {
   EARNING: 'Cộng vào lương',
   DEDUCTION: 'Trừ khỏi lương',
-  INFO: 'Chỉ để tính',
+  INFO: 'Trung gian',
   EMPLOYER_COST: 'Doanh nghiệp chi',
 };
+
+/** Nhãn ngắn trên chip: dấu đi kèm CHỮ, không để mỗi ký hiệu. */
+export const KIND_SHORT: Record<PayComponentKind, string> = {
+  EARNING: '+ Cộng',
+  DEDUCTION: '− Trừ',
+  INFO: 'Trung gian',
+  EMPLOYER_COST: 'Doanh nghiệp chi',
+};
+
+/** Tên kèm dấu cộng / trừ cho tiêu đề cột hay ô chọn; dòng trung gian giữ nguyên tên. */
+export function withKindSign(kind: PayComponentKind, name: string): string {
+  if (kind === 'EARNING') return `+ ${name}`;
+  if (kind === 'DEDUCTION') return `− ${name}`;
+  return name;
+}
 
 export function buildFormulaEntries(args: {
   /** Đầu mục đang có trong cơ chế. */
@@ -60,6 +71,8 @@ export function buildFormulaEntries(args: {
       section: param.tableName,
       detail: formatWithUnit(param.value, param.unit),
       hint: `Tham số · bảng ${param.tableName}`,
+      // Tham số đã khoá vẫn tính cho công thức cũ nhưng không gợi ý cho công thức mới.
+      ...(param.locked ? { hidden: true } : {}),
     });
   }
   for (const variable of SYSTEM_VARIABLES) {
@@ -81,6 +94,7 @@ export function buildFormulaEntries(args: {
       isFunction: true,
       detail: table.mode === 'PROGRESSIVE' ? 'lũy tiến' : 'tra bậc',
       hint: table.inputLabel ? `Đưa vào: ${table.inputLabel}` : 'Bảng bậc thang',
+      ...(table.locked ? { hidden: true } : {}),
     });
   }
   for (const fn of BUILTIN_FUNCTIONS) {

@@ -45,6 +45,8 @@ interface FormulaInputProps {
   formatResult?: (value: number) => string;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** Chỉ ghi kết quả cuối một lần (không viết lại từng số thế vào); công thức chỉ là một con số thì không ghi gì thêm. */
+  resultOnly?: boolean;
 }
 
 const OPERAND_END = new Set<FormulaToken['kind']>(['ref', 'num', 'rparen', 'unknown']);
@@ -82,7 +84,7 @@ function matchParens(tokens: readonly FormulaToken[]): Map<number, number> {
 
 export function FormulaInput({
   value, onChange, entries, scope, functions = {}, leftLabel, ariaLabel, onAddEntry, softCodes,
-  formatResult = formatFormulaNumber, disabled = false, autoFocus = false,
+  formatResult = formatFormulaNumber, disabled = false, autoFocus = false, resultOnly = false,
 }: FormulaInputProps) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -603,6 +605,13 @@ export function FormulaInput({
             <p role="alert" className="flex items-start gap-1.5 text-xs font-medium text-red-600">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {issue.message}
             </p>
+          ) : result != null && resultOnly ? (
+            tokens.length === 1 && tokens[0].kind === 'num' ? null : (
+              <p className="flex min-w-0 items-center gap-1.5 text-sm text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                = <strong className="tabular-nums">{formatResult(result)}</strong>
+              </p>
+            )
           ) : result != null ? (
             <p className="flex min-w-0 items-start gap-1.5 text-xs text-emerald-700">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />

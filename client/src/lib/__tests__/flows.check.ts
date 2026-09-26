@@ -3,18 +3,15 @@
 // Chung một chỗ vì cùng một tính chất: sai thì KHÔNG có gì báo ra màn hình,
 // chỉ có một con số lặng lẽ khác đi.
 //
-//   1. Bộ giải "người này dùng bộ KPI nào" — phải khớp đúng bốn lớp của
-//      `public.kpi_scheme_for` (migration 20261001140000). Lệch một lớp là có
-//      người đứng ngoài kỳ chấm mà không ai thấy, nên mỗi lớp có một ca chứng
-//      minh nó thắng lớp dưới và một ca chứng minh nó nhường lớp trên.
-//   2. Thang điểm KPI — lỗ hổng ở ranh giới hai mức.
+//   1. Chuỗi đơn vị cha — cơ chế lương thừa hưởng theo đúng chuỗi này.
+//   2. Dải quy đổi KPI — ranh giới hai dải.
 //   3. Đếm ngày nghỉ phép theo lịch làm việc và ngày lễ.
 //   4. Ô công thức dạng thẻ — chuyển qua lại giữa TÊN người dùng thấy và MÃ
 //      được lưu; lệch một chiều là bấm Lưu đổi luôn công thức thật.
 //
 // (Engine lương có bộ kiểm riêng: `npm run check:payroll`.)
-import { kpiSchemeFor, unitLineage, type KpiSchemeData, type ResolvableUnit } from '../kpiSchemeFor';
-import { describeLevelIssues, scoreFromLevels } from '../kpiScoring';
+import { unitLineage, type ResolvableUnit } from '../orgUnits';
+import { scoreFromValue, setProblems, type KpiCriterion } from '../kpi';
 import { countWorkingDays } from '../leave';
 import { evaluateFormula } from '../payrollFormula';
 import {
@@ -39,18 +36,6 @@ const units: ResolvableUnit[] = [
 ];
 const unitById = new Map(units.map((u) => [u.id, u]));
 
-const tpl = (id: string, extra: Partial<KpiSchemeData['templates'][number]> = {}) => ({
-  id, name: `Bộ ${id}`, is_active: true, unit_id: null, position_id: null, created_at: null, ...extra,
-});
-
-const person = { id: 'u1', unit_id: 'phong', position_id: 'vi-tri-1' };
-
-const base = (over: Partial<KpiSchemeData> = {}): KpiSchemeData => ({
-  personalSchemes: [], unitSchemes: [], templates: [], unitById, ...over,
-});
-
-const TODAY = '2026-10-05';
-
 // --- Chuỗi đơn vị -----------------------------------------------------------
 check('chuỗi đơn vị đi từ gần tới xa',
   unitLineage('phong', unitById).map((u) => u.id), ['phong', 'khoi', 'cong-ty']);
@@ -63,152 +48,20 @@ const loopUnits = new Map<string, ResolvableUnit>([
 ]);
 check('vòng cha-con vẫn dừng', unitLineage('a', loopUnits).map((u) => u.id), ['a', 'b']);
 
-// --- Lớp 4: mẫu theo vị trí -------------------------------------------------
-check('lớp 4 — mẫu khớp vị trí',
-  kpiSchemeFor(person, base({ templates: [tpl('t-vitri', { position_id: 'vi-tri-1' })] }), TODAY).templateId,
-  't-vitri');
-
-check('mẫu vị trí đã tắt thì không dùng',
-  kpiSchemeFor(person, base({ templates: [tpl('t-vitri', { position_id: 'vi-tri-1', is_active: false })] }), TODAY).templateId,
-  null);
-
-// --- Lớp 3: bộ khai thẳng cho đơn vị ----------------------------------------
-check('lớp 3 thắng lớp 4',
-  kpiSchemeFor(person, base({
-    templates: [tpl('t-vitri', { position_id: 'vi-tri-1' }), tpl('t-phong', { unit_id: 'phong' })],
-  }), TODAY).templateId,
-  't-phong');
-
-check('lớp 3 đi ngược lên cấp trên khi phòng chưa khai',
-  kpiSchemeFor(person, base({ templates: [tpl('t-khoi', { unit_id: 'khoi' })] }), TODAY).templateId,
-  't-khoi');
-
-check('lớp 3 — đơn vị GẦN nhất thắng cấp trên',
-  kpiSchemeFor(person, base({
-    templates: [tpl('t-khoi', { unit_id: 'khoi' }), tpl('t-phong', { unit_id: 'phong' })],
-  }), TODAY).templateId,
-  't-phong');
-
-// --- Lớp 2: bản gán cho đơn vị ----------------------------------------------
-check('lớp 2 thắng lớp 3',
-  kpiSchemeFor(person, base({
-    unitSchemes: [{ unit_id: 'phong', template_id: 't-gan-phong', effective_from: '2026-01-01' }],
-    templates: [tpl('t-gan-phong'), tpl('t-phong', { unit_id: 'phong' })],
-  }), TODAY).templateId,
-  't-gan-phong');
-
-check('lớp 2 đi ngược lên cấp trên',
-  kpiSchemeFor(person, base({
-    unitSchemes: [{ unit_id: 'cong-ty', template_id: 't-cong-ty', effective_from: '2026-01-01' }],
-    templates: [tpl('t-cong-ty')],
-  }), TODAY).label,
-  'Theo phòng Huy Phong Group');
-
-check('lớp 2 — đơn vị gần nhất thắng',
-  kpiSchemeFor(person, base({
-    unitSchemes: [
-      { unit_id: 'cong-ty', template_id: 't-cong-ty', effective_from: '2026-01-01' },
-      { unit_id: 'khoi', template_id: 't-khoi', effective_from: '2026-01-01' },
-    ],
-    templates: [tpl('t-cong-ty'), tpl('t-khoi')],
-  }), TODAY).templateId,
-  't-khoi');
-
-// --- Lớp 1: gán riêng -------------------------------------------------------
-check('lớp 1 thắng tất cả',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u1', template_id: 't-rieng', effective_from: '2026-01-01' }],
-    unitSchemes: [{ unit_id: 'phong', template_id: 't-gan-phong', effective_from: '2026-01-01' }],
-    templates: [tpl('t-rieng'), tpl('t-gan-phong'), tpl('t-vitri', { position_id: 'vi-tri-1' })],
-  }), TODAY).templateId,
-  't-rieng');
-
-check('gán riêng của người KHÁC không ảnh hưởng',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u2', template_id: 't-rieng', effective_from: '2026-01-01' }],
-    templates: [tpl('t-rieng')],
-  }), TODAY).templateId,
-  null);
-
-// --- Ngày hiệu lực ----------------------------------------------------------
-// Database lọc `effective_from <= p_on`. Bỏ qua vế này thì một bản gán hẹn
-// tháng sau trông như đã có hiệu lực hôm nay, và màn hình hứa một bộ KPI mà
-// phiếu chấm không dùng.
-check('bản gán hẹn ngày trong TƯƠNG LAI chưa có hiệu lực',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u1', template_id: 't-sau', effective_from: '2026-12-01' }],
-    templates: [tpl('t-sau')],
-  }), TODAY).templateId,
-  null);
-
-check('hai bản gán riêng thì bản hiệu lực GẦN nhất thắng',
-  kpiSchemeFor(person, base({
-    personalSchemes: [
-      { user_id: 'u1', template_id: 't-cu', effective_from: '2026-01-01' },
-      { user_id: 'u1', template_id: 't-moi', effective_from: '2026-09-01' },
-    ],
-    templates: [tpl('t-cu'), tpl('t-moi')],
-  }), TODAY).templateId,
-  't-moi');
-
-check('bản gán tương lai không che bản đang có hiệu lực',
-  kpiSchemeFor(person, base({
-    personalSchemes: [
-      { user_id: 'u1', template_id: 't-dang-dung', effective_from: '2026-01-01' },
-      { user_id: 'u1', template_id: 't-thang-sau', effective_from: '2026-12-01' },
-    ],
-    templates: [tpl('t-dang-dung'), tpl('t-thang-sau')],
-  }), TODAY).templateId,
-  't-dang-dung');
-
-// --- Dữ liệu hỏng -----------------------------------------------------------
-// Bản gán trỏ tới một bộ đã bị xoá: phải thấy được là CÓ gán mà bộ mất, không
-// được im lặng coi như chưa gán — hai thứ đó cần hai cách xử lý khác nhau.
-const orphan = kpiSchemeFor(person, base({
-  personalSchemes: [{ user_id: 'u1', template_id: 't-da-xoa', effective_from: '2026-01-01' }],
-  templates: [],
-}), TODAY);
-check('bản gán trỏ tới bộ đã xoá — vẫn báo có gán', orphan.templateId, 't-da-xoa');
-check('bản gán trỏ tới bộ đã xoá — không dựng được bộ', orphan.template, null);
-
-// Gán riêng trỏ tới bộ đã TẮT vẫn thắng: database không lọc is_active ở lớp 1,
-// nên lọc thêm ở client sẽ cho ra bộ khác với bộ phiếu chấm thật sự dùng.
-check('gán riêng tới bộ đã tắt vẫn thắng mẫu vị trí',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u1', template_id: 't-tat', effective_from: '2026-01-01' }],
-    templates: [tpl('t-tat', { is_active: false }), tpl('t-vitri', { position_id: 'vi-tri-1' })],
-  }), TODAY).templateId,
-  't-tat');
-
-// --- Người chưa gán đơn vị --------------------------------------------------
-check('người chưa gán đơn vị bỏ qua lớp 2 và 3',
-  kpiSchemeFor({ id: 'u1', unit_id: null, position_id: 'vi-tri-1' }, base({
-    unitSchemes: [{ unit_id: 'phong', template_id: 't-gan-phong', effective_from: '2026-01-01' }],
-    templates: [tpl('t-gan-phong'), tpl('t-vitri', { position_id: 'vi-tri-1' })],
-  }), TODAY).templateId,
-  't-vitri');
-
-// --- Thang điểm: hai mức chạm nhau ở một điểm -------------------------------
+// --- Dải quy đổi: hai dải chạm nhau ---------------------------------------
 //
-// Đúng MỘT đầu mở là liền mạch: 105 thuộc mức dưới. CẢ HAI đầu cùng mở thì 105
-// không thuộc mức nào và `scoreFromLevels` trả null. Lỗ hổng rộng đúng một
-// điểm nên nhánh "hở khoảng" của bộ kiểm không thấy — mà 105 lại chính là con
-// số hay bị gõ nhất, vì nó là ranh giới hai mức. Bảng KPI thật của công ty
-// viết "Từ 90 - 105%" ngay cạnh "Trên 105%".
-const chamNhau = (haiDauMo: boolean) => [
-  { score: 3, min: 90, max: 105, max_exclusive: haiDauMo },
-  { score: 4, min: 105, min_exclusive: true },
-];
-check('chạm nhau, một đầu mở — liền mạch, không báo gì',
-  describeLevelIssues(chamNhau(false)).length, 0);
-check('chạm nhau, một đầu mở — số ranh giới vẫn ra điểm',
-  scoreFromLevels(chamNhau(false), 105), 3);
-check('chạm nhau, CẢ HAI đầu mở — phải báo lỗ hổng',
-  describeLevelIssues(chamNhau(true)).length, 1);
-check('chạm nhau, cả hai đầu mở — số ranh giới đúng là không ra điểm',
-  scoreFromLevels(chamNhau(true), 105), null);
-check('hai mức cùng phủ ranh giới thì vẫn báo chồng lấn',
-  describeLevelIssues([{ score: 3, min: 90, max: 105 }, { score: 4, min: 105 }]).length, 1);
+// Dải là [từ, dưới): 105 thuộc dải trên. Bảng KPI thật viết "Từ 90 - 105%"
+// ngay cạnh "Trên 105%" — 105 là con số hay gõ nhất.
+const chamNhau = [{ min: 90, max: 105, score: 3 }, { min: 105, max: null, score: 4 }];
+check('chạm nhau — số ranh giới thuộc dải trên', scoreFromValue(chamNhau, 105), 4);
+check('chạm nhau — ngay dưới ranh giới thuộc dải dưới', scoreFromValue(chamNhau, 104.99), 3);
+const dai = (ranges: KpiCriterion['ranges']): KpiCriterion => ({
+  category: 'A', name: 'x', measure: null, group_code: 'QUANT', weight: 100, standard_score: 4, method: 'RANGE',
+  levels: [], ranges, value_unit: '%', penalty_pct: null, allow_over: false, source: null,
+});
+check('chạm nhau không bị báo chồng', setProblems([dai(chamNhau)]), []);
+check('hai dải cùng phủ một đoạn thì báo chồng',
+  setProblems([dai([{ min: 90, max: 106, score: 3 }, { min: 105, max: null, score: 4 }])]).length, 1);
 
 // --- Ngày nghỉ phép đếm theo lịch làm việc ----------------------------------
 //

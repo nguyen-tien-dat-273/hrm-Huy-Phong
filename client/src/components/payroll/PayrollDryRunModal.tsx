@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // Chạy đúng phép tính của Bảng lương (`computeForPerson`) — không có bản tính
 // riêng cho chạy thử, nên con số ở đây là con số bảng lương sẽ ra. Chạy được
-// với bộ tham số ĐANG SOẠN (chưa lưu). Không ghi gì xuống database.
+// với cơ chế và tham số đã lưu. Không ghi gì xuống database.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -12,13 +12,14 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { PayslipBreakdown } from '@/components/payroll/PayslipBreakdown';
+import { documentLinesFromCatalog } from '@/components/payroll/PayslipDocument';
+import { resolvePayslipLayout } from '@/lib/payslipLayout';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import { formatVND } from '@/lib/utils';
-import { formatFormulaNumber } from '@/lib/formulaTokens';
-import { KIND_SIGN } from '@/lib/formulaEntries';
+import { formatFormulaNumber, parseLooseNumber, referencedCodes } from '@/lib/formulaTokens';
+import { KindChip } from '@/components/payroll/KindChip';
 import { ROW_MODE_LABEL, SYSTEM_VARIABLE_BY_CODE } from '@/lib/payrollVariables';
 import { computeForPerson, paramsForMonth, type PersonComputation } from '@/lib/payrollRun';
-import type { PayrollParamVersion } from '@/lib/payrollSettings';
 import type { PayrollWorkspace } from '@/lib/payrollData';
 
 interface PayrollDryRunModalProps {
@@ -28,14 +29,30 @@ interface PayrollDryRunModalProps {
   monthStart: Date;
   monthStartStr: string;
   monthEndStr: string;
-  /** Bộ tham số đang soạn ở màn Tham số lương — null = bộ đã lưu của tháng. */
-  draftVersion?: PayrollParamVersion | null;
+  /** Người mở sẵn khi vào từ Cơ chế lương. */
+  initialPersonId?: string | null;
 }
 
 const OT_CODES = ['OT_WEEKDAY_HOURS', 'OT_WEEKEND_HOURS', 'OT_HOLIDAY_HOURS'];
+const KPI_INPUT = 'KPI_PCT';
+
+/** Biến hệ thống đổi theo tháng, lấy từ chấm công / đơn từ — ô nhập hiện khi cơ chế đọc tới. */
+const MONTHLY_STATS = [
+  { code: 'WORK_DAYS', key: 'workDays' },
+  { code: 'LEAVE_DAYS', key: 'leaveDays' },
+  { code: 'HOLIDAY_DAYS', key: 'holidayDays' },
+  { code: 'WORK_HOURS', key: 'workHours' },
+  { code: 'LATE_COUNT', key: 'lateCount' },
+  { code: 'LATE_MINUTES', key: 'lateMinutes' },
+  { code: 'LATE_AFTER_CUTOFF', key: 'lateAfterCutoffCount' },
+  { code: 'EARLY_COUNT', key: 'earlyCount' },
+  { code: 'EARLY_MINUTES', key: 'earlyMinutes' },
+] as const;
+/** Ba loại ngày luôn hiện: ngày hưởng lương và ngày nghỉ không lương suy ra từ chúng. */
+const ALWAYS_SHOWN = new Set(['WORK_DAYS', 'LEAVE_DAYS', 'HOLIDAY_DAYS']);
 
 export function PayrollDryRunModal({
-  open, onClose, data, monthStart, monthStartStr, monthEndStr, draftVersion = null,
+  open, onClose, data, monthStart, monthStartStr, monthEndStr, initialPersonId = null,
 }: PayrollDryRunModalProps) {
   const app = useAppSettings();
   const [personId, setPersonId] = useState('');
@@ -47,12 +64,12 @@ export function PayrollDryRunModal({
     if (!open) return;
     setResult(null);
     setError(null);
-    setPersonId((current) => current || data.profiles[0]?.id || '');
-  }, [open, data.profiles]);
+    setPersonId((current) => initialPersonId || current || data.profiles[0]?.id || '');
+  }, [open, data.profiles, initialPersonId]);
 
   const params = useMemo(
-    () => paramsForMonth(data, app, monthStart, monthStartStr, draftVersion),
-    [data, app, monthStart, monthStartStr, draftVersion],
+    () => paramsForMonth(data, app, monthStart, monthStartStr),
+    [data, app, monthStart, monthStartStr],
   );
   const person = data.profiles.find((item) => item.id === personId) ?? null;
 
@@ -62,29 +79,42 @@ export function PayrollDryRunModal({
     return computeForPerson(person, data, params, monthStart, monthStartStr, monthEndStr);
   }, [person, params, data, monthStart, monthStartStr, monthEndStr]);
 
+  /** Mọi biến mà công thức của người này đọc tới. */
+  const used = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of baseline?.rows ?? []) {
+      if (row.mode === 'FORMULA') for (const code of referencedCodes(row.formula)) set.add(code.toUpperCase());
+    }
+    return set;
+  }, [baseline]);
+
   /** Số liệu tháng cơ chế của người này đọc tới — để điền số giả định đúng chỗ. */
   const inputCodes = useMemo(() => {
     if (!baseline) return [];
     return [
       ...baseline.rows.filter((row) => row.mode === 'MONTHLY_INPUT').map((row) => ({ code: row.component.code, name: row.component.name })),
-      ...OT_CODES.map((code) => ({ code, name: SYSTEM_VARIABLE_BY_CODE.get(code)?.name ?? code })),
+      ...OT_CODES.filter((code) => used.has(code)).map((code) => ({ code, name: SYSTEM_VARIABLE_BY_CODE.get(code)?.name ?? code })),
     ];
-  }, [baseline]);
+  }, [baseline, used]);
+
+  /** Biến theo tháng cần hiện ô nhập: các biến cơ chế đọc tới, cộng ba loại ngày. */
+  const statFields = useMemo(
+    () => MONTHLY_STATS.filter((item) => used.has(item.code) || ALWAYS_SHOWN.has(item.code)),
+    [used],
+  );
+  const usesKpi = used.has('TY_LE_KPI') || used.has('KPI_PCT');
 
   // Nạp lại số liệu giả định từ số thật khi đổi người.
   useEffect(() => {
     if (!baseline) return;
-    const next: Record<string, string> = {
-      workDays: String(baseline.stats.workDays),
-      leaveDays: String(baseline.stats.leaveDays),
-      holidayDays: String(baseline.stats.holidayDays),
-      lateCount: String(baseline.stats.lateCount),
-      earlyCount: String(baseline.stats.earlyCount),
-    };
+    const next: Record<string, string> = {};
+    for (const item of MONTHLY_STATS) next[item.key] = String(baseline.stats[item.key]);
+    next[`input:${KPI_INPUT}`] = String(baseline.inputs[KPI_INPUT] ?? 0);
+    next.standardDays = String(params?.standardDays ?? 0);
     for (const { code } of inputCodes) next[`input:${code}`] = String(baseline.inputs[code] ?? 0);
     setAssumed(next);
     setResult(null);
-  }, [baseline, inputCodes]);
+  }, [baseline, inputCodes, params?.standardDays]);
 
   const pickRandom = () => {
     const candidates = data.profiles.filter((item) => item.id !== personId);
@@ -96,17 +126,21 @@ export function PayrollDryRunModal({
     if (!person || !params) return;
     setError(null);
     const num = (key: string) => {
-      const value = Number((assumed[key] ?? '').replace(',', '.'));
+      // Chấp nhận cả '2.683.100' (chấm hàng nghìn) lẫn '24,5' / '24.5'.
+      const value = Number(parseLooseNumber(assumed[key] ?? '') ?? NaN);
       return Number.isFinite(value) ? value : 0;
     };
     try {
       const inputsOverride: Record<string, number> = {};
       for (const { code } of inputCodes) inputsOverride[code] = num(`input:${code}`);
-      setResult(computeForPerson(person, data, params, monthStart, monthStartStr, monthEndStr, {
-        statsOverride: {
-          workDays: num('workDays'), leaveDays: num('leaveDays'), holidayDays: num('holidayDays'),
-          lateCount: num('lateCount'), earlyCount: num('earlyCount'),
-        },
+      if (usesKpi) inputsOverride[KPI_INPUT] = num(`input:${KPI_INPUT}`);
+      const statsOverride: Record<string, number> = {};
+      for (const item of statFields) statsOverride[item.key] = num(item.key);
+      // Đổi công chuẩn để tính như một tháng khác (vd. tháng 8: 23,5 công) mà không đổi lịch làm việc.
+      const standardDays = num('standardDays');
+      const runParams = standardDays > 0 ? { ...params, standardDays } : params;
+      setResult(computeForPerson(person, data, runParams, monthStart, monthStartStr, monthEndStr, {
+        statsOverride,
         inputsOverride,
         trace: true,
       }));
@@ -116,27 +150,27 @@ export function PayrollDryRunModal({
   };
 
   const field = (key: string, label: string) => (
-    <Input key={key} label={label} inputMode="decimal" value={assumed[key] ?? ''}
+    <Input className="!rounded-none" key={key} label={label} inputMode="decimal" value={assumed[key] ?? ''}
       onChange={(event) => setAssumed((current) => ({ ...current, [key]: event.target.value.replace(/[^\d.,]/g, '') }))} />
   );
 
   return (
-    <Modal open={open} onClose={onClose} title="Chạy thử cơ chế lương" size="xl">
+    <Modal square open={open} onClose={onClose} title="Chạy thử cơ chế lương" size="xl">
       <div className="space-y-5">
-        <p className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-indigo-900">
+        <p className="rounded-none border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-indigo-900">
           Chạy đúng phép tính của Bảng lương với số liệu tháng {monthStartStr.slice(5, 7)}/{monthStartStr.slice(0, 4)} của
-          một nhân sự, đè bằng số liệu giả định bạn nhập. {draftVersion ? 'Dùng bộ tham số ĐANG SOẠN (chưa lưu). ' : ''}
+          một nhân sự, đè bằng số liệu giả định bạn nhập.
           Không ghi gì xuống hệ thống.
         </p>
 
         {!params ? (
-          <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="flex items-start gap-2 rounded-none bg-amber-50 px-3 py-2 text-sm text-amber-800">
             <TriangleAlert className="mt-0.5 h-4 w-4" /> Chưa có bộ tham số lương hiệu lực cho tháng này.
           </p>
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-              <Select label="Nhân sự" value={personId} onChange={(event) => setPersonId(event.target.value)}>
+              <Select className="!rounded-none" label="Nhân sự" value={personId} onChange={(event) => setPersonId(event.target.value)}>
                 {data.profiles.map((item) => (
                   <option key={item.id} value={item.id}>{item.name}{item.employee_code ? ` · ${item.employee_code}` : ''}</option>
                 ))}
@@ -151,14 +185,12 @@ export function PayrollDryRunModal({
               </p>
             )}
 
-            <div className="rounded-xl border border-slate-200 p-4">
+            <div className="rounded-none border border-slate-200 p-4">
               <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Số liệu giả định</p>
-              <div className="grid gap-3 sm:grid-cols-5">
-                {field('workDays', 'Ngày công thực tế')}
-                {field('leaveDays', 'Ngày phép')}
-                {field('holidayDays', 'Ngày lễ')}
-                {field('lateCount', 'Lần đi muộn')}
-                {field('earlyCount', 'Lần về sớm')}
+              <div className="grid gap-3 sm:grid-cols-4">
+                {field('standardDays', 'Công chuẩn của tháng')}
+                {statFields.map((item) => field(item.key, SYSTEM_VARIABLE_BY_CODE.get(item.code)?.name ?? item.code))}
+                {usesKpi && field(`input:${KPI_INPUT}`, 'Tỷ lệ KPI (%) — 85 là 85%')}
               </div>
               {inputCodes.length > 0 && (
                 <div className="mt-3 grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-4">
@@ -172,7 +204,7 @@ export function PayrollDryRunModal({
           </>
         )}
 
-        {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        {error && <p className="rounded-none bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
         {result && (
           <div className="space-y-4">
@@ -182,14 +214,14 @@ export function PayrollDryRunModal({
               <Stat label="Thực lĩnh" value={formatVND(result.computed.netPay)} strong />
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-200">
+            <div className="overflow-hidden rounded-none border border-slate-200">
               <p className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">
                 Nhật ký tính — theo đúng thứ tự tính
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-xs">
                   <thead>
-                    <tr className="border-b border-slate-100 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <tr className="border-b border-slate-100 text-left text-[10px] font-bold uppercase tracking-wider text-black">
                       <th className="px-3 py-2">#</th>
                       <th className="px-3 py-2">Đầu mục</th>
                       <th className="px-3 py-2">Cách lấy</th>
@@ -201,7 +233,9 @@ export function PayrollDryRunModal({
                     {(result.computed.trace ?? []).map((step, index) => (
                       <tr key={`${step.code}-${index}`} className="align-top">
                         <td className="px-3 py-2 text-slate-400">{index + 1}</td>
-                        <td className="px-3 py-2 font-semibold text-slate-800">{KIND_SIGN[step.kind]} {step.label}</td>
+                        <td className="px-3 py-2 font-semibold text-slate-800">
+                          <span className="flex flex-wrap items-center gap-1.5"><KindChip kind={step.kind} /> {step.label}</span>
+                        </td>
                         <td className="px-3 py-2 text-slate-500">{step.mode === 'ADJUSTMENT' ? 'Điều chỉnh' : ROW_MODE_LABEL[step.mode]}</td>
                         <td className="max-w-[320px] px-3 py-2">
                           {step.rendered && <span className="break-words text-[11px] text-indigo-700">{step.rendered}</span>}
@@ -220,6 +254,18 @@ export function PayrollDryRunModal({
               netPay={result.computed.netPay}
               roundingAdjustment={result.computed.roundingAdjustment}
               warnings={result.computed.warnings}
+              paper={person ? {
+                lines: documentLinesFromCatalog(
+                  result.computed.lines, data.components, data.categories,
+                  resolvePayslipLayout(person.unit_id, data.units, data.payslipLayouts, data.components),
+                ),
+                layout: resolvePayslipLayout(person.unit_id, data.units, data.payslipLayouts, data.components),
+                monthLabel: `${monthStartStr.slice(5, 7)}/${monthStartStr.slice(0, 4)}`,
+                employeeName: person.name,
+                employeeCode: person.employee_code,
+                unitName: data.units.find((unit) => unit.id === person.unit_id)?.name ?? person.department,
+                standardDays: result.computed.standardDays,
+              } : undefined}
             />
           </div>
         )}
@@ -230,7 +276,7 @@ export function PayrollDryRunModal({
 
 function Stat({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="rounded-xl bg-slate-50 px-3 py-2.5">
+    <div className="rounded-none bg-slate-50 px-3 py-2.5">
       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
       <p className={`mt-0.5 truncate text-sm font-bold tabular-nums ${strong ? 'text-indigo-700' : 'text-slate-800'}`}>{value}</p>
     </div>

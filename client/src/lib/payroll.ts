@@ -15,8 +15,8 @@
 // được — dòng trong vòng ra 0 kèm cảnh báo, không chọn bừa một bên.
 //
 // Engine KHÔNG biết dòng nào là bảo hiểm hay thuế: mọi khoản là một đầu mục có
-// tên. Nó chỉ biết đầu mục CỘNG vào lương, TRỪ khỏi lương, hay CHỈ ĐỂ TÍNH
-// (Loại dòng ở Danh mục). Thực lĩnh = tổng cộng − tổng trừ, làm tròn theo
+// tên. Nó chỉ biết đầu mục CỘNG vào lương, TRỪ khỏi lương, hay là dòng TRUNG
+// GIAN (con số để dòng khác tính, không vào thực lĩnh). Thực lĩnh = tổng cộng − tổng trừ, làm tròn theo
 // bộ tham số. "Nhãn báo cáo" của đầu mục chỉ được cộng lại để báo cáo đọc
 // (`reportTotals`), không dòng nào của phiếu đọc nó.
 //
@@ -458,7 +458,7 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   const rowByCode = new Map(rows.map((row) => [rowCode(row), row]));
   const nameOf = (code: string) => rowByCode.get(code)?.component.name ?? args.nameOf?.(code) ?? code;
 
-  // Điều chỉnh gắn vào đầu mục "chỉ để tính" (số người phụ thuộc, lương cơ bản…)
+  // Điều chỉnh gắn vào dòng trung gian (số người phụ thuộc, lương cơ bản…)
   // là điều chỉnh GIÁ TRỊ, không phải tiền: cộng / trừ thẳng vào giá trị của
   // đầu mục TRƯỚC khi các công thức đọc nó, nên thuế, bảo hiểm… tính theo số mới.
   const infoTarget = (adjustment: PayrollAdjustment): string | null => {
@@ -544,7 +544,7 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
             .filter((other) => other.component.kind === 'EARNING' && values[rowCode(other)] !== undefined)
             .reduce((sum, other) => sum + values[rowCode(other)], 0) + recovery;
         }
-        // Chỉ nhắc ở dòng ra tiền: dòng "chỉ để tính" (kiểu thu nhập chịu thuế)
+        // Chỉ nhắc ở dòng ra tiền: dòng trung gian (kiểu thu nhập tính thuế)
         // cố ý cộng cả những khoản người này có thể không có — bằng 0 là đúng.
         const missing = isMoneyKind(row.component.kind)
           ? refs.filter((ref) => knownCatalog.has(ref) && !rowByCode.has(ref) && inputs[ref] === undefined)
@@ -555,7 +555,7 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
             + 'nhưng cơ chế không có dòng đó — phần đó tính bằng 0.',
           );
         }
-        const formulaScope = { ...scope, [OWN_AMOUNT_CODE]: row.amount ?? Number(row.component.default_amount ?? 0) };
+        const formulaScope = { ...scope, [OWN_AMOUNT_CODE]: row.amount ?? 0 };
         try {
           value = evaluateFormula(formula, formulaScope, { functions: params.functions }).value;
           expression = formula;
@@ -564,7 +564,10 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
         } catch (error) {
           failed = true;
           detail = 'Công thức lỗi';
-          const reason = error instanceof FormulaError ? error.message : String(error);
+          const raw = error instanceof FormulaError ? error.message : String(error);
+          const reason = raw
+            .replace(/"([A-Z][A-Z0-9_]*)"/g, (_, code: string) => `“${nameOf(code) || code}”`)
+            .replace(/Không có biến (“[^”]+”) trong kỳ lương này\./, '$1 chưa có trong bộ tham số của kỳ này.');
           warnings.push(`${profile.name}: công thức dòng “${name}” lỗi — ${reason}`);
         }
       }
@@ -582,7 +585,7 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
       value = entered ?? 0;
       detail = entered === undefined ? 'Chưa nhập số liệu tháng' : 'Số liệu tháng';
     } else {
-      value = row.amount ?? Number(row.component.default_amount ?? 0);
+      value = row.amount ?? 0;
       detail = row.origin ? `Giá trị · ${row.origin}` : 'Giá trị';
     }
 

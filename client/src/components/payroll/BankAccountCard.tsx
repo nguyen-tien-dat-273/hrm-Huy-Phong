@@ -52,7 +52,7 @@ export function BankAccountCard({ person, account, canManage, onSaved }: {
   };
 
   return (
-    <Card>
+    <Card className="!rounded-none">
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-slate-400" /> Tài khoản nhận lương</CardTitle>
       </CardHeader>
@@ -64,19 +64,19 @@ export function BankAccountCard({ person, account, canManage, onSaved }: {
             className="grid gap-3 sm:grid-cols-2"
             onSubmit={(event) => { event.preventDefault(); void save(); }}
           >
-            <Input label="Mã ngân hàng" required disabled={!canManage} value={form.bank_code}
+            <Input className="!rounded-none" label="Mã ngân hàng" required disabled={!canManage} value={form.bank_code}
               onChange={(event) => setForm({ ...form, bank_code: event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })}
               error={touched ? issues.bank_code : undefined} />
-            <Input label="Tên ngân hàng" required disabled={!canManage} value={form.bank_name}
+            <Input className="!rounded-none" label="Tên ngân hàng" required disabled={!canManage} value={form.bank_name}
               onChange={(event) => setForm({ ...form, bank_name: event.target.value })}
               error={touched ? issues.bank_name : undefined} />
-            <Input label="Số tài khoản" required inputMode="numeric" disabled={!canManage} value={form.account_number}
+            <Input className="!rounded-none" label="Số tài khoản" required inputMode="numeric" disabled={!canManage} value={form.account_number}
               onChange={(event) => setForm({ ...form, account_number: event.target.value.replace(/\D/g, '') })}
               error={touched ? issues.account_number : undefined} />
-            <Input label="Chủ tài khoản" required disabled={!canManage} value={form.account_holder}
+            <Input className="!rounded-none" label="Chủ tài khoản" required disabled={!canManage} value={form.account_holder}
               onChange={(event) => setForm({ ...form, account_holder: event.target.value })}
               error={touched ? issues.account_holder : undefined} />
-            <Input label="Chi nhánh" disabled={!canManage} value={form.branch}
+            <Input className="!rounded-none" label="Chi nhánh" disabled={!canManage} value={form.branch}
               onChange={(event) => setForm({ ...form, branch: event.target.value })} />
             {canManage && (
               <div className="flex items-end justify-end gap-2">

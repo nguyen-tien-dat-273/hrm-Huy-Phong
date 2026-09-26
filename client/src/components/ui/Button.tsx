@@ -33,9 +33,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
     primary: theme === 'admin'
       ? 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md focus-visible:ring-indigo-500'
       : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:shadow-md focus-visible:ring-indigo-500',
-    secondary: 'bg-slate-100 text-slate-700 hover:bg-slate-200 focus-visible:ring-slate-400 shadow-none',
-    outline: 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus-visible:ring-slate-400',
-    ghost: 'text-slate-600 hover:bg-slate-100 focus-visible:ring-slate-400 shadow-none',
+    secondary: 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 focus-visible:ring-slate-400 shadow-none',
+    outline: 'border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-500 focus-visible:ring-slate-400',
+    ghost: 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:ring-slate-400 shadow-none',
     danger: 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500',
     success: 'bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500',
   };

@@ -20,7 +20,8 @@ export const ADMIN_FUNCTION_CODES = [
   'admin.overview', 'admin.employee_lifecycle', 'admin.workforce', 'admin.worker_documents',
   'admin.payroll', 'admin.payroll_schemes', 'admin.payroll_inputs',
   'admin.payroll_components', 'admin.payroll_settings', 'admin.payroll_adjustments', 'admin.payroll_approve',
-  'admin.timesheet_lock', 'admin.performance_manage', 'admin.work_locations', 'admin.feature_flags', 'admin.audit',
+  'admin.timesheet_lock', 'admin.performance_manage', 'admin.kpi_approve', 'admin.kpi_close',
+  'admin.work_locations', 'admin.feature_flags', 'admin.audit',
 ] as const;
 export type AdminFunctionCode = (typeof ADMIN_FUNCTION_CODES)[number];
 
@@ -37,7 +38,9 @@ export const ADMIN_FUNCTIONS: Record<AdminFunctionCode, { label: string; descrip
   'admin.payroll_adjustments': { label: 'Điều chỉnh lương', description: 'Điều chỉnh tăng/giảm, truy lĩnh, truy thu kèm lý do giải trình.', module: 'attendance' },
   'admin.payroll_approve': { label: 'Phê duyệt lương', description: 'Ký duyệt cơ chế lương và lệnh chi lương của kỳ đã khoá. Admin/CEO có sẵn; giao thêm cho Ban Giám đốc, Kế toán trưởng hoặc người được uỷ quyền.', module: 'attendance' },
   'admin.timesheet_lock': { label: 'Khóa/mở kỳ bảng công', description: 'Mở kỳ duyệt, khóa kỳ và chốt dữ liệu bảng công.', module: 'attendance' },
-  'admin.performance_manage': { label: 'Quản lý KPI & đánh giá', description: 'Tạo chu kỳ, mục tiêu và kết quả hiệu suất.', module: 'reports' },
+  'admin.performance_manage': { label: 'Quản lý KPI', description: 'Bộ KPI, tham số, mở kỳ, giao chỉ tiêu kinh doanh, xem mọi phiếu.', module: 'reports' },
+  'admin.kpi_approve': { label: 'Duyệt KPI (Ban Giám đốc)', description: 'Duyệt cuối phiếu trưởng bộ phận và khối Kinh doanh, duyệt chỉ tiêu kinh doanh, duyệt mở lại phiếu, xét thưởng năm.', module: 'reports' },
+  'admin.kpi_close': { label: 'Khoá sổ KPI (Kế toán trưởng)', description: 'Khoá sổ kỳ KPI, nhập số liệu kinh doanh, đề nghị mở lại phiếu đã khoá.', module: 'reports' },
   'admin.work_locations': { label: 'Địa điểm chấm công', description: 'Quản lý điểm GPS, bán kính, Wi-Fi và đơn vị áp dụng.', module: 'settings' },
   'admin.feature_flags': { label: 'Tính năng thử nghiệm', description: 'Bật/tắt có kiểm soát các chức năng mới.', module: 'settings' },
   'admin.audit': { label: 'Nhật ký hệ thống', description: 'Truy vết thao tác quản trị và thay đổi dữ liệu.', module: 'settings' },

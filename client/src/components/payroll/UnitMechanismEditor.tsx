@@ -5,34 +5,42 @@
 // Mỗi dòng chọn một cách lấy giá trị:
 //
 //   Công thức   [Lương cơ bản] ÷ [Công chuẩn] × [Ngày công]  — hoặc một con số
-//   Từng người  khai riêng cho từng người ở màn nhân sự
-//   Hằng tháng  nhập mỗi tháng ở Số liệu lương tháng
+//   Khai riêng  khai riêng cho từng người ở màn nhân sự
+//   Theo tháng  nhập mỗi tháng ngay trên Bảng lương
 //
 // Đơn vị con thừa hưởng dòng của cấp trên; sửa một dòng ở đây là khai lại dòng
 // đó riêng cho đơn vị này, "Bỏ khỏi đơn vị" là đơn vị này không dùng dòng đó.
 // Lưu là áp dụng ngay từ tháng đang xem; các tháng trước giữ nguyên.
+//
+// Danh sách phẳng, 10 đầu mục một trang: CHỈ hiện đầu mục đã thiết lập, mỗi dòng
+// hiện thẳng công thức đang sửa "Tên = công thức" và đúng MỘT kết quả cuối. Muốn
+// thêm đầu mục thì bấm "Thêm đầu mục" cạnh ô lọc (chọn từ danh mục hoặc tạo dòng
+// trung gian mới); thùng rác ở cuối dòng để bỏ đầu mục khỏi đơn vị. Mẫu phiếu
+// lương khai ở thẻ "Phiếu lương" (PayslipLayoutEditor).
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronDown, ChevronRight, RotateCcw, Save, Search, TriangleAlert } from 'lucide-react';
+import { FileText, Plus, RotateCcw, Save, Search, Trash2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ITEMS_PER_PAGE, PagedList, Pager, clampPage } from '@/components/payroll/Pager';
+import { FormulaSheetModal } from '@/components/payroll/FormulaSheetModal';
+import { MechanismAddDialog } from '@/components/payroll/MechanismAddDialog';
 import { FormulaInput } from '@/components/payroll/formula/FormulaInput';
 import { formulaScopeOf, fullMonthStats, monthEndOf, monthText } from '@/components/payroll/schemeWorkbench';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAppSettings } from '@/contexts/SettingsContext';
-import { formatVND, getTodayString } from '@/lib/utils';
+import { getTodayString } from '@/lib/utils';
 import { computePayslip, orderMechanismRows, type MechanismRow } from '@/lib/payroll';
 import {
-  describeFormula, formatFormulaNumber, formulaIssueOf, normalizeText, referencedCodes, tokenizeFormula,
+  formatFormulaNumber, formulaIssueOf, normalizeText, referencedCodes, tokenizeFormula,
 } from '@/lib/formulaTokens';
-import { KIND_SIGN, buildFormulaEntries } from '@/lib/formulaEntries';
-import { firstEditableMonth, versionForMonth } from '@/lib/payrollSettings';
+import { buildFormulaEntries } from '@/lib/formulaEntries';
+import { codeFromName, firstEditableMonth, paramsOf, versionForMonth } from '@/lib/payrollSettings';
 import { earliestSchemeMonth, unitItemsAt, unitMechanismRows } from '@/lib/payrollScheme';
 import { nameResolver, paramsForMonth, schemeSourceOf } from '@/lib/payrollRun';
-import { ROW_MODE_LABEL } from '@/lib/payrollVariables';
-import { saveScheme, type PayrollWorkspace } from '@/lib/payrollData';
+import { RESERVED_FORMULA_NAMES, ROW_MODE_LABEL } from '@/lib/payrollVariables';
+import { saveIntermediate, saveScheme, type PayrollWorkspace } from '@/lib/payrollData';
 import type { OrganizationUnit, PayComponent, SchemePayloadItem, UnitRowMode } from '@/types';
 
 type DraftMode = 'FORMULA' | 'PER_PERSON' | 'MONTHLY_INPUT' | 'OFF';
@@ -43,7 +51,7 @@ interface DraftRow {
   mode: DraftMode;
   /** Công thức, hoặc một con số cố định (dòng "Giá trị" cũ được đọc lên thành công thức một con số). */
   formula: string;
-  /** Mức riêng: công thức đọc qua \`MUC_RIENG\`, hoặc mức chung của dòng "Từng người". */
+  /** Mức riêng: công thức đọc qua \`MUC_RIENG\`, hoặc mức chung của dòng "Khai riêng". */
   amount: number | null;
   sortOrder: number | null;
 }
@@ -62,12 +70,12 @@ interface ViewRow {
   overrides: boolean;
 }
 
-const draftOf = (item: SchemePayloadItem, defaultAmount: number): DraftRow => {
+const draftOf = (item: SchemePayloadItem): DraftRow => {
   const mode: UnitRowMode = item.mode ?? (item.formula?.trim() ? 'FORMULA' : 'VALUE');
   const base = { componentId: item.component_id, sortOrder: item.sort_order ?? null };
   if (mode === 'OFF') return { ...base, mode: 'OFF', formula: '', amount: null };
   if (mode === 'VALUE') {
-    return { ...base, mode: 'FORMULA', formula: String(item.amount == null ? defaultAmount : Number(item.amount)), amount: null };
+    return { ...base, mode: 'FORMULA', formula: String(item.amount == null ? 0 : Number(item.amount)), amount: null };
   }
   if (mode === 'FORMULA') {
     const formula = item.formula?.trim() || (item.amount != null ? String(Number(item.amount)) : '');
@@ -78,7 +86,7 @@ const draftOf = (item: SchemePayloadItem, defaultAmount: number): DraftRow => {
 
 const viewOfRow = (row: MechanismRow): Pick<ViewRow, 'mode' | 'formula' | 'amount'> => {
   if (row.mode === 'VALUE') {
-    return { mode: 'FORMULA', formula: String(row.amount ?? Number(row.component.default_amount ?? 0)), amount: null };
+    return { mode: 'FORMULA', formula: String(row.amount ?? 0), amount: null };
   }
   if (row.mode === 'FORMULA') return { mode: 'FORMULA', formula: row.formula ?? '', amount: row.amount };
   return { mode: row.mode, formula: '', amount: row.amount };
@@ -111,21 +119,28 @@ export function UnitMechanismEditor({
   const monthEnd = monthEndOf(month);
 
   const componentById = useMemo(() => new Map(data.components.map((c) => [c.id, c])), [data.components]);
+  /** Đầu mục nhận số từ KPI (Tham số KPI → Điền kết quả KPI vào lương). */
+  const kpiCodeSet = useMemo(() => new Set(data.kpiCodes), [data.kpiCodes]);
   const source = useMemo(() => schemeSourceOf(data), [data]);
 
   const savedDraft = useMemo(
-    () => unitItemsAt(data.unitItems, unit.id, month, monthEnd)
-      .map((item) => draftOf(item, Number(componentById.get(item.component_id)?.default_amount ?? 0))),
-    [componentById, data.unitItems, month, monthEnd, unit.id],
+    () => unitItemsAt(data.unitItems, unit.id, month, monthEnd).map(draftOf),
+    [data.unitItems, month, monthEnd, unit.id],
   );
   const savedKey = JSON.stringify(savedDraft);
 
   const [draft, setDraft] = useState<DraftRow[]>(savedDraft);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [filter, setFilter] = useState('');
+  /** Dòng vừa thêm — nhảy tới trang có nó và đặt con trỏ vào ô công thức. */
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState('');
+  /** Hộp "Thêm đầu mục". */
+  const [addOpen, setAddOpen] = useState(false);
+  /** Dòng trung gian vừa tạo — tích vào cơ chế khi danh mục tải lại có nó. */
+  const [pendingAdd, setPendingAdd] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Nạp lại khi đổi đơn vị / tháng / dữ liệu mới về — trừ khi đang sửa dở.
   useEffect(() => {
@@ -135,7 +150,7 @@ export function UnitMechanismEditor({
   useEffect(() => {
     setDirty(false);
     setDraft(savedDraft);
-    setExpanded(null);
+    setPage(1);
   }, [unit.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const readOnly = !canManage;
@@ -228,6 +243,7 @@ export function UnitMechanismEditor({
 
   const setMode = (row: ViewRow, mode: DraftMode, on: boolean) => {
     patch(row, { mode: on ? mode : 'FORMULA' });
+    if (!on) setFocusId(row.component.id);
   };
 
   const usedBy = (code: string) => active
@@ -253,11 +269,10 @@ export function UnitMechanismEditor({
     } else {
       change(draft.filter((item) => item.componentId !== id));
     }
-    if (expanded === id) setExpanded(null);
   };
 
   /** Về dòng của cấp trên (xoá phần khai lại / dùng lại dòng đã bỏ). */
-  const revertRow = (row: ViewRow) => {
+  const revertRow = (row: Pick<ViewRow, 'component'>) => {
     change(draft.filter((item) => item.componentId !== row.component.id));
   };
 
@@ -265,28 +280,71 @@ export function UnitMechanismEditor({
     const component = componentById.get(componentId);
     if (!component) return;
     const top = Math.max(0, ...view.map((row) => row.sortOrder).filter((value) => value < 100_000));
-    const preset = Number(component.default_amount) > 0 ? String(Number(component.default_amount)) : '';
-    const mode: DraftMode = wanted ?? (component.kind === 'INFO' && !preset ? 'PER_PERSON' : 'FORMULA');
+    const mode: DraftMode = wanted ?? (component.kind === 'INFO' ? 'PER_PERSON' : 'FORMULA');
     change([
       ...draft.filter((item) => item.componentId !== componentId),
-      { componentId, mode, formula: mode === 'FORMULA' ? preset : '', amount: null, sortOrder: top + 10 },
+      { componentId, mode, formula: '', amount: null, sortOrder: top + 10 },
     ]);
-    if (mode === 'FORMULA') setExpanded(componentId);
+    setFocusId(componentId);
   };
 
-  // Mọi đầu mục: dòng của cơ chế (đã tích, kể cả dòng đã bỏ) rồi các đầu mục chưa có (chưa tích).
+  /** Chọn đầu mục trong hộp "Thêm": dòng đã bỏ của cấp trên thì dùng lại, còn lại thêm mới. */
+  const pickComponent = (component: PayComponent) => {
+    if (inherited.has(component.id)) {
+      revertRow({ component });
+      setFocusId(component.id);
+      return;
+    }
+    addComponent(component.id);
+  };
+
+  // ---- Dòng trung gian tạo ngay tại đây -----------------------------------------
+  useEffect(() => {
+    if (!pendingAdd || !componentById.has(pendingAdd)) return;
+    addComponent(pendingAdd, 'FORMULA');
+    setPendingAdd(null);
+  }, [componentById, pendingAdd]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Tạo dòng trung gian trong hộp "Thêm đầu mục". Trả về true khi tạo được. */
+  const createIntermediate = async (name: string): Promise<boolean> => {
+    if (data.components.some((component) => component.name.trim().toLowerCase() === name.toLowerCase())) {
+      toast(`Đã có đầu mục “${name}” — chọn nó trong danh sách thay vì tạo mới.`, 'warning');
+      return false;
+    }
+    const taken = [
+      ...data.components.map((component) => component.code),
+      ...RESERVED_FORMULA_NAMES,
+      ...paramsOf(version).map((param) => param.code),
+    ];
+    const { id, error } = await saveIntermediate({ id: null, code: codeFromName(name, taken, 'TRUNG_GIAN'), name, showOnPayslip: false });
+    if (error || !id) { toast('Không tạo được dòng trung gian: ' + (error ?? 'không rõ lỗi'), 'error'); return false; }
+    setPendingAdd(id);
+    onChanged();
+    return true;
+  };
+
+  // ---- Danh sách phẳng ----------------------------------------------------
+  // Chỉ đầu mục đã thiết lập, theo thứ tự trên phiếu. Chưa thiết lập thì thêm bằng "Thêm đầu mục".
   const keyword = normalizeText(filter);
-  const entries = [
-    ...view.map((row) => ({ component: row.component, row: row as ViewRow | null })),
-    ...data.components
-      .filter((component) => component.is_active && !view.some((row) => row.component.id === component.id))
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map((component) => ({ component, row: null as ViewRow | null })),
-  ]
-    .filter((entry) => !readOnly || (entry.row && entry.row.mode !== 'OFF'))
-    .filter((entry) => !keyword || normalizeText(entry.component.name).includes(keyword));
+  const entries: ViewRow[] = active.filter((row) => !keyword || normalizeText(row.component.name).includes(keyword));
+  const candidates = data.components
+    .filter((component) => component.is_active && !active.some((row) => row.component.id === component.id))
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const groupOf = (component: PayComponent) => (component.category_code
+    ? data.categories.find((category) => category.code === component.category_code)?.name ?? component.category_code
+    : 'Dòng trung gian');
   const safePage = clampPage(page, entries.length);
   const pageEntries = entries.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
+
+  // Dòng vừa thêm: sang đúng trang của nó.
+  const entryKey = entries.map((entry) => entry.component.id).join(',');
+  useEffect(() => {
+    if (!focusId) return undefined;
+    const index = entries.findIndex((entry) => entry.component.id === focusId);
+    if (index >= 0) setPage(Math.floor(index / ITEMS_PER_PAGE) + 1);
+    const timer = window.setTimeout(() => setFocusId(null), 400);
+    return () => window.clearTimeout(timer);
+  }, [focusId, entryKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Lưu ---------------------------------------------------------------------
   const handleSave = async () => {
@@ -305,35 +363,132 @@ export function UnitMechanismEditor({
     }));
     const error = await saveScheme({ targetType: 'UNIT', userId: null, unitId: unit.id, effectiveFrom: month, items });
     setSaving(false);
-    if (error) {
-      toast('Không lưu được: ' + error, 'error');
-      return;
-    }
-    toast(`Đã lưu cơ chế chung của ${unit.name}, áp dụng từ ${monthText(month)}.`, 'success');
+    if (error) { toast('Không lưu được: ' + error, 'error'); return; }
     setDirty(false);
+    toast(`Đã lưu cơ chế chung của ${unit.name}, áp dụng từ ${monthText(month)}.`, 'success');
     onChanged();
   };
 
   // ---- Giao diện -------------------------------------------------------------
-  const kindTone = (row: ViewRow) => (row.component.kind === 'DEDUCTION' ? 'text-red-600'
-    : row.component.kind === 'INFO' ? 'text-slate-500' : 'text-slate-900');
+  function renderEntry(row: ViewRow) {
+    const { component } = row;
+    const id = component.id;
+    const formulaRow = row.mode === 'FORMULA';
+    const issue = issueOf(row);
+    const line = result?.lines.find((item) => item.code === component.code);
+    const intermediate = component.kind === 'INFO';
+    return (
+      <li
+        key={id}
+        className={`rounded-none border bg-white px-2.5 py-2.5 transition ${issue ? 'border-red-200' : 'border-indigo-200'}`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
+            {formulaRow ? (
+              <>
+                <FormulaInput
+                  value={row.formula}
+                  onChange={(formula) => patch(row, { formula, mode: 'FORMULA' })}
+                  entries={buildFormulaEntries({
+                    rowComponents: active.map((item) => item.component),
+                    catalog: data.components,
+                    version,
+                    sampleValues: result?.values,
+                    excludeCode: component.code,
+                    includeCatalog: !readOnly,
+                  })}
+                  scope={scope}
+                  functions={params?.functions}
+                  leftLabel={component.name}
+                  softCodes={softCodes}
+                  onAddEntry={(entry) => { if (entry.componentId) addComponent(entry.componentId); }}
+                  formatResult={(value) => formatFormulaNumber(intermediate ? value : Math.round(value))}
+                  disabled={readOnly}
+                  autoFocus={focusId === id}
+                  resultOnly
+                />
+                {cyclic.has(component.code) && (
+                  <p className="mt-1 flex items-start gap-1.5 text-xs font-medium text-red-600">
+                    <TriangleAlert className="mt-0.5 h-3.5 w-3.5" />
+                    Vòng lặp: {[...cyclic].map((code) => nameOf(code) ?? code).join(' → ')}. Bỏ bớt một tham chiếu.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="flex min-h-9 items-center gap-3">
+                <span className={`min-w-0 flex-1 truncate text-sm font-semibold ${
+                  component.kind === 'DEDUCTION' ? 'text-red-600' : 'text-slate-800'
+                }`}>
+                  {component.name}
+                </span>
+                <span className={`shrink-0 text-right text-sm font-bold tabular-nums ${line?.failed ? 'text-amber-600' : 'text-slate-900'}`}>
+                  {line ? formatFormulaNumber(line.amount) : '—'}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {!readOnly && (
+            <div className="flex shrink-0 items-start gap-3 pt-0.5">
+              <div className="flex flex-col items-start gap-1.5 text-xs font-semibold text-slate-600">
+              {row.overrides && (
+                <button
+                  type="button"
+                  onClick={() => revertRow(row)}
+                  title="Bỏ phần khai lại, theo cấp trên"
+                  aria-label={`Theo cấp trên: ${component.name}`}
+                  className="inline-flex items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 hover:bg-indigo-100"
+                >
+                  <RotateCcw className="h-3 w-3" /> khai lại
+                </button>
+              )}
+              {(['PER_PERSON', 'MONTHLY_INPUT'] as const).map((mode) => (
+                <label key={mode} className="flex cursor-pointer items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5 accent-indigo-600"
+                    checked={row.mode === mode}
+                    onChange={(event) => setMode(row, mode, event.target.checked)}
+                  />
+                  {ROW_MODE_LABEL[mode]}
+                  {mode === 'MONTHLY_INPUT' && kpiCodeSet.has(component.code.toUpperCase()) && (
+                    <span className="rounded bg-indigo-50 px-1 text-[10px] font-semibold text-indigo-600" title="Số tự điền khi khoá sổ KPI">từ KPI</span>
+                  )}
+                </label>
+              ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => void dropRow(row)}
+                title="Bỏ đầu mục khỏi đơn vị"
+                aria-label={`Bỏ ${component.name} khỏi cơ chế`}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </li>
+    );
+  }
 
   return (
     <div className="space-y-3 pb-20">
       {month > monthStart && (
-        <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p className="rounded-none bg-slate-50 px-3 py-2 text-xs text-slate-600">
           Tháng {monthText(monthStart)} đã chốt lương — bản lưu sẽ áp dụng từ {monthText(month)}.
         </p>
       )}
       {!params && (
-        <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <p className="flex items-start gap-2 rounded-none bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
           Chưa có bộ tham số lương hiệu lực cho tháng này — khai ở Tham số lương để tính thử được.
         </p>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-0 flex-1">
+        <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={filter}
@@ -343,177 +498,49 @@ export function UnitMechanismEditor({
             className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
-        <span className="text-xs font-semibold text-slate-500">{active.length} đầu mục trong cơ chế</span>
+        {!readOnly && (
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="h-4 w-4" /> Thêm đầu mục
+          </Button>
+        )}
+        {active.length > 0 && (
+          <Button size="sm" variant="outline" className="sm:ml-auto" onClick={() => setSheetOpen(true)}>
+            <FileText className="h-4 w-4" /> Xem công thức dạng chữ
+          </Button>
+        )}
       </div>
 
       {entries.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
-          {keyword ? `Không có đầu mục nào khớp “${filter.trim()}”.` : 'Đơn vị này chưa có dòng lương nào.'}
+        <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+          {keyword ? `Không có đầu mục nào khớp “${filter.trim()}”.` : `Chưa có đầu mục nào trong cơ chế${readOnly ? '.' : ' — bấm “Thêm đầu mục”.'}`}
         </p>
       ) : (
         <>
           <PagedList page={safePage} total={entries.length} onPage={setPage}>
-            <ol className="space-y-2">
-              {pageEntries.map(({ component, row }) => {
-                const id = component.id;
-                const ticked = !!row && row.mode !== 'OFF';
-                const off = !!row && row.mode === 'OFF';
-                const open = ticked && expanded === id;
-                const issue = row && ticked ? issueOf(row) : null;
-                const line = result?.lines.find((item) => item.code === component.code);
-                const summary = !row ? ''
-                  : off ? 'Đã bỏ khỏi đơn vị này'
-                    : row.mode === 'FORMULA'
-                      ? (row.formula.trim() ? describeFormula(row.formula, nameOf) : 'Chưa có công thức')
-                      : row.mode === 'PER_PERSON'
-                        ? (row.amount != null ? `Từng người · mức chung ${formatFormulaNumber(row.amount)}` : 'Khai cho từng người')
-                        : 'Nhập mỗi tháng';
-                const toggleTick = () => {
-                  if (!row) { addComponent(id); return; }
-                  if (off) { revertRow(row); return; }
-                  void dropRow(row);
-                };
-                return (
-                  <li
-                    key={id}
-                    className={`rounded-xl border bg-white transition ${
-                      issue ? 'border-red-200' : open ? 'border-indigo-300 shadow-sm' : ticked ? 'border-indigo-100' : 'border-slate-200'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 py-2">
-                      <button
-                        type="button"
-                        role="checkbox"
-                        aria-checked={ticked}
-                        aria-label={`${ticked ? 'Bỏ' : 'Thêm'} ${component.name} ${ticked ? 'khỏi' : 'vào'} cơ chế`}
-                        disabled={readOnly}
-                        onClick={toggleTick}
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition disabled:cursor-not-allowed ${
-                          ticked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white hover:border-indigo-400'
-                        }`}
-                      >
-                        {ticked && <Check className="h-4 w-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={!ticked}
-                        onClick={() => setExpanded(open ? null : id)}
-                        aria-expanded={open}
-                        className="flex min-w-0 flex-1 basis-48 items-center gap-2 text-left disabled:cursor-default"
-                      >
-                        {ticked && (open ? <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />)}
-                        <span className="min-w-0">
-                          <span className={`block truncate text-sm font-semibold ${ticked ? 'text-slate-800' : 'text-slate-500'}`}>
-                            {component.name}
-                            {ticked && row && !row.own && row.origin && (
-                              <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">từ {row.origin}</span>
-                            )}
-                            {ticked && row?.overrides && (
-                              <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600">khai lại ở đơn vị này</span>
-                            )}
-                          </span>
-                          {!open && (issue ?? summary) && (
-                            <span className={`block truncate text-xs ${issue ? 'text-red-600' : 'text-slate-500'}`}>{issue ?? summary}</span>
-                          )}
-                        </span>
-                      </button>
-
-                      {!readOnly && (['PER_PERSON', 'MONTHLY_INPUT'] as const).map((mode) => (
-                        <label key={mode} className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-600">
-                          <input
-                            type="checkbox"
-                            className="h-3.5 w-3.5 accent-indigo-600"
-                            checked={ticked && row?.mode === mode}
-                            onChange={(event) => {
-                              if (ticked && row) setMode(row, mode, event.target.checked);
-                              else addComponent(id, mode);
-                            }}
-                          />
-                          {ROW_MODE_LABEL[mode]}
-                        </label>
-                      ))}
-
-                      <span className={`w-24 shrink-0 text-right text-sm font-bold tabular-nums ${
-                        ticked && line?.failed ? 'text-amber-600' : ticked && row ? kindTone(row) : 'text-slate-300'
-                      }`}>
-                        {ticked && line ? `${component.kind === 'DEDUCTION' ? '−' : ''}${formatFormulaNumber(line.amount)}` : '—'}
-                      </span>
-
-                      {!readOnly && ticked && row?.overrides && (
-                        <button
-                          type="button"
-                          onClick={() => revertRow(row)}
-                          title="Bỏ phần khai lại, theo cấp trên"
-                          aria-label={`Theo cấp trên: ${component.name}`}
-                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-indigo-600"
-                        >
-                          <RotateCcw className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-
-                    {open && row && (
-                      <div className="space-y-2 border-t border-slate-100 px-3 py-3">
-                        {row.mode === 'FORMULA' && (
-                          <FormulaInput
-                            value={row.formula}
-                            onChange={(formula) => patch(row, { formula, mode: 'FORMULA' })}
-                            entries={buildFormulaEntries({
-                              rowComponents: active.map((item) => item.component),
-                              catalog: data.components,
-                              version,
-                              sampleValues: result?.values,
-                              excludeCode: component.code,
-                              includeCatalog: !readOnly,
-                            })}
-                            scope={scope}
-                            functions={params?.functions}
-                            leftLabel={component.name}
-                            softCodes={softCodes}
-                            onAddEntry={(entry) => { if (entry.componentId) addComponent(entry.componentId); }}
-                            formatResult={(value) => formatFormulaNumber(component.kind === 'INFO' ? value : Math.round(value))}
-                            disabled={readOnly}
-                            autoFocus={!row.formula}
-                          />
-                        )}
-                        {row.mode === 'PER_PERSON' && (
-                          <p className="text-xs text-slate-500">
-                            Giá trị khai riêng cho từng người ở màn nhân sự — người chưa khai thì phiếu báo thiếu.
-                          </p>
-                        )}
-                        {row.mode === 'MONTHLY_INPUT' && (
-                          <p className="text-xs text-slate-500">Con số nhập mỗi tháng ở Số liệu lương tháng.</p>
-                        )}
-                        {cyclic.has(component.code) && (
-                          <p className="flex items-start gap-1.5 text-xs font-medium text-red-600">
-                            <TriangleAlert className="mt-0.5 h-3.5 w-3.5" />
-                            Vòng lặp: {[...cyclic].map((code) => nameOf(code) ?? code).join(' → ')}. Bỏ bớt một tham chiếu.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+            <ol className="space-y-2">{pageEntries.map(renderEntry)}</ol>
           </PagedList>
           <Pager page={safePage} total={entries.length} onPage={setPage} />
         </>
       )}
 
-      {result && active.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-200 bg-indigo-50 px-4 py-3">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-600 text-sm font-black text-white">=</span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-extrabold uppercase tracking-wide text-indigo-900">Thực lĩnh mẫu</p>
-            <p className="text-xs text-indigo-800/70">Đi đủ công, chưa có số liệu tháng; từng người sẽ ra số riêng.</p>
-          </div>
-          <div className="text-right text-xs text-indigo-800/80">
-            <p className="tabular-nums">{formatVND(result.gross)} − {formatVND(result.totalDeductions)}</p>
-            <p className="text-lg font-black tabular-nums text-indigo-700">{formatVND(result.netPay)}</p>
-          </div>
-        </div>
-      )}
+      <MechanismAddDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        candidates={candidates}
+        groupOf={groupOf}
+        onPick={pickComponent}
+        onCreateIntermediate={createIntermediate}
+      />
+
+      <FormulaSheetModal
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        subject={unit.name}
+        rows={mechanismRows}
+        nameOf={nameOf}
+        categories={data.categories}
+        rounding={params ? { unit: params.netRoundingUnit, mode: params.netRoundingMode } : null}
+      />
 
       {dirty && !readOnly && (
         <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-md print:hidden">
@@ -524,7 +551,11 @@ export function UnitMechanismEditor({
                 : <><Save className="h-4 w-4" /> Chưa lưu — áp dụng từ {monthText(month)} cho {peopleCount} người</>}
             </p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => { setDirty(false); setDraft(savedDraft); }} disabled={saving}>
+              <Button
+                variant="secondary"
+                onClick={() => { setDirty(false); setDraft(savedDraft); }}
+                disabled={saving}
+              >
                 Huỷ thay đổi
               </Button>
               <Button onClick={() => void handleSave()} disabled={saving || issueCount > 0}>

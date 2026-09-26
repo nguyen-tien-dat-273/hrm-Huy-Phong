@@ -35,6 +35,8 @@ export interface ParamDef {
   unit: ParamUnit;
   value: number;
   note: string | null;
+  /** Khoá thay vì xoá: giữ nguyên số cho công thức cũ, nhưng không sửa và không gợi ý khi khai công thức mới. */
+  locked?: boolean;
 }
 
 export interface TierRow {
@@ -51,6 +53,7 @@ export interface ListParamTable {
   kind: 'LIST';
   name: string;
   note: string | null;
+  locked?: boolean;
   params: ParamDef[];
 }
 
@@ -59,6 +62,7 @@ export interface TierParamTable {
   kind: 'TIER';
   name: string;
   note: string | null;
+  locked?: boolean;
   /** Tên hàm trong công thức. */
   code: string;
   mode: TierMode;
@@ -119,9 +123,10 @@ function tableFromJson(raw: Record<string, unknown>): ParamTable {
   const id = typeof raw.id === 'string' && raw.id ? raw.id : newTableId();
   const name = String(raw.name ?? '');
   const note = typeof raw.note === 'string' && raw.note.trim() ? raw.note : null;
+  const lock = raw.locked === true ? { locked: true } : {};
   if (raw.kind === 'TIER') {
     return {
-      id, kind: 'TIER', name, note,
+      id, kind: 'TIER', name, note, ...lock,
       code: String(raw.code ?? ''),
       mode: raw.mode === 'PROGRESSIVE' ? 'PROGRESSIVE' : 'LOOKUP',
       inputLabel: typeof raw.input_label === 'string' ? raw.input_label : null,
@@ -131,7 +136,7 @@ function tableFromJson(raw: Record<string, unknown>): ParamTable {
     };
   }
   return {
-    id, kind: 'LIST', name, note,
+    id, kind: 'LIST', name, note, ...lock,
     params: (Array.isArray(raw.params) ? raw.params as Array<Record<string, unknown>> : []).map((param) => {
       const unit = unitOf(param.unit, 'VND');
       const declared = String(param.type ?? '');
@@ -143,6 +148,7 @@ function tableFromJson(raw: Record<string, unknown>): ParamTable {
         unit: PARAM_TYPE_UNITS[type].includes(unit) ? unit : PARAM_TYPE_UNITS[type][0],
         value: num(param.value),
         note: typeof param.note === 'string' && param.note.trim() ? param.note : null,
+        ...(param.locked === true ? { locked: true } : {}),
       };
     }),
   };
@@ -171,6 +177,7 @@ function tableToJson(table: ParamTable): Record<string, unknown> {
   if (table.kind === 'TIER') {
     return {
       id: table.id, kind: 'TIER', name: table.name.trim(), note: table.note?.trim() || null,
+      ...(table.locked ? { locked: true } : {}),
       code: table.code, mode: table.mode, input_label: table.inputLabel?.trim() || null,
       unit: table.mode === 'PROGRESSIVE' ? '%' : table.unit,
       rows: table.rows.map((row) => ({ from: row.from, value: row.value })),
@@ -178,9 +185,11 @@ function tableToJson(table: ParamTable): Record<string, unknown> {
   }
   return {
     id: table.id, kind: 'LIST', name: table.name.trim(), note: table.note?.trim() || null,
+    ...(table.locked ? { locked: true } : {}),
     params: table.params.map((param) => ({
       code: param.code, name: param.name.trim(), type: param.type, unit: param.unit,
       value: param.value, note: param.note?.trim() || null,
+      ...(param.locked ? { locked: true } : {}),
     })),
   };
 }
@@ -270,11 +279,52 @@ export function copyVersion(base: PayrollParamVersion, effectiveFrom: string): P
   };
 }
 
-/** Mọi tham số của bộ, kèm tên bảng chứa nó. */
+function uniqueCopyName(name: string, takenNamesLower: ReadonlySet<string>): string {
+  const base = `${name.trim()} (bản sao)`;
+  if (!takenNamesLower.has(base.toLowerCase())) return base;
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${base} ${i}`;
+    if (!takenNamesLower.has(candidate.toLowerCase())) return candidate;
+  }
+  return `${base} ${Date.now()}`;
+}
+
+/**
+ * Bản sao của một bảng (tham số hoặc bậc thang) trong cùng bộ — để dùng lại
+ * cấu trúc một bảng đã có thay vì gõ lại từ đầu. Tên thêm "(bản sao)", mã mọi
+ * tham số và mã bảng bậc thang làm mới (mã phải duy nhất trong cả bộ); bảng
+ * mới luôn mở khoá dù bảng gốc đang khoá.
+ */
+export function duplicateTable(
+  table: ParamTable,
+  takenNamesLower: ReadonlySet<string>,
+  takenCodes: ReadonlySet<string>,
+): ParamTable {
+  const codes = new Set(takenCodes);
+  const id = newTableId();
+  const name = uniqueCopyName(table.name, takenNamesLower);
+  if (table.kind === 'TIER') {
+    return {
+      ...table, id, name, locked: false,
+      code: codeFromName(name, codes, 'BANG'),
+      rows: table.rows.map((row) => ({ ...row })),
+    };
+  }
+  return {
+    ...table, id, name, locked: false,
+    params: table.params.map((param) => {
+      const code = codeFromName(param.name || 'THAM_SO', codes, 'THAM_SO');
+      codes.add(code);
+      return { ...param, code, locked: false };
+    }),
+  };
+}
+
+/** Mọi tham số của bộ, kèm tên bảng chứa nó. `locked` đã gộp cả việc bảng bị khoá. */
 export function paramsOf(version: PayrollParamVersion | null): Array<ParamDef & { tableName: string }> {
   if (!version) return [];
   return version.tables.flatMap((table) => (table.kind === 'LIST'
-    ? table.params.map((param) => ({ ...param, tableName: table.name }))
+    ? table.params.map((param) => ({ ...param, locked: !!(table.locked || param.locked), tableName: table.name }))
     : []));
 }
 

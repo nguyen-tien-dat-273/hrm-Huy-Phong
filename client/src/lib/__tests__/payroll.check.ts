@@ -8,12 +8,12 @@ import {
   type MechanismRow, type PayrollAdjustment,
 } from '../payroll';
 import {
-  EMPTY_SCHEDULES, measurePunctuality, monthStandardDays, type ScheduleSet,
+  EMPTY_SCHEDULES, measurePunctuality, monthStandardBreakdown, monthStandardDays, type ScheduleSet,
 } from '../workSchedule';
 import { toPayrollParams, type PayrollParamVersion } from '../payrollSettings';
-import { describeLevelIssues, isAutoScorable, scoreFromLevels } from '../kpiScoring';
+import { DEFAULT_GRADES, finalPct, gradeOf, previewSheet, scoreFromValue, setProblems, type KpiCriterion } from '../kpi';
 import { buildPayrollJournal } from '../payrollJournal';
-import { buildKpiFormula } from '../kpiPayFormula';
+import { buildFormulaSheet } from '../formulaSheet';
 import {
   otherDeductionsOf, PAY_REPORT_TAGS, reportTagFitsKind, reportTagKindProblem, sumReportTags,
 } from '../payrollReportTags';
@@ -117,10 +117,10 @@ check('progressiveLookup dùng được độc lập',
 
 // --- Tính phiếu lương theo dòng cơ chế -------------------------------------
 const comp = (code: string, kind: PayComponentKind = 'EARNING', over: Partial<PayComponent> = {}): PayComponent => ({
-  id: `c-${code}`, code, name: code, kind, calc_type: 'FIXED', default_amount: 0,
+  id: `c-${code}`, code, name: code, kind, calc_type: 'FIXED',
   input_code: null, base_code: null, formula: null, taxable: true, insurable: false, prorate: false,
   ot_multiplier: null, tax_exempt_cap: null, is_base: false, max_amount: null, sort_order: 100,
-  group_name: null, category_code: 'THU_NHAP_BIEN_DOI', nature: 'VARIABLE', calc_source: 'ASSIGNED',
+  group_name: null, category_code: 'THU_NHAP_BIEN_DOI', calc_source: 'ASSIGNED',
   is_active: true, is_system: false, note: null, created_at: '', updated_at: '', ...over,
 } as PayComponent);
 
@@ -197,7 +197,7 @@ check('thu nhập tính thuế', monthly.values.THU_NHAP_TINH_THUE, 6_900_000);
 check('thuế TNCN', amountOf(monthly, 'PIT'), 440_000);
 check('tổng trừ', monthly.totalDeductions, 2_540_000);
 check('thực nhận', monthly.netPay, 20_000_000 - 2_100_000 - 440_000);
-check('dòng chỉ để tính giữ số lẻ tới 2 chữ số', amountOf(monthly, 'DAILY_RATE'), 769_230.77);
+check('dòng trung gian giữ số lẻ tới 2 chữ số', amountOf(monthly, 'DAILY_RATE'), 769_230.77);
 check('không cảnh báo nào cho cơ chế đầy đủ', monthly.warnings, []);
 
 // Nghỉ không lương nửa tháng: lương theo công giảm, mức đóng bảo hiểm KHÔNG giảm.
@@ -286,8 +286,8 @@ const thieuLuong = slip(standardRows({ base: null }));
 check('khai từng người mà chưa khai: dòng lỗi, 0đ', thieuLuong.lines.find((l) => l.code === 'LUONG_CO_BAN')?.failed, true);
 check('cảnh báo gọi đúng tên dòng chưa khai', thieuLuong.warnings.some((w) => w.includes('chưa khai “Lương cơ bản”')), true);
 
-check('giá trị trống lùi về giá trị mặc định của danh mục',
-  amountOf(slip([row(comp('PC', 'EARNING', { default_amount: 730_000 }), 'VALUE', null)]), 'PC'), 730_000);
+check('giá trị trống thì ra 0đ, không có mặc định của danh mục',
+  amountOf(slip([row(comp('PC', 'EARNING'), 'VALUE', null)]), 'PC'), 0);
 
 const hong = slip(standardRows({ extra: [row(comp('HONG', 'EARNING', { name: 'Công thức hỏng' }), 'FORMULA', 'KHONG_CO_BIEN_NAY * 2', 500)] }));
 check('công thức hỏng vẫn ra phiếu', hong.gross, 20_000_000);
@@ -299,7 +299,7 @@ check('đầu mục trùng mã dữ liệu tự động bị bỏ qua', trungMa.
 check('và có cảnh báo', trungMa.warnings.some((w) => w.includes('WORK_DAYS')), true);
 
 // Công thức trỏ tới đầu mục mà cơ chế người này không có: bằng 0. Dòng ra
-// TIỀN thì phải cảnh báo; dòng "chỉ để tính" (thu nhập chịu thuế…) cố ý cộng
+// TIỀN thì phải cảnh báo; dòng trung gian (thu nhập chịu thuế…) cố ý cộng
 // cả khoản có thể không có, nên không làm ồn.
 const thieuNguon = slip(standardRows({
   taxable: 'TONG_THU_NHAP - MIN(ALLOW_MEAL, 730000)',
@@ -308,7 +308,7 @@ const thieuNguon = slip(standardRows({
 check('đầu mục vắng mặt tính bằng 0', amountOf(thieuNguon, 'QUY'), 200_000);
 check('dòng tiền đọc đầu mục vắng mặt thì cảnh báo',
   thieuNguon.warnings.some((w) => w.includes('Trích quỹ') && w.includes('LUONG_VAN_CHUYEN')), true);
-check('dòng chỉ để tính đọc đầu mục vắng mặt thì không cảnh báo',
+check('dòng trung gian đọc đầu mục vắng mặt thì không cảnh báo',
   thieuNguon.warnings.some((w) => w.includes('ALLOW_MEAL')), false);
 
 // --- Khai riêng đè dòng cơ chế (applyOverride) ------------------------------
@@ -338,9 +338,9 @@ check('Lương KPI = mức KPI × tỷ lệ KPI',
 check('công thức cũ MUC_RIENG * KPI_PCT / 100 vẫn chạy',
   amountOf(slip([{ ...kpiRow, formula: 'MUC_RIENG * KPI_PCT / 100', amount: 8_000_000 }], stats(), { inputs: { KPI_PCT: 80 } }), 'LUONG_KPI'),
   6_400_000);
-check('MUC_RIENG trống lùi về mức mặc định của danh mục',
-  amountOf(slip([{ ...kpiRow, component: { ...kpi, default_amount: 5_000_000 } }], stats(), { inputs: { KPI_PCT: 80 } }), 'LUONG_KPI'),
-  4_000_000);
+check('MUC_RIENG trống thì ra 0đ',
+  amountOf(slip([kpiRow], stats(), { inputs: { KPI_PCT: 80 } }), 'LUONG_KPI'),
+  0);
 
 // --- Phần không chịu thuế: chỉ là công thức của dòng "Thu nhập chịu thuế" ----
 const otTien = row(comp('OT150', 'EARNING'), 'VALUE', 3_000_000, 500);
@@ -386,9 +386,9 @@ const truKhoan = slip(standardRows(), stats(), { adjustments: [adj({ kind: 'CLAW
 check('trừ bớt khỏi đầu mục thu nhập: số đầu mục giảm', amountOf(truKhoan, 'BASE_WORK'), baseWork - 200_000);
 check('trừ bớt khỏi đầu mục thu nhập: thực nhận giảm đúng số đó', truKhoan.netPay, monthly.netPay - 200_000);
 const doiLuongCoBan = slip(standardRows(), stats(), { adjustments: [adj({ component_code: 'LUONG_CO_BAN', amount: 5_000_000 })] });
-check('điều chỉnh đầu mục chỉ để tính: cộng vào giá trị', amountOf(doiLuongCoBan, 'LUONG_CO_BAN'), 25_000_000);
-check('điều chỉnh đầu mục chỉ để tính: không thành dòng tiền riêng', doiLuongCoBan.lines.some((l) => l.code === 'ADJ_RECOVERY'), false);
-check('điều chỉnh đầu mục chỉ để tính: công thức đọc giá trị mới', (amountOf(doiLuongCoBan, 'BASE_WORK') ?? 0) > (baseWork ?? 0), true);
+check('điều chỉnh dòng trung gian: cộng vào giá trị', amountOf(doiLuongCoBan, 'LUONG_CO_BAN'), 25_000_000);
+check('điều chỉnh dòng trung gian: không thành dòng tiền riêng', doiLuongCoBan.lines.some((l) => l.code === 'ADJ_RECOVERY'), false);
+check('điều chỉnh dòng trung gian: công thức đọc giá trị mới', (amountOf(doiLuongCoBan, 'BASE_WORK') ?? 0) > (baseWork ?? 0), true);
 const khoanChuaCo = slip(standardRows(), stats(), { adjustments: [adj({ component_code: 'KHONG_CO_TREN_PHIEU', amount: 100_000 })] });
 check('đầu mục không có trên phiếu: thành dòng điều chỉnh riêng', khoanChuaCo.lines.some((l) => l.code === 'ADJ_RECOVERY'), true);
 
@@ -442,47 +442,6 @@ const nhatKy = slip(standardRows(), stats(), { trace: true });
 check('chạy thử ghi đủ từng dòng', nhatKy.trace?.length, standardRows().length);
 check('nhật ký có công thức đã thay số', typeof nhatKy.trace?.find((step) => step.code === 'BASE_WORK')?.rendered, 'string');
 check('tính thường không tốn công ghi nhật ký', monthly.trace, undefined);
-
-// --- Cách tính lương KPI ---------------------------------------------------
-// Form sinh ra biểu thức rồi engine tính; kiểm chứng đi qua CẢ HAI bước để
-// bắt được cả lỗi sinh sai lẫn lỗi cú pháp mà engine không chạy nổi.
-const kpiMoney = (formula: string, pct: number) =>
-  evaluateFormula(formula, { MUC_RIENG: 5_000_000, KPI_PCT: pct }).value;
-
-const tyLe = buildKpiFormula({
-  name: 'x', mode: 'TY_LE', cap: '120', floor: '', threshold: '', tiers: [],
-});
-check('tỷ lệ: đạt 85% nhận 85%', kpiMoney(tyLe, 85), 4_250_000);
-// Trần là thứ hay quên nhất: chấm 150% mà không kẹp thì trả vượt quỹ lương.
-check('tỷ lệ: chấm 150% vẫn chặn ở trần 120%', kpiMoney(tyLe, 150), 6_000_000);
-
-const coSan = buildKpiFormula({
-  name: 'x', mode: 'TY_LE', cap: '120', floor: '50', threshold: '', tiers: [],
-});
-check('sàn 50%: chấm 30% vẫn nhận theo 50%', kpiMoney(coSan, 30), 2_500_000);
-
-const nguong = buildKpiFormula({
-  name: 'x', mode: 'NGUONG', cap: '120', floor: '', threshold: '80', tiers: [],
-});
-check('ngưỡng 80%: chấm 79% nhận 0đ', kpiMoney(nguong, 79), 0);
-check('ngưỡng 80%: chấm 80% nhận đúng 80%', kpiMoney(nguong, 80), 4_000_000);
-
-const datKhong = buildKpiFormula({
-  name: 'x', mode: 'DAT_KHONG', cap: '', floor: '', threshold: '90', tiers: [],
-});
-check('đạt/không: chấm 89% nhận 0đ', kpiMoney(datKhong, 89), 0);
-check('đạt/không: chấm 95% vẫn nhận trọn mức', kpiMoney(datKhong, 95), 5_000_000);
-
-// Bac khai LON XON co y: form phai tu xep giam dan, neu khong moi nguoi deu
-// roi vao bac thap nhat khop dau tien.
-const bacThang = buildKpiFormula({
-  name: 'x', mode: 'BAC_THANG', cap: '', floor: '', threshold: '',
-  tiers: [{ from: '60', pay: '50' }, { from: '100', pay: '120' }, { from: '80', pay: '100' }],
-});
-check('bậc thang: 105% rơi vào bậc cao nhất', kpiMoney(bacThang, 105), 6_000_000);
-check('bậc thang: 85% rơi vào bậc giữa', kpiMoney(bacThang, 85), 5_000_000);
-check('bậc thang: 65% rơi vào bậc thấp', kpiMoney(bacThang, 65), 2_500_000);
-check('bậc thang: 40% dưới mọi bậc nhận 0đ', kpiMoney(bacThang, 40), 0);
 
 // --- Tổng hợp công ----------------------------------------------------------
 const att = [
@@ -555,6 +514,17 @@ check('thứ Bảy nghỉ hẳn thì công chuẩn thấp hơn',
 check('chưa khai ca thì trả null (không đoán bừa)',
   monthStandardDays(EMPTY_SCHEDULES, new Date(2026, 7, 1)), null);
 
+// Dòng giải thích phải cộng ra đúng công chuẩn, kể cả khi có ngày lễ.
+const giaiThich = monthStandardBreakdown(schedules, new Date(2026, 7, 1));
+check('giải thích T8/2026: 21 ngày T2–T6',
+  giaiThich?.lines.find((line) => line.label.startsWith('Thứ Hai'))?.count, 21);
+check('giải thích T8/2026: 5 thứ Bảy × 0,5',
+  giaiThich?.lines.find((line) => line.label === 'Thứ Bảy'), { label: 'Thứ Bảy', count: 5, weight: 0.5 });
+const giaiThichLe = monthStandardBreakdown(schedules, new Date(2026, 8, 1), ['2026-09-02', '2026-09-06']);
+check('giải thích: tổng các dòng bằng công chuẩn',
+  giaiThichLe?.lines.reduce((sum, line) => sum + line.count * line.weight, 0), giaiThichLe?.total);
+check('giải thích: lễ vào Chủ nhật không liệt kê là ngày bị trừ', giaiThichLe?.holidayDates, ['2026-09-02']);
+check('giải thích: chưa khai ca thì null', monthStandardBreakdown(EMPTY_SCHEDULES, new Date(2026, 7, 1)), null);
 // --- Đo đi muộn (L16/L17/L14/LU-06) -----------------------------------------
 const punctual = measurePunctuality(schedules, [
   // Đúng giờ.
@@ -619,50 +589,55 @@ const phatMuon = slip([
 ], stats(26, 0, 0, { lateMinutes: 20 }));
 check('công thức phạt đi muộn đọc được số phút đi muộn', amountOf(phatMuon, 'LATE_FINE'), 15 * 5000 + 5 * 10000);
 
-// --- Tự chấm KPI theo thang điểm ------------------------------------------
-// Phải khớp nguyên văn quy tắc của public.kpi_score_from_levels trong
-// migration 20260929100000, nếu không màn hình hứa một đằng, phiếu chấm ra
-// một nẻo.
-const errorLevels = [
-  { score: 4, max: 0, label: 'Không sai lần nào' },
-  { score: 3, min: 1, max: 1, label: 'Sai 1 lần' },
-  { score: 2, min: 2, max: 3, label: 'Sai 2-3 lần' },
-  { score: 0, min: 4, label: 'Sai trên 3 lần' },
+// --- Chấm phiếu KPI -------------------------------------------------------
+// Bản tính ở màn hình phải ra đúng số mà kpi_recalc_sheet chốt dưới database
+// (đã chạy thử cùng bộ số: 82,5% tự chấm; 105% duyệt có thưởng 5%).
+const crit = (over: Partial<KpiCriterion>): KpiCriterion => ({
+  category: 'A', name: 'x', measure: null, group_code: 'QUANT', weight: 25, standard_score: 4, method: 'LEVEL',
+  levels: [], ranges: [], value_unit: null, penalty_pct: null, allow_over: false, source: null, ...over,
+});
+const phieu = [
+  crit({ category: 'Xuất hàng', name: 'Xuất đúng', weight: 30 }),
+  crit({ category: 'Xuất hàng', name: 'Xuất kịp', weight: 20, method: 'RANGE',
+    ranges: [{ min: 95, max: null, score: 4 }, { min: 80, max: 95, score: 3 }, { min: null, max: 80, score: 1 }] }),
+  crit({ category: 'Tem', name: 'Tem HQ', weight: 30, standard_score: 1, method: 'PENALTY', penalty_pct: 10 }),
+  crit({ category: 'Chuyên cần', name: 'Đúng giờ', weight: 20, group_code: 'QUAL', allow_over: true }),
 ];
-check('0 lỗi được điểm tối đa', scoreFromLevels(errorLevels, 0), 4);
-check('1 lỗi rơi đúng mức giữa', scoreFromLevels(errorLevels, 1), 3);
-check('3 lỗi vẫn trong khoảng 2-3', scoreFromLevels(errorLevels, 3), 2);
-check('10 lỗi rơi vào mức mở cận trên', scoreFromLevels(errorLevels, 10), 0);
-check('chưa nhập số đo thì chưa có điểm', scoreFromLevels(errorLevels, null), null);
+const tuCham = previewSheet(phieu, [
+  { value: null, score: 3, na: false },
+  { value: null, score: null, na: true },
+  { value: 1, score: null, na: false },
+  { value: null, score: 5, na: false },
+]);
+check('không phát sinh: tỷ trọng dồn cho tiêu chí cùng hạng mục', tuCham.eff.map((w) => Math.round(w * 100) / 100), [50, 0, 30, 20]);
+check('tự chấm: 3/4×50 + (30 − 10) + 5/4×20 = 82,5', tuCham.total, 82.5);
+const duyet = previewSheet(phieu, [
+  { value: null, score: 4, na: false },
+  { value: null, score: null, na: true },
+  { value: 0, score: null, na: false },
+  { value: null, score: 4, na: false },
+]);
+check('duyệt đủ điểm = 100%', duyet.total, 100);
+check('thưởng trọng điểm 5% → 105%', finalPct(duyet.total, 5, 120), 105);
+check('chặn trần 120%', finalPct(118, 10, 120), 120);
+check('105% xếp A+', gradeOf(105, DEFAULT_GRADES)?.code, 'A+');
+check('100% xếp A', gradeOf(100, DEFAULT_GRADES)?.code, 'A');
+check('80,5% xếp C', gradeOf(80.5, DEFAULT_GRADES)?.code, 'C');
+check('trừ theo lần không âm quá tỷ trọng', previewSheet([crit({ method: 'PENALTY', penalty_pct: 10, weight: 100, standard_score: 1 })],
+  [{ value: 15, score: null, na: false }]).total, 0);
 
-// Cận dưới mở: số âm vẫn phải khớp mức đầu.
-check('cận dưới mở nhận cả số âm', scoreFromLevels(errorLevels, -2), 4);
+// Cả hạng mục không phát sinh: dồn cho các hạng mục còn lại cùng nhóm.
+const caHangMuc = previewSheet([
+  crit({ category: 'A', weight: 40 }), crit({ category: 'B', weight: 40 }), crit({ category: 'C', weight: 20, group_code: 'QUAL' }),
+], [{ value: null, score: 4, na: false }, { value: null, score: null, na: true }, { value: null, score: 4, na: false }]);
+check('cả hạng mục không phát sinh dồn trong nhóm', caHangMuc.eff, [80, 0, 20]);
 
-// Thang "càng cao càng tốt" dùng cùng một dạng khai, không cần cột hướng.
-const revenueLevels = [
-  { score: 4, min: 100 },
-  { score: 3, min: 90, max: 99.99 },
-  { score: 1, min: 70, max: 89.99 },
-];
-check('đạt 100% doanh số được điểm tối đa', scoreFromLevels(revenueLevels, 100), 4);
-check('đạt 95% rơi mức kế', scoreFromLevels(revenueLevels, 95), 3);
-check('đạt 50% không mức nào phủ', scoreFromLevels(revenueLevels, 50), null);
-
-// Mức mô tả thuần (không ngưỡng) bị bỏ qua khi tự chấm.
-check('thang toàn nhãn thì không tự chấm được',
-  isAutoScorable([{ score: 4, label: 'Tốt' }, { score: 0, label: 'Kém' }]), false);
-check('có một mức khai ngưỡng là tự chấm được', isAutoScorable(errorLevels), true);
-
-// Mức khai trước thắng khi hai mức chồng nhau — quy tắc phân xử, không phải
-// tuỳ bộ tối ưu.
-check('hai mức chồng nhau thì mức khai trước thắng',
-  scoreFromLevels([{ score: 4, min: 0, max: 5 }, { score: 1, min: 3, max: 9 }], 4), 4);
-check('phát hiện được hai mức chồng nhau',
-  describeLevelIssues([{ score: 4, min: 0, max: 5 }, { score: 1, min: 3, max: 9 }]).length > 0, true);
-check('phát hiện được lỗ hổng giữa hai mức',
-  describeLevelIssues([{ score: 4, min: 0, max: 1 }, { score: 1, min: 5 }]).length > 0, true);
-check('thang liền mạch không báo lỗi',
-  describeLevelIssues(errorLevels).length, 0);
+check('dải quy đổi: cận dưới tính vào dải', scoreFromValue([{ min: 95, max: null, score: 4 }, { min: 80, max: 95, score: 3 }], 95), 4);
+check('dải quy đổi: ngoài mọi dải thì chưa có điểm', scoreFromValue([{ min: 95, max: null, score: 4 }], 50), null);
+check('bộ KPI tổng 96% bị chặn', setProblems([crit({ weight: 96, levels: [{ score: 4, label: 'ok' }] })]).length > 0, true);
+check('dải chồng nhau bị chặn', setProblems([crit({ weight: 100, method: 'RANGE',
+  ranges: [{ min: 0, max: 10, score: 4 }, { min: 5, max: null, score: 1 }] })]).some((p) => p.includes('chồng')), true);
+check('bộ hợp lệ không báo gì', setProblems([crit({ weight: 100, levels: [{ score: 4, label: 'ok' }] })]), []);
 
 // --- Chia giờ tăng ca theo Điều 98 BLLĐ 2019 --------------------------------
 //
@@ -905,7 +880,7 @@ check('khoản trừ không nhãn rơi vào phần khấu trừ còn lại',
 // Nhãn người lao động đóng đặt nhầm lên dòng CỘNG thì bị bỏ qua — không làm lệch tổng trừ.
 const wrongKind = slip(withTags(rowsNoTag(), { ...ORDER_TAGS, BASE_WORK: 'INSURANCE_EMPLOYEE', DAILY_RATE: 'INCOME_TAX' }));
 check('nhãn đặt lên dòng cộng bị bỏ qua', wrongKind.reportTotals.insuranceEmployee, 2_100_000);
-check('nhãn thuế đặt lên dòng chỉ để tính bị bỏ qua', wrongKind.reportTotals.incomeTax, 440_000);
+check('nhãn thuế đặt lên dòng trung gian bị bỏ qua', wrongKind.reportTotals.incomeTax, 440_000);
 
 // Nhiều dòng cùng nhãn thì cộng lại.
 check('nhiều dòng cùng nhãn được cộng',
@@ -916,13 +891,232 @@ check('nhiều dòng cùng nhãn được cộng',
   ]).insuranceEmployer, 1_250_000);
 check('nhãn khớp loại dòng: bảo hiểm NLĐ ↔ dòng trừ', reportTagFitsKind('INSURANCE_EMPLOYEE', 'DEDUCTION'), true);
 check('nhãn khớp loại dòng: bảo hiểm NLĐ ✗ dòng cộng', reportTagFitsKind('INSURANCE_EMPLOYEE', 'EARNING'), false);
-check('nhãn khớp loại dòng: doanh nghiệp đóng ↔ chỉ để tính', reportTagFitsKind('INSURANCE_EMPLOYER', 'INFO'), true);
+check('nhãn khớp loại dòng: doanh nghiệp đóng ↔ trung gian', reportTagFitsKind('INSURANCE_EMPLOYER', 'INFO'), true);
 check('không nhãn thì hợp mọi loại dòng', reportTagFitsKind(null, 'EARNING'), true);
 check('câu báo lỗi nói đúng loại dòng cần dùng',
   reportTagKindProblem('INCOME_TAX', 'INFO'), 'Nhãn “Thuế thu nhập cá nhân” chỉ dùng với loại dòng “Trừ khỏi lương”.');
 check('nhãn hợp lệ không báo lỗi', reportTagKindProblem('TAXABLE_INCOME', 'INFO'), null);
 check('đủ bốn nhãn báo cáo', PAY_REPORT_TAGS.map((tag) => tag.code).sort(),
   ['INCOME_TAX', 'INSURANCE_EMPLOYEE', 'INSURANCE_EMPLOYER', 'TAXABLE_INCOME']);
+
+// --- Bảng lương mẫu BL 01 (bộ công thức gieo ở migration 20261021100000) --
+// Tái hiện một dòng của sheet BL01 tháng 08/2026: bậc lương 10tr, trách nhiệm
+// 10tr, đủ 23,5 công, không phạt, không người phụ thuộc. Bảo hiểm sheet tra từ
+// bảng riêng; ở đây tính bằng 10,5% bậc lương (1.050.000).
+{
+  const bl01Version: PayrollParamVersion = {
+    ...TEST_VERSION,
+    standardWorkDays: 23.5,
+    netRoundingUnit: 1000,
+    tables: [
+      TEST_VERSION.tables[0],
+      {
+        id: 'bl01', kind: 'LIST', name: 'Quy chế', note: null, params: [
+          { code: 'GIAM_TRU_BAN_THAN', name: 'Giảm trừ bản thân', type: 'MONEY', unit: 'VND_THANG', value: 15_500_000, note: null },
+          { code: 'GIAM_TRU_NPT', name: 'Giảm trừ người phụ thuộc', type: 'MONEY', unit: 'VND_THANG', value: 6_200_000, note: null },
+          { code: 'TY_LE_QUY_1PT', name: 'Trừ 1% nhập quỹ', type: 'RATE', unit: '%', value: 1, note: null },
+          { code: 'HE_SO_OT_THUONG', name: 'OT ngày thường', type: 'RATE', unit: 'HE_SO', value: 1.5, note: null },
+          { code: 'HE_SO_OT_NGHI', name: 'OT ngày nghỉ', type: 'RATE', unit: 'HE_SO', value: 2, note: null },
+          { code: 'HE_SO_OT_LE', name: 'OT ngày lễ', type: 'RATE', unit: 'HE_SO', value: 3, note: null },
+          { code: 'DON_GIA_PHAT_DI_MUON', name: 'Phạt đi muộn', type: 'MONEY', unit: 'VND_LAN', value: 50_000, note: null },
+          { code: 'DON_GIA_PHAT_DI_MUON_QUA_LAN', name: 'Phạt quá lần', type: 'MONEY', unit: 'VND_LAN', value: 100_000, note: null },
+          { code: 'SO_LAN_DI_MUON_CHO_PHEP', name: 'Số lần đi muộn cho phép', type: 'COUNT', unit: 'LAN', value: 3, note: null },
+        ],
+      },
+      {
+        id: 'pit5', kind: 'TIER', name: 'Biểu thuế 5 bậc', note: null, code: 'THUE_LUY_TIEN', mode: 'PROGRESSIVE',
+        inputLabel: 'Thu nhập tính thuế', unit: '%',
+        rows: [
+          { from: 0, value: 5 }, { from: 10_000_000, value: 10 }, { from: 30_000_000, value: 20 },
+          { from: 60_000_000, value: 30 }, { from: 100_000_000, value: 35 },
+        ],
+      },
+    ],
+  };
+  const bl01Params = toPayrollParams(bl01Version, { standardHoursPerDay: 8 });
+  const mid = (code: string) => comp(code, 'INFO', { name: code, category_code: null });
+  order = 0;
+  const bl01Rows: MechanismRow[] = [
+    row(mid('LUONG_CO_BAN'), 'PER_PERSON', 10_000_000),
+    row(mid('DAILY_RATE'), 'FORMULA', 'LUONG_CO_BAN / STANDARD_DAYS'),
+    row(mid('HOURLY_RATE'), 'FORMULA', 'DAILY_RATE / HOURS_PER_DAY'),
+    row(mid('SO_CONG_DEM'), 'MONTHLY_INPUT'),
+    row(comp('BASE_WORK'), 'FORMULA', 'DAILY_RATE * WORK_DAYS'),
+    row(comp('BASE_HOLIDAY'), 'FORMULA', 'DAILY_RATE * HOLIDAY_DAYS'),
+    row(comp('BASE_LEAVE'), 'FORMULA', 'DAILY_RATE * LEAVE_DAYS'),
+    row(comp('OT_WEEKDAY'), 'FORMULA', 'HOURLY_RATE * HE_SO_OT_THUONG * OT_WEEKDAY_HOURS'),
+    row(comp('CONG_THEM_DEM'), 'FORMULA', 'DAILY_RATE * SO_CONG_DEM'),
+    row(comp('LUONG_VAN_CHUYEN'), 'MONTHLY_INPUT'),
+    row(comp('ALLOW_RESPONSIBILITY', 'EARNING', { category_code: 'THU_NHAP_CO_DINH' }), 'VALUE', 10_000_000),
+    row(comp('PHAT_DI_MUON_VE_SOM', 'DEDUCTION'), 'FORMULA', '(LATE_COUNT + EARLY_COUNT) * DON_GIA_PHAT_DI_MUON'),
+    row(comp('PHAT_DI_MUON', 'DEDUCTION'), 'FORMULA', 'MAX(LATE_COUNT - SO_LAN_DI_MUON_CHO_PHEP, 0) * DON_GIA_PHAT_DI_MUON_QUA_LAN'),
+    row(mid('TONG_CONG'), 'FORMULA', 'TONG_THU_NHAP - PHAT_DI_MUON_VE_SOM - PHAT_DI_MUON - PHAT_BAO_CAO'),
+    row(mid('INSURANCE_BASE'), 'FORMULA', 'LUONG_CO_BAN'),
+    row(comp('INS_EMPLOYEE', 'DEDUCTION'), 'FORMULA', BAO_HIEM),
+    row(comp('QUY_CONG_DOAN', 'DEDUCTION'), 'FORMULA', '(BASE_WORK + LUONG_VAN_CHUYEN) * TY_LE_QUY_1PT'),
+    row(mid('DEPENDENTS'), 'VALUE', 0),
+    row(mid('THU_NHAP_MIEN_THUE'), 'FORMULA', '1000000 / STANDARD_DAYS * PAID_DAYS + MIN(1200000, 1500000 / STANDARD_DAYS * PAID_DAYS)'),
+    row(mid('THU_NHAP_TINH_THUE'), 'FORMULA',
+      'MAX(0, TONG_CONG - THU_NHAP_MIEN_THUE - DEPENDENTS * GIAM_TRU_NPT - INS_EMPLOYEE - GIAM_TRU_BAN_THAN)'),
+    row(comp('PIT', 'DEDUCTION'), 'FORMULA', 'THUE_LUY_TIEN(THU_NHAP_TINH_THUE)'),
+  ];
+  const bl01 = computePayslip({
+    profile, rows: bl01Rows, stats: stats(23.5), params: bl01Params,
+    catalogCodes: ['PHAT_BAO_CAO', 'LUONG_VAN_CHUYEN'],
+  });
+  check('BL 01: lương thời gian đủ 23,5 công = bậc lương', amountOf(bl01, 'BASE_WORK'), 10_000_000);
+  check('BL 01: tổng cộng (cột W) = 20.000.000', bl01.values.TONG_CONG, 20_000_000);
+  check('BL 01: thu nhập miễn thuế (cột X) = 2.200.000', bl01.values.THU_NHAP_MIEN_THUE, 2_200_000);
+  check('BL 01: thu nhập tính thuế (cột Z) = 1.250.000', bl01.values.THU_NHAP_TINH_THUE, 1_250_000);
+  check('BL 01: thuế TNCN (cột AA) = 62.500', amountOf(bl01, 'PIT'), 62_500);
+  check('BL 01: trừ 1% nhập quỹ (cột AC) = 100.000', amountOf(bl01, 'QUY_CONG_DOAN'), 100_000);
+  check('BL 01: thực lĩnh (cột AD) làm tròn nghìn', bl01.netPay, 18_788_000);
+  check('BL 01: dòng trung gian không vào tổng cộng', bl01.gross, 20_000_000);
+  check('BL 01: đọc khoản không có trong cơ chế (phạt báo cáo) không cảnh báo ở dòng trung gian',
+    bl01.warnings.some((warning) => warning.includes('TONG_CONG')), false);
+
+  // Làm thêm giờ theo sheet "Thêm giờ VC": Lê Thu Hà, lương tính làm thêm 7 tr (bậc lương 5 tr),
+  // 14 giờ ngày thường × 1 + 8 giờ Chủ nhật × 1,5 = 968.085 (cột P của BL01).
+  const otParams = toPayrollParams({
+    ...bl01Version,
+    tables: [...bl01Version.tables, {
+      id: 'ot', kind: 'LIST', name: 'Làm thêm', note: null, params: [
+        { code: 'HE_SO_OT_THUONG', name: 'OT ngày thường', type: 'RATE', unit: 'HE_SO', value: 1, note: null },
+        { code: 'HE_SO_OT_NGHI', name: 'OT ngày nghỉ', type: 'RATE', unit: 'HE_SO', value: 1.5, note: null },
+        { code: 'HE_SO_OT_LE', name: 'OT ngày lễ', type: 'RATE', unit: 'HE_SO', value: 2, note: null },
+      ],
+    }].map((table) => (table.id === 'bl01' && table.kind === 'LIST'
+      ? { ...table, params: table.params.filter((param) => !param.code.startsWith('HE_SO_OT')) }
+      : table)),
+  }, { standardHoursPerDay: 8 });
+  order = 0;
+  const otRows: MechanismRow[] = [
+    row(mid('LUONG_CO_BAN'), 'PER_PERSON', 5_000_000),
+    row(mid('LUONG_TINH_OT'), 'VALUE', 7_000_000),
+    row(mid('HOURLY_RATE'), 'FORMULA', 'LUONG_TINH_OT / STANDARD_DAYS / HOURS_PER_DAY'),
+    row(comp('OT_WEEKDAY'), 'FORMULA', 'HOURLY_RATE * HE_SO_OT_THUONG * OT_WEEKDAY_HOURS'),
+    row(comp('OT_WEEKEND'), 'FORMULA', 'HOURLY_RATE * HE_SO_OT_NGHI * OT_WEEKEND_HOURS'),
+  ];
+  const ot = computePayslip({
+    profile, rows: otRows, stats: stats(22), params: otParams,
+    inputs: { OT_WEEKDAY_HOURS: 14, OT_WEEKEND_HOURS: 8 },
+  });
+  check('BL 01: làm thêm ngày thường × 1 trên lương tính làm thêm', amountOf(ot, 'OT_WEEKDAY'), 521_277);
+  check('BL 01: làm thêm Chủ nhật × 1,5', amountOf(ot, 'OT_WEEKEND'), 446_809);
+
+  // BL 02 — Kinh doanh: khai lại phần khác BL 01 (doanh số, hoa hồng bậc thang, quỹ 1%).
+  const bl02Version: PayrollParamVersion = {
+    ...bl01Version,
+    tables: [
+      ...bl01Version.tables,
+      TEST_VERSION.tables[3],
+      {
+        id: 'kd', kind: 'LIST', name: 'Kinh doanh', note: null, params: [
+          { code: 'TY_LE_HH_CAT_MA', name: 'Hoa hồng cắt mã', type: 'RATE', unit: '%', value: 1, note: null },
+          { code: 'TY_LE_HH_CAT_LO', name: 'Hoa hồng cắt lô', type: 'RATE', unit: '%', value: 1, note: null },
+          { code: 'NGUONG_THUONG_VUOT', name: 'Ngưỡng thưởng vượt', type: 'RATE', unit: '%', value: 150, note: null },
+          { code: 'TY_LE_THUONG_VUOT', name: 'Thưởng vượt — phần bậc lương', type: 'RATE', unit: '%', value: 50, note: null },
+          { code: 'NGUONG_HH_CAT_LO', name: 'Ngưỡng hoa hồng cắt lô', type: 'RATE', unit: '%', value: 75, note: null },
+          { code: 'NGUONG_DS_TOI_THIEU', name: 'Tỷ lệ đạt tối thiểu', type: 'RATE', unit: '%', value: 30, note: null },
+          { code: 'TY_LE_LUONG_DUOI_NGUONG', name: 'Lương khi dưới tối thiểu', type: 'RATE', unit: '%', value: 70, note: null },
+        ],
+      },
+    ],
+  };
+  const bl02Params = toPayrollParams(bl02Version, { standardHoursPerDay: 8 });
+  const bl02Rows = (doanhSo: number, catLo: number, khoan: number): MechanismRow[] => {
+    const base = bl01Rows.filter((item) => !['LUONG_VAN_CHUYEN', 'QUY_CONG_DOAN', 'BASE_WORK'].includes(item.component.code));
+    order = 1000;
+    return [
+      ...base,
+      row(comp('BASE_WORK'), 'FORMULA',
+        'DAILY_RATE * WORK_DAYS * IF(DOANH_SO_KHOAN > 0 && TY_LE_DAT_DS / 100 < NGUONG_DS_TOI_THIEU, TY_LE_LUONG_DUOI_NGUONG, 1)'),
+      row(mid('MUC_KPI'), 'FORMULA', 'LUONG_CO_BAN / 3'),
+      row(comp('LUONG_KPI'), 'FORMULA', 'MUC_KPI * TY_LE_KPI'),
+      row(mid('DOANH_SO'), 'VALUE', doanhSo),
+      row(mid('DOANH_SO_KHOAN'), 'VALUE', khoan),
+      row(mid('DOANH_SO_CAT_MA'), 'VALUE', 0),
+      row(mid('DOANH_SO_THU_CAT_LO'), 'VALUE', catLo),
+      row(mid('TY_LE_DAT_DS'), 'FORMULA', 'IF(DOANH_SO_KHOAN > 0, (DOANH_SO + DOANH_SO_THU_CAT_LO) / DOANH_SO_KHOAN * 100, 0)'),
+      row(comp('LUONG_DOANH_SO'), 'FORMULA', 'DOANH_SO * HH_BL02(TY_LE_DAT_DS) + DOANH_SO_CAT_MA * TY_LE_HH_CAT_MA'),
+      row(comp('LUONG_DT_CAT_LO'), 'FORMULA', 'IF(TY_LE_DAT_DS / 100 >= NGUONG_HH_CAT_LO, DOANH_SO_THU_CAT_LO * TY_LE_HH_CAT_LO, 0)'),
+      row(comp('THUONG_DOANH_SO_VUOT'), 'FORMULA', 'IF(TY_LE_DAT_DS / 100 >= NGUONG_THUONG_VUOT, LUONG_CO_BAN * TY_LE_THUONG_VUOT, 0)'),
+      row(comp('QUY_CONG_DOAN', 'DEDUCTION'), 'FORMULA', '(BASE_WORK + LUONG_DOANH_SO + LUONG_DT_CAT_LO) * TY_LE_QUY_1PT'),
+    ];
+  };
+  const kd = computePayslip({
+    profile, rows: bl02Rows(800_000_000, 150_000_000, 1_000_000_000), stats: stats(23.5), params: bl02Params,
+    catalogCodes: ['PHAT_BAO_CAO'],
+  });
+  check('BL 02: tỷ lệ đạt = (thu tiền + cắt lô) ÷ khoán = 95%', kd.values.TY_LE_DAT_DS, 95);
+  check('BL 02: hoa hồng bậc 90–104% = 3% doanh số thu tiền', amountOf(kd, 'LUONG_DOANH_SO'), 24_000_000);
+  check('BL 02: hoa hồng cắt lô 1%', amountOf(kd, 'LUONG_DT_CAT_LO'), 1_500_000);
+  check('BL 02: chưa vượt 150% thì không thưởng vượt', amountOf(kd, 'THUONG_DOANH_SO_VUOT'), 0);
+  check('BL 02: quỹ 1% trên lương thời gian + lương doanh thu', amountOf(kd, 'QUY_CONG_DOAN'), 355_000);
+  const vuot = computePayslip({
+    profile, rows: bl02Rows(1_600_000_000, 0, 1_000_000_000), stats: stats(23.5), params: bl02Params,
+    catalogCodes: ['PHAT_BAO_CAO'],
+  });
+  check('BL 02: đạt từ 150% thì thưởng nửa tháng bậc lương', amountOf(vuot, 'THUONG_DOANH_SO_VUOT'), 5_000_000);
+  const kdSlip = (doanhSo: number, catLo: number, khoan: number, kpi = 0) => computePayslip({
+    profile, rows: bl02Rows(doanhSo, catLo, khoan), stats: stats(23.5), params: bl02Params,
+    inputs: { KPI_PCT: kpi }, catalogCodes: ['PHAT_BAO_CAO'],
+  });
+  check('BL 02: lương KPI = bậc lương ÷ 3 × KPI', amountOf(kdSlip(800_000_000, 0, 1_000_000_000, 45), 'LUONG_KPI'), 1_500_000);
+  const duoi75 = kdSlip(500_000_000, 200_000_000, 1_000_000_000);
+  check('BL 02: đạt dưới 75% thì không có hoa hồng cắt lô', amountOf(duoi75, 'LUONG_DT_CAT_LO'), 0);
+  check('BL 02: đạt dưới 75% thì không có hoa hồng doanh số', amountOf(duoi75, 'LUONG_DOANH_SO'), 0);
+  check('BL 02: đạt dưới 75% nhưng từ 30% thì lương thời gian đủ', amountOf(duoi75, 'BASE_WORK'), 10_000_000);
+  check('BL 02: đạt dưới 30% thì lương thời gian còn 70%', amountOf(kdSlip(200_000_000, 0, 1_000_000_000), 'BASE_WORK'), 7_000_000);
+  check('BL 02: chưa giao khoán thì lương thời gian đủ', amountOf(kdSlip(0, 0, 0), 'BASE_WORK'), 10_000_000);
+}
+
+// --- Công thức dạng chữ của cơ chế -------------------------------------------
+{
+  order = 0;
+  const named = (code: string, name: string, kind: PayComponentKind, category: string | null = 'THU_NHAP_BIEN_DOI') =>
+    comp(code, kind, { name, category_code: category });
+  const sheetRows: MechanismRow[] = [
+    row(named('LUONG_CO_BAN', 'Bậc lương', 'INFO', null), 'PER_PERSON', 10_000_000),
+    row(named('DAILY_RATE', 'Đơn giá ngày', 'INFO', null), 'FORMULA', 'LUONG_CO_BAN / STANDARD_DAYS'),
+    row(named('NGAY_CONG', 'Ngày công', 'INFO', null), 'MONTHLY_INPUT'),
+    row(named('BASE_WORK', 'Lương thời gian', 'EARNING'), 'FORMULA', 'DAILY_RATE * NGAY_CONG'),
+    row(named('PHU_CAP', 'Phụ cấp', 'EARNING', 'THU_NHAP_CO_DINH'), 'VALUE', 500_000),
+    row(named('THUONG', 'Thưởng', 'EARNING', 'THUONG_PHAT_SINH'), 'MONTHLY_INPUT'),
+    row(named('QUY', 'Quỹ 1%', 'DEDUCTION', 'KHAU_TRU_PHAT'), 'FORMULA', 'MAX(BASE_WORK, DAILY_RATE) * 0.01'),
+  ];
+  const sheetNames = new Map(sheetRows.map((item) => [item.component.code, item.component.name]));
+  sheetNames.set('STANDARD_DAYS', 'Công chuẩn');
+  const nameOfCode = (code: string) => sheetNames.get(code) ?? (code === 'MAX' ? 'Lớn nhất' : undefined);
+  const categories = [
+    { code: 'THU_NHAP_CO_DINH', name: 'Thu nhập cố định' },
+    { code: 'THU_NHAP_BIEN_DOI', name: 'Thu nhập biến đổi' },
+    { code: 'THUONG_PHAT_SINH', name: 'Thưởng' },
+    { code: 'KHAU_TRU_PHAT', name: 'Khấu trừ' },
+  ];
+  const expanded = buildFormulaSheet(sheetRows, nameOfCode, categories, { expandIntermediate: true });
+  const lines = expanded.sections.flatMap((section) => section.lines);
+  check('Công thức chữ: chỉ dòng cộng / trừ, không có dòng trung gian',
+    lines.map((line) => line.code), ['PHU_CAP', 'BASE_WORK', 'THUONG', 'QUY']);
+  check('Công thức chữ: nhóm theo danh mục, đánh số liên tục',
+    expanded.sections.map((section) => `${section.title}:${section.lines.map((line) => line.no).join(',')}`),
+    ['Thu nhập cố định:1', 'Thu nhập biến đổi:2', 'Thưởng:3', 'Khấu trừ:4']);
+  check('Công thức chữ: thay dòng trung gian bằng công thức, trong ngoặc',
+    lines[1].text, '(Bậc lương ÷ Công chuẩn) × Ngày công');
+  check('Công thức chữ: giữ bản gõ trong cơ chế để đối chiếu', lines[1].written, 'Đơn giá ngày × Ngày công');
+  check('Công thức chữ: ghi lại dòng trung gian đã thay', lines[1].expanded, ['Đơn giá ngày']);
+  check('Công thức chữ: trong lời gọi hàm cũng thay', lines[3].text, 'Lớn nhất(Lương thời gian; (Bậc lương ÷ Công chuẩn)) × 0,01');
+  check('Công thức chữ: giá trị cố định / nhập tháng', [lines[0].text, lines[2].text], ['500.000', 'nhập mỗi tháng']);
+  check('Công thức chữ: tổng cộng và thực lĩnh',
+    [expanded.grossText, expanded.netText],
+    ['Phụ cấp + Lương thời gian + Thưởng', 'Tổng các khoản cộng − Quỹ 1%']);
+  const asWritten = buildFormulaSheet(sheetRows, nameOfCode, categories, {
+    expandIntermediate: false, rounding: { unit: 1000, mode: 'NEAREST' },
+  });
+  check('Công thức chữ: tắt thay thế thì giữ tên dòng trung gian',
+    asWritten.sections[1].lines[0].text, 'Đơn giá ngày × Ngày công');
+  check('Công thức chữ: làm tròn thực lĩnh', asWritten.netText, 'làm tròn gần nhất đến 1.000 đ của (Tổng các khoản cộng − Quỹ 1%)');
+}
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

@@ -59,7 +59,7 @@ export function UnitTreeList({
     );
   }
   return (
-    <div className="divide-y divide-slate-50" role="tree">
+    <div role="tree">
       {rows.map(({ unit, depth }) => {
         const selected = unit.id === selectedId;
         return (

@@ -32,6 +32,8 @@ interface DropdownProps {
   searchable?: boolean;
   /** Cỡ gọn cho ô trong bảng. */
   compact?: boolean;
+  /** Dropdown chọn giá trị trong form: vuông góc (bộ lọc / tìm kiếm thì giữ bo góc). */
+  square?: boolean;
   'aria-label'?: string;
   className?: string;
 }
@@ -46,7 +48,7 @@ interface Box { left: number; width: number; top?: number; bottom?: number; maxH
 
 export function Dropdown({
   options, value, onChange, label, error, required, disabled = false, placeholder = 'Chọn…',
-  searchable, compact = false, className = '', ...rest
+  searchable, compact = false, square = false, className = '', ...rest
 }: DropdownProps) {
   const id = useId();
   const listId = `${id}-list`;
@@ -158,11 +160,12 @@ export function Dropdown({
   const triggerClass = compact
     ? 'h-9 rounded-lg px-2.5 focus:ring-2 focus:ring-indigo-500/15'
     : 'h-11 rounded-xl px-3.5 shadow-sm focus:ring-4 focus:ring-indigo-500/10';
+  const triggerShape = square ? `${triggerClass} !rounded-none` : triggerClass;
 
   return (
     <div className={`w-full ${className}`}>
       {label && (
-        <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-slate-700">
+        <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
           {label}{required && <span className="ml-1 text-red-500" aria-hidden="true">*</span>}
         </label>
       )}
@@ -181,8 +184,8 @@ export function Dropdown({
           if (open) return;
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); openList(); }
         }}
-        className={`flex w-full items-center justify-between gap-2 border bg-white text-left text-sm text-slate-900 transition-all hover:border-slate-300 focus:border-indigo-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 ${triggerClass} ${
-          error ? 'border-red-400' : open ? 'border-indigo-500' : 'border-slate-200'
+        className={`flex w-full items-center justify-between gap-2 border bg-white dark:bg-slate-800 text-left text-sm text-slate-900 dark:text-slate-100 transition-all hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:text-slate-500 ${triggerShape} ${
+          error ? 'border-red-400' : open ? 'border-indigo-500' : 'border-slate-200 dark:border-slate-700'
         }`}
       >
         <span className={`min-w-0 flex-1 truncate ${selected ? '' : 'text-slate-400'}`}>{selected?.label ?? placeholder}</span>
@@ -195,11 +198,11 @@ export function Dropdown({
           ref={panelRef}
           style={{ position: 'fixed', left: box.left, width: box.width, top: box.top, bottom: box.bottom, maxHeight: box.maxHeight }}
           tabIndex={-1}
-          className="z-[70] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 outline-none"
+          className={`z-[70] flex flex-col overflow-hidden ${square ? 'rounded-none' : 'rounded-xl'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 outline-none`}
           onKeyDown={onListKey}
         >
           {withSearch && (
-            <div className="relative shrink-0 border-b border-slate-100 p-2">
+            <div className="relative shrink-0 border-b border-slate-100 dark:border-slate-700 p-2">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
                 ref={searchRef}
@@ -207,7 +210,7 @@ export function Dropdown({
                 onChange={(event) => { setQuery(event.target.value); setActive(0); }}
                 placeholder="Gõ để lọc…"
                 aria-label="Lọc danh sách"
-                className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50/60 pl-8 pr-2 text-sm outline-none focus:border-indigo-500 focus:bg-white"
+                className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/60 dark:bg-slate-900/60 text-slate-900 dark:text-slate-100 pl-8 pr-2 text-sm outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900"
               />
             </div>
           )}
@@ -217,7 +220,7 @@ export function Dropdown({
             className="min-h-0 flex-1 overflow-y-auto py-1 outline-none"
           >
             {filtered.length === 0 ? (
-              <li className="px-3 py-3 text-center text-xs text-slate-500">Không có gì khớp “{query.trim()}”.</li>
+              <li className="px-3 py-3 text-center text-xs text-slate-500 dark:text-slate-400">Không có gì khớp “{query.trim()}”.</li>
             ) : filtered.map((option, index) => {
               const isSelected = option.value === value;
               const isActive = index === Math.min(active, filtered.length - 1);
@@ -230,12 +233,12 @@ export function Dropdown({
                   onMouseDown={(event) => { event.preventDefault(); pick(option); }}
                   onMouseEnter={() => setActive(index)}
                   className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-sm ${
-                    isActive ? 'bg-indigo-50' : ''
-                  } ${isSelected ? 'font-semibold text-indigo-700' : 'text-slate-800'}`}
+                    isActive ? 'bg-indigo-50 dark:bg-indigo-500/15' : ''
+                  } ${isSelected ? 'font-semibold text-indigo-700 dark:text-indigo-400' : 'text-slate-800 dark:text-slate-200'}`}
                 >
                   <span className="min-w-0 flex-1 truncate">{option.label}</span>
                   {option.detail && <span className="shrink-0 text-xs tabular-nums text-slate-400">{option.detail}</span>}
-                  {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-indigo-600" />}
+                  {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-indigo-600 dark:text-indigo-400" />}
                 </li>
               );
             })}

@@ -11,12 +11,13 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarCheck, Loader2, RotateCcw, Search } from 'lucide-react';
+import { Loader2, RotateCcw } from 'lucide-react';
+import { Dropdown } from '@/components/ui/Dropdown';
+import { departmentOptions, passesPeopleFilter, personOptions } from '@/lib/peopleFilter';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { EmptyState } from '@/components/ui/EmptyState';
+import { ITEMS_PER_PAGE, Pager, clampPage } from '@/components/payroll/Pager';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -38,7 +39,9 @@ export function LeaveQuotaPanel() {
   const [ledger, setLedger] = useState<LeaveLedgerEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [personFilter, setPersonFilter] = useState('');
+  const [page, setPage] = useState(1);
   /** Id người đang lưu — khóa riêng dòng đó, không khóa cả bảng. */
   const [savingId, setSavingId] = useState<string | null>(null);
   /** Giá trị đang gõ theo từng người, chưa ghi xuống database. */
@@ -83,19 +86,17 @@ export function LeaveQuotaPanel() {
   });
 
   const rows = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
     return profiles
-      .filter(
-        (p) =>
-          !keyword ||
-          p.name.toLowerCase().includes(keyword) ||
-          (p.department ?? '').toLowerCase().includes(keyword),
-      )
+      .filter((p) => passesPeopleFilter(p, p.id, deptFilter, personFilter))
       .map((p) => {
         const mine = requests.filter((r) => r.user_id === p.id);
         return { profile: p, balance: calculateLedgerBalance(ledger.filter((entry) => entry.user_id === p.id), mine, p.annual_leave_quota, year) };
       });
-  }, [profiles, requests, ledger, search, year]);
+  }, [profiles, requests, ledger, deptFilter, personFilter, year]);
+
+  useEffect(() => { setPage(1); }, [deptFilter, personFilter]);
+  const currentPage = clampPage(page, rows.length);
+  const pagedRows = rows.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const saveQuota = async (target: Profile, raw: string) => {
     const quota = Number(raw);
@@ -160,19 +161,36 @@ export function LeaveQuotaPanel() {
   };
 
   if (loading) return <div className="p-5"><TableSkeleton /></div>;
-  if (loadError) return <ErrorState message={loadError} onRetry={load} />;
+  if (loadError) {
+    return (
+      <div className="rounded-none border border-slate-200 bg-white">
+        <ErrorState message={loadError} onRetry={load} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-          <Input
-            placeholder="Tìm theo tên hoặc phòng ban…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="w-full sm:w-60">
+            <Dropdown
+              aria-label="Lọc theo phòng ban"
+              searchable
+              value={deptFilter}
+              options={departmentOptions(profiles)}
+              onChange={(value) => { setDeptFilter(value); setPersonFilter(''); }}
+            />
+          </div>
+          <div className="w-full sm:w-60">
+            <Dropdown
+              aria-label="Lọc theo nhân sự"
+              searchable
+              value={personFilter}
+              options={personOptions(profiles, deptFilter)}
+              onChange={setPersonFilter}
+            />
+          </div>
         </div>
         <Button variant="outline" onClick={applyDefaultToAll} disabled={savingId === 'all'}>
           <RotateCcw className="w-4 h-4" />
@@ -180,37 +198,35 @@ export function LeaveQuotaPanel() {
         </Button>
       </div>
 
-      <Card>
+      <Card className="!rounded-none">
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <EmptyState
-              icon={<CalendarCheck className="w-8 h-8" />}
-              title="Không tìm thấy nhân sự"
-              description="Thử từ khóa khác, hoặc kiểm tra lại danh sách người dùng đang hoạt động."
-            />
+            <p className="px-5 py-10 text-center text-sm text-slate-400">
+              Không có nhân sự nào khớp bộ lọc.
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs font-semibold text-slate-500 border-b border-slate-100">
+                  <tr className="border-b border-slate-200 bg-[#FCFAF8] text-left text-[11px] font-semibold text-black">
                     <th className="px-5 py-3">Nhân sự</th>
-                    <th className="px-3 py-3 text-center w-32">Hạn mức / năm</th>
-                    <th className="px-3 py-3 text-center w-24">Đã dùng</th>
-                    <th className="px-3 py-3 text-center w-24">Chờ duyệt</th>
-                    <th className="px-3 py-3 text-center w-24">Còn lại</th>
+                    <th className="w-32 border-l border-slate-100 px-3 py-3 text-center">Hạn mức / năm</th>
+                    <th className="w-24 border-l border-slate-100 px-3 py-3 text-center">Đã dùng</th>
+                    <th className="w-24 border-l border-slate-100 px-3 py-3 text-center">Chờ duyệt</th>
+                    <th className="w-24 border-l border-slate-100 px-3 py-3 text-center">Còn lại</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {rows.map(({ profile: p, balance }) => {
+                  {pagedRows.map(({ profile: p, balance }) => {
                     const draft = drafts[p.id] ?? String(p.annual_leave_quota);
                     const changed = Number(draft) !== p.annual_leave_quota;
                     return (
-                      <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={p.id}>
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-3">
                             <Avatar name={p.name} url={p.avatar_url} size="sm" />
                             <div className="min-w-0">
-                              <p className="font-medium text-slate-800 truncate">{p.name}</p>
+                              <p className="font-bold text-slate-800 truncate">{p.name}</p>
                               {p.department && (
                                 <p className="text-xs text-slate-400 truncate">{p.department}</p>
                               )}
@@ -228,10 +244,10 @@ export function LeaveQuotaPanel() {
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') void saveQuota(p, draft);
                               }}
-                              className="w-16 h-9 px-2 rounded-xl border border-slate-200 text-sm text-center text-slate-800 focus:outline-none focus:border-blue-500"
+                              className="h-9 w-16 rounded-none border border-slate-200 bg-white px-2 text-center text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                             />
                             {savingId === p.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                              <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
                             ) : (
                               changed && (
                                 <Button size="sm" theme="admin" onClick={() => void saveQuota(p, draft)}>
@@ -263,6 +279,7 @@ export function LeaveQuotaPanel() {
           )}
         </CardContent>
       </Card>
+      <Pager page={currentPage} total={rows.length} noun="người" onPage={setPage} />
 
       <p className="text-xs text-slate-500">
         Số liệu tính cho năm {year}. Sau khi áp dụng migration, số dư lấy từ sổ phát sinh

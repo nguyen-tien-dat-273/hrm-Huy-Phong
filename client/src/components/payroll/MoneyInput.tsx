@@ -139,9 +139,9 @@ export function MoneyInput({
           commit(stripLeadingZeros(input.value.replace(/[^\d.,-]/g, '')));
         }
       }}
-      className={`w-full border bg-white text-right font-mono text-sm tabular-nums outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 disabled:text-slate-500 ${
-        large ? 'h-11 rounded-xl px-3.5 shadow-sm' : 'h-9 rounded-lg px-2.5'
-      } ${invalid ? 'border-red-300' : 'border-slate-200 hover:border-slate-300'} ${className}`}
+      className={`w-full border bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-right font-mono text-sm tabular-nums outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 dark:disabled:bg-slate-900/50 disabled:text-slate-500 dark:disabled:text-slate-400 ${
+        large ? 'h-11 rounded-none px-3.5 shadow-sm' : 'h-9 rounded-none px-2.5'
+      } ${invalid ? 'border-red-300 dark:border-red-500/60' : 'hover:border-slate-300 dark:hover:border-slate-600'} ${className}`}
     />
   );
 }

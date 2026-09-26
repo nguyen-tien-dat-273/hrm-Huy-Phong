@@ -15,12 +15,9 @@ import { supabase } from '@/lib/supabase';
 import { notifyUser, notifyUsers } from '@/lib/assignments';
 import { hasAdminFunction, isFullAdmin, type AdminFunctionCode } from '@/lib/permissions';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
-import { KpiMonthlyReport } from '@/components/kpi/KpiMonthlyReport';
-import { KpiReviewBoard } from '@/components/kpi/KpiReviewBoard';
-import { KpiSchemeBoard } from '@/components/kpi/KpiSchemeBoard';
 import type { Profile } from '@/types';
 
-type Section = 'lifecycle' | 'performance' | 'kpiReview' | 'kpiReport' | 'locations' | 'flags';
+type Section = 'lifecycle' | 'locations' | 'flags';
 interface Lifecycle { id: string; user_id: string; process_type: 'ONBOARDING' | 'OFFBOARDING'; title: string; start_date: string; target_date: string | null; status: string; mentor_id: string | null }
 interface Checklist { id: string; process_id: string; title: string; owner_id: string | null; due_date: string | null; completed: boolean }
 interface Location { id: string; name: string; address: string | null; latitude: number | null; longitude: number | null; radius_meters: number; wifi_bssid: string | null; is_active: boolean }
@@ -30,9 +27,6 @@ interface FeatureFlag { key: string; name: string; description: string | null; e
 
 const meta: Record<Section, { title: string; desc: string }> = {
   lifecycle: { title: 'Onboarding & Offboarding', desc: 'Checklist hội nhập 30–60–90 ngày và quy trình bàn giao khi nghỉ việc.' },
-  performance: { title: 'Bộ KPI nhân sự', desc: 'Đi xuống cây tổ chức tới từng nhân sự và khai bộ KPI của riêng họ.' },
-  kpiReport: { title: 'Báo cáo KPI tháng', desc: 'Kết quả KPI nhiều kỳ cạnh nhau: ai đang đi xuống, phòng nào dưới mặt bằng.' },
-  kpiReview: { title: 'Chấm điểm theo tháng', desc: 'Bảng tổng hợp đánh giá KPI của kỳ: mở phiếu, nhập điểm và khoá kỳ để kết quả sang bảng lương.' },
   locations: { title: 'Địa điểm chấm công', desc: 'Cấu hình chi nhánh, bán kính GPS và Wi-Fi dự phòng cho check-in.' },
   flags: { title: 'Feature Flags', desc: 'Bật hoặc tắt an toàn các chức năng mới trước khi áp dụng toàn công ty.' },
 };
@@ -45,8 +39,7 @@ export function AdminNexusCenter({ section }: { section: Section }) {
   const { profile } = useAuth();
   const functionCode: AdminFunctionCode = (
     {
-      lifecycle: 'admin.employee_lifecycle', performance: 'admin.performance_manage',
-      kpiReview: 'admin.performance_manage', kpiReport: 'admin.performance_manage', locations: 'admin.work_locations', flags: 'admin.feature_flags',
+      lifecycle: 'admin.employee_lifecycle', locations: 'admin.work_locations', flags: 'admin.feature_flags',
     } as const
   )[section];
   const canManage = isFullAdmin(profile) || hasAdminFunction(profile, functionCode);
@@ -249,13 +242,10 @@ export function AdminNexusCenter({ section }: { section: Section }) {
   return <div className="space-y-5">
 
 
-    {section !== 'flags' && section !== 'performance' && section !== 'kpiReview' && section !== 'kpiReport' && <Card><CardContent className="flex items-center gap-3 py-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm trong module..." className="w-full bg-transparent text-sm outline-none" /></CardContent></Card>}
+    {section !== 'flags' && <Card><CardContent className="flex items-center gap-3 py-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm trong module..." className="w-full bg-transparent text-sm outline-none" /></CardContent></Card>}
 
     {section === 'lifecycle' && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">{visibleProcesses.map((process) => { const processItems = items.filter((item) => item.process_id === process.id); const done = processItems.filter((item) => item.completed).length; return <Card key={process.id}><CardHeader><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2">{process.process_type === 'ONBOARDING' ? <UserPlus className="w-5 h-5 text-emerald-600" /> : <UserMinus className="w-5 h-5 text-rose-600" />}{process.title}</CardTitle><div className="flex items-center gap-1"><Badge className={process.process_type === 'ONBOARDING' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}>{process.process_type === 'ONBOARDING' ? 'Hội nhập' : 'Nghỉ việc'}</Badge><Button variant="secondary" onClick={() => openEditProcess(process)} aria-label="Sửa quy trình"><Pencil className="h-4 w-4" /></Button><Button variant="danger" onClick={() => void removeRecord('employee_lifecycle_processes', 'id', process.id, process.title)} aria-label="Xóa quy trình"><Trash2 className="h-4 w-4" /></Button></div></div></CardHeader><CardContent><p className="text-sm font-medium text-slate-700">{person(process.user_id)?.name || 'Nhân viên'}</p><p className="text-xs text-slate-400 mt-1">Mentor: {person(process.mentor_id)?.name || 'Chưa gán'} · Mục tiêu: {fmt(process.target_date)}</p><div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-600" style={{ width: `${processItems.length ? done / processItems.length * 100 : 0}%` }} /></div><p className="text-xs text-slate-500 mt-1.5">{done}/{processItems.length} mục hoàn thành</p>{process.process_type === 'ONBOARDING' && processItems.length > 0 && done === processItems.length && process.status !== 'COMPLETED' && canManage && (<div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 p-2.5"><span className="text-xs font-bold text-emerald-800">Đã hoàn thành 100% mục hội nhập!</span><Button size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs py-1 h-7" onClick={() => void promoteFromLifecycle(process)}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Chuyển chính thức</Button></div>)}<div className="mt-4 space-y-2">{processItems.map((item) => <div key={item.id} className="flex items-center gap-1"><button onClick={() => void toggleChecklist(item)} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-2 text-left hover:bg-slate-50"><CheckCircle2 className={`w-4 h-4 ${item.completed ? 'text-emerald-600' : 'text-slate-300'}`} /><span className={`truncate text-sm ${item.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.title}</span><span className="ml-auto text-xs text-slate-400">{fmt(item.due_date)}</span></button><Button variant="danger" onClick={() => void removeRecord('employee_checklist_items', 'id', item.id, item.title)} aria-label="Xóa checklist"><Trash2 className="h-4 w-4" /></Button></div>)}</div></CardContent></Card>})}{visibleProcesses.length === 0 && <Card className="lg:col-span-2"><EmptyState icon={<UserPlus className="w-7 h-7" />} title="Không có quy trình phù hợp" description="Tạo quy trình mới hoặc đổi từ khóa tìm kiếm." /></Card>}</div>}
 
-    {section === 'performance' && canManage && <KpiSchemeBoard actorId={profile?.id ?? null} />}
-    {section === 'kpiReview' && canManage && <KpiReviewBoard profiles={profiles} actorId={profile?.id ?? null} />}
-    {section === 'kpiReport' && canManage && <KpiMonthlyReport profiles={profiles} />}
 
 
     {section === 'locations' && <>

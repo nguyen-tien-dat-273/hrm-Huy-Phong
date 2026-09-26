@@ -42,14 +42,13 @@ export interface ScheduleSet {
 
 export const EMPTY_SCHEDULES: ScheduleSet = { schedules: [], supported: false };
 
-export async function fetchWorkSchedules(): Promise<ScheduleSet> {
+/** `includeLocked`: màn thiết lập cần thấy cả cấu hình đã khóa để mở khóa lại. */
+export async function fetchWorkSchedules(includeLocked = false): Promise<ScheduleSet> {
   if (!supabase) return EMPTY_SCHEDULES;
 
-  const { data, error } = await supabase
-    .from('work_schedules')
-    .select('*')
-    .eq('is_active', true)
-    .order('effective_from');
+  let query = supabase.from('work_schedules').select('*');
+  if (!includeLocked) query = query.eq('is_active', true);
+  const { data, error } = await query.order('effective_from');
 
   if (error) return EMPTY_SCHEDULES;
   return { schedules: (data || []) as WorkSchedule[], supported: true };
@@ -127,6 +126,66 @@ export function monthStandardDays(
   }
 
   return Math.round(total * 100) / 100;
+}
+
+export interface StandardDaysLine {
+  label: string;
+  /** Số ngày thuộc nhóm này. */
+  count: number;
+  /** Công của MỘT ngày trong nhóm. */
+  weight: number;
+}
+
+export interface StandardDaysBreakdown {
+  total: number;
+  lines: StandardDaysLine[];
+  /** Ngày lễ rơi vào ngày vốn phải đi làm — chỉ những ngày này mới làm giảm công. */
+  holidayDates: string[];
+}
+
+/**
+ * Giải thích `monthStandardDays`: đi qua từng ngày bằng đúng `dayWeight` rồi gom
+ * theo nhóm, nên tổng các dòng luôn bằng công chuẩn. Trả null khi không tính được.
+ */
+export function monthStandardBreakdown(
+  set: ScheduleSet,
+  monthStart: Date,
+  holidays: readonly string[] = [],
+): StandardDaysBreakdown | null {
+  const total = monthStandardDays(set, monthStart, holidays);
+  if (total == null) return null;
+
+  const year = monthStart.getFullYear();
+  const month = monthStart.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const holidaySet = new Set(holidays);
+  const noHolidays: ReadonlySet<string> = new Set();
+
+  let weekdays = 0;
+  let sundays = 0;
+  const saturdays = new Map<number, number>();
+  const holidayDates: string[] = [];
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const iso = toIso(year, month, day);
+    const weekday = new Date(`${iso}T00:00:00`).getDay();
+    // Trọng số nếu không có ngày lễ, để biết ngày lễ nào thật sự làm mất công.
+    const base = dayWeight(set, iso, noHolidays);
+
+    if (holidaySet.has(iso) && base > 0) { holidayDates.push(iso); continue; }
+    if (weekday === 0) sundays += 1;
+    else if (weekday === 6) saturdays.set(base, (saturdays.get(base) ?? 0) + 1);
+    else weekdays += 1;
+  }
+
+  const lines: StandardDaysLine[] = [{ label: 'Thứ Hai – Thứ Sáu', count: weekdays, weight: 1 }];
+  for (const [weight, count] of [...saturdays].sort((a, b) => b[0] - a[0])) {
+    lines.push({ label: 'Thứ Bảy', count, weight });
+  }
+  lines.push({ label: 'Chủ nhật', count: sundays, weight: 0 });
+  if (holidayDates.length > 0) lines.push({ label: 'Ngày lễ', count: holidayDates.length, weight: 0 });
+
+  return { total, lines, holidayDates };
 }
 
 /** Giờ công chuẩn mỗi ngày, suy từ ca trừ nghỉ trưa. */
