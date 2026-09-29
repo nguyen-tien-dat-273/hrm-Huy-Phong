@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AttendanceRequestPanel } from '@/components/attendance/AttendanceRequestPanel';
 import { Plus, CalendarOff, Edit3, Trash2, TriangleAlert, RotateCcw, History, Sparkles } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -272,6 +273,8 @@ export function StaffLeave() {
 
   return (
     <div className="space-y-5">
+      <AttendanceRequestPanel mode="mine" />
+
       {/* ---- Quỹ phép năm ------------------------------------------------- */}
       <Card className="overflow-hidden">
         <div className="h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500" />

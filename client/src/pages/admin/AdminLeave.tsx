@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AttendanceRequestPanel } from '@/components/attendance/AttendanceRequestPanel';
 import { Check, X, CalendarOff, TriangleAlert, RotateCcw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -183,6 +184,8 @@ export function AdminLeave() {
 
   return (
     <div className="space-y-5">
+      <AttendanceRequestPanel mode="review" />
+
       {/* Hai mảng việc của quyền `leave`: duyệt đơn, và đặt hạn mức phép năm. */}
       <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
         {([

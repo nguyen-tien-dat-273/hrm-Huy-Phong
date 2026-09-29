@@ -46,7 +46,7 @@ stable
 security definer
 set search_path = public
 as $$
-  with target as (
+  with recursive target as (
     select p.manager_id, p.unit_id
     from public.profiles p
     where p.id = target_user

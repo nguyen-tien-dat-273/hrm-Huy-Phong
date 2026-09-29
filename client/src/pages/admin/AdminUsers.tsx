@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Search, Shield, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Grid2X2, List, Mail, Phone, Building2, Wallet, UserRound } from 'lucide-react';
+import { UserPlus, FileSpreadsheet, Search, Shield, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Grid2X2, List, Mail, Phone, Building2, Wallet, UserRound } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { PermissionFunctionList } from '@/components/PermissionFunctionList';
 import { StaffFunctionSummary } from '@/components/StaffFunctionSummary';
 import { EffectivePermissions } from '@/components/EffectivePermissions';
+import { EmployeeImportModal } from '@/components/EmployeeImportModal';
 import { EmployeeDocumentVault } from '@/components/profile/EmployeeDocumentVault';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -70,13 +71,14 @@ export function AdminUsers() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { users, loading, createUser, updateUser, deleteUser, resetUserPassword, profile: currentUser } = useAuth();
+  const { users, loading, createUser, updateUser, deleteUser, resetUserPassword, profile: currentUser, loadUsers } = useAuth();
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('Tất cả');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [viewingUser, setViewingUser] = useState<Profile | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<Profile | null>(null);
   const [issued, setIssued] = useState<IssuedCredential | null>(null);
   const [copied, setCopied] = useState(false);
@@ -340,6 +342,12 @@ export function AdminUsers() {
               <List className="w-4 h-4" />
             </button>
           </div>
+          {fullAdmin && (
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet className="w-4 h-4" />
+              Import Excel
+            </Button>
+          )}
           <Button onClick={openCreate} theme="admin">
             <UserPlus className="w-4 h-4" />
             Thêm nhân sự
@@ -727,6 +735,13 @@ export function AdminUsers() {
           </div>
         </div>
       </Modal>
+
+      <EmployeeImportModal
+        open={importOpen}
+        profiles={users}
+        onClose={() => setImportOpen(false)}
+        onImported={() => void loadUsers()}
+      />
     </div>
   );
 }

@@ -20,7 +20,6 @@ const LoginPage = lazyRoute('LoginPage', () => import('@/pages/auth/LoginPage').
 const ChangePasswordPage = lazyRoute('ChangePasswordPage', () => import('@/pages/auth/ChangePasswordPage').then((m) => ({ default: m.ChangePasswordPage })));
 const SetupPage = lazyRoute('SetupPage', () => import('@/pages/auth/SetupPage').then((m) => ({ default: m.SetupPage })));
 const AdminOverview = lazyRoute('AdminOverview', () => import('@/pages/admin/AdminOverview').then((m) => ({ default: m.AdminOverview })));
-const AdminDashboard = lazyRoute('AdminDashboard', () => import('@/pages/admin/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
 const AdminUsers = lazyRoute('AdminUsers', () => import('@/pages/admin/AdminUsers').then((m) => ({ default: m.AdminUsers })));
 const AdminOrganization = lazyRoute('AdminOrganization', () => import('@/pages/admin/AdminOrganization').then((m) => ({ default: m.AdminOrganization })));
 const AdminProjects = lazyRoute('AdminProjects', () => import('@/pages/admin/AdminProjects').then((m) => ({ default: m.AdminProjects })));
@@ -164,7 +163,9 @@ function AppRoutes() {
       <Route path="/admin" element={<AdminHomeRedirect />} />
       {/* Tổng quan điều hành — quyền reports + chức năng nâng cao tương ứng. */}
       <Route path="/admin/overview" element={admin('reports', <AdminOverview />, { functionCode: 'admin.overview' })} />
-      <Route path="/admin/dashboard" element={admin('reports', <AdminDashboard />)} />
+      {/* Gộp vào Tổng quan điều hành. Giữ chuyển hướng để link cũ và
+          bookmark của người dùng không chết. */}
+      <Route path="/admin/dashboard" element={<Navigate to="/admin" replace />} />
       <Route path="/admin/users" element={admin('users', <AdminUsers />)} />
       <Route path="/admin/organization" element={admin('users', <AdminOrganization />)} />
       <Route path="/admin/projects" element={admin('projects', <AdminProjects />)} />
@@ -190,7 +191,9 @@ function AppRoutes() {
       <Route path="/admin/worker-documents" element={admin('users', <AdminWorkforceCenter section="documents" />, { functionCode: 'admin.worker_documents' })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/performance" element={admin('reports', <AdminNexusCenter section="performance" />, { functionCode: 'admin.performance_manage' })} />
-      <Route path="/admin/feature-flags" element={admin('settings', <AdminNexusCenter section="flags" />, { functionCode: 'admin.feature_flags' })} />
+      {/* Trang cờ tính năng đã gỡ: không mã nào đọc `feature_flags` để
+          bật/tắt chức năng, nên nó chỉ là công tắc không nối vào đâu. */}
+      <Route path="/admin/feature-flags" element={<Navigate to="/admin/settings" replace />} />
       <Route path="/admin/worklog" element={admin('reports', <AdminWorklog />)} />
       <Route path="/admin/settings" element={admin('settings', <AdminSettings />)} />
       {/* Nhật ký hệ thống — quyền module + chức năng nâng cao; RLS là hàng rào cuối. */}
