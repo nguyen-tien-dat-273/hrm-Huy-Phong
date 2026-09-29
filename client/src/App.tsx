@@ -35,6 +35,7 @@ const AdminLeave = lazyRoute('AdminLeave', () => import('@/pages/admin/AdminLeav
 const AdminSettings = lazyRoute('AdminSettings', () => import('@/pages/admin/AdminSettings').then((m) => ({ default: m.AdminSettings })));
 const AdminAttendanceSettings = lazyRoute('AdminAttendanceSettings', () => import('@/pages/admin/AdminAttendanceSettings').then((m) => ({ default: m.AdminAttendanceSettings })));
 const AdminAudit = lazyRoute('AdminAudit', () => import('@/pages/admin/AdminAudit').then((m) => ({ default: m.AdminAudit })));
+const PublicApplyPage = lazyRoute('PublicApplyPage', () => import('@/pages/public/PublicApplyPage').then((m) => ({ default: m.PublicApplyPage })));
 const AdminProcessLibrary = lazyRoute('AdminProcessLibrary', () => import('@/pages/admin/AdminProcessLibrary').then((m) => ({ default: m.AdminProcessLibrary })));
 const AdminTraining = lazyRoute('AdminTraining', () => import('@/pages/admin/AdminTraining').then((m) => ({ default: m.AdminTraining })));
 const AdminRecruitment = lazyRoute('AdminRecruitment', () => import('@/pages/admin/AdminRecruitment').then((m) => ({ default: m.AdminRecruitment })));
@@ -155,6 +156,10 @@ function AdminHomeRedirect() {
 function AppRoutes() {
   return (
     <Routes>
+      {/* Công khai, không cần đăng nhập — RC2.5. Đặt trước mọi route có
+          bảo vệ để không bị chuyển hướng về màn đăng nhập. */}
+      <Route path="/tuyen-dung/:code" element={<PublicApplyPage />} />
+
       <Route path="/" element={<AuthRedirect />} />
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route path="/setup" element={<SetupPage />} />
