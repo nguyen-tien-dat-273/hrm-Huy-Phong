@@ -1,0 +1,26 @@
+#!/bin/sh
+# ============================================================================
+# Tự đẩy lên GitHub sau mỗi commit.
+# ----------------------------------------------------------------------------
+# Chỉ đẩy lên nhánh upstream mà nhánh hiện tại đang theo dõi — không đoán,
+# không tự đẩy sang nhánh khác. Nhánh chưa có upstream thì bỏ qua im lặng,
+# vì đó thường là nhánh nháp chưa muốn công khai.
+#
+# LUÔN thoát 0: push hỏng (mất mạng, pre-push chặn) không được phép làm
+# `git commit` báo lỗi — commit đã xong rồi, nó nằm an toàn dưới máy.
+# ============================================================================
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null)
+
+if [ -z "$upstream" ]; then
+  echo "ℹ post-commit: nhánh '$branch' chưa có upstream — bỏ qua auto-push."
+  echo "  Bật bằng: git push -u personal $branch"
+  exit 0
+fi
+
+echo "→ Tự đẩy $branch → $upstream"
+if ! git push "${upstream%%/*}" "$branch"; then
+  echo "ℹ Push chưa xong — commit vẫn an toàn dưới máy. Chạy 'git push' lại sau."
+fi
+exit 0

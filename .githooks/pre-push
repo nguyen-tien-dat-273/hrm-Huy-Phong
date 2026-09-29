@@ -1,0 +1,32 @@
+#!/bin/sh
+# ============================================================================
+# Chặn push khi code chưa sạch.
+# ----------------------------------------------------------------------------
+# Hook này chạy cho MỌI lần push — cả lần push tự động do post-commit gọi lẫn
+# lần bạn gõ `git push` bằng tay. Đặt kiểm tra ở đây thay vì ở post-commit vì
+# commit hỏng thì chỉ nằm ở máy, còn push hỏng là cả repo public thấy.
+#
+# Thoát khác 0 = hủy push. Commit vẫn còn nguyên dưới máy, sửa xong push lại.
+# ============================================================================
+
+# --- 1. Không để file secret lọt lên repo public --------------------------
+# .env.local từng bị đẩy lên nhánh main một lần rồi. Auto-push khiến sự cố
+# kiểu đó thành tức thì và không rút lại được, nên chặn ngay từ đây.
+leaked=$(git ls-files | grep -E '(^|/)\.env($|\.)' | grep -v '\.example$')
+if [ -n "$leaked" ]; then
+  echo "✗ HỦY PUSH — file môi trường đang bị git theo dõi:"
+  echo "$leaked" | sed 's/^/    /'
+  echo "  Gỡ ra bằng: git rm --cached <file>  (file dưới máy vẫn còn)"
+  exit 1
+fi
+
+# --- 2. TypeScript phải sạch ----------------------------------------------
+echo "→ Kiểm tra type trước khi push..."
+if ! npx --no-install tsc -b --noEmit; then
+  echo "✗ HỦY PUSH — TypeScript còn lỗi (xem ở trên)."
+  echo "  Sửa xong chạy lại: git push"
+  exit 1
+fi
+
+echo "✓ Type sạch — đang đẩy lên..."
+exit 0
