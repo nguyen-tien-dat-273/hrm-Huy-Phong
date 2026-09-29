@@ -57,6 +57,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Ngày công chuẩn, bảo hiểm và giảm trừ thuế', icon: Scale, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'ngay cong chuan bao hiem thue tncn giam tru tham so', functionCode: 'admin.payroll_settings' },
 
   { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
+  { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'thu vien quy trinh quy che huong dan pdf' },
   { to: '/admin/training', label: 'Đào tạo', description: 'Khóa học, phân công và tiến độ học tập', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'dao tao khoa hoc hoc tap' },
   { to: '/admin/performance', label: 'KPI & đánh giá', description: 'Mục tiêu, chu kỳ và kết quả hiệu suất', icon: Target, permission: 'reports', group: 'Phát triển nhân sự', keywords: 'kpi okr hieu suat danh gia', functionCode: 'admin.performance_manage' },
 
