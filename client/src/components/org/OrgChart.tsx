@@ -30,6 +30,17 @@ export interface OrgChartProps {
   collapsed: Set<string>;
   onToggle: (unitId: string) => void;
   onAddChild: (unit: OrganizationUnit) => void;
+  /**
+   * Tên doanh nghiệp, vẽ làm GỐC của cây.
+   *
+   * Không vẽ nó thành một ô đầy đủ như các đơn vị con — tên đã có ở thanh
+   * định vị phía trên, lặp lại cả ô là thừa. Nhưng bỏ hẳn thì các đơn vị con
+   * treo lơ lửng, nhìn thành danh sách phẳng chứ không ra cây, và không thấy
+   * được cái gì đứng trên cái gì.
+   *
+   * Nên: một nhãn mảnh kèm đường nối xuống — đủ để mắt đọc ra thứ bậc.
+   */
+  rootLabel?: string;
 }
 
 export function OrgChart(props: OrgChartProps) {
@@ -37,10 +48,41 @@ export function OrgChart(props: OrgChartProps) {
     // Cây rộng hơn màn hình là chuyện bình thường — cuộn ngang trong khung
     // riêng để không đẩy cả trang lệch đi.
     <div className="overflow-x-auto px-5 py-6">
-      <div className="inline-flex min-w-full items-start justify-center gap-8">
-        {props.roots.map((root) => (
-          <Subtree key={root.id} unit={root} {...props} />
-        ))}
+      <div className="flex min-w-full flex-col items-center">
+        {props.rootLabel && (
+          <>
+            <span className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
+              {props.rootLabel}
+            </span>
+            <span aria-hidden className="h-5 w-px bg-slate-300" />
+          </>
+        )}
+
+        <div className="flex items-start">
+          {props.roots.map((root, index) => {
+            // Có gốc thì các đơn vị cấp một phải được nối vào gốc, dùng đúng
+            // cách vẽ thanh ngang như mọi cấp khác bên dưới.
+            if (!props.rootLabel) {
+              return (
+                <div key={root.id} className="px-4">
+                  <Subtree unit={root} {...props} />
+                </div>
+              );
+            }
+            return (
+              <div key={root.id} className="relative flex flex-col items-center px-3 pt-5">
+                <span
+                  aria-hidden
+                  className={`absolute top-0 h-px bg-slate-300 ${index === 0 ? 'left-1/2' : 'left-0'} ${
+                    index === props.roots.length - 1 ? 'right-1/2' : 'right-0'
+                  }`}
+                />
+                <span aria-hidden className="absolute left-1/2 top-0 h-5 w-px bg-slate-300" />
+                <Subtree unit={root} {...props} />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

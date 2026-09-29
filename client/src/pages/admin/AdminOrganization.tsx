@@ -732,6 +732,7 @@ export function AdminOrganization() {
                       collapsed={collapsedUnits}
                       onToggle={toggleUnit}
                       onAddChild={openChildUnit}
+                      rootLabel={activeCompany?.name}
                     />
                   ) : (
                     <div className="divide-y divide-slate-100">
