@@ -732,6 +732,7 @@ export function AdminOrganization() {
                       collapsed={collapsedUnits}
                       onToggle={toggleUnit}
                       onAddChild={openChildUnit}
+                      onRemove={(unit) => void removeUnit(unit)}
                       rootLabel={activeCompany?.name}
                     />
                   ) : (
@@ -785,6 +786,11 @@ export function AdminOrganization() {
                     <Button size="sm" variant="outline" onClick={() => openEditUnit(selectedUnit)}><Pencil className="h-4 w-4" />Chỉnh sửa</Button>
                     <Button size="sm" theme="admin" onClick={() => openChildUnit(selectedUnit)}><Plus className="h-4 w-4" />Thêm cấp dưới</Button>
                   </div>
+                  {/* Xóa để riêng một hàng, không xếp cạnh hai nút dùng thường
+                      xuyên — bấm nhầm ở đây là mất một nhánh tổ chức. */}
+                  <Button size="sm" variant="danger" className="w-full" onClick={() => void removeUnit(selectedUnit)}>
+                    <Trash2 className="h-4 w-4" />Xóa đơn vị này
+                  </Button>
                 </CardContent></Card>}
               </div>
                 </>

@@ -14,7 +14,7 @@
 // con thì chỉ còn đúng một cuống dọc, không thừa mẩu ngang nào.
 // ============================================================================
 
-import { Building2, CircleAlert, Plus, UserRound } from 'lucide-react';
+import { Building2, CircleAlert, Plus, Trash2, UserRound } from 'lucide-react';
 import type { OrganizationUnit } from '@/types';
 
 export interface OrgChartProps {
@@ -30,6 +30,9 @@ export interface OrgChartProps {
   collapsed: Set<string>;
   onToggle: (unitId: string) => void;
   onAddChild: (unit: OrganizationUnit) => void;
+  /** Xóa đơn vị. Đơn vị còn dữ liệu liên quan sẽ được ngừng hoạt động
+   *  thay vì xóa — phía gọi lo việc đó, ở đây chỉ là nút bấm. */
+  onRemove: (unit: OrganizationUnit) => void;
   /**
    * Tên doanh nghiệp, vẽ làm GỐC của cây.
    *
@@ -141,7 +144,7 @@ function Stem() {
 
 function NodeBox({
   unit, typeLabel, managerName, employeeCount, needsAttention,
-  selectedId, onSelect, childrenOf, collapsed, onToggle, onAddChild,
+  selectedId, onSelect, childrenOf, collapsed, onToggle, onAddChild, onRemove,
 }: OrgChartProps & { unit: OrganizationUnit }) {
   const isSelected = selectedId === unit.id;
   const manager = managerName(unit);
@@ -200,6 +203,15 @@ function NodeBox({
           className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600"
         >
           <Plus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onRemove(unit)}
+          title={`Xóa ${unit.name}`}
+          aria-label={`Xóa ${unit.name}`}
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 className="h-3 w-3" />
         </button>
         {children.length > 0 && (
           <button
