@@ -378,6 +378,18 @@ export interface ComputePayslipArgs {
   items: AssignedPayItem[];
   /** Số liệu biến động tháng: mã → số lượng. */
   inputs: Readonly<Record<string, number>>;
+  /**
+   * Mã của MỌI khoản trong danh mục, kể cả khoản người này không được gán.
+   *
+   * Một công thức dùng chung cho cả công ty thường phải cộng các khoản mà chỉ
+   * một số người có — phí công đoàn của Huy Phong tính trên lương thời gian
+   * cộng lương vận chuyển, trong khi nhân viên văn phòng không có lương vận
+   * chuyển. Không có danh sách này thì công thức đó ném lỗi "không có biến" ở
+   * đúng những người đáng lẽ ra 0đ.
+   *
+   * Bỏ trống cũng chạy — chỉ các khoản đã gán mới thành biến.
+   */
+  catalogCodes?: readonly string[];
   stats: PeriodStats;
   settings: PayrollParams;
   /**
@@ -642,7 +654,7 @@ function computeComponentLine(
  * không ảnh hưởng nghĩa vụ thuế.
  */
 export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
-  const { profile, payProfile, items, inputs, stats, settings, adjustments = [] } = args;
+  const { profile, payProfile, items, inputs, stats, settings, adjustments = [], catalogCodes = [] } = args;
   const warnings: string[] = [];
   const lines: ComputedLine[] = [];
 
@@ -767,6 +779,24 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     EARLY_MINUTES: stats.earlyMinutes,
     EARLY_COUNT: stats.earlyCount,
   };
+
+  // Moi khoản trong danh mục đều là một biến, bằng 0 với người không được gán.
+  for (const code of catalogCodes) {
+    scope[code.toUpperCase()] = 0;
+  }
+
+  // Moi so lieu thang da KHAI trong danh muc deu co mat trong pham vi bien,
+  // bang 0 neu thang nay chua ai nhap.
+  //
+  // Khong co buoc nay thi mot cong thuc nhu `HOURLY_RATE * OT_NGAY_THUONG * 2`
+  // se nem loi "khong co bien" o dung nhung thang khong ai lam them gio - tuc
+  // la ca dong luong bien mat khoi phieu kem mot canh bao, trong khi cau tra
+  // loi dung la 0d. Khai bao mot so lieu thang chinh la tuyen bo "bien nay ton
+  // tai"; chua nhap nghia la chua phat sinh.
+  for (const assigned of items) {
+    const code = assigned.component.input_code;
+    if (code) scope[code.toUpperCase()] = 0;
+  }
 
   for (const [code, quantity] of Object.entries(inputs)) {
     scope[code.toUpperCase()] = quantity;

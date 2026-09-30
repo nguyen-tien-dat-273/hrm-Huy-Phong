@@ -194,6 +194,57 @@ const withBroken = computePayslip({
 check('công thức hỏng vẫn ra phiếu', withBroken.gross, 20_000_000);
 check('cảnh báo công thức hỏng', withBroken.warnings.some((w) => w.includes('Công thức hỏng')), true);
 
+// --- Công thức lương Huy Phong -------------------------------------------
+// Ba tình huống dễ vỡ nhất của bộ khoản lương seed ở migration
+// 20260930210000, gộp trong một phiếu.
+const transportStats = {
+  workDays: 20, leaveDays: 4, holidayDays: 2, paidDays: 26, workHours: 160, missingCheckout: 0,
+};
+const transportComponent = component({
+  id: 'h1', code: 'LUONG_VAN_CHUYEN', name: 'Lương vận chuyển', calc_type: 'FORMULA',
+  input_code: 'SO_CHUYEN', formula: 'SO_CHUYEN * MUC_RIENG', sort_order: 110,
+});
+const otComponentHp = component({
+  id: 'h2', code: 'LUONG_OT_THUONG', name: 'Làm thêm ngày thường', calc_type: 'FORMULA',
+  input_code: 'OT_NGAY_THUONG', formula: 'HOURLY_RATE * OT_NGAY_THUONG * 2', sort_order: 120,
+});
+const unionComponent = component({
+  id: 'h3', code: 'PHI_CONG_DOAN', name: 'Phí công đoàn', kind: 'DEDUCTION', calc_type: 'FORMULA',
+  formula: '(BASE_WORK + LUONG_VAN_CHUYEN + LUONG_DOANH_SO) * 0.01', sort_order: 900,
+});
+
+const huyphong = computePayslip({
+  profile,
+  payProfile: payProfile({ pay_basis: 'MONTHLY', base_amount: 26_000_000 }),
+  items: [
+    { item: item('h1', { amount: 50_000 }), component: transportComponent },
+    { item: item('h2'), component: otComponentHp },
+    { item: item('h3'), component: unionComponent },
+  ],
+  // OT_NGAY_THUONG cố tình KHÔNG nhập: tháng này không ai làm thêm.
+  inputs: { SO_CHUYEN: 30 },
+  stats: transportStats,
+  settings,
+  // LUONG_DOANH_SO có trong danh mục nhưng người này không được gán.
+  catalogCodes: ['LUONG_VAN_CHUYEN', 'LUONG_DOANH_SO', 'LUONG_OT_THUONG', 'PHI_CONG_DOAN'],
+});
+
+// 26tr / 26 ngày chuẩn = 1tr/ngày, 20 ngày đi làm.
+check('lương thời gian tách khỏi phép và lễ',
+  huyphong.lines.find((l) => l.code === 'BASE_WORK')?.amount, 20_000_000);
+check('lương vận chuyển theo số chuyến',
+  huyphong.lines.find((l) => l.code === 'LUONG_VAN_CHUYEN')?.amount, 1_500_000);
+// Số liệu tháng chưa nhập phải ra 0đ, KHÔNG phải lỗi "không có biến"
+// (dòng vẫn nằm trên phiếu để thấy khoản này đã được xét, chỉ là bằng 0).
+check('tháng không làm thêm thì OT bằng 0đ',
+  huyphong.lines.find((l) => l.code === 'LUONG_OT_THUONG')?.amount, 0);
+// Công đoàn = 1% x (20tr lương thời gian + 1,5tr vận chuyển), KHÔNG tính
+// tiền phép và tiền lễ; khoản LUONG_DOANH_SO không được gán nên bằng 0.
+check('phí công đoàn trên lương thời gian + vận chuyển',
+  huyphong.lines.find((l) => l.code === 'PHI_CONG_DOAN')?.amount, 215_000);
+check('không cảnh báo nào cho bộ khoản Huy Phong',
+  huyphong.warnings.filter((w) => w.includes('công thức')).length, 0);
+
 // Thiếu cơ chế lương.
 const noProfile = computePayslip({ profile, payProfile: null, items: [], inputs: {}, stats, settings });
 check('không có cơ chế lương thì 0đ', noProfile.netPay, 0);

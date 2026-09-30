@@ -310,6 +310,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           inputs,
           stats,
           settings: params,
+          catalogCodes: data.components.map((component) => component.code),
           adjustments: data.adjustments.filter((adjustment) => adjustment.user_id === person.id),
         }),
       };

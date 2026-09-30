@@ -227,6 +227,7 @@ export function StaffPayroll() {
       inputs: inputMap,
       stats,
       settings: params,
+      catalogCodes: components.map((component) => component.code),
     });
 
     return {

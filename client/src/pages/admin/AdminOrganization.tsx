@@ -264,7 +264,28 @@ export function AdminOrganization() {
 
   // Cac o chon trong modal cung chi liet ke don vi/vi tri CUA doanh nghiep
   // dang mo, de khong the gan nham mot vi tri sang phap nhan khac.
-  const unitOptions = units.filter((unit) => unit.is_active && scopedUnitIds.has(unit.id));
+  /**
+   * Danh sách đơn vị cho ô chọn, xếp theo CÂY chứ không theo bảng chữ cái.
+   *
+   * Danh sách phẳng xếp theo tên không cho biết cái nào nằm trong cái nào:
+   * "giám đốc" và "Huy Phong Group" hiện ngang nhau trong khi cái trước là
+   * con của cái sau. Người chọn không có cách nào biết mình đang gắn vị trí
+   * vào cấp nào, và đó chính là thứ duy nhất ô này quyết định.
+   */
+  const unitOptions = useMemo(() => {
+    const rows: { unit: OrganizationUnit; depth: number }[] = [];
+    const walk = (unit: OrganizationUnit, depth: number) => {
+      if (!unit.is_active || !scopedUnitIds.has(unit.id)) return;
+      rows.push({ unit, depth });
+      (childUnitsByParent.get(unit.id) || []).forEach((child) => walk(child, depth + 1));
+    };
+    if (activeCompany) walk(activeCompany, 0);
+    return rows;
+  }, [activeCompany, childUnitsByParent, scopedUnitIds]);
+
+  /** Thụt đầu dòng bằng khoảng trắng cứng — thẻ <option> không nhận CSS padding. */
+  const unitOptionLabel = (row: { unit: OrganizationUnit; depth: number }) =>
+    `${'\u00a0\u00a0\u00a0\u00a0'.repeat(row.depth)}${row.depth > 0 ? '└ ' : ''}${row.unit.name}`;
   const companyPositions = positions.filter((position) => scopedUnitIds.has(position.unit_id));
 
   const companyHeadcount = (unit: OrganizationUnit) => {
@@ -1026,7 +1047,7 @@ export function AdminOrganization() {
       <Modal open={positionModal} onClose={() => { setPositionModal(false); setEditingPosition(null); }} title={editingPosition ? 'Sửa vị trí chức danh' : 'Thêm vị trí chức danh'}>
         <form onSubmit={savePosition} className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><Input label="Mã vị trí" value={positionForm.code} onChange={(event) => setPositionForm({ ...positionForm, code: event.target.value })} placeholder="VD: SALES-MGR" required /><Input label="Tên vị trí" value={positionForm.title} onChange={(event) => setPositionForm({ ...positionForm, title: event.target.value })} required /></div>
-          <Select label="Thuộc đơn vị" value={positionForm.unit_id} onChange={(event) => setPositionForm({ ...positionForm, unit_id: event.target.value })} required><option value="">Chọn đơn vị</option>{unitOptions.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
+          <Select label="Thuộc đơn vị" value={positionForm.unit_id} onChange={(event) => setPositionForm({ ...positionForm, unit_id: event.target.value })} required><option value="">Chọn đơn vị</option>{unitOptions.map((row) => <option key={row.unit.id} value={row.unit.id}>{unitOptionLabel(row)}</option>)}</Select>
           <Select label="Báo cáo cho vị trí" value={positionForm.reports_to_position_id} onChange={(event) => setPositionForm({ ...positionForm, reports_to_position_id: event.target.value })}><option value="">Không có</option>{companyPositions.filter((position) => position.is_active && position.id !== editingPosition?.id).map((position) => <option key={position.id} value={position.id}>{position.title} · {unitById.get(position.unit_id)?.name}</option>)}</Select>
           <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700"><input type="checkbox" checked={positionForm.is_manager} onChange={(event) => setPositionForm({ ...positionForm, is_manager: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-indigo-600" /><ShieldCheck className="h-4 w-4 text-indigo-500" />Đây là vị trí quản lý</label>
           <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
@@ -1046,7 +1067,7 @@ export function AdminOrganization() {
         <form onSubmit={assignEmployee} className="space-y-4">
           <Select label="Nhân sự" value={assignmentForm.user_id} onChange={(event) => chooseEmployee(event.target.value)} required><option value="">Chọn nhân sự</option>{users.filter((user) => user.is_active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>
           <div className="grid grid-cols-2 gap-3"><Input label="Mã nhân viên" value={assignmentForm.employee_code} onChange={(event) => setAssignmentForm({ ...assignmentForm, employee_code: event.target.value })} /><Input label="Ngày vào làm" type="date" value={assignmentForm.hire_date} onChange={(event) => setAssignmentForm({ ...assignmentForm, hire_date: event.target.value })} /></div>
-          <Select label="Đơn vị" value={assignmentForm.unit_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, unit_id: event.target.value, position_id: '', manager_id: '' })}><option value="">Chưa gán</option>{unitOptions.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
+          <Select label="Đơn vị" value={assignmentForm.unit_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, unit_id: event.target.value, position_id: '', manager_id: '' })}><option value="">Chưa gán</option>{unitOptions.map((row) => <option key={row.unit.id} value={row.unit.id}>{unitOptionLabel(row)}</option>)}</Select>
           <Select label="Vị trí/chức danh" value={assignmentForm.position_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, position_id: event.target.value })}><option value="">Chưa gán</option>{positionOptions.filter((position) => position.is_active).map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</Select>
           <div>
             <Select label="Quản lý trực tiếp" value={assignmentForm.manager_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, manager_id: event.target.value })}><option value="">Chưa gán</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} · {unitById.get(user.unit_id || '')?.name}</option>)}</Select>
