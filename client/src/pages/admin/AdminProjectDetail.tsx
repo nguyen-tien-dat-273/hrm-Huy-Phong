@@ -538,14 +538,14 @@ export function AdminProjectDetail() {
 	                        <button
 	                          onClick={() => openEditTask(task)}
 	                          title="Sửa tác vụ"
-	                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+	                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
 	                        >
 	                          <Edit3 className="w-4 h-4" />
 	                        </button>
 	                        <button
 	                          onClick={() => handleDeleteTask(task)}
 	                          title="Xóa tác vụ"
-	                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+	                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
 	                        >
 	                          <Trash2 className="w-4 h-4" />
 	                        </button>
@@ -653,14 +653,14 @@ export function AdminProjectDetail() {
                           <button
                             onClick={() => openEditMember(m)}
                             title="Sửa vai trò"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleRemoveMember(m.id)}
                             title="Xóa thành viên"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

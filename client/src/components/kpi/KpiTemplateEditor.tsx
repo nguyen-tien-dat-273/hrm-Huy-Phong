@@ -748,7 +748,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
                       type="button"
                       onClick={() => void removeMethod(method)}
                       aria-label={`Xóa cách tính ${method.name}`}
-                      className="absolute right-2 top-2 rounded-md p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                      className="absolute right-1.5 top-1.5 inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -943,7 +943,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
                     type="button"
                     onClick={() => setCriteriaForm((prev) => ({ ...prev, levels: prev.levels.filter((_, i) => i !== index) }))}
                     aria-label={`Bỏ mức ${index + 1}`}
-                    className="rounded p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

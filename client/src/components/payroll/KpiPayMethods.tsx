@@ -184,7 +184,7 @@ export function KpiPayMethods({ components, onChanged }: KpiPayMethodsProps) {
                       </Button>
                       <button
                         onClick={() => void handleDelete(method)}
-                        className="rounded p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                         aria-label={`Xóa ${method.name}`}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -303,7 +303,7 @@ export function KpiPayMethods({ components, onChanged }: KpiPayMethodsProps) {
                         type="button"
                         onClick={() => setDraft({ ...draft, tiers: draft.tiers.filter((_, i) => i !== index) })}
                         aria-label={`Xóa bậc ${index + 1}`}
-                        className="rounded p-1.5 text-slate-300 transition hover:bg-red-50 hover:text-red-600"
+                        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

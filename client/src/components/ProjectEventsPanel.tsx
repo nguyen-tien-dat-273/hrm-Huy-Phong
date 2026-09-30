@@ -156,10 +156,10 @@ export function ProjectEventsPanel({ projectId, canManage }: { projectId: string
         </div>
         {canManage && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => openEdit(ev)} title="Sửa" className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+            <button onClick={() => openEdit(ev)} title="Sửa" className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
               <Edit3 className="w-4 h-4" />
             </button>
-            <button onClick={() => remove(ev)} title="Xóa" className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+            <button onClick={() => remove(ev)} title="Xóa" className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>

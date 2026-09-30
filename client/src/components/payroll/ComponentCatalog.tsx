@@ -415,7 +415,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                       ) : (
                         <button
                           onClick={() => openEdit(component)}
-                          className="rounded p-1.5 text-slate-300 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
                           aria-label={`Sửa ${component.name}`}
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -431,7 +431,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                       ) : (
                         <button
                           onClick={() => handleDelete(component)}
-                          className="rounded p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                           aria-label={`Xóa ${component.name}`}
                         >
                           <Trash2 className="h-3.5 w-3.5" />
