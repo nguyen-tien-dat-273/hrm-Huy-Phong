@@ -242,10 +242,10 @@ export function UnitPayItemsCard({
                           </div>
                           <button
                             onClick={() => remove(item)}
-                            className="flex-shrink-0 rounded p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                             aria-label="Bỏ khoản khỏi đơn vị"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </li>
                       );

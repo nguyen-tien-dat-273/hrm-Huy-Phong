@@ -338,7 +338,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                     type="button"
                     onClick={() => setOpenUserId(isOpen ? null : profile.id)}
                     disabled={!review}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-30"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600 disabled:opacity-30"
                     aria-label={isOpen ? `Thu gọn ${profile.name}` : `Mở ${profile.name}`}
                   >
                     {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
