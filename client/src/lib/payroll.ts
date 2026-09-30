@@ -580,7 +580,15 @@ function computeComponentLine(
 
     case 'FORMULA': {
       try {
-        const result = evaluateFormula(formula, scope);
+        // `MUC_RIENG` = mức tiền gán cho chính khoản này ở Cơ chế lương (hoặc
+        // mức mặc định trong danh mục nếu không gán riêng).
+        //
+        // Có biến này thì một khoản FORMULA mới lấy được con số của TỪNG
+        // NGƯỜI. Trước đó công thức chỉ đọc được biến toàn cục, nên mọi khoản
+        // kiểu "mức riêng × hệ số" đều phải nhét con số tiền vào module khác —
+        // ví dụ mức lương KPI phải nằm trong mẫu KPI, khiến module KPI giữ
+        // một con số tiền lương vốn không thuộc về nó.
+        const result = evaluateFormula(formula, { ...scope, MUC_RIENG: amount });
         value = result.value;
         detail = formula;
       } catch (error) {

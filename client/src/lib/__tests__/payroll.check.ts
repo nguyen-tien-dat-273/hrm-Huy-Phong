@@ -670,5 +670,33 @@ const legacy = buildPayrollJournal(
 check('chưa gán đơn vị thì lùi về ô chữ cũ',
   legacy.entries.every((e) => e.department === 'Kho vận'), true);
 
+
+// --- MUC_RIENG: công thức đọc được mức gán cho từng người ---------------
+// Trước khi có biến này, một khoản FORMULA không lấy được con số tiền của
+// TỪNG NGƯỜI, nên mức lương KPI buộc phải nằm trong mẫu KPI — module KPI giữ
+// một con số tiền lương vốn không thuộc về nó.
+const kpiPay = component({
+  id: 'cKPI', code: 'LUONG_KPI', name: 'Lương KPI', calc_type: 'FORMULA',
+  formula: 'MUC_RIENG * KPI_PCT / 100', default_amount: 5_000_000, sort_order: 340,
+});
+
+// Không gán riêng -> lấy mức mặc định của danh mục.
+const kpiDefault = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [{ item: item('cKPI'), component: kpiPay }],
+  inputs: { KPI_PCT: 80 }, stats, settings,
+});
+check('MUC_RIENG lùi về mức mặc định của danh mục',
+  kpiDefault.lines.find((l) => l.code === 'LUONG_KPI')?.amount, 4_000_000);
+
+// Gán riêng cho người này -> mức riêng thắng.
+const kpiOverride = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [{ item: item('cKPI', { amount: 8_000_000 }), component: kpiPay }],
+  inputs: { KPI_PCT: 80 }, stats, settings,
+});
+check('MUC_RIENG lấy mức gán riêng của từng người',
+  kpiOverride.lines.find((l) => l.code === 'LUONG_KPI')?.amount, 6_400_000);
+
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
