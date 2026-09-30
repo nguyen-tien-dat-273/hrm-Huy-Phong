@@ -28,8 +28,11 @@ IP máy và comm key **chỉ nằm trên máy tính chạy bridge**, không bao 
 - Một máy tính Windows **cùng mạng LAN** với máy chấm công, bật 24/7 (hoặc ít nhất bật
   trong giờ làm). Máy này chạy bridge.
 - Node.js 20.19 trở lên trên máy đó.
-- IP, cổng, comm key của máy chấm công: xem ngay trên máy, `Menu > Comm > Ethernet` và
-  `Menu > Comm > Security`.
+- IP, cổng, comm key của máy chấm công: xem ngay trên máy.
+  IP và cổng ở `Menu > Comm > Ethernet`; comm key thường ở `Menu > Comm > PC Connection`
+  (firmware cũ ghi là `Security` hoặc `COMM Key`, có máy gộp vào `Options > Comm Opt`).
+- **Quyền admin trên chính máy chấm công** (vân tay admin hoặc mật khẩu menu) — không có
+  thì không mở được các mục trên.
 - Quyền Admin/CEO trong HRM để tạo token.
 
 ## Bước 1 — Nạp phần máy chấm công vào database
@@ -201,7 +204,7 @@ trên vẫn đúng.
 | --- | --- |
 | Doctor dừng ở bước 2, `timeout` | Máy tính không cùng dải mạng với máy chấm công, hoặc firewall Windows chặn. Thử `ping <IP>`. |
 | Doctor dừng ở bước 2, `ECONNREFUSED` | IP đúng nhưng cổng sai. Kiểm tra `RJ_DEVICE_PORT`. |
-| Doctor dừng ở bước 3, "từ chối comm key" | `RJ_COMM_KEY` không khớp `Menu > Comm > Security`. |
+| Doctor dừng ở bước 3, "từ chối comm key" | `RJ_COMM_KEY` không khớp comm key trên máy (`Comm > PC Connection`, hoặc `Security` / `COMM Key` ở firmware cũ). |
 | Doctor dừng ở bước 3, "mất kết nối" | Máy đang phục vụ một kết nối khác. Đóng phần mềm quản lý máy của hãng rồi thử lại. |
 | Doctor dừng ở bước 3, "im lặng quá hạn" | Firmware cần UDP: đặt `RJ_TRANSPORT=udp`. Hoặc tăng `RJ_TIMEOUT_MS`. |
 | Doctor dừng ở bước 6, "chưa có RPC" | Migration bước 1 chưa chạy. |

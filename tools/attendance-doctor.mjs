@@ -171,7 +171,8 @@ try {
 } catch (error) {
   if (error instanceof ZkAuthError) {
     fail('May tu choi comm key.',
-      `Sua RJ_COMM_KEY cho khop Menu > Comm > Security tren may (hien dang gui ${env.commKey}).`);
+      'Sua RJ_COMM_KEY cho khop comm key tren may - Comm > PC Connection, '
+      + `firmware cu ghi la Security hoac COMM Key (hien dang gui ${env.commKey}).`);
   } else if (error instanceof ZkTimeoutError) {
     fail('May im lang qua han.', 'Thu RJ_TRANSPORT=udp, hoac tang RJ_TIMEOUT_MS.');
   } else if (error instanceof ZkConnectionError) {
