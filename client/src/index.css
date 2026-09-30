@@ -7,9 +7,33 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'Space Grotesk', 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
 
-  /* Shared indigo/slate palette from the personnel template */
-  --color-admin-primary: #4F46E5;
-  --color-admin-primary-hover: #4338CA;
+  /* --- Mau chinh cua he thong ---------------------------------------------
+     Indigo (tim-xanh) doi sang blue (xanh duong).
+
+     Ma nguon co 348 cho viet `indigo-*` trai tren 52 file. KHONG sed hang
+     loat: sed se dung ca nhung cho co y dung indigo lam mau phu, va mot lan
+     doi y la phai sed nguoc lai. Tailwind 4 cho dinh nghia lai chinh bang mau
+     `indigo` o day - moi lop `bg-indigo-600`, `text-indigo-700`... deu lay
+     gia tri moi, doi mau ca app bang mot cho, va doi y thi xoa khoi nay di
+     la ve nhu cu.
+
+     Blue thay vi teal/violet: teal dam vao emerald cua module Luong, con
+     violet van la tim. Blue doc duoc o moi do sang, va o nen trang thi
+     blue-600 dat 5.2:1 - du chuan AA cho chu thuong. */
+  --color-indigo-50:  #eff6ff;
+  --color-indigo-100: #dbeafe;
+  --color-indigo-200: #bfdbfe;
+  --color-indigo-300: #93c5fd;
+  --color-indigo-400: #60a5fa;
+  --color-indigo-500: #3b82f6;
+  --color-indigo-600: #2563eb;
+  --color-indigo-700: #1d4ed8;
+  --color-indigo-800: #1e40af;
+  --color-indigo-900: #1e3a8a;
+  --color-indigo-950: #172554;
+
+  --color-admin-primary: #2563EB;
+  --color-admin-primary-hover: #1D4ED8;
   --color-admin-bg: #F8FAFC;
   --color-admin-sidebar: #0F172A;
   --color-admin-text: #1E293B;
@@ -17,13 +41,13 @@
   --color-content-surface: #F8FAFC;
 
   /* Staff palette */
-  --color-staff-primary: #4F46E5;
-  --color-staff-primary-hover: #4338CA;
+  --color-staff-primary: #2563EB;
+  --color-staff-primary-hover: #1D4ED8;
   --color-staff-bg: #F8FAFC;
   --color-staff-sidebar: #0F172A;
   --color-staff-text: #0F172A;
   --color-staff-muted: #64748B;
-  --color-staff-active-bg: #4F46E5;
+  --color-staff-active-bg: #2563EB;
   --color-staff-active-text: #FFFFFF;
 
   /* Semantic */
@@ -62,7 +86,7 @@ body {
    Giu mot vet xanh rat nhat o goc tren de mang sidebar khong phang lì. */
 .app-sidebar {
   background-image:
-    radial-gradient(460px 280px at 12% -8%, rgb(99 102 241 / 0.09), transparent 64%),
+    radial-gradient(460px 280px at 12% -8%, rgb(59 130 246 / 0.09), transparent 64%),
     linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
   box-shadow: 14px 0 40px -38px rgb(15 23 42 / 0.35);
 }
@@ -517,7 +541,7 @@ a,
 .bg-ambient {
   background-color: #f8fafc;
   background-image:
-    radial-gradient(1100px 520px at 88% -12%, rgb(99 102 241 / 0.07), transparent 62%),
+    radial-gradient(1100px 520px at 88% -12%, rgb(59 130 246 / 0.07), transparent 62%),
     radial-gradient(900px 460px at -8% 18%, rgb(16 185 129 / 0.06), transparent 58%);
   background-attachment: fixed;
 }

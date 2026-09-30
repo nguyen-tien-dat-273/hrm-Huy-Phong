@@ -119,9 +119,12 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
   {
     name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ, tuyển dụng và giấy tờ',
-    iconIdle: 'bg-sky-50 text-sky-600', iconOn: 'bg-sky-600 text-white shadow-sm shadow-sky-600/30',
-    tileOn: 'bg-sky-50', textOn: 'text-sky-700',
-    chip: 'bg-sky-600 text-white shadow-sm shadow-sky-600/30 hover:bg-sky-700',
+    // Cyan chu khong phai sky: mau chinh cua he thong da la blue, ma o
+    // "Tong quan" nam ngay ben trai o nay trong bang luoi - hai sac xanh
+    // duong canh nhau thi phai doc ten moi phan biet.
+    iconIdle: 'bg-cyan-50 text-cyan-600', iconOn: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30',
+    tileOn: 'bg-cyan-50', textOn: 'text-cyan-700',
+    chip: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30 hover:bg-cyan-700',
   },
   {
     name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ',
@@ -153,9 +156,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
   {
     name: 'Đào tạo & Quy trình', icon: BookOpen, hint: 'Khóa học và thư viện quy trình',
-    iconIdle: 'bg-cyan-50 text-cyan-600', iconOn: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30',
-    tileOn: 'bg-cyan-50', textOn: 'text-cyan-700',
-    chip: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30 hover:bg-cyan-700',
+    iconIdle: 'bg-teal-50 text-teal-600', iconOn: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30',
+    tileOn: 'bg-teal-50', textOn: 'text-teal-700',
+    chip: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30 hover:bg-teal-700',
   },
   {
     name: 'Hệ thống', icon: Settings, hint: 'Cấu hình, nhật ký và tính năng',
