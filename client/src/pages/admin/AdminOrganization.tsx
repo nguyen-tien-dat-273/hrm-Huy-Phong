@@ -76,6 +76,9 @@ export function AdminOrganization() {
   const [assignmentModal, setAssignmentModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [unitScope, setUnitScope] = useState<'all' | 'attention'>('all');
+  /** An don vi da ngung hoat dong khoi so do. Mac dinh HIEN, vi giau di mot don
+      vi vua bam xoa se lam nguoi dung tuong no da mat han. */
+  const [hideInactive, setHideInactive] = useState(false);
   const [unitView, setUnitView] = useState<UnitView>('chart');
   /** Tab Vị trí cũng có hai kiểu xem: tuyến báo cáo, hoặc danh sách phẳng. */
   const [positionView, setPositionView] = useState<UnitView>('chart');
@@ -306,6 +309,7 @@ export function AdminOrganization() {
         || unit.code.toLowerCase().includes(keyword)
         || UNIT_TYPES[unit.unit_type].toLowerCase().includes(keyword)
         || managerName.toLowerCase().includes(keyword);
+      if (hideInactive && !unit.is_active) return false;
       return matchesKeyword && (unitScope === 'all' || attentionUnitIds.has(unit.id));
     }).map((unit) => unit.id));
     const withAncestors = new Set(directMatches);
@@ -319,7 +323,7 @@ export function AdminOrganization() {
       }
     });
     return withAncestors;
-  }, [units, keyword, unitScope, attentionUnitIds, unitById, userById]);
+  }, [units, keyword, unitScope, attentionUnitIds, unitById, userById, hideInactive]);
 
   const orderedUnits = useMemo(() => {
     const result: OrganizationUnit[] = [];
@@ -428,6 +432,11 @@ export function AdminOrganization() {
     setPositionForm({ code: '', title: '', unit_id: '', reports_to_position_id: '', is_manager: false, permissions: [], function_permissions: [] });
     void load();
   };
+
+  const inactiveInCompany = useMemo(
+    () => units.filter((unit) => !unit.is_active && unitIdsInCompany.has(unit.id)).length,
+    [units, unitIdsInCompany],
+  );
 
   const attentionInCompany = useMemo(
     () => [...unitIdsInCompany].filter((id) => attentionUnitIds.has(id)).length,
@@ -551,12 +560,27 @@ export function AdminOrganization() {
   };
 
   const removeUnit = async (unit: OrganizationUnit) => {
-    const hasDependencies = units.some((item) => item.parent_id === unit.id)
-      || positions.some((item) => item.unit_id === unit.id)
-      || users.some((item) => item.unit_id === unit.id);
+    // Liet ke CU THE cai gi dang chan, thay vi chi noi "co du lieu lien quan".
+    //
+    // Nguoi dung bam Xoa, he thong ngung hoat dong, so do ve y het nhu cu ->
+    // ho ket luan la nut xoa hong. Phai noi ro con gi phai don truoc thi moi
+    // xoa han duoc.
+    const childUnits = units.filter((item) => item.parent_id === unit.id);
+    const unitPositions = positions.filter((item) => item.unit_id === unit.id);
+    const unitUsers = users.filter((item) => item.unit_id === unit.id);
+    const blockers = [
+      childUnits.length > 0 ? `${childUnits.length} đơn vị con (${childUnits.map((item) => item.name).join(', ')})` : null,
+      unitPositions.length > 0 ? `${unitPositions.length} vị trí` : null,
+      unitUsers.length > 0 ? `${unitUsers.length} nhân sự` : null,
+    ].filter(Boolean) as string[];
+    const hasDependencies = blockers.length > 0;
     const accepted = await confirm({
       title: hasDependencies ? `Ngừng hoạt động “${unit.name}”?` : `Xóa đơn vị “${unit.name}”?`,
-      message: hasDependencies ? 'Đơn vị đang có dữ liệu liên quan nên sẽ được ngừng hoạt động, không xóa lịch sử.' : 'Đơn vị chưa có dữ liệu liên quan và sẽ bị xóa.',
+      message: hasDependencies
+        ? `Không xóa hẳn được vì bên dưới còn ${blockers.join(', ')}. Đơn vị sẽ được đánh dấu `
+          + 'ngừng hoạt động và vẫn hiện trong sơ đồ (có nhãn xám) để lịch sử lương và chấm công '
+          + 'không mất. Muốn xóa hẳn thì chuyển hết những thứ trên sang đơn vị khác rồi xóa lại.'
+        : 'Đơn vị chưa có dữ liệu liên quan và sẽ bị xóa hẳn.',
       confirmLabel: hasDependencies ? 'Ngừng hoạt động' : 'Xóa đơn vị', danger: true,
     });
     if (!accepted) return;
@@ -564,7 +588,15 @@ export function AdminOrganization() {
       ? await supabase.from('organization_units').update({ is_active: false }).eq('id', unit.id)
       : await supabase.from('organization_units').delete().eq('id', unit.id);
     if (result.error) toast('Không xử lý được đơn vị: ' + describeDbError(result.error), 'error');
-    else { toast(hasDependencies ? 'Đã ngừng hoạt động đơn vị.' : 'Đã xóa đơn vị.', 'success'); await load(); }
+    else {
+      toast(
+        hasDependencies
+          ? `Đã ngừng hoạt động “${unit.name}”. Vẫn hiện trong sơ đồ kèm nhãn xám — bật "Ẩn đơn vị ngừng hoạt động" để giấu đi.`
+          : 'Đã xóa đơn vị.',
+        'success',
+      );
+      await load();
+    }
   };
 
   const removePosition = async (position: JobPosition) => {
@@ -882,6 +914,19 @@ export function AdminOrganization() {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => setUnitScope('all')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Tất cả ({unitIdsInCompany.size})</button>
                   <button type="button" onClick={() => setUnitScope('attention')} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'attention' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}><CircleAlert className="h-3.5 w-3.5" />Cần bổ sung ({attentionInCompany})</button>
+                  {/* Don vi da ngung hoat dong van ve trong so do kem nhan xam.
+                      O nay de giau chung di khi khong con muon nhin. */}
+                  {inactiveInCompany > 0 && (
+                    <label className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={hideInactive}
+                        onChange={(event) => setHideInactive(event.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-300"
+                      />
+                      Ẩn {inactiveInCompany} đơn vị ngừng hoạt động
+                    </label>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Kiểu xem cơ cấu">

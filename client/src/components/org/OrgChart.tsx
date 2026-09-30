@@ -180,6 +180,15 @@ function NodeBox({
               )}
             </span>
             <span className="mt-0.5 block truncate text-[11px] text-slate-400">{typeLabel(unit)}</span>
+            {/* Nhan nay phai nam NGOAI phan to mau theo trang thai: kieu "dang
+                chon" de len tren kieu "ngung hoat dong", nen mot don vi vua
+                bam xoa ma dang duoc chon se trong y het don vi binh thuong —
+                nguoi dung tuong lenh xoa khong an. */}
+            {!unit.is_active && (
+              <span className="mt-1 inline-block rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                NGỪNG HOẠT ĐỘNG
+              </span>
+            )}
           </span>
         </div>
 
