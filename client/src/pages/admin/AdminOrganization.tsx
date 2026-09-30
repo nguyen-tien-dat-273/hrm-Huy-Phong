@@ -951,7 +951,12 @@ export function AdminOrganization() {
                   Truoc day panel an 1/3 man hinh ke ca khi khong dung toi,
                   nen khung con 595px trong khi cay rong 1952px - co het co
                   cung khong vua, va do chinh la thu nguoi dung muon thay. */}
-              <div className="grid gap-4">
+              {/* `minmax(0,1fr)` la bat buoc, khong phai trang tri: o luoi
+                  mac dinh `min-width: auto` nen KHONG co nho hon noi dung ben
+                  trong. Thieu no, the so do no rong 1874px theo be ngang cua
+                  cay va day ca trang tran ngang - van de bi doi len mot cap
+                  chu khong mat di. */}
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
                 <Card><CardContent className="p-0">
                   {orderedUnits.length === 0 ? <EmptyState icon={<Building2 className="h-8 w-8" />} title={unitIdsInCompany.size === 0 ? 'Doanh nghiệp này chưa có đơn vị nào' : 'Không tìm thấy đơn vị phù hợp'} description={unitIdsInCompany.size === 0 ? `Bấm "Thêm đơn vị" để tạo chi nhánh hoặc phòng ban đầu tiên trong ${activeCompany?.name ?? 'doanh nghiệp'}.` : 'Thử đổi từ khóa hoặc chọn bộ lọc Tất cả.'} /> : unitView === 'chart' ? (
                     <OrgChart
