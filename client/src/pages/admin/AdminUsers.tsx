@@ -319,7 +319,10 @@ export function AdminUsers() {
           <h2 className="text-xl font-display font-bold text-slate-900">Danh bạ nhân sự</h2>
           <p className="text-sm text-slate-500 mt-1">Quản lý hồ sơ, vai trò, phòng ban và quyền truy cập ({users.length} nhân sự)</p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* `flex-wrap`: ba nut nay cong lai ~390px, rong hon man 375px cua
+            dien thoai. Khong cho xuong dong thi chung day ca trang tran
+            ngang - khung ngoai da co flex-wrap nhung cum nay thi chua. */}
+        <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" aria-label="Kiểu hiển thị">
             <button type="button" onClick={() => setViewMode('grid')} aria-label="Xem dạng lưới" className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}>
               <Grid2X2 className="w-4 h-4" />
