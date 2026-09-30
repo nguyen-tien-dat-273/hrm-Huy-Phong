@@ -947,7 +947,11 @@ export function AdminOrganization() {
                 </div>
               </div>
 
-              <div className={`grid gap-4 ${selectedUnit ? 'xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.75fr)]' : ''}`}>
+              {/* So do chiem TRON be ngang, panel chi tiet xuong duoi.
+                  Truoc day panel an 1/3 man hinh ke ca khi khong dung toi,
+                  nen khung con 595px trong khi cay rong 1952px - co het co
+                  cung khong vua, va do chinh la thu nguoi dung muon thay. */}
+              <div className="grid gap-4">
                 <Card><CardContent className="p-0">
                   {orderedUnits.length === 0 ? <EmptyState icon={<Building2 className="h-8 w-8" />} title={unitIdsInCompany.size === 0 ? 'Doanh nghiệp này chưa có đơn vị nào' : 'Không tìm thấy đơn vị phù hợp'} description={unitIdsInCompany.size === 0 ? `Bấm "Thêm đơn vị" để tạo chi nhánh hoặc phòng ban đầu tiên trong ${activeCompany?.name ?? 'doanh nghiệp'}.` : 'Thử đổi từ khóa hoặc chọn bộ lọc Tất cả.'} /> : unitView === 'chart' ? (
                     <OrgChart
@@ -999,12 +1003,12 @@ export function AdminOrganization() {
                   )}
                 </CardContent></Card>
 
-                {selectedUnit && <Card><CardContent className="space-y-4 xl:sticky xl:top-4">
+                {selectedUnit && <Card><CardContent className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Chi tiết đơn vị</p><h3 className="mt-1 text-lg font-extrabold text-slate-900">{selectedUnit.name}</h3><p className="text-xs text-slate-500">{selectedUnit.code} · {UNIT_TYPES[selectedUnit.unit_type]}</p></div>
                     {!selectedUnit.is_active && <Badge className="bg-red-50 text-red-600">Ngừng hoạt động</Badge>}
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2 sm:max-w-md">
                     {[['Nhân sự', employeeCountByUnit.get(selectedUnit.id) || 0], ['Vị trí', positionCountByUnit.get(selectedUnit.id) || 0], ['Đơn vị con', (childUnitsByParent.get(selectedUnit.id) || []).length]].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3 text-center"><strong className="block text-xl text-slate-900">{value}</strong><span className="text-[11px] text-slate-500">{label}</span></div>)}
                   </div>
                   <dl className="space-y-3 text-sm">

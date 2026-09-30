@@ -18,8 +18,14 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Building2, CircleAlert, Maximize2, Minus, Plus, Trash2, UserRound } from 'lucide-react';
 import type { OrganizationUnit } from '@/types';
 
-/** Giới hạn thu/phóng. Dưới 40% thì chữ trong ô không còn đọc được nữa. */
-const MIN_SCALE = 0.4;
+/**
+ * Giới hạn thu/phóng.
+ *
+ * Dưới 30% thì chữ trong ô không còn đọc được nữa, nên cây quá lớn vẫn cuộn
+ * ngang chứ không ép co bằng mọi giá. Ở mức đó sơ đồ để nhìn HÌNH DẠNG bộ
+ * máy, còn đọc tên thì phóng lên hoặc bấm vào ô.
+ */
+const MIN_SCALE = 0.3;
 const MAX_SCALE = 1;
 
 export interface OrgChartProps {
@@ -118,8 +124,11 @@ export function OrgChart(props: OrgChartProps) {
 
   return (
     <div className="relative">
+      {/* Thanh dieu khien la mot HANG RIENG, khong noi tren so do.
+          Dat de len thi no che mat dung phan goc cay - cho nho cay cang de
+          dam, vi goc luon nam giua phia tren. */}
       {needsScaling && (
-        <div className="absolute right-4 top-3 z-10 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm backdrop-blur">
+        <div className="flex items-center justify-end gap-0.5 border-b border-slate-100 px-4 py-2">
           <button
             type="button"
             onClick={() => zoomBy(-0.1)}
@@ -191,7 +200,7 @@ export function OrgChart(props: OrgChartProps) {
               );
             }
             return (
-              <div key={root.id} className="relative flex flex-col items-center px-3 pt-5">
+              <div key={root.id} className="relative flex flex-col items-center px-2 pt-5">
                 <span
                   aria-hidden
                   className={`absolute top-0 h-px bg-slate-300 ${index === 0 ? 'left-1/2' : 'left-0'} ${
@@ -238,7 +247,7 @@ function Subtree({ unit, ...props }: OrgChartProps & { unit: OrganizationUnit })
           <Stem />
           <div className="flex items-start">
             {children.map((child, index) => (
-              <div key={child.id} className="relative flex flex-col items-center px-3 pt-5">
+              <div key={child.id} className="relative flex flex-col items-center px-2 pt-5">
                 {/* Thanh ngang nối các đơn vị ngang cấp. */}
                 <span
                   aria-hidden
@@ -277,7 +286,7 @@ function NodeBox({
         type="button"
         onClick={() => onSelect(unit.id)}
         aria-current={isSelected ? 'true' : undefined}
-        className={`flex w-52 flex-col gap-2 rounded-xl border-2 px-3.5 py-3 text-left shadow-sm transition ${
+        className={`flex w-44 flex-col gap-2 rounded-xl border-2 px-3 py-2.5 text-left shadow-sm transition ${
           isSelected
             ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-500/20'
             : unit.is_active
