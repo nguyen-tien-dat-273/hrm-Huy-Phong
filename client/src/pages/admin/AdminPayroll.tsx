@@ -857,13 +857,16 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
                             {formatVND(row.computed.netPay)}
                           </td>
                           <td className="px-4 py-4 text-center no-print">
+                            {/* 36x36 chu khong phai 26x26: o 26px thi tren
+                                man cam tay phai nham rat ky, ma day la nut
+                                duy nhat mo duoc co che luong tu bang. */}
                             <button
                               onClick={(event) => { event.stopPropagation(); setSchemeTarget(row.profile); }}
-                              className="rounded p-1.5 text-slate-300 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600 disabled:opacity-40"
                               aria-label={`Sửa cơ chế lương của ${row.profile.name}`}
                               disabled={isFrozen}
                             >
-                              <Pencil className="h-3.5 w-3.5" />
+                              <Pencil className="h-4 w-4" />
                             </button>
                           </td>
                         </tr>

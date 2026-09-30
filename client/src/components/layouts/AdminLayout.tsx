@@ -330,7 +330,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header className="app-header min-h-[4.5rem] bg-white/80 border-b border-slate-200/80 flex items-center justify-between px-4 sm:px-6 lg:px-8 sticky top-0 z-20 backdrop-blur-xl">
-          <div className="flex items-center gap-4">
+          {/* `min-w-0 flex-1`: o flex mac dinh `min-width: auto` nen KHONG co
+              nho hon noi dung. Khoi ben trong da co min-w-0 de cat chu, nhung
+              cha khong co thi phep co khong bao gio truyen xuong - header
+              phinh ra 751px trong khung 553px va day ca trang tran ngang. */}
+          <div className="flex min-w-0 flex-1 items-center gap-4">
             <button onClick={() => setSidebarOpen(true)} className="md:hidden text-slate-600 p-2 rounded-lg hover:bg-slate-100">
               <Menu className="w-5 h-5" />
             </button>
@@ -340,13 +344,13 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 {currentPage?.group && <span className="hidden sm:inline text-slate-300">/</span>}
                 <h1 className="font-display truncate text-base font-bold tracking-tight text-slate-900">{currentPage?.label || 'Khu quản trị'}</h1>
               </div>
-              <p className="hidden max-w-[560px] truncate text-xs text-slate-500 sm:block">
+              <p className="hidden max-w-[560px] truncate text-xs text-slate-600 sm:block">
                 {currentPage?.description || (isTeamlead(profile) ? `Quản lý nhóm · ${orgName}` : `Quản trị hệ thống · ${orgName}`)}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-2">
             {/* ---- Bảng module ----
                  Cấp một của điều hướng. Thanh dọc bên trái chỉ liệt kê chức
                  năng CỦA module đang chọn, nên không còn phải in cả 30 mục
