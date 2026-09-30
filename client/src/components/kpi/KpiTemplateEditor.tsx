@@ -32,25 +32,96 @@ interface Template {
   name: string;
   block_code: string;
   default_kpi_amount: number;
-  score_method: 'WEIGHTED_PERCENT' | 'TOTAL_POINTS';
+  score_method: string;
   result_cap_percent: number | null;
   result_floor_percent: number;
   is_active: boolean;
   note: string | null;
 }
 
-const SCORE_METHODS = [
+/**
+ * Mot cach tinh ket qua = bon tham so, khong phai mot nhanh code.
+ *
+ * Truoc day hai cach nay khai cung trong file: cong ty co cach cham thu ba la
+ * phai sua code va deploy. Gio chung nam trong bang `kpi_score_methods`, va
+ * bon tham so duoi day du de dien ta ca hai cach cu lan cac bien the khac.
+ */
+interface ScoreMethod {
+  code: string;
+  name: string;
+  description: string | null;
+  /** Quy diem tieu chi ve ty le (diem/thang) hay giu diem tho. */
+  normalize_mode: 'RATIO' | 'RAW';
+  /** Co nhan trong so cua tieu chi hay coi cac tieu chi ngang nhau. */
+  weight_mode: 'WEIGHTED' | 'EQUAL';
+  /** Chia tong cho cai gi truoc khi nhan he so. */
+  denominator_mode: 'NONE' | 'WEIGHT_SUM' | 'MAX_SUM';
+  /** Nhan ra thang phan tram. */
+  scale: number;
+  is_system: boolean;
+  sort_order: number;
+}
+
+const NORMALIZE_LABELS: Record<ScoreMethod['normalize_mode'], string> = {
+  RATIO: 'Quy ve % theo thang cua tieu chi',
+  RAW: 'Giu nguyen diem cham',
+};
+const WEIGHT_LABELS: Record<ScoreMethod['weight_mode'], string> = {
+  WEIGHTED: 'Nhan trong so tung tieu chi',
+  EQUAL: 'Cac tieu chi ngang nhau',
+};
+const DENOMINATOR_LABELS: Record<ScoreMethod['denominator_mode'], string> = {
+  NONE: 'Khong chia (tong da la ket qua)',
+  WEIGHT_SUM: 'Chia tong trong so',
+  MAX_SUM: 'Chia tong diem toi da',
+};
+
+/**
+ * Dung khi chua chay migration 20260930190000 - giao dien van chon duoc hai
+ * cach cu thay vi tro thanh mot o rong.
+ */
+const FALLBACK_METHODS: ScoreMethod[] = [
   {
-    value: 'WEIGHTED_PERCENT',
-    label: 'Trung bình có trọng số',
-    hint: 'Mỗi tiêu chí quy về % theo thang của nó rồi nhân trọng số. Tổng trọng số phải đủ 100%.',
+    code: 'WEIGHTED_PERCENT',
+    name: 'Trung bình có trọng số',
+    description: 'Mỗi tiêu chí quy về % theo thang của nó rồi nhân trọng số. Tổng trọng số phải đủ 100%.',
+    normalize_mode: 'RATIO', weight_mode: 'WEIGHTED', denominator_mode: 'NONE',
+    scale: 1, is_system: true, sort_order: 10,
   },
   {
-    value: 'TOTAL_POINTS',
-    label: 'Tổng điểm / tổng điểm tối đa',
-    hint: 'Cộng thẳng điểm các tiêu chí rồi chia tổng thang. Bỏ qua trọng số — được 17/20 điểm là 85%.',
+    code: 'TOTAL_POINTS',
+    name: 'Tổng điểm / tổng điểm tối đa',
+    description: 'Cộng thẳng điểm các tiêu chí rồi chia tổng thang. Bỏ qua trọng số — được 17/20 điểm là 85%.',
+    normalize_mode: 'RAW', weight_mode: 'EQUAL', denominator_mode: 'MAX_SUM',
+    scale: 100, is_system: true, sort_order: 20,
   },
-] as const;
+];
+
+/**
+ * Doi bon tham so thanh mot cau doc duoc.
+ *
+ * Nguoi khai KPI khong nghi bang "normalize_mode" - ho nghi bang "cham xong
+ * thi cong the nao". Cau nay hien ngay duoi moi lua chon de ho doi chieu
+ * voi cach phong ban minh dang cham tren giay.
+ */
+function describeMethod(method: Pick<ScoreMethod, 'normalize_mode' | 'weight_mode' | 'denominator_mode' | 'scale'>): string {
+  const parts = [
+    NORMALIZE_LABELS[method.normalize_mode].toLowerCase(),
+    WEIGHT_LABELS[method.weight_mode].toLowerCase(),
+    DENOMINATOR_LABELS[method.denominator_mode].toLowerCase(),
+  ];
+  const scale = Number(method.scale);
+  if (scale !== 1) parts.push(`nhân ${scale}`);
+  return parts.join(', ') + '.';
+}
+
+const BLANK_METHOD = {
+  code: '', name: '', description: '',
+  normalize_mode: 'RATIO' as ScoreMethod['normalize_mode'],
+  weight_mode: 'WEIGHTED' as ScoreMethod['weight_mode'],
+  denominator_mode: 'NONE' as ScoreMethod['denominator_mode'],
+  scale: '1',
+};
 
 interface Block {
   code: string;
@@ -127,15 +198,20 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
   const [editingCriteria, setEditingCriteria] = useState<Criteria | null>(null);
   const [criteriaForm, setCriteriaForm] = useState(BLANK_CRITERIA);
   const [tryValue, setTryValue] = useState('');
+  const [methods, setMethods] = useState<ScoreMethod[]>(FALLBACK_METHODS);
+  const [methodsSupported, setMethodsSupported] = useState(true);
+  const [methodModal, setMethodModal] = useState(false);
+  const [methodForm, setMethodForm] = useState(BLANK_METHOD);
 
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
-    const [templateRes, criteriaRes, bandRes, blockRes] = await Promise.all([
+    const [templateRes, criteriaRes, bandRes, blockRes, methodRes] = await Promise.all([
       supabase.from('kpi_position_templates').select('*').order('name'),
       supabase.from('kpi_template_criteria').select('*').order('sort_order'),
       supabase.from('kpi_rating_bands').select('*').order('sort_order'),
       supabase.from('kpi_blocks').select('*').order('sort_order'),
+      supabase.from('kpi_score_methods').select('*').order('sort_order').order('name'),
     ]);
     if (templateRes.error || criteriaRes.error) {
       setSupported(false);
@@ -156,6 +232,11 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       ]
       : ((blockRes.data || []) as Block[]));
     setBlockSupported(!blockRes.error);
+    // Chua chay migration 20260930190000 thi lui ve hai cach khai cung, va an
+    // nut "Them cach tinh" di - bam vao chi de nhan loi khong bang.
+    const methodRows = (methodRes.data || []) as ScoreMethod[];
+    setMethodsSupported(!methodRes.error);
+    setMethods(methodRes.error || methodRows.length === 0 ? FALLBACK_METHODS : methodRows);
     setLoading(false);
   };
 
@@ -219,6 +300,65 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
     await load();
   };
 
+  const openNewMethod = () => {
+    setMethodForm(BLANK_METHOD);
+    setMethodModal(true);
+  };
+
+  const saveMethod = async () => {
+    if (!supabase) return;
+    const code = methodForm.code.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    if (!/^[A-Z][A-Z0-9_]*$/.test(code)) {
+      return toast('Mã cách tính phải bắt đầu bằng chữ cái, chỉ gồm chữ in, số và dấu gạch dưới.', 'warning');
+    }
+    if (methodForm.name.trim().length < 2) {
+      return toast('Cách tính phải có tên.', 'warning');
+    }
+    const scale = Number(methodForm.scale);
+    if (!Number.isFinite(scale) || scale <= 0) {
+      return toast('Hệ số phải là số dương.', 'warning');
+    }
+    const { error } = await supabase.from('kpi_score_methods').insert({
+      code,
+      name: methodForm.name.trim(),
+      description: methodForm.description.trim() || null,
+      normalize_mode: methodForm.normalize_mode,
+      weight_mode: methodForm.weight_mode,
+      denominator_mode: methodForm.denominator_mode,
+      scale,
+      is_system: false,
+      sort_order: 100,
+    });
+    if (error) return toast('Không lưu được cách tính: ' + describeDbError(error), 'error');
+    setMethodModal(false);
+    // Chon luon cach vua tao, vi nguoi dung mo modal nay tu trong form bo KPI.
+    setTemplateForm((current) => ({ ...current, score_method: code }));
+    toast('Đã thêm cách tính.', 'success');
+    await load();
+  };
+
+  const removeMethod = async (method: ScoreMethod) => {
+    if (!supabase) return;
+    const inUse = templates.filter((item) => item.score_method === method.code);
+    if (inUse.length > 0) {
+      return toast(
+        `${inUse.length} bộ KPI đang dùng cách tính này (${inUse.map((item) => item.name).join(', ')}). Đổi chúng sang cách khác trước đã.`,
+        'warning',
+      );
+    }
+    const ok = await confirm({
+      title: `Xóa cách tính “${method.name}”?`,
+      message: 'Cách tính này chưa bộ KPI nào dùng nên xóa sẽ không ảnh hưởng phiếu chấm nào.',
+      confirmLabel: 'Xóa cách tính',
+      danger: true,
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('kpi_score_methods').delete().eq('code', method.code);
+    if (error) return toast('Không xóa được: ' + describeDbError(error), 'error');
+    toast('Đã xóa cách tính.', 'success');
+    await load();
+  };
+
   const toggleActive = async (template: Template) => {
     if (!supabase) return;
     const total = weightOf(template.id);
@@ -227,7 +367,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
     // biết phải khai cho đủ chứ không phải giao diện làm khó.
     if (!template.is_active && Math.abs(total - 100) > 0.01) {
       return toast(
-        template.score_method === 'TOTAL_POINTS'
+        methods.find((m) => m.code === template.score_method)?.weight_mode === 'EQUAL'
           ? `Tổng trọng số đang là ${total}%. Cách tính này không dùng trọng số, nhưng hệ thống vẫn đòi đủ 100% — chia đều cho các tiêu chí là được.`
           : `Tổng trọng số đang là ${total}%, phải đúng 100% mới bật được.`,
         'warning',
@@ -456,8 +596,8 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
                         <p className="truncate text-sm font-bold text-slate-800">{template.name}</p>
                         <p className="truncate text-xs text-slate-500">
                           {template.code} · {rows.length} tiêu chí ·{' '}
-                          {SCORE_METHODS.find((m) => m.value === template.score_method)?.label
-                            ?? 'Trung bình có trọng số'}
+                          {methods.find((m) => m.code === template.score_method)?.name
+                            ?? template.score_method}
                           {template.result_cap_percent != null && ` · trần ${Number(template.result_cap_percent)}%`}
                         </p>
                       </div>
@@ -652,25 +792,56 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
           </div>
           {/* ---- Cách tính, khác nhau giữa các phòng ban ---- */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
-            <p className="text-xs font-bold text-slate-700">Cách tính kết quả</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold text-slate-700">Cách tính kết quả</p>
+              {methodsSupported && (
+                <Button type="button" size="sm" variant="secondary" onClick={openNewMethod}>
+                  <Plus className="h-3.5 w-3.5" />Thêm cách tính
+                </Button>
+              )}
+            </div>
             <div className="mt-2.5 space-y-2">
-              {SCORE_METHODS.map((method) => (
-                <button
-                  key={method.value}
-                  type="button"
-                  onClick={() => setTemplateForm({ ...templateForm, score_method: method.value })}
-                  aria-pressed={templateForm.score_method === method.value}
-                  className={`block w-full rounded-lg border-2 px-3 py-2.5 text-left transition ${
-                    templateForm.score_method === method.value
-                      ? 'border-indigo-600 bg-white'
-                      : 'border-slate-200 bg-white hover:border-indigo-300'
+              {methods.map((method) => (
+                <div
+                  key={method.code}
+                  className={`relative rounded-lg border-2 bg-white transition ${
+                    templateForm.score_method === method.code
+                      ? 'border-indigo-600'
+                      : 'border-slate-200 hover:border-indigo-300'
                   }`}
                 >
-                  <span className="block text-xs font-bold text-slate-800">{method.label}</span>
-                  <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-500">{method.hint}</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setTemplateForm({ ...templateForm, score_method: method.code })}
+                    aria-pressed={templateForm.score_method === method.code}
+                    className="block w-full px-3 py-2.5 pr-9 text-left"
+                  >
+                    <span className="block text-xs font-bold text-slate-800">{method.name}</span>
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-slate-500">
+                      {method.description || describeMethod(method)}
+                    </span>
+                  </button>
+                  {/* Cach tinh he thong khong xoa duoc: cac bo KPI dang dung
+                      chung, va khoa ngoai o database cung se chan. */}
+                  {methodsSupported && !method.is_system && (
+                    <button
+                      type="button"
+                      onClick={() => void removeMethod(method)}
+                      aria-label={`Xóa cách tính ${method.name}`}
+                      className="absolute right-2 top-2 rounded-md p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
+            {!methodsSupported && (
+              <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-700">
+                <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                Chưa chạy migration danh mục cách tính (20260930190000) nên chỉ có hai cách mặc định.
+              </p>
+            )}
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
@@ -902,6 +1073,99 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setCriteriaModal(null)}>Hủy</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu tiêu chí'}</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* ---- Khai mot cach tinh moi: bon o chon, khong viet cong thuc ---- */}
+      <Modal open={methodModal} onClose={() => setMethodModal(false)} title="Thêm cách tính kết quả">
+        <form
+          className="space-y-4"
+          onSubmit={(event) => { event.preventDefault(); void saveMethod(); }}
+        >
+          <p className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-2.5 text-[11px] leading-relaxed text-indigo-900">
+            Một cách tính là <strong>bốn lựa chọn</strong> mô tả việc cộng điểm các tiêu chí
+            thành một con số KPI%. Khai xong dùng được cho mọi bộ KPI.
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input
+              label="Mã"
+              placeholder="VD: TRU_DIEM"
+              value={methodForm.code}
+              onChange={(e) => setMethodForm({ ...methodForm, code: e.target.value.toUpperCase() })}
+              required
+            />
+            <Input
+              label="Tên hiển thị"
+              placeholder="VD: Trừ điểm theo lỗi"
+              value={methodForm.name}
+              onChange={(e) => setMethodForm({ ...methodForm, name: e.target.value })}
+              required
+            />
+          </div>
+
+          <Textarea
+            label="Giải thích cho người khai KPI"
+            rows={2}
+            placeholder="Để trống thì hệ thống tự diễn giải từ bốn lựa chọn bên dưới."
+            value={methodForm.description}
+            onChange={(e) => setMethodForm({ ...methodForm, description: e.target.value })}
+          />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Select
+              label="Điểm từng tiêu chí"
+              value={methodForm.normalize_mode}
+              onChange={(e) => setMethodForm({ ...methodForm, normalize_mode: e.target.value as ScoreMethod['normalize_mode'] })}
+            >
+              {(Object.keys(NORMALIZE_LABELS) as ScoreMethod['normalize_mode'][]).map((key) => (
+                <option key={key} value={key}>{NORMALIZE_LABELS[key]}</option>
+              ))}
+            </Select>
+            <Select
+              label="Trọng số"
+              value={methodForm.weight_mode}
+              onChange={(e) => setMethodForm({ ...methodForm, weight_mode: e.target.value as ScoreMethod['weight_mode'] })}
+            >
+              {(Object.keys(WEIGHT_LABELS) as ScoreMethod['weight_mode'][]).map((key) => (
+                <option key={key} value={key}>{WEIGHT_LABELS[key]}</option>
+              ))}
+            </Select>
+            <Select
+              label="Chia cho"
+              value={methodForm.denominator_mode}
+              onChange={(e) => setMethodForm({ ...methodForm, denominator_mode: e.target.value as ScoreMethod['denominator_mode'] })}
+            >
+              {(Object.keys(DENOMINATOR_LABELS) as ScoreMethod['denominator_mode'][]).map((key) => (
+                <option key={key} value={key}>{DENOMINATOR_LABELS[key]}</option>
+              ))}
+            </Select>
+            <Input
+              label="Hệ số ra %"
+              inputMode="decimal"
+              value={methodForm.scale}
+              onChange={(e) => setMethodForm({ ...methodForm, scale: e.target.value.replace(/[^\d.]/g, '') })}
+            />
+          </div>
+
+          {/* Dien giai truc tiep: bon o tren doc rieng thi kho hinh dung,
+              ghep lai thanh cau moi thay minh vua khai ra cai gi. */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+            <p className="text-[11px] font-bold text-slate-600">Cách này sẽ tính là</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-700">
+              {describeMethod({
+                normalize_mode: methodForm.normalize_mode,
+                weight_mode: methodForm.weight_mode,
+                denominator_mode: methodForm.denominator_mode,
+                scale: Number(methodForm.scale) || 1,
+              })}
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setMethodModal(false)}>Hủy</Button>
+            <Button type="submit">Lưu cách tính</Button>
           </div>
         </form>
       </Modal>

@@ -130,14 +130,6 @@ export function AdminOrganization() {
   const userById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
   const keyword = search.trim().toLowerCase();
 
-  const visiblePositions = positions.filter((position) => !keyword
-    || position.title.toLowerCase().includes(keyword)
-    || position.code.toLowerCase().includes(keyword)
-    || (unitById.get(position.unit_id)?.name || '').toLowerCase().includes(keyword));
-  const visibleUsers = users.filter((user) => !keyword
-    || user.name.toLowerCase().includes(keyword)
-    || (user.employee_code || '').toLowerCase().includes(keyword)
-    || (unitById.get(user.unit_id || '')?.name || user.department || '').toLowerCase().includes(keyword));
 
   const unitDepth = (unit: OrganizationUnit) => {
     let depth = 0;
@@ -222,6 +214,42 @@ export function AdminOrganization() {
     (childUnitsByParent.get(activeCompany.id) || []).forEach(walk);
     return result;
   }, [activeCompany, childUnitsByParent]);
+
+  /**
+   * Ba tab deu nam BEN TRONG doanh nghiep dang mo.
+   *
+   * Truoc day Vi tri va Phan cong nhan su la danh sach phang toan he thong:
+   * dang dung trong Huy Phong Group van thay vi tri cua phap nhan khac, va
+   * nut "Them vi tri" thi mac dinh gan vao don vi dau tien tim duoc. Voi
+   * nhieu phap nhan, do la duong dan thang toi viec khai nham cong ty.
+   */
+  const scopedUnitIds = useMemo(() => {
+    // Ke ca chinh don vi goc: vi tri cap cong ty (Giam doc, Marketing...)
+    // gan thang vao phap nhan chu khong vao phong ban nao.
+    const result = new Set(unitIdsInCompany);
+    if (activeCompany) result.add(activeCompany.id);
+    return result;
+  }, [unitIdsInCompany, activeCompany]);
+
+  const visiblePositions = positions.filter((position) => scopedUnitIds.has(position.unit_id)).filter((position) => !keyword
+    || position.title.toLowerCase().includes(keyword)
+    || position.code.toLowerCase().includes(keyword)
+    || (unitById.get(position.unit_id)?.name || '').toLowerCase().includes(keyword));
+  const visibleUsers = users.filter((user) => !!user.unit_id && scopedUnitIds.has(user.unit_id)).filter((user) => !keyword
+    || user.name.toLowerCase().includes(keyword)
+    || (user.employee_code || '').toLowerCase().includes(keyword)
+    || (unitById.get(user.unit_id || '')?.name || user.department || '').toLowerCase().includes(keyword));
+
+  /**
+   * Chua chon doanh nghiep thi chi co mot man: danh sach doanh nghiep. Giu
+   * `tab` nguyen trong state de bam vao lai van tro ve dung tab cu.
+   */
+  const effectiveTab: Tab = activeCompany ? tab : 'units';
+
+  // Cac o chon trong modal cung chi liet ke don vi/vi tri CUA doanh nghiep
+  // dang mo, de khong the gan nham mot vi tri sang phap nhan khac.
+  const unitOptions = units.filter((unit) => unit.is_active && scopedUnitIds.has(unit.id));
+  const companyPositions = positions.filter((position) => scopedUnitIds.has(position.unit_id));
 
   const companyHeadcount = (unit: OrganizationUnit) => {
     let total = 0;
@@ -440,7 +468,9 @@ export function AdminOrganization() {
 
   const openNewPosition = () => {
     setEditingPosition(null);
-    setPositionForm({ code: '', title: '', unit_id: '', reports_to_position_id: '', is_manager: false, permissions: [], function_permissions: [] });
+    // Vi tri cap cong ty gan thang vao phap nhan dang mo; con muon gan vao
+    // phong ban thi doi lai trong o "Thuoc don vi".
+    setPositionForm({ code: '', title: '', unit_id: activeCompany?.id ?? '', reports_to_position_id: '', is_manager: false, permissions: [], function_permissions: [] });
     setPositionModal(true);
   };
 
@@ -484,7 +514,7 @@ export function AdminOrganization() {
   };
 
   const openAssignment = (user?: Profile) => {
-    const target = user || users[0];
+    const target = user || visibleUsers[0];
     setAssignmentForm({
       user_id: target?.id || '',
       employee_code: target?.employee_code || '',
@@ -543,7 +573,7 @@ export function AdminOrganization() {
     await loadUsers();
   };
 
-  const positionOptions = positions.filter((position) => !assignmentForm.unit_id || position.unit_id === assignmentForm.unit_id);
+  const positionOptions = companyPositions.filter((position) => !assignmentForm.unit_id || position.unit_id === assignmentForm.unit_id);
   const assignmentUnitLineage = useMemo(() => {
     const ids = new Set<string>();
     let current = assignmentForm.unit_id ? unitById.get(assignmentForm.unit_id) : undefined;
@@ -561,10 +591,13 @@ export function AdminOrganization() {
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-3">
+        {/* Dang dung trong mot doanh nghiep thi ba con so nay phai la cua
+            doanh nghiep do, khong phai tong toan he thong - neu khong nguoi
+            dung doi chieu voi danh sach ben duoi se thay lech ma khong hieu. */}
         {[
-          { label: 'Đơn vị tổ chức', value: units.length, icon: Network, color: 'text-indigo-600 bg-indigo-50' },
-          { label: 'Vị trí/chức danh', value: positions.length, icon: BriefcaseBusiness, color: 'text-violet-600 bg-violet-50' },
-          { label: 'Nhân sự đã gán đơn vị', value: users.filter((user) => user.unit_id).length, icon: UsersRound, color: 'text-emerald-600 bg-emerald-50' },
+          { label: activeCompany ? `Đơn vị trong ${activeCompany.name}` : 'Doanh nghiệp', value: activeCompany ? unitIdsInCompany.size : companies.length, icon: Network, color: 'text-indigo-600 bg-indigo-50' },
+          { label: 'Vị trí/chức danh', value: activeCompany ? companyPositions.length : positions.length, icon: BriefcaseBusiness, color: 'text-violet-600 bg-violet-50' },
+          { label: 'Nhân sự đã gán đơn vị', value: activeCompany ? companyHeadcount(activeCompany) : users.filter((user) => user.unit_id).length, icon: UsersRound, color: 'text-emerald-600 bg-emerald-50' },
         ].map((item) => (
           <Card key={item.label}><CardContent className="flex items-center gap-4">
             <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${item.color}`}><item.icon className="h-5 w-5" /></span>
@@ -576,27 +609,38 @@ export function AdminOrganization() {
       <Card>
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Quản lý cơ cấu">
-              {([
-                ['units', 'Cây tổ chức'], ['positions', 'Vị trí'], ['assignments', 'Phân công nhân sự'],
-              ] as const).map(([value, label]) => (
-                <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${tab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
-              ))}
-            </div>
-            <Button theme="admin" onClick={() => tab === 'units' ? openNewUnit() : tab === 'positions' ? openNewPosition() : openAssignment()}>
-              <Plus className="h-4 w-4" />{tab === 'units' ? (activeCompany ? 'Thêm đơn vị' : 'Thêm doanh nghiệp') : tab === 'positions' ? 'Thêm vị trí' : 'Gán nhân sự'}
+            {/* Ba tab la ba goc nhin cua CUNG mot doanh nghiep, nen chi
+                hien sau khi da chon doanh nghiep. */}
+            {activeCompany ? (
+              <div className="inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Quản lý cơ cấu">
+                {([
+                  ['units', 'Cây tổ chức'], ['positions', 'Vị trí'], ['assignments', 'Phân công nhân sự'],
+                ] as const).map(([value, label]) => (
+                  <button key={value} type="button" role="tab" aria-selected={effectiveTab === value} onClick={() => setTab(value)} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${effectiveTab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
+                ))}
+              </div>
+            ) : (
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Doanh nghiệp</h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Chọn một doanh nghiệp để làm việc với cây tổ chức, vị trí và nhân sự của riêng nó.
+                </p>
+              </div>
+            )}
+            <Button theme="admin" onClick={() => effectiveTab === 'units' ? openNewUnit() : effectiveTab === 'positions' ? openNewPosition() : openAssignment()}>
+              <Plus className="h-4 w-4" />{effectiveTab === 'units' ? (activeCompany ? 'Thêm đơn vị' : 'Thêm doanh nghiệp') : effectiveTab === 'positions' ? 'Thêm vị trí' : 'Gán nhân sự'}
             </Button>
           </div>
           <div className="relative mt-4">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo mã, tên đơn vị, vị trí hoặc nhân sự..." className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={activeCompany ? `Tìm trong ${activeCompany.name}...` : 'Tìm doanh nghiệp...'} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
           </div>
         </CardContent>
       </Card>
 
       {loading ? <div className="space-y-3">{Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-20" />)}</div>
         : loadError ? <ErrorState message={loadError} onRetry={() => load()} />
-          : tab === 'units' ? (
+          : effectiveTab === 'units' ? (
             <div className="space-y-3">
               {/* --- Hai màn tách hẳn: danh sách doanh nghiệp, rồi sơ đồ của
                       doanh nghiệp được chọn. Không xổ sơ đồ ngay dưới danh
@@ -622,34 +666,59 @@ export function AdminOrganization() {
                         const children = childUnitsByParent.get(company.id) || [];
                         const mistyped = company.unit_type !== 'company' && company.unit_type !== 'group';
                         return (
-                          <button
+                          /* Vung bam mo so do va nut sua/xoa phai la hai nut
+                             ANH EM, khong long nhau: button trong button vua
+                             sai HTML vua lam ca the an theo nut ben trong. */
+                          <div
                             key={company.id}
-                            type="button"
-                            onClick={() => chooseCompany(company.id)}
-                            className="rounded-xl border-2 border-slate-200 p-4 text-left transition hover:border-indigo-400 hover:shadow-md"
+                            className="group relative rounded-xl border-2 border-slate-200 transition hover:border-indigo-400 hover:shadow-md"
                           >
-                            <span className="flex items-center gap-2.5">
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
-                                <Building2 className="h-5 w-5" />
-                              </span>
-                              <span className="min-w-0">
-                                <strong className="block truncate text-sm text-slate-900">{company.name}</strong>
-                                <span className="block truncate text-[11px] text-slate-500">
-                                  {company.code} · {UNIT_TYPES[company.unit_type]}
+                            <button
+                              type="button"
+                              onClick={() => chooseCompany(company.id)}
+                              className="block w-full p-4 text-left"
+                            >
+                              <span className="flex items-center gap-2.5 pr-16">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                                  <Building2 className="h-5 w-5" />
+                                </span>
+                                <span className="min-w-0">
+                                  <strong className="block truncate text-sm text-slate-900">{company.name}</strong>
+                                  <span className="block truncate text-[11px] text-slate-500">
+                                    {company.code} · {UNIT_TYPES[company.unit_type]}
+                                  </span>
                                 </span>
                               </span>
-                            </span>
-                            <span className="mt-3 flex gap-4 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
-                              <span><strong className="text-slate-800">{companyHeadcount(company)}</strong> nhân sự</span>
-                              <span><strong className="text-slate-800">{children.length}</strong> đơn vị trực thuộc</span>
-                            </span>
-                            {mistyped && (
-                              <span className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-700">
-                                <CircleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                                Đang khai loại là {UNIT_TYPES[company.unit_type]}, không phải pháp nhân.
+                              <span className="mt-3 flex gap-4 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
+                                <span><strong className="text-slate-800">{companyHeadcount(company)}</strong> nhân sự</span>
+                                <span><strong className="text-slate-800">{children.length}</strong> đơn vị trực thuộc</span>
                               </span>
-                            )}
-                          </button>
+                              {mistyped && (
+                                <span className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-700">
+                                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                                  Đang khai loại là {UNIT_TYPES[company.unit_type]}, không phải pháp nhân.
+                                </span>
+                              )}
+                            </button>
+                            <div className="absolute right-2.5 top-2.5 flex gap-1 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openEditUnit(company)}
+                                aria-label={`Sửa ${company.name}`}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="danger"
+                                onClick={() => void removeUnit(company)}
+                                aria-label={`Xóa ${company.name}`}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
@@ -796,7 +865,7 @@ export function AdminOrganization() {
                 </>
               )}
             </div>
-          ) : tab === 'positions' ? (
+          ) : effectiveTab === 'positions' ? (
             <div className="space-y-3">
               {/* Sơ đồ ĐƠN VỊ không trả lời được "ai cấp trên của ai" — phòng
                   ban vốn ngang hàng nhau. Thứ bậc nằm ở vị trí, qua trường
@@ -862,8 +931,8 @@ export function AdminOrganization() {
       <Modal open={positionModal} onClose={() => { setPositionModal(false); setEditingPosition(null); }} title={editingPosition ? 'Sửa vị trí chức danh' : 'Thêm vị trí chức danh'}>
         <form onSubmit={savePosition} className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><Input label="Mã vị trí" value={positionForm.code} onChange={(event) => setPositionForm({ ...positionForm, code: event.target.value })} placeholder="VD: SALES-MGR" required /><Input label="Tên vị trí" value={positionForm.title} onChange={(event) => setPositionForm({ ...positionForm, title: event.target.value })} required /></div>
-          <Select label="Thuộc đơn vị" value={positionForm.unit_id} onChange={(event) => setPositionForm({ ...positionForm, unit_id: event.target.value })} required><option value="">Chọn đơn vị</option>{units.filter((unit) => unit.is_active).map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
-          <Select label="Báo cáo cho vị trí" value={positionForm.reports_to_position_id} onChange={(event) => setPositionForm({ ...positionForm, reports_to_position_id: event.target.value })}><option value="">Không có</option>{positions.filter((position) => position.is_active && position.id !== editingPosition?.id).map((position) => <option key={position.id} value={position.id}>{position.title} · {unitById.get(position.unit_id)?.name}</option>)}</Select>
+          <Select label="Thuộc đơn vị" value={positionForm.unit_id} onChange={(event) => setPositionForm({ ...positionForm, unit_id: event.target.value })} required><option value="">Chọn đơn vị</option>{unitOptions.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
+          <Select label="Báo cáo cho vị trí" value={positionForm.reports_to_position_id} onChange={(event) => setPositionForm({ ...positionForm, reports_to_position_id: event.target.value })}><option value="">Không có</option>{companyPositions.filter((position) => position.is_active && position.id !== editingPosition?.id).map((position) => <option key={position.id} value={position.id}>{position.title} · {unitById.get(position.unit_id)?.name}</option>)}</Select>
           <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700"><input type="checkbox" checked={positionForm.is_manager} onChange={(event) => setPositionForm({ ...positionForm, is_manager: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-indigo-600" /><ShieldCheck className="h-4 w-4 text-indigo-500" />Đây là vị trí quản lý</label>
           <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Quyền module mặc định</legend>
@@ -882,7 +951,7 @@ export function AdminOrganization() {
         <form onSubmit={assignEmployee} className="space-y-4">
           <Select label="Nhân sự" value={assignmentForm.user_id} onChange={(event) => chooseEmployee(event.target.value)} required><option value="">Chọn nhân sự</option>{users.filter((user) => user.is_active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>
           <div className="grid grid-cols-2 gap-3"><Input label="Mã nhân viên" value={assignmentForm.employee_code} onChange={(event) => setAssignmentForm({ ...assignmentForm, employee_code: event.target.value })} /><Input label="Ngày vào làm" type="date" value={assignmentForm.hire_date} onChange={(event) => setAssignmentForm({ ...assignmentForm, hire_date: event.target.value })} /></div>
-          <Select label="Đơn vị" value={assignmentForm.unit_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, unit_id: event.target.value, position_id: '', manager_id: '' })}><option value="">Chưa gán</option>{units.filter((unit) => unit.is_active).map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
+          <Select label="Đơn vị" value={assignmentForm.unit_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, unit_id: event.target.value, position_id: '', manager_id: '' })}><option value="">Chưa gán</option>{unitOptions.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
           <Select label="Vị trí/chức danh" value={assignmentForm.position_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, position_id: event.target.value })}><option value="">Chưa gán</option>{positionOptions.filter((position) => position.is_active).map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</Select>
           <div>
             <Select label="Quản lý trực tiếp" value={assignmentForm.manager_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, manager_id: event.target.value })}><option value="">Chưa gán</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} · {unitById.get(user.unit_id || '')?.name}</option>)}</Select>
