@@ -141,6 +141,22 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   const activeGroup = groupsWithItems.find((group) => group.name === openGroup) ?? null;
 
+  /**
+   * Bam mot module tren thanh ngang thi vao luon chuc nang DAU TIEN cua no.
+   *
+   * Chi doi thanh doc ma khong dieu huong se de nguoi dung o lai trang cu
+   * trong khi thanh doc da liet ke mot module khac - hai thu tren man noi hai
+   * chuyen khac nhau. Dang dung san trong module do thi khong dieu huong lai,
+   * tranh keo ho ra khoi trang dang lam.
+   */
+  const openModule = (name: string) => {
+    setOpenGroup(name);
+    setSidebarOpen(false);
+    if (name === groupOfCurrentPath) return;
+    const first = groupsWithItems.find((group) => group.name === name)?.items[0];
+    if (first) navigate(first.to);
+  };
+
   const handleSwitchToStaff = () => {
     // Ghi nhớ đúng màn hình quản trị đang làm để khi thoát chế độ xem thử,
     // người dùng quay lại đúng ngữ cảnh thay vì luôn bị đẩy về Dashboard.
@@ -208,59 +224,17 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {!activeGroup ? (
-            /* --- Cap mot: chi cac cum --- */
+          {activeGroup ? (
             <div className="space-y-1">
-              {groupsWithItems.map((group) => {
-                const Icon = group.icon;
-                const pending = group.items.some((item) => item.to === '/admin/assignments')
-                  ? pendingAssignments : 0;
-                return (
-                  <button
-                    key={group.name}
-                    type="button"
-                    onClick={() => setOpenGroup(group.name)}
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-slate-300 transition-colors hover:bg-white/[0.07] hover:text-white"
-                  >
-                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white/[0.07] text-indigo-300">
-                      <Icon className="h-4.5 w-4.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      {/* Ten cum duoc XUONG DONG chu khong cat: day la nhan
-                          chinh de bam, "Thoi gian & Nghi p..." thi khong con
-                          doc ra la cai gi. Cau mo ta thi cat duoc. */}
-                      <span className="block text-sm font-medium leading-snug">{group.name}</span>
-                      <span className="mt-0.5 block truncate text-[11px] text-slate-500">{group.hint}</span>
-                    </span>
-                    {pending > 0 && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
-                        {pending}
-                      </span>
-                    )}
-                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-600" />
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            /* --- Cap hai: chuc nang trong cum --- */
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => setOpenGroup(null)}
-                className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-slate-400 transition-colors hover:bg-white/[0.07] hover:text-white"
-              >
-                <ChevronLeft className="h-4 w-4 flex-shrink-0" />
-                <span className="text-[11px] font-bold uppercase tracking-[0.14em]">Tất cả chức năng</span>
-              </button>
-
+              {/* Nhac lai dang dung trong module nao: thanh ngang o tren co the
+                  bi cuon khuat, va man hinh hep thi no xuong dong. */}
               <div className="mb-2 flex items-center gap-2.5 px-3 pb-2">
                 <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
                   <activeGroup.icon className="h-4.5 w-4.5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-bold text-white">{activeGroup.name}</span>
-                  <span className="block truncate text-[11px] text-slate-500">
+                  <span className="block text-sm font-bold leading-snug text-white">{activeGroup.name}</span>
+                  <span className="block text-[11px] text-slate-500">
                     {activeGroup.items.length} chức năng
                   </span>
                 </span>
@@ -283,7 +257,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     }
                   >
                     <Icon className="h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    <span className="min-w-0 flex-1">{item.label}</span>
                     {item.to === '/admin/assignments' && pendingAssignments > 0 && (
                       <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold text-white">
                         {pendingAssignments}
@@ -293,6 +267,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 );
               })}
             </div>
+          ) : (
+            <p className="px-3 py-6 text-xs leading-relaxed text-slate-500">
+              Chọn một module ở thanh trên để xem các chức năng bên trong.
+            </p>
           )}
         </nav>
 
@@ -434,6 +412,49 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
+
+        {/* ---- Thanh module nam ngang ----
+             Cap mot cua dieu huong. Thanh doc ben trai chi liet ke chuc nang
+             CUA module dang chon, nen khong con phai in ca 30 muc mot luc.
+
+             `sticky top-[4.5rem]`: dinh ngay duoi header, de cuon sau xuong
+             van doi duoc module ma khong phai cuon nguoc len dau trang. */}
+        <div className="app-modulebar sticky top-[4.5rem] z-10 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl">
+          <div className="mx-auto w-full max-w-[1520px] overflow-x-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex min-w-max gap-1 py-2">
+              {groupsWithItems.map((group) => {
+                const Icon = group.icon;
+                const isActive = group.name === openGroup;
+                const pending = group.items.some((item) => item.to === '/admin/assignments')
+                  ? pendingAssignments : 0;
+                return (
+                  <button
+                    key={group.name}
+                    type="button"
+                    onClick={() => openModule(group.name)}
+                    aria-current={isActive ? 'true' : undefined}
+                    title={group.hint}
+                    className={`flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <span className="whitespace-nowrap">{group.name}</span>
+                    {pending > 0 && (
+                      <span className={`flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                        isActive ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
+                      }`}>
+                        {pending}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
 
         {/* Page content */}
         <main id="main-content" tabIndex={-1} className="page-content flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
