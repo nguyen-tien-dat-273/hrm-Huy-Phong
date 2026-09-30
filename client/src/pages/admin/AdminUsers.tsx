@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { UserPlus, FileSpreadsheet, Search, Shield, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Grid2X2, List, Mail, Phone, Building2, Wallet, UserRound } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -8,7 +8,6 @@ import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { PermissionFunctionList } from '@/components/PermissionFunctionList';
 import { StaffFunctionSummary } from '@/components/StaffFunctionSummary';
 import { EffectivePermissions } from '@/components/EffectivePermissions';
 import { EmployeeImportModal } from '@/components/EmployeeImportModal';
@@ -41,11 +40,6 @@ const fallbackAccessRoles: AccessRole[] = [
   { code: 'ceo', name: 'CEO', description: null, permissions: [...ADMIN_PERMISSIONS], function_permissions: [], is_system: true, is_active: true, sort_order: 40 },
 ];
 
-const PERMISSION_GROUPS: { label: string; permissions: AdminPermission[] }[] = [
-  { label: 'Nhân sự & hệ thống', permissions: ['users', 'settings'] },
-  { label: 'Công việc & thời gian', permissions: ['projects', 'attendance', 'leave'] },
-  { label: 'Báo cáo & phát triển', permissions: ['reports', 'training'] },
-];
 
 /** Mật khẩu tạm vừa sinh ra, hiển thị đúng một lần để admin bàn giao. */
 interface IssuedCredential {
@@ -143,14 +137,6 @@ export function AdminUsers() {
     navigate(`/admin/organization?tab=assignments&user=${encodeURIComponent(user.id)}`);
   };
 
-  const togglePermission = (permission: AdminPermission) => {
-    setForm((prev) => ({
-      ...prev,
-      permissions: prev.permissions.includes(permission)
-        ? prev.permissions.filter((p) => p !== permission)
-        : [...prev.permissions, permission],
-    }));
-  };
 
   const departments = Array.from(
     new Set(users.map((user) => user.department).filter((value): value is string => Boolean(value))),
@@ -604,44 +590,60 @@ export function AdminUsers() {
                 </span>
               </div>
             ) : fullAdmin ? (
-              <>
-                <p className="text-xs text-slate-500 mb-2.5 leading-relaxed">
-                  Cấp từng quyền để nhân viên dùng một phần khu quản trị. Không tick gì thì
-                  chỉ dùng được khu nhân viên như bình thường.
-                </p>
-                <div className="space-y-4">
-                  {PERMISSION_GROUPS.map((group) => (
-                    <div key={group.label}>
-                      <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">{group.label}</p>
-                      <div className="space-y-1.5">
-                        {group.permissions.map((permission) => {
-                          const checked = form.permissions.includes(permission);
-                          return (
-                            <label
-                              key={permission}
-                              className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition-colors ${
-                                checked ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => togglePermission(permission)}
-                                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="min-w-0">
-                                <span className="block text-sm font-medium text-slate-800">{PERMISSION_LABELS[permission].label}</span>
-                                <span className="block text-xs text-slate-500 leading-snug">{PERMISSION_LABELS[permission].desc}</span>
-                                <PermissionFunctionList permission={permission} compact />
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+              // Quyen den tu VI TRI trong Co cau to chuc, khong cap le o day.
+              //
+              // Truoc day man nay co 7 o tich quyen, dung bo quyen ma mau
+              // quyen theo vi tri da cap. Hai cho cung cap mot quyen thi go o
+              // mot cho khong go duoc quyen do - nguoi go tuong xong roi ma
+              // thuc te van con. Gio chi con MOT cho cap: vi tri.
+              <div className="space-y-3">
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+                  <p className="flex items-start gap-2 text-xs leading-relaxed text-indigo-900">
+                    <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-indigo-600" />
+                    <span>
+                      Quyền quản trị cấp theo <strong>vị trí</strong>, không cấp riêng cho từng
+                      tài khoản. Gán người này vào một vị trí ở{' '}
+                      <strong>Cơ cấu tổ chức → Phân công nhân sự</strong>, và đặt quyền cho vị
+                      trí đó ở <strong>Cơ cấu tổ chức → Vị trí</strong>.
+                    </span>
+                  </p>
+                  {editingUser && (
+                    <p className="mt-2 border-t border-indigo-200/70 pt-2 text-xs text-indigo-800">
+                      Vị trí hiện tại:{' '}
+                      <strong>{positionName(editingUser.position_id)}</strong>
+                      {' · '}
+                      <Link to={`/admin/organization?tab=positions&company=${editingUser.unit_id ?? ''}`} className="underline">
+                        Mở Cơ cấu tổ chức
+                      </Link>
+                    </p>
+                  )}
                 </div>
-              </>
+
+                {/* Quyen le cap trong ban cu: van con hieu luc nen phai HIEN
+                    RA cho go duoc, thay vi an di roi de no am tham cap quyen
+                    ma khong man hinh nao noi toi. */}
+                {form.permissions.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-900">
+                      <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                      <span>
+                        Tài khoản này còn <strong>{form.permissions.length} quyền lẻ</strong> cấp
+                        từ bản cũ:{' '}
+                        {form.permissions.map((permission) => PERMISSION_LABELS[permission].label).join(', ')}.
+                        Chúng vẫn đang có hiệu lực. Chuyển các quyền này sang vị trí rồi gỡ đi để
+                        chỉ còn một nơi cấp quyền.
+                      </span>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, permissions: [] })}
+                      className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
+                    >
+                      Gỡ hết quyền lẻ
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
                 Không cấp quyền quản trị cho tài khoản mới. Admin/CEO có thể bổ sung quyền sau.
