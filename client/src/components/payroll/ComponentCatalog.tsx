@@ -64,6 +64,43 @@ interface Draft {
   note: string;
 }
 
+/**
+ * Sinh mã từ tên khoản.
+ *
+ * Mã chỉ để viết trong công thức, nhưng bắt người khai tự nghĩ ra một chuỗi
+ * viết hoa không dấu ngay ở bước đầu là dựng một rào chắn trước việc đơn
+ * giản nhất họ muốn làm: liệt kê ra những khoản công ty đang trả.
+ */
+function codeFromName(name: string, taken: string[]): string {
+  const base = name
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/^([0-9])/, 'K$1')
+    .slice(0, 40) || 'KHOAN';
+  if (!taken.includes(base)) return base;
+  for (let i = 2; i < 100; i += 1) {
+    const candidate = `${base}_${i}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+  return `${base}_${Date.now().toString().slice(-4)}`;
+}
+
+/**
+ * Khoản mới khai tên mà chưa động tới cách tính.
+ *
+ * Đúng trạng thái mà nút "Thêm khoản" tạo ra: tiền cố định 0đ, không công
+ * thức. Dùng để nhắc trên danh sách, không chặn gì — ai cố ý khai một khoản
+ * 0đ vẫn khai được.
+ */
+function needsSetup(component: PayComponent): boolean {
+  return component.calc_type === 'FIXED'
+    && Number(component.default_amount) === 0
+    && !component.formula;
+}
+
 const BLANK: Draft = {
   code: '', name: '', kind: 'EARNING', calc_type: 'FIXED', default_amount: '0',
   input_code: '', base_code: '', formula: '', taxable: true, insurable: false,
@@ -76,6 +113,16 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
   const confirm = useConfirm();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  /**
+   * Form khai NHANH: chỉ tên và loại.
+   *
+   * Form đầy đủ hỏi 13 thứ cùng lúc — cách tính, đơn giá, thứ tự tính, trần
+   * tiền, hệ số tăng ca, chịu thuế, tính bảo hiểm... Người khai lần đầu chỉ
+   * đang muốn liệt kê ra công ty trả những khoản gì; cách tính là việc của
+   * bước sau, và mỗi khoản một kiểu.
+   */
+  const [quickAdd, setQuickAdd] = useState<{ name: string; kind: PayComponentKind } | null>(null);
+  const [quickSaving, setQuickSaving] = useState(false);
 
   const formulaScope = useMemo(() => {
     const codes = components.flatMap((component) => [
@@ -172,6 +219,51 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
     onChanged();
   };
 
+  /** Lưu khoản mới ở dạng tối thiểu, cách tính để bước sau. */
+  const handleQuickSave = async (keepOpen: boolean) => {
+    if (!quickAdd) return;
+    const name = quickAdd.name.trim();
+    if (name.length < 2) {
+      toast('Nhập tên khoản lương.', 'warning');
+      return;
+    }
+    const code = codeFromName(name, components.map((item) => item.code));
+    // Xếp sau mọi khoản đang có: khoản khai sau thường tính trên khoản khai
+    // trước, và người dùng có thể đổi lại ở form đầy đủ.
+    const nextOrder = components.reduce((max, item) => Math.max(max, item.sort_order), 400) + 10;
+
+    setQuickSaving(true);
+    const error = await saveComponent({
+      code,
+      name,
+      kind: quickAdd.kind,
+      calc_type: 'FIXED',
+      default_amount: 0,
+      input_code: null,
+      base_code: null,
+      formula: null,
+      taxable: quickAdd.kind === 'EARNING',
+      insurable: false,
+      prorate: false,
+      sort_order: nextOrder,
+      ot_multiplier: null,
+      tax_exempt_cap: null,
+      max_amount: null,
+      is_active: true,
+      note: null,
+    });
+    setQuickSaving(false);
+
+    if (error) {
+      toast('Lưu khoản lương thất bại: ' + error, 'error');
+      return;
+    }
+    toast(`Đã thêm "${name}". Khai cách tính khi nào cần.`, 'success');
+    if (keepOpen) setQuickAdd({ name: '', kind: quickAdd.kind });
+    else setQuickAdd(null);
+    onChanged();
+  };
+
   const handleDelete = async (component: PayComponent) => {
     const ok = await confirm({
       title: `Xóa khoản "${component.name}"?`,
@@ -202,7 +294,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
           Bảo hiểm bắt buộc và thuế TNCN không nằm ở đây — hệ thống tự tính theo tỷ lệ khai
           ở tab <strong className="text-slate-500">Tham số lương</strong>.
         </p>
-        <Button onClick={() => setDraft({ ...BLANK })}>
+        <Button onClick={() => setQuickAdd({ name: '', kind: 'EARNING' })}>
           <Plus className="h-4 w-4" /> Thêm khoản
         </Button>
       </div>
@@ -247,23 +339,38 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {CALC_LABEL[component.calc_type]}
-                        {component.calc_type === 'PERCENT' && ` — ${Number(component.default_amount)}% của ${component.base_code}`}
-                        {component.calc_type === 'FIXED' && ` — mặc định ${formatVND(Number(component.default_amount))}`}
-                        {component.calc_type === 'FORMULA' && (
-                          <code className="ml-1 font-mono text-slate-600">{component.formula}</code>
-                        )}
-                      </p>
+                      {needsSetup(component) ? (
+                        <p className="mt-1 text-xs font-medium text-amber-600">
+                          Chưa khai cách tính — hiện đang là 0đ
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {CALC_LABEL[component.calc_type]}
+                          {component.calc_type === 'PERCENT' && ` — ${Number(component.default_amount)}% của ${component.base_code}`}
+                          {component.calc_type === 'FIXED' && ` — mặc định ${formatVND(Number(component.default_amount))}`}
+                          {component.calc_type === 'FORMULA' && (
+                            <code className="ml-1 font-mono text-slate-600">{component.formula}</code>
+                          )}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-1">
-                      <button
-                        onClick={() => openEdit(component)}
-                        className="rounded p-1.5 text-slate-300 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
-                        aria-label={`Sửa ${component.name}`}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
+                      {needsSetup(component) ? (
+                        // Buoc hai cua luong khai: bam thang vao day chu khong
+                        // phai tim ra rang cai but chi nho o goc moi la cho
+                        // khai cach tinh.
+                        <Button size="sm" variant="outline" onClick={() => openEdit(component)}>
+                          Khai cách tính
+                        </Button>
+                      ) : (
+                        <button
+                          onClick={() => openEdit(component)}
+                          className="rounded p-1.5 text-slate-300 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                          aria-label={`Sửa ${component.name}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       {component.is_system ? (
                         <span
                           className="p-1.5 text-slate-200"
@@ -289,10 +396,72 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
         </Card>
       ))}
 
+      {/* ---- Bước 1: liệt kê khoản ---- */}
+      <Modal
+        open={!!quickAdd}
+        onClose={() => setQuickAdd(null)}
+        title="Thêm khoản lương"
+        size="md"
+      >
+        {quickAdd && (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => { event.preventDefault(); void handleQuickSave(false); }}
+          >
+            <p className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-2.5 text-xs leading-relaxed text-indigo-900">
+              Liệt kê trước những khoản công ty đang trả. <strong>Cách tính khai sau</strong> —
+              mỗi khoản một kiểu, và có khoản phải chờ chốt lại mới biết tính thế nào.
+            </p>
+
+            <Input
+              label="Tên khoản"
+              placeholder="VD: Phụ cấp xăng xe"
+              value={quickAdd.name}
+              onChange={(e) => setQuickAdd({ ...quickAdd, name: e.target.value })}
+              autoFocus
+            />
+
+            <Select
+              label="Loại"
+              value={quickAdd.kind}
+              onChange={(e) => setQuickAdd({ ...quickAdd, kind: e.target.value as PayComponentKind })}
+            >
+              {Object.entries(KIND_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </Select>
+
+            {quickAdd.name.trim() && (
+              <p className="text-[11px] text-slate-400">
+                Mã dùng trong công thức:{' '}
+                <code className="font-mono text-slate-600">
+                  {codeFromName(quickAdd.name, components.map((item) => item.code))}
+                </code>
+                {' '}· đổi được ở bước khai cách tính
+              </p>
+            )}
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setQuickAdd(null)} disabled={quickSaving}>
+                Đóng
+              </Button>
+              {/* Liet ke thi it khi chi co mot khoan - giu form mo de go tiep. */}
+              <Button type="button" variant="outline" onClick={() => void handleQuickSave(true)} disabled={quickSaving}>
+                Lưu & thêm khoản nữa
+              </Button>
+              <Button type="submit" disabled={quickSaving}>
+                {quickSaving ? 'Đang lưu…' : 'Lưu khoản'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Modal>
+
+      {/* ---- Bước 2: khai cách tính ---- */}
       <Modal
         open={!!draft}
         onClose={() => setDraft(null)}
-        title={draft?.id ? 'Sửa khoản lương' : 'Thêm khoản lương'}
+        title={draft?.id ? 'Cách tính khoản lương' : 'Thêm khoản lương'}
         size="lg"
       >
         {draft && (
