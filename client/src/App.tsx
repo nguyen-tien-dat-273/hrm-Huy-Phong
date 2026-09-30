@@ -189,6 +189,7 @@ function AppRoutes() {
       <Route path="/admin/payroll/inputs" element={admin('attendance', <AdminPayroll section="inputs" />, { functionCode: 'admin.payroll_inputs' })} />
       <Route path="/admin/payroll/adjustments" element={admin('attendance', <AdminPayroll section="adjustments" />, { functionCode: 'admin.payroll_adjustments' })} />
       <Route path="/admin/payroll/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
+      <Route path="/admin/payroll/kpi" element={admin('attendance', <AdminPayroll section="kpiPay" />, { functionCode: 'admin.payroll_components' })} />
       <Route path="/admin/payroll/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
       <Route path="/admin/leave" element={admin('leave', <AdminLeave />)} />
       <Route path="/admin/training" element={admin('training', <AdminTraining />)} />

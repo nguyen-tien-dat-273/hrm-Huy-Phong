@@ -29,6 +29,7 @@ import { MonthNav } from '@/components/ui/MonthNav';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { PaySchemeModal } from '@/components/payroll/PaySchemeModal';
 import { ComponentCatalog } from '@/components/payroll/ComponentCatalog';
+import { KpiPayMethods } from '@/components/payroll/KpiPayMethods';
 import { PayslipBreakdown } from '@/components/payroll/PayslipBreakdown';
 import { MonthlyInputsTab } from '@/components/payroll/MonthlyInputsTab';
 import { useToast } from '@/contexts/ToastContext';
@@ -57,7 +58,7 @@ import { UnitPayItemsCard } from '@/components/payroll/UnitPayItemsCard';
 import { BulkSchemeModal } from '@/components/payroll/BulkSchemeModal';
 import type { Profile } from '@/types';
 
-type Tab = 'register' | 'schemes' | 'inputs' | 'adjustments' | 'catalog' | 'params';
+type Tab = 'register' | 'schemes' | 'inputs' | 'adjustments' | 'catalog' | 'kpiPay' | 'params';
 
 /**
  * Mỗi mục là một ROUTE riêng, đã hiện thành module con trên sidebar.
@@ -94,6 +95,11 @@ const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: bool
   catalog: {
     title: 'Danh mục khoản lương',
     hint: 'Định nghĩa CÁCH tính của từng khoản. Khai một lần ở đây rồi đơn vị và nhân sự chọn lại.',
+    monthScoped: false,
+  },
+  kpiPay: {
+    title: 'Cách tính lương KPI',
+    hint: 'Quy KPI% do module KPI chấm ra thành tiền. Mỗi bộ phận có thể quy một kiểu khác nhau.',
     monthScoped: false,
   },
   params: {
@@ -681,6 +687,13 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         <ComponentCatalog
           components={data.components}
           params={params}
+          onChanged={() => loadData(true)}
+        />
+      )}
+
+      {tab === 'kpiPay' && data && (
+        <KpiPayMethods
+          components={data.components}
           onChanged={() => loadData(true)}
         />
       )}

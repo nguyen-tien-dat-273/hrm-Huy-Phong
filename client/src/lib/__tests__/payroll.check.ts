@@ -10,6 +10,7 @@ import {
 import { DEFAULT_PAYROLL_SETTINGS, toPayrollParams } from '../payrollSettings';
 import { describeLevelIssues, isAutoScorable, scoreFromLevels } from '../kpiScoring';
 import { buildPayrollJournal } from '../payrollJournal';
+import { buildKpiFormula } from '../kpiPayFormula';
 import type { EmployeePayProfile, PayComponent, EmployeePayItem, Profile } from '@/types';
 
 let failures = 0;
@@ -244,6 +245,47 @@ check('phí công đoàn trên lương thời gian + vận chuyển',
   huyphong.lines.find((l) => l.code === 'PHI_CONG_DOAN')?.amount, 215_000);
 check('không cảnh báo nào cho bộ khoản Huy Phong',
   huyphong.warnings.filter((w) => w.includes('công thức')).length, 0);
+
+// --- Cách tính lương KPI ---------------------------------------------------
+// Form sinh ra biểu thức rồi engine tính; kiểm chứng đi qua CẢ HAI bước để
+// bắt được cả lỗi sinh sai lẫn lỗi cú pháp mà engine không chạy nổi.
+const kpiMoney = (formula: string, pct: number) =>
+  evaluateFormula(formula, { MUC_RIENG: 5_000_000, KPI_PCT: pct }).value;
+
+const tyLe = buildKpiFormula({
+  name: 'x', mode: 'TY_LE', cap: '120', floor: '', threshold: '', tiers: [],
+});
+check('tỷ lệ: đạt 85% nhận 85%', kpiMoney(tyLe, 85), 4_250_000);
+// Trần là thứ hay quên nhất: chấm 150% mà không kẹp thì trả vượt quỹ lương.
+check('tỷ lệ: chấm 150% vẫn chặn ở trần 120%', kpiMoney(tyLe, 150), 6_000_000);
+
+const coSan = buildKpiFormula({
+  name: 'x', mode: 'TY_LE', cap: '120', floor: '50', threshold: '', tiers: [],
+});
+check('sàn 50%: chấm 30% vẫn nhận theo 50%', kpiMoney(coSan, 30), 2_500_000);
+
+const nguong = buildKpiFormula({
+  name: 'x', mode: 'NGUONG', cap: '120', floor: '', threshold: '80', tiers: [],
+});
+check('ngưỡng 80%: chấm 79% nhận 0đ', kpiMoney(nguong, 79), 0);
+check('ngưỡng 80%: chấm 80% nhận đúng 80%', kpiMoney(nguong, 80), 4_000_000);
+
+const datKhong = buildKpiFormula({
+  name: 'x', mode: 'DAT_KHONG', cap: '', floor: '', threshold: '90', tiers: [],
+});
+check('đạt/không: chấm 89% nhận 0đ', kpiMoney(datKhong, 89), 0);
+check('đạt/không: chấm 95% vẫn nhận trọn mức', kpiMoney(datKhong, 95), 5_000_000);
+
+// Bac khai LON XON co y: form phai tu xep giam dan, neu khong moi nguoi deu
+// roi vao bac thap nhat khop dau tien.
+const bacThang = buildKpiFormula({
+  name: 'x', mode: 'BAC_THANG', cap: '', floor: '', threshold: '',
+  tiers: [{ from: '60', pay: '50' }, { from: '100', pay: '120' }, { from: '80', pay: '100' }],
+});
+check('bậc thang: 105% rơi vào bậc cao nhất', kpiMoney(bacThang, 105), 6_000_000);
+check('bậc thang: 85% rơi vào bậc giữa', kpiMoney(bacThang, 85), 5_000_000);
+check('bậc thang: 65% rơi vào bậc thấp', kpiMoney(bacThang, 65), 2_500_000);
+check('bậc thang: 40% dưới mọi bậc nhận 0đ', kpiMoney(bacThang, 40), 0);
 
 // Thiếu cơ chế lương.
 const noProfile = computePayslip({ profile, payProfile: null, items: [], inputs: {}, stats, settings });
