@@ -77,13 +77,86 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
  * xuất hiện trong `ADMIN_NAV_ITEMS`, vì thêm một mục mới vào giữa mảng đó sẽ
  * âm thầm đảo lộn cả sidebar.
  */
-export const ADMIN_NAV_GROUPS: { name: string; icon: LucideIcon; hint: string }[] = [
-  { name: 'Tổng quan', icon: LayoutDashboard, hint: 'Dashboard và báo cáo toàn công ty' },
-  { name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ, tuyển dụng và giấy tờ' },
-  { name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ' },
-  { name: 'Thời gian & Nghỉ phép', icon: Clock, hint: 'Chấm công, bảng công và đơn nghỉ' },
-  { name: 'Lương & Đãi ngộ', icon: Wallet, hint: 'Bảng lương, cơ chế và tham số' },
-  { name: 'Phát triển nhân sự', icon: Target, hint: 'KPI, đánh giá và cách quy ra lương' },
-  { name: 'Đào tạo & Quy trình', icon: BookOpen, hint: 'Khóa học và thư viện quy trình' },
-  { name: 'Hệ thống', icon: Settings, hint: 'Cấu hình, nhật ký và tính năng' },
+export interface AdminNavGroup {
+  name: string;
+  icon: LucideIcon;
+  hint: string;
+  /**
+   * Lop Tailwind viet SAN, khong ghep chuoi.
+   *
+   * Tailwind quet ma nguon de biet phai sinh ra lop nao. Ghep kieu
+   * `bg-${tone}-50` thi trong ma nguon khong co chuoi "bg-sky-50" nao, lop do
+   * khong duoc sinh, va mau bien mat o ban build that - trong khi chay dev
+   * van dung. Loi kieu do chi lo ra sau khi deploy.
+   */
+  iconIdle: string;
+  iconOn: string;
+  tileOn: string;
+  textOn: string;
+  chip: string;
+}
+
+/**
+ * Cum chuc nang o cap mot cua dieu huong.
+ *
+ * Sidebar phang phai in ra ca 30 muc cung luc, nghia la moi lan doi trang
+ * nguoi dung lai quet qua mot danh sach dai gap may lan man hinh. Dung hai
+ * cap: cap mot chi con 8 o, bam vao moi xo ra chuc nang con ben trong.
+ *
+ * Moi cum mot mau: 8 o vuong cung mau xam thi phai DOC ten moi phan biet
+ * duoc, con khac mau thi nho duoc bang vi tri va mau sac sau vai lan dung.
+ *
+ * Thu tu o day quyet dinh thu tu hien tren sidebar - KHONG lay theo thu tu
+ * xuat hien trong `ADMIN_NAV_ITEMS`, vi them mot muc moi vao giua mang do se
+ * am tham dao lon ca sidebar.
+ */
+export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
+  {
+    name: 'Tổng quan', icon: LayoutDashboard, hint: 'Dashboard và báo cáo toàn công ty',
+    iconIdle: 'bg-indigo-50 text-indigo-600', iconOn: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30',
+    tileOn: 'bg-indigo-50', textOn: 'text-indigo-700',
+    chip: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-700',
+  },
+  {
+    name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ, tuyển dụng và giấy tờ',
+    iconIdle: 'bg-sky-50 text-sky-600', iconOn: 'bg-sky-600 text-white shadow-sm shadow-sky-600/30',
+    tileOn: 'bg-sky-50', textOn: 'text-sky-700',
+    chip: 'bg-sky-600 text-white shadow-sm shadow-sky-600/30 hover:bg-sky-700',
+  },
+  {
+    name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ',
+    iconIdle: 'bg-violet-50 text-violet-600', iconOn: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30',
+    tileOn: 'bg-violet-50', textOn: 'text-violet-700',
+    chip: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30 hover:bg-violet-700',
+  },
+  {
+    name: 'Thời gian & Nghỉ phép', icon: Clock, hint: 'Chấm công, bảng công và đơn nghỉ',
+    iconIdle: 'bg-amber-50 text-amber-600', iconOn: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
+    tileOn: 'bg-amber-50', textOn: 'text-amber-700',
+    chip: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 hover:bg-amber-600',
+  },
+  {
+    name: 'Lương & Đãi ngộ', icon: Wallet, hint: 'Bảng lương, cơ chế và tham số',
+    iconIdle: 'bg-emerald-50 text-emerald-600', iconOn: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30',
+    tileOn: 'bg-emerald-50', textOn: 'text-emerald-700',
+    chip: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700',
+  },
+  {
+    name: 'Phát triển nhân sự', icon: Target, hint: 'KPI, đánh giá và cách quy ra lương',
+    iconIdle: 'bg-rose-50 text-rose-600', iconOn: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30',
+    tileOn: 'bg-rose-50', textOn: 'text-rose-700',
+    chip: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30 hover:bg-rose-700',
+  },
+  {
+    name: 'Đào tạo & Quy trình', icon: BookOpen, hint: 'Khóa học và thư viện quy trình',
+    iconIdle: 'bg-cyan-50 text-cyan-600', iconOn: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30',
+    tileOn: 'bg-cyan-50', textOn: 'text-cyan-700',
+    chip: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30 hover:bg-cyan-700',
+  },
+  {
+    name: 'Hệ thống', icon: Settings, hint: 'Cấu hình, nhật ký và tính năng',
+    iconIdle: 'bg-slate-100 text-slate-600', iconOn: 'bg-slate-700 text-white shadow-sm shadow-slate-700/30',
+    tileOn: 'bg-slate-100', textOn: 'text-slate-800',
+    chip: 'bg-slate-700 text-white shadow-sm shadow-slate-700/30 hover:bg-slate-800',
+  },
 ];

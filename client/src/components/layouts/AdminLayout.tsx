@@ -243,7 +243,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               {/* Nhac lai dang dung trong module nao: thanh ngang o tren co the
                   bi cuon khuat, va man hinh hep thi no xuong dong. */}
               <div className="mb-3 flex items-center gap-3 border-b border-slate-200 px-3 pb-3">
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-600/25">
+                <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${activeGroup.iconOn}`}>
                   <activeGroup.icon className="h-5 w-5" />
                 </span>
                 <span className="min-w-0">
@@ -356,19 +356,24 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                  tên module tiếng Việt xếp ngang thì hoặc tràn ra ngoài, hoặc
                  phải cắt chữ — mà tên module là thứ duy nhất để nhận ra nó. */}
             <div className="relative" ref={launcherRef}>
+              {/* Nut nay la duong vao DUY NHAT cua cap mot, nen no phai
+                  trong ra la mot nut bam chu khong phai mot cai nhan: to
+                  nguyen mau cua module dang mo. */}
               <button
                 onClick={() => { setLauncherOpen(!launcherOpen); setNotifOpen(false); setAvatarOpen(false); }}
-                className={`flex items-center gap-2 rounded-xl px-2.5 py-2 transition-colors ${
-                  launcherOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
+                  activeGroup
+                    ? activeGroup.chip
+                    : 'bg-slate-800 text-white hover:bg-slate-900'
                 }`}
                 aria-label="Mở bảng module"
                 aria-expanded={launcherOpen}
               >
-                <LayoutGrid className="h-5 w-5" />
-                <span className="hidden max-w-[9rem] truncate text-sm font-semibold lg:inline">
-                  {activeGroup?.name ?? 'Chức năng'}
+                <LayoutGrid className="h-4.5 w-4.5 flex-shrink-0" />
+                <span className="hidden max-w-[11rem] truncate sm:inline">
+                  {activeGroup?.name ?? 'Chọn module'}
                 </span>
-                <ChevronDown className={`hidden h-4 w-4 transition-transform lg:inline ${launcherOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${launcherOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {launcherOpen && (
@@ -386,16 +391,19 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                           onClick={() => openModule(group.name)}
                           aria-current={isActive ? 'true' : undefined}
                           className={`relative flex flex-col items-center gap-2 rounded-xl px-2 py-3.5 text-center transition-colors ${
-                            isActive ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                            isActive ? group.tileOn : 'hover:bg-slate-50'
                           }`}
                         >
-                          <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${
-                            isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                          {/* Mau rieng tung module: 8 o cung mau xam thi phai
+                              doc ten moi phan biet, con khac mau thi nho duoc
+                              bang vi tri va mau sau vai lan dung. */}
+                          <span className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
+                            isActive ? group.iconOn : group.iconIdle
                           }`}>
                             <Icon className="h-5 w-5" />
                           </span>
                           <span className={`text-xs font-semibold leading-tight ${
-                            isActive ? 'text-indigo-700' : 'text-slate-700'
+                            isActive ? group.textOn : 'text-slate-700'
                           }`}>
                             {group.name}
                           </span>
