@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  BarChart3, BookOpen, CalendarOff, ClipboardCheck,
+  BarChart3, BookOpen, Calculator, CalendarOff, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, MapPinned, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
   ArrowLeftRight, Receipt, Scale, Target, ToggleLeft, UserSearch, Users, Wallet, Cpu,
@@ -33,9 +33,9 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/organization', label: 'Cơ cấu tổ chức', description: 'Đơn vị, vị trí và tuyến quản lý', icon: Network, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'co cau don vi phong ban chi nhanh vi tri tuyen quan ly' },
   { to: '/admin/users', label: 'Hồ sơ & tài khoản', description: 'Danh bạ nhân viên, vai trò và quyền truy cập', icon: Users, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'danh ba nhan vien tai khoan phan quyen user' },
 
-  { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Lao động xuất khẩu', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
-  { to: '/admin/workforce', label: 'Hồ sơ người lao động', description: 'Thông tin và tiến trình tuyển chọn của người lao động', icon: ContactRound, permission: 'users', group: 'Lao động xuất khẩu', keywords: 'ung vien nguoi lao dong xuat khau', functionCode: 'admin.workforce' },
-  { to: '/admin/worker-documents', label: 'Hồ sơ giấy tờ', description: 'Theo dõi hợp đồng, visa và tài liệu lao động', icon: FileWarning, permission: 'users', group: 'Lao động xuất khẩu', keywords: 'hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents' },
+  { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tổ chức & Nhân sự', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
+  { to: '/admin/workforce', label: 'Hồ sơ người lao động', description: 'Thông tin và tiến trình tuyển chọn của người lao động', icon: ContactRound, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ung vien nguoi lao dong xuat khau', functionCode: 'admin.workforce' },
+  { to: '/admin/worker-documents', label: 'Hồ sơ giấy tờ', description: 'Theo dõi hợp đồng, visa và tài liệu lao động', icon: FileWarning, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents' },
 
   { to: '/admin/projects', label: 'Dự án', description: 'Dự án, thành viên, mốc và tác vụ', icon: FolderKanban, permission: 'projects', group: 'Công việc & Dự án', keywords: 'project tac vu' },
   { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Công việc & Dự án', keywords: 'giao viec phan cong xac nhan' },
@@ -54,12 +54,12 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/payroll', label: 'Bảng lương', description: 'Tính, duyệt, chi trả và xem phiếu lương từng người', icon: Wallet, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong', functionCode: 'admin.payroll' },
   { to: '/admin/payroll/adjustments', label: 'Điều chỉnh lương', description: 'Truy lĩnh, truy thu cho sai sót của kỳ đã khóa', icon: ArrowLeftRight, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'truy linh truy thu dieu chinh sai sot ky truoc', functionCode: 'admin.payroll_adjustments' },
   { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: 'Khoản cộng, khoản trừ và công thức tính', icon: Receipt, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'khoan luong phu cap thuong phat tam ung cong thuc', functionCode: 'admin.payroll_components' },
-  { to: '/admin/payroll/kpi', label: 'Cách tính lương KPI', description: 'Quy KPI% từ module đánh giá thành tiền', icon: Target, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'luong kpi cach tinh quy doi kpi phan tram thanh tien nguong bac thang', functionCode: 'admin.payroll_components' },
   { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Ngày công chuẩn, bảo hiểm và giảm trừ thuế', icon: Scale, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'ngay cong chuan bao hiem thue tncn giam tru tham so', functionCode: 'admin.payroll_settings' },
 
   { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
   { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'thu vien quy trinh quy che huong dan pdf' },
   { to: '/admin/training', label: 'Đào tạo', description: 'Khóa học, phân công và tiến độ học tập', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'dao tao khoa hoc hoc tap' },
+  { to: '/admin/payroll/kpi', label: 'Cách tính lương KPI', description: 'Quy KPI% chấm được thành tiền lương KPI', icon: Calculator, permission: 'attendance', group: 'Phát triển nhân sự', keywords: 'luong kpi cach tinh quy doi kpi phan tram thanh tien nguong bac thang', functionCode: 'admin.payroll_components' },
   { to: '/admin/performance', label: 'KPI & đánh giá', description: 'Bộ tiêu chí, cơ chế theo người và kết quả chấm điểm', icon: Target, permission: 'reports', group: 'Phát triển nhân sự', keywords: 'kpi okr hieu suat danh gia', functionCode: 'admin.performance_manage' },
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
@@ -79,12 +79,11 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
  */
 export const ADMIN_NAV_GROUPS: { name: string; icon: LucideIcon; hint: string }[] = [
   { name: 'Tổng quan', icon: LayoutDashboard, hint: 'Dashboard và báo cáo toàn công ty' },
-  { name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ và tuyển dụng' },
-  { name: 'Lao động xuất khẩu', icon: Rocket, hint: 'Hồ sơ người lao động và giấy tờ' },
+  { name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ, tuyển dụng và giấy tờ' },
   { name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ' },
   { name: 'Thời gian & Nghỉ phép', icon: Clock, hint: 'Chấm công, bảng công và đơn nghỉ' },
   { name: 'Lương & Đãi ngộ', icon: Wallet, hint: 'Bảng lương, cơ chế và tham số' },
-  { name: 'Phát triển nhân sự', icon: Target, hint: 'KPI, đánh giá và lộ trình' },
+  { name: 'Phát triển nhân sự', icon: Target, hint: 'KPI, đánh giá và cách quy ra lương' },
   { name: 'Đào tạo & Quy trình', icon: BookOpen, hint: 'Khóa học và thư viện quy trình' },
   { name: 'Hệ thống', icon: Settings, hint: 'Cấu hình, nhật ký và tính năng' },
 ];
