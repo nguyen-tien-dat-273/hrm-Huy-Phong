@@ -31,7 +31,7 @@ interface FeatureFlag { key: string; name: string; description: string | null; e
 
 const meta: Record<Section, { title: string; desc: string }> = {
   lifecycle: { title: 'Onboarding & Offboarding', desc: 'Checklist hội nhập 30–60–90 ngày và quy trình bàn giao khi nghỉ việc.' },
-  performance: { title: 'KPI & đánh giá', desc: 'Bộ tiêu chí, chu kỳ và kết quả chấm điểm hiệu suất.' },
+  performance: { title: 'KPI & đánh giá', desc: 'Bộ tiêu chí, cơ chế theo người và kết quả chấm điểm.' },
   locations: { title: 'Địa điểm chấm công', desc: 'Cấu hình chi nhánh, bán kính GPS và Wi-Fi dự phòng cho check-in.' },
   flags: { title: 'Feature Flags', desc: 'Bật hoặc tắt an toàn các chức năng mới trước khi áp dụng toàn công ty.' },
 };
@@ -192,7 +192,7 @@ export function AdminNexusCenter({ section }: { section: Section }) {
   const info = meta[section];
 
   return <div className="space-y-5">
-    <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3"><div><h2 className="text-2xl font-bold text-slate-800">{info.title}</h2><p className="text-sm text-slate-500 mt-1">{info.desc}</p></div><div className="flex gap-2">{section === 'lifecycle' && <><Button variant="outline" onClick={() => { setEditingId(null); setItemForm(emptyItem); setModal('item'); }}><ClipboardCheck className="w-4 h-4" />Thêm checklist</Button><Button onClick={() => { setEditingId(null); setProcessForm(emptyProcess); setModal('process'); }}><Plus className="w-4 h-4" />Tạo quy trình</Button></>}{section === 'performance' && canManage && <Button onClick={() => { setEditingId(null); setCycleForm(emptyCycle); setModal('cycle'); }}><Plus className="w-4 h-4" />Chu kỳ đánh giá</Button>}{section === 'locations' && <Button onClick={() => { setEditingId(null); setLocationForm(emptyLocation); setModal('location'); }}><MapPin className="w-4 h-4" />Thêm địa điểm</Button>}</div></div>
+
 
     {section !== 'flags' && <Card><CardContent className="flex items-center gap-3 py-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm trong module..." className="w-full bg-transparent text-sm outline-none" /></CardContent></Card>}
 
@@ -201,7 +201,7 @@ export function AdminNexusCenter({ section }: { section: Section }) {
     {section === 'performance' && canManage && <KpiTemplateEditor actorId={profile?.id ?? null} />}
     {section === 'performance' && canManage && <KpiSchemeBoard />}
     {section === 'performance' && canManage && <KpiReviewBoard profiles={profiles} actorId={profile?.id ?? null} />}
-    {section === 'performance' && <div className="space-y-4">{visibleCycles.map((cycle) => <Card key={cycle.id}><CardHeader><div className="flex items-center justify-between"><CardTitle>{cycle.name}</CardTitle><div className="flex items-center gap-1"><Badge className={cycle.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}>{cycle.status}</Badge>{canManage && <><Button variant="secondary" onClick={() => openEditCycle(cycle)} aria-label="Sửa chu kỳ"><Pencil className="h-4 w-4" /></Button><Button variant="danger" onClick={() => void removeRecord('performance_cycles', 'id', cycle.id, cycle.name)} aria-label="Xóa chu kỳ"><Trash2 className="h-4 w-4" /></Button></>}</div></div></CardHeader><CardContent><p className="text-xs text-slate-400">{fmt(cycle.start_date)} → {fmt(cycle.end_date)}</p></CardContent></Card>)}{visibleCycles.length === 0 && <Card><EmptyState icon={<Target className="w-7 h-7" />} title="Không tìm thấy chu kỳ đánh giá" /></Card>}</div>}
+
 
     {section === 'locations' && <>
       {gpsFlag && <Card className="border-indigo-100 bg-indigo-50/50"><CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${gpsFlag.enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}><MapPin className="h-5 w-5" /></span><div><p className="font-semibold text-slate-800">Kiểm soát GPS {gpsFlag.enabled ? 'đang bật' : 'đang tắt'}</p><p className="mt-0.5 text-sm text-slate-600">{gpsFlag.enabled ? 'Nhân viên phải cho phép Vị trí trên trình duyệt và đứng trong điểm được gán theo đơn vị.' : 'Đang cho phép chấm công không giới hạn theo vị trí.'}</p></div></div><Button variant={gpsFlag.enabled ? 'secondary' : 'outline'} onClick={() => void toggleFlag(gpsFlag)}>{gpsFlag.enabled ? 'Tắt kiểm soát GPS' : 'Bật kiểm soát GPS'}</Button></CardContent></Card>}

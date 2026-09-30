@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Select } from '@/components/ui/Input';
+import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -31,7 +31,6 @@ import { formatVND } from '@/lib/utils';
 import { isAutoScorable, scoreFromLevels, type ScoreLevel } from '@/lib/kpiScoring';
 import type { Profile } from '@/types';
 
-interface Cycle { id: string; name: string; start_date: string; end_date: string; status: string }
 
 interface Template {
   id: string;
@@ -58,7 +57,7 @@ interface Criteria {
 
 interface Review {
   id: string;
-  cycle_id: string;
+  period_month: string;
   user_id: string;
   template_id: string | null;
   final_pct: number | null;
@@ -92,8 +91,9 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   const { toast } = useToast();
   const confirm = useConfirm();
 
-  const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [cycleId, setCycleId] = useState('');
+  // Ky cham la mot THANG, chon tren man hinh — giong het Bang luong, khong
+  // phai mot thuc the tao truoc.
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [templates, setTemplates] = useState<Template[]>([]);
   const [criteria, setCriteria] = useState<Criteria[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -107,8 +107,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     if (!supabase) return;
     setLoading(true);
 
-    const [cycleRes, templateRes, criteriaRes] = await Promise.all([
-      supabase.from('performance_cycles').select('*').order('start_date', { ascending: false }),
+    const [templateRes, criteriaRes] = await Promise.all([
       supabase.from('kpi_position_templates').select('*').order('name'),
       supabase.from('kpi_template_criteria').select('*').order('sort_order'),
     ]);
@@ -121,20 +120,13 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
       return;
     }
 
-    const cycleList = (cycleRes.data || []) as Cycle[];
-    setCycles(cycleList);
-    setTemplates((templateRes.data || []) as Template[]);
-    setCriteria((criteriaRes.data || []) as Criteria[]);
-
-    const active = cycleId || cycleList[0]?.id || '';
-    setCycleId(active);
-    if (active) await loadReviews(active);
+    await loadReviews(month);
     setLoading(false);
   };
 
-  const loadReviews = async (targetCycle: string) => {
+  const loadReviews = async (targetMonth: string) => {
     if (!supabase) return;
-    const { data } = await supabase.from('performance_reviews').select('*').eq('cycle_id', targetCycle);
+    const { data } = await supabase.from('performance_reviews').select('*').eq('period_month', `${targetMonth}-01`);
     const list = (data || []) as Review[];
     setReviews(list);
 
@@ -150,7 +142,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   };
 
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (cycleId) void loadReviews(cycleId); }, [cycleId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadReviews(month); }, [month]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const templateById = useMemo(() => new Map(templates.map((item) => [item.id, item])), [templates]);
   const reviewByUser = useMemo(() => new Map(reviews.map((item) => [item.user_id, item])), [reviews]);
@@ -169,12 +161,12 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   const activeTemplates = templates.filter((item) => item.is_active);
 
   const startReview = async (profile: Profile, templateId: string) => {
-    if (!supabase || !cycleId) return;
+    if (!supabase) return;
     setBusy(true);
     // Chỉ chèn bản ghi — trigger seed_kpi_review_scores tự sinh dòng điểm theo
     // đúng bộ tiêu chí của mẫu, nên client không cần biết mẫu có gì.
     const { error } = await supabase.from('performance_reviews').insert({
-      cycle_id: cycleId,
+      period_month: `${month}-01`,
       user_id: profile.id,
       template_id: templateId,
       reviewer_id: actorId,
@@ -183,7 +175,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     setBusy(false);
     if (error) return toast('Không tạo được phiếu chấm: ' + describeDbError(error), 'error');
     setOpenUserId(profile.id);
-    await loadReviews(cycleId);
+    await loadReviews(month);
   };
 
   /**
@@ -198,7 +190,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
       .update({ actual_value: value })
       .eq('id', score.id);
     if (error) toast('Không lưu được số đo: ' + describeDbError(error), 'error');
-    await loadReviews(cycleId);
+    await loadReviews(month);
   };
 
   const setScore = async (score: Score, value: number | null) => {
@@ -212,10 +204,10 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
       .eq('id', score.id);
     if (error) {
       toast('Không lưu được điểm: ' + describeDbError(error), 'error');
-      await loadReviews(cycleId);
+      await loadReviews(month);
       return;
     }
-    await loadReviews(cycleId);
+    await loadReviews(month);
   };
 
   const lockReview = async (review: Review, profile: Profile) => {
@@ -244,7 +236,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     setBusy(false);
     if (error) return toast('Không khoá được: ' + describeDbError(error), 'error');
     toast(`Đã khoá KPI của ${profile.name}. Số liệu đã sang bảng lương.`, 'success');
-    await loadReviews(cycleId);
+    await loadReviews(month);
   };
 
   if (!supported) {
@@ -270,30 +262,19 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 
   if (loading) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
 
-  if (cycles.length === 0) {
-    return (
-      <Card><CardContent>
-        <EmptyState
-          icon={<CheckCircle2 className="h-8 w-8" />}
-          title="Chưa có chu kỳ đánh giá"
-          description="Tạo chu kỳ ở phần Chu kỳ đánh giá bên trên trước khi chấm KPI."
-        />
-      </CardContent></Card>
-    );
-  }
-
   const lockedCount = reviews.filter((item) => item.locked_at).length;
 
   return (
     <Card>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-[240px]">
-            <Select label="Chu kỳ đánh giá" value={cycleId} onChange={(e) => setCycleId(e.target.value)}>
-              {cycles.map((cycle) => (
-                <option key={cycle.id} value={cycle.id}>{cycle.name}</option>
-              ))}
-            </Select>
+          <div className="min-w-[200px]">
+            <Input
+              label="Kỳ chấm"
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value)}
+            />
           </div>
           <p className="text-xs text-slate-500">
             Đã khoá <strong className="text-slate-700">{lockedCount}</strong>/{reviews.length} phiếu ·{' '}
