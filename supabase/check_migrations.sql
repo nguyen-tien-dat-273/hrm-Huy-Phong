@@ -59,7 +59,20 @@ with probe as (
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'payroll_components'
                and column_name = 'tax_exempt_cap'),
-     'Trần khoản lương, lương cơ sở/tối thiểu vùng, biểu thuế sửa được')
+     'Trần khoản lương, lương cơ sở/tối thiểu vùng, biểu thuế sửa được'),
+
+    ('20260926100000_attendance_devices',
+     to_regclass('public.attendance_devices') is not null,
+     'Máy chấm công Ronald Jack/ZKTeco: bảng thiết bị, token bridge, RPC nạp log'),
+
+    -- Không dò bằng to_regclass được: migration này chỉ THAY THẾ thân hàm
+    -- `ingest_attendance_device_events`, không tạo object mới nào. Dò bằng
+    -- chính đoạn mã đã sửa trong thân hàm.
+    ('20260927130000_attendance_device_autoapprove',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public' and p.proname = 'ingest_attendance_device_events'
+               and p.prosrc like '%true, selected_device.location_id%'),
+     'Chấm công từ máy tự duyệt - THIẾU CÁI NÀY THÌ LƯƠNG RA 0 NGÀY CÔNG')
   ) as t(migration, applied, mo_ta)
 )
 select

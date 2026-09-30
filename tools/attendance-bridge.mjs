@@ -31,6 +31,7 @@ const config = {
   timeoutMs: integer('RJ_TIMEOUT_MS', 10000),
   utcOffset: process.env.RJ_UTC_OFFSET || '+07:00',
   pollMinutes: integer('RJ_POLL_MINUTES', 5),
+  backfillDays: integer('RJ_BACKFILL_DAYS', 0),
   once: process.argv.includes('--once'),
   supabaseUrl: required('SUPABASE_URL', process.env.VITE_SUPABASE_URL),
   supabaseAnonKey: required('SUPABASE_ANON_KEY', process.env.VITE_SUPABASE_ANON_KEY),
@@ -44,10 +45,38 @@ if (!/^[+-](0\d|1\d|2[0-3]):[0-5]\d$/.test(config.utcOffset)) {
   throw new Error('RJ_UTC_OFFSET phải có dạng +07:00.');
 }
 if (config.pollMinutes < 1) throw new Error('RJ_POLL_MINUTES phải từ 1 trở lên.');
+if (config.backfillDays < 0) throw new Error('RJ_BACKFILL_DAYS không được âm.');
 
 const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
+
+// Giao thức không có lệnh "đọc từ mốc X"; thư viện tải hết rồi lọc phía client.
+// Vẫn đáng đặt: máy giữ nhiều năm log thì mỗi vòng poll đỡ phải dựng lại toàn bộ
+// mảng sự kiện và đỡ phải băm sha256 cho từng bản ghi cũ đã đồng bộ từ lâu.
+function backfillSince() {
+  if (config.backfillDays <= 0) return undefined;
+  const sign = config.utcOffset.startsWith('-') ? -1 : 1;
+  const [offsetHours, offsetMinutes] = config.utcOffset.slice(1).split(':').map(Number);
+  const offsetMs = sign * (offsetHours * 60 + offsetMinutes) * 60_000;
+  // Dịch instant theo offset rồi đọc bằng getUTC*: ra đúng giờ treo tường của máy,
+  // không phụ thuộc timezone của máy tính đang chạy bridge.
+  const shifted = new Date(Date.now() - config.backfillDays * 86_400_000 + offsetMs);
+  const pad = (value) => String(value).padStart(2, '0');
+  const parts = {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+    second: shifted.getUTCSeconds(),
+  };
+  return {
+    ...parts,
+    local: parts.year + '-' + pad(parts.month) + '-' + pad(parts.day)
+      + 'T' + pad(parts.hour) + ':' + pad(parts.minute) + ':' + pad(parts.second),
+  };
+}
 
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
@@ -114,7 +143,8 @@ async function syncOnce() {
     // cũ không trả nhầm response khi nhiều lệnh đi cùng lúc.
     const identity = await device.getIdentity();
     const info = await device.getInfo();
-    const logs = await device.getAttendanceLogs();
+    const since = backfillSince();
+    const logs = await device.getAttendanceLogs(since ? { since } : undefined);
     const events = logs.map(toEvent).filter(Boolean);
     const skipped = logs.length - events.length;
     const result = events.length ? await push(events) : { inserted: 0, processed: 0, unmapped: 0 };
