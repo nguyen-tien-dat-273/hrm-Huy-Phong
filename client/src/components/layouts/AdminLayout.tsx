@@ -1,8 +1,8 @@
 import { type ReactNode, useState, useEffect, useMemo, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Bell, Eye, ChevronDown, ChevronLeft, ChevronRight, Building2, Menu, X,
-  KeyRound, LogOut, Search, UserCircle,
+  LayoutDashboard, Bell, Eye, ChevronDown, Building2, Menu, X,
+  KeyRound, LogOut, Search, UserCircle, LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useViewMode } from '@/contexts/ViewModeContext';
@@ -53,6 +53,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const [pendingAssignments, setPendingAssignments] = useState(0);
   const notifRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
+  const launcherRef = useRef<HTMLDivElement>(null);
 
   const canReviewAssignments = hasPermission(profile, 'attendance');
 
@@ -94,6 +95,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     const onClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
+      if (launcherRef.current && !launcherRef.current.contains(e.target as Node)) setLauncherOpen(false);
     };
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
@@ -121,6 +123,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
    * tu bam lai tu dau.
    */
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  /** Bang luoi module o header. */
+  const [launcherOpen, setLauncherOpen] = useState(false);
 
   const groupsWithItems = ADMIN_NAV_GROUPS
     .map((group) => ({ ...group, items: navItems.filter((item) => item.group === group.name) }))
@@ -152,6 +156,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const openModule = (name: string) => {
     setOpenGroup(name);
     setSidebarOpen(false);
+    setLauncherOpen(false);
     if (name === groupOfCurrentPath) return;
     const first = groupsWithItems.find((group) => group.name === name)?.items[0];
     if (first) navigate(first.to);
@@ -308,6 +313,71 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* ---- Bảng module ----
+                 Cấp một của điều hướng. Thanh dọc bên trái chỉ liệt kê chức
+                 năng CỦA module đang chọn, nên không còn phải in cả 30 mục
+                 một lúc.
+
+                 Để trong một bảng bật ra thay vì một dãy nút nằm ngang: chín
+                 tên module tiếng Việt xếp ngang thì hoặc tràn ra ngoài, hoặc
+                 phải cắt chữ — mà tên module là thứ duy nhất để nhận ra nó. */}
+            <div className="relative" ref={launcherRef}>
+              <button
+                onClick={() => { setLauncherOpen(!launcherOpen); setNotifOpen(false); setAvatarOpen(false); }}
+                className={`flex items-center gap-2 rounded-xl px-2.5 py-2 transition-colors ${
+                  launcherOpen ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+                aria-label="Mở bảng module"
+                aria-expanded={launcherOpen}
+              >
+                <LayoutGrid className="h-5 w-5" />
+                <span className="hidden max-w-[9rem] truncate text-sm font-semibold lg:inline">
+                  {activeGroup?.name ?? 'Chức năng'}
+                </span>
+                <ChevronDown className={`hidden h-4 w-4 transition-transform lg:inline ${launcherOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {launcherOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-[min(38rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                  <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+                    {groupsWithItems.map((group) => {
+                      const Icon = group.icon;
+                      const isActive = group.name === openGroup;
+                      const pending = group.items.some((item) => item.to === '/admin/assignments')
+                        ? pendingAssignments : 0;
+                      return (
+                        <button
+                          key={group.name}
+                          type="button"
+                          onClick={() => openModule(group.name)}
+                          aria-current={isActive ? 'true' : undefined}
+                          className={`relative flex flex-col items-center gap-2 rounded-xl px-2 py-3.5 text-center transition-colors ${
+                            isActive ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${
+                            isActive ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            <Icon className="h-5 w-5" />
+                          </span>
+                          <span className={`text-xs font-semibold leading-tight ${
+                            isActive ? 'text-indigo-700' : 'text-slate-700'
+                          }`}>
+                            {group.name}
+                          </span>
+                          {pending > 0 && (
+                            <span className="absolute right-2 top-2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
+                              {pending}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Gợi ý command palette — người dùng không tự đoán ra phím tắt nếu
                 không được nhắc ở đâu đó. */}
             <button
@@ -323,7 +393,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             {/* Notifications */}
             <div className="relative" ref={notifRef}>
               <button
-                onClick={() => { setNotifOpen(!notifOpen); setAvatarOpen(false); }}
+                onClick={() => { setNotifOpen(!notifOpen); setAvatarOpen(false); setLauncherOpen(false); }}
                 className="relative p-2.5 rounded-xl hover:bg-slate-100 transition-colors"
                 aria-label={unreadCount > 0 ? `Mở thông báo, ${unreadCount} thông báo mới` : 'Mở thông báo'}
                 aria-expanded={notifOpen}
@@ -365,7 +435,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             {/* Avatar dropdown */}
             <div className="relative" ref={avatarRef}>
               <button
-                onClick={() => { setAvatarOpen(!avatarOpen); setNotifOpen(false); }}
+                onClick={() => { setAvatarOpen(!avatarOpen); setNotifOpen(false); setLauncherOpen(false); }}
                 className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl hover:bg-slate-100 transition-colors"
                 aria-label="Mở menu tài khoản"
                 aria-expanded={avatarOpen}
@@ -412,49 +482,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
-
-        {/* ---- Thanh module nam ngang ----
-             Cap mot cua dieu huong. Thanh doc ben trai chi liet ke chuc nang
-             CUA module dang chon, nen khong con phai in ca 30 muc mot luc.
-
-             `sticky top-[4.5rem]`: dinh ngay duoi header, de cuon sau xuong
-             van doi duoc module ma khong phai cuon nguoc len dau trang. */}
-        <div className="app-modulebar sticky top-[4.5rem] z-10 border-b border-slate-200/80 bg-white/80 backdrop-blur-xl">
-          <div className="mx-auto w-full max-w-[1520px] overflow-x-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex min-w-max gap-1 py-2">
-              {groupsWithItems.map((group) => {
-                const Icon = group.icon;
-                const isActive = group.name === openGroup;
-                const pending = group.items.some((item) => item.to === '/admin/assignments')
-                  ? pendingAssignments : 0;
-                return (
-                  <button
-                    key={group.name}
-                    type="button"
-                    onClick={() => openModule(group.name)}
-                    aria-current={isActive ? 'true' : undefined}
-                    title={group.hint}
-                    className={`flex flex-shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
-                      isActive
-                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20'
-                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4 flex-shrink-0" />
-                    <span className="whitespace-nowrap">{group.name}</span>
-                    {pending > 0 && (
-                      <span className={`flex h-4.5 min-w-4.5 items-center justify-center rounded-full px-1 text-[10px] font-bold ${
-                        isActive ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
-                      }`}>
-                        {pending}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
 
         {/* Page content */}
         <main id="main-content" tabIndex={-1} className="page-content flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
