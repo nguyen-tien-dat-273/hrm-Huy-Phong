@@ -65,3 +65,26 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },
 ];
+
+/**
+ * Cụm chức năng ở cấp một của sidebar.
+ *
+ * Sidebar phẳng phải in ra cả 30 mục cùng lúc, nghĩa là mỗi lần đổi trang
+ * người dùng lại quét qua một danh sách dài gấp mấy lần màn hình. Dựng hai
+ * cấp: cấp một chỉ còn 9 ô, bấm vào mới xổ ra chức năng con bên trong.
+ *
+ * Thứ tự ở đây quyết định thứ tự hiện trên sidebar — KHÔNG lấy theo thứ tự
+ * xuất hiện trong `ADMIN_NAV_ITEMS`, vì thêm một mục mới vào giữa mảng đó sẽ
+ * âm thầm đảo lộn cả sidebar.
+ */
+export const ADMIN_NAV_GROUPS: { name: string; icon: LucideIcon; hint: string }[] = [
+  { name: 'Tổng quan', icon: LayoutDashboard, hint: 'Dashboard và báo cáo toàn công ty' },
+  { name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ và tuyển dụng' },
+  { name: 'Lao động xuất khẩu', icon: Rocket, hint: 'Hồ sơ người lao động và giấy tờ' },
+  { name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ' },
+  { name: 'Thời gian & Nghỉ phép', icon: Clock, hint: 'Chấm công, bảng công và đơn nghỉ' },
+  { name: 'Lương & Đãi ngộ', icon: Wallet, hint: 'Bảng lương, cơ chế và tham số' },
+  { name: 'Phát triển nhân sự', icon: Target, hint: 'KPI, đánh giá và lộ trình' },
+  { name: 'Đào tạo & Quy trình', icon: BookOpen, hint: 'Khóa học và thư viện quy trình' },
+  { name: 'Hệ thống', icon: Settings, hint: 'Cấu hình, nhật ký và tính năng' },
+];

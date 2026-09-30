@@ -1,8 +1,8 @@
 import { type ReactNode, useState, useEffect, useMemo, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Bell, Eye, ChevronDown, Building2, Menu, X, KeyRound, LogOut, Search,
-  UserCircle,
+  LayoutDashboard, Bell, Eye, ChevronDown, ChevronLeft, ChevronRight, Building2, Menu, X,
+  KeyRound, LogOut, Search, UserCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useViewMode } from '@/contexts/ViewModeContext';
@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead, type AdminPermission } from '@/lib/permissions';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import type { Notification } from '@/types';
-import { ADMIN_NAV_ITEMS } from '@/config/navigation';
+import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
 
 /**
  * Menu đã vượt 12 mục — chia 3 cụm theo mạch công việc để quét mắt nhanh:
@@ -113,6 +113,34 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       !(item.hideForTeamlead && isTeamlead(profile)),
   );
 
+  /**
+   * Cum dang mo o sidebar. `null` = dang o man danh sach cum.
+   *
+   * Khoi dong theo trang hien tai chu khong mo san cum dau: nguoi dung F5
+   * hay mo link truc tiep phai thay minh dang dung trong cum nao, khong phai
+   * tu bam lai tu dau.
+   */
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+
+  const groupsWithItems = ADMIN_NAV_GROUPS
+    .map((group) => ({ ...group, items: navItems.filter((item) => item.group === group.name) }))
+    .filter((group) => group.items.length > 0);
+
+  // Cum chua trang dang mo. Doi trang (ke ca tu tim nhanh hay mot link trong
+  // noi dung) thi sidebar tu nhay theo, khong de nguoi dung dung o cum cu.
+  const groupOfCurrentPath = groupsWithItems.find((group) =>
+    group.items.some((item) => {
+      const base = item.to.split(/[?#]/, 1)[0];
+      return location.pathname === base || location.pathname.startsWith(base + '/');
+    }),
+  )?.name ?? null;
+
+  useEffect(() => {
+    if (groupOfCurrentPath) setOpenGroup(groupOfCurrentPath);
+  }, [groupOfCurrentPath]);
+
+  const activeGroup = groupsWithItems.find((group) => group.name === openGroup) ?? null;
+
   const handleSwitchToStaff = () => {
     // Ghi nhớ đúng màn hình quản trị đang làm để khi thoát chế độ xem thử,
     // người dùng quay lại đúng ngữ cảnh thay vì luôn bị đẩy về Dashboard.
@@ -179,44 +207,90 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map((item, i) => {
-            const Icon = item.icon;
-            // Nhãn cụm hiện ở mục đầu tiên của mỗi nhóm còn nhìn thấy được —
-            // tính trên danh sách ĐÃ lọc quyền, để không có nhãn cụm rỗng.
-            const showGroupLabel = i === 0 || navItems[i - 1].group !== item.group;
-            return (
-              <div key={item.to}>
-                {showGroupLabel && (
-                  <div className={`flex items-center gap-2 px-3 pb-2 ${i === 0 ? '' : 'pt-5'}`}>
-                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{item.group}</p>
-                    <span className="h-px flex-1 bg-slate-800" />
-                  </div>
-                )}
-                <NavLink
-                  to={item.to}
-                  onClick={() => setSidebarOpen(false)}
-                  end={exactMatchPaths.has(item.to.split(/[?#]/, 1)[0])}
-                  className={({ isActive }) =>
-                    `group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 ${
-                      isActive
-                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/25 ring-1 ring-white/10'
-                        : 'text-slate-300 hover:text-white hover:bg-white/[0.07]'
-                    }`
-                  }
-                >
-                  <Icon className="w-5 h-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
-                  {item.label}
-                  {item.to === '/admin/assignments' && pendingAssignments > 0 && (
-                    <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-white/20 text-white text-[11px] font-bold flex items-center justify-center">
-                      {pendingAssignments}
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
+          {!activeGroup ? (
+            /* --- Cap mot: chi cac cum --- */
+            <div className="space-y-1">
+              {groupsWithItems.map((group) => {
+                const Icon = group.icon;
+                const pending = group.items.some((item) => item.to === '/admin/assignments')
+                  ? pendingAssignments : 0;
+                return (
+                  <button
+                    key={group.name}
+                    type="button"
+                    onClick={() => setOpenGroup(group.name)}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-slate-300 transition-colors hover:bg-white/[0.07] hover:text-white"
+                  >
+                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white/[0.07] text-indigo-300">
+                      <Icon className="h-4.5 w-4.5" />
                     </span>
-                  )}
-                </NavLink>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{group.name}</span>
+                      <span className="block truncate text-[11px] text-slate-500">{group.hint}</span>
+                    </span>
+                    {pending > 0 && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
+                        {pending}
+                      </span>
+                    )}
+                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-600" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            /* --- Cap hai: chuc nang trong cum --- */
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => setOpenGroup(null)}
+                className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-slate-400 transition-colors hover:bg-white/[0.07] hover:text-white"
+              >
+                <ChevronLeft className="h-4 w-4 flex-shrink-0" />
+                <span className="text-[11px] font-bold uppercase tracking-[0.14em]">Tất cả chức năng</span>
+              </button>
+
+              <div className="mb-2 flex items-center gap-2.5 px-3 pb-2">
+                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
+                  <activeGroup.icon className="h-4.5 w-4.5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-bold text-white">{activeGroup.name}</span>
+                  <span className="block truncate text-[11px] text-slate-500">
+                    {activeGroup.items.length} chức năng
+                  </span>
+                </span>
               </div>
-            );
-          })}
+
+              {activeGroup.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setSidebarOpen(false)}
+                    end={exactMatchPaths.has(item.to.split(/[?#]/, 1)[0])}
+                    className={({ isActive }) =>
+                      `group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
+                        isActive
+                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/25 ring-1 ring-white/10'
+                          : 'text-slate-300 hover:bg-white/[0.07] hover:text-white'
+                      }`
+                    }
+                  >
+                    <Icon className="h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    {item.to === '/admin/assignments' && pendingAssignments > 0 && (
+                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold text-white">
+                        {pendingAssignments}
+                      </span>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          )}
         </nav>
 
         <div className="p-3 border-t border-white/10">

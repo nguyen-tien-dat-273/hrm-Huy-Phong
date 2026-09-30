@@ -8,6 +8,7 @@
 // nhân viên) thì chỉ thấy đúng một dòng "Đồng bộ thất bại" mà không biết mắt
 // nào. Script này tách từng mắt và dừng ngay tại chỗ hỏng.
 
+import { Buffer } from 'node:buffer';
 import net from 'node:net';
 import { createClient } from '@supabase/supabase-js';
 import { ZkAuthError, ZkConnectionError, ZkDevice, ZkTimeoutError } from 'zkteco-protocol';
@@ -23,6 +24,16 @@ const bad = (text) => console.log(`  \x1b[31mX\x1b[0m ${text}`);
 const warn = (text) => console.log(`  \x1b[33m!\x1b[0m ${text}`);
 const info = (text) => console.log(`    ${text}`);
 const step = (text) => console.log(`\n\x1b[1m${text}\x1b[0m`);
+
+// Thu vien giai ten theo latin1 - co y, vi latin1 giu nguyen byte. May nay luu
+// ten tieng Viet bang UTF-8, nen phai giai lai lan nua thi moi ra chu dung;
+// khong lam thi bang anh xa hien "LÆ°u VÅ© Phong" va khong doi chieu duoc voi
+// danh sach nhan vien. Chi nhan ket qua khi day byte that su hop le UTF-8.
+function decodeDeviceText(value) {
+  if (!value) return value;
+  const decoded = Buffer.from(value, 'latin1').toString('utf8');
+  return decoded.includes('�') ? value : decoded;
+}
 
 let failed = false;
 function fail(text, hint) {
@@ -72,8 +83,14 @@ if (!env.supabaseUrl || !env.supabaseAnonKey) {
 } else {
   ok(`Supabase: ${env.supabaseUrl}`);
 }
-if (!env.bridgeToken || env.bridgeToken.startsWith('rj_replace')) {
-  fail('ATTENDANCE_BRIDGE_TOKEN chua duoc dien.', 'HRM > May cham cong > Tao token bridge (chi hien mot lan).');
+const tokenMissing = !env.bridgeToken || env.bridgeToken.startsWith('rj_replace');
+if (skipSupabase) {
+  // Do may truoc khi co token la thu tu binh thuong: phai bat tay duoc voi may
+  // roi moi biet nen khai thiet bi nao trong HRM de lay token.
+  info(tokenMissing ? 'Chua co token - khong sao, --no-supabase bo qua buoc 6.' : 'Bo qua kiem tra token (--no-supabase).');
+} else if (tokenMissing) {
+  fail('ATTENDANCE_BRIDGE_TOKEN chua duoc dien.',
+    'HRM > May cham cong > Tao token bridge (chi hien mot lan). Chi muon do may thi them --no-supabase.');
 } else if (env.bridgeToken.length < 20) {
   fail('ATTENDANCE_BRIDGE_TOKEN qua ngan, RPC se tu choi.', 'Tao lai token trong HRM.');
 } else {
@@ -205,7 +222,7 @@ if (users.length === 0) {
   console.log('    ----------  -------------------------  ---------------');
   for (const user of rows) {
     const code = String(user.userId || '').padEnd(10);
-    const name = String(user.name || '(khong ten)').slice(0, 25).padEnd(25);
+    const name = (decodeDeviceText(String(user.name || '').trim()) || '(khong ten)').slice(0, 25).padEnd(25);
     const extra = [user.hasPassword ? 'mat khau' : null, user.cardNumber ? `the ${user.cardNumber}` : null]
       .filter(Boolean).join(', ') || '-';
     console.log(`    ${code}  ${name}  ${extra}`);

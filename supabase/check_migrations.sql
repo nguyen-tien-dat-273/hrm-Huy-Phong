@@ -185,7 +185,22 @@ with probe as (
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'payroll_components'
                and column_name = 'group_name'),
-     'Nhom khoan luong; don khoan cong doan trung; tra lai dau tieng Viet')
+     'Nhom khoan luong; don khoan cong doan trung; tra lai dau tieng Viet'),
+
+    -- Khong do bang to_regclass duoc: migration nay chi THAY than ham
+    -- ingest_attendance_device_events, khong tao object moi. Do bang chinh
+    -- doan ma da sua trong than ham.
+    ('20260927130000_attendance_device_autoapprove',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public' and p.proname = 'ingest_attendance_device_events'
+               and p.prosrc like '%approved_by_lead = true%'),
+     'Cham cong tu may tu duyet - THIEU THI LUONG RA 0 NGAY CONG'),
+
+    ('20260930230000_attendance_device_arrival_only',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'attendance_devices'
+               and column_name = 'records_checkout'),
+     'May chi ghi gio vao - THIEU THI DONG BO VANG EXCEPTION')
 
   ) as t(migration, applied, mo_ta)
 )

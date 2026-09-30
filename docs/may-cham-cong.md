@@ -47,12 +47,18 @@ encoding, và mọi câu lệnh đều chạy lại được nhiều lần:
 | gộp từ | làm gì |
 | --- | --- |
 | `20260926100000_attendance_devices` | Bảng thiết bị, ánh xạ nhân viên, token bridge, log thô, RPC nạp sự kiện. |
-| `20260927130000_attendance_device_autoapprove` | Thay thân RPC: ngày công từ máy tự động duyệt. |
+| `20260927130000_attendance_device_autoapprove` | Ngày công từ máy tự động duyệt, không cần ai duyệt tay. |
+| `20260930230000_attendance_device_arrival_only` | Máy chỉ ghi giờ vào: một lần quét = một ngày công, `check_out_time` để NULL. |
 
-Thứ tự trong file là cố ý. Chạy riêng phần đầu thì ngày công từ máy mắc ở
-`approved_by_lead = false`, và vì màn "Duyệt chấm công" đã bị bỏ khỏi menu nên **không còn
-cách nào đặt cờ đó thành true** — bảng lương ra ~0 ngày công cho tất cả mọi người mà không
-báo lỗi gì, vì truy vấn vẫn chạy đúng, chỉ là không còn dòng nào thoả điều kiện.
+Thứ tự trong file là cố ý — phần sau thay thân hàm của phần trước.
+
+**Thiếu phần 2:** ngày công mắc ở `approved_by_lead = false`, mà màn "Duyệt chấm công" đã bị
+bỏ khỏi menu nên không còn cách nào đặt cờ đó thành true — bảng lương ra ~0 ngày công cho
+tất cả mọi người mà không báo lỗi gì.
+
+**Thiếu phần 3:** 93% ngày ở máy này chỉ có **một** lần chấm, không có giờ ra. Trigger
+`guard_attendance_approval` chặn duyệt khi thiếu giờ ra, nên mỗi lời gọi đồng bộ sẽ **văng
+exception** — bridge không chạy được lần nào.
 
 Xong thì kiểm chứng: dán `supabase/check_migrations.sql` vào SQL Editor và Run. Hai dòng
 `20260926100000_attendance_devices` và `20260927130000_attendance_device_autoapprove` phải
@@ -74,10 +80,15 @@ File `.env.attendance-bridge` đã được tạo sẵn ở gốc dự án, ph�
 `.env.local`. Chỉ cần sửa ba chỗ:
 
 ```ini
-ATTENDANCE_BRIDGE_TOKEN=rj_...   # token vừa copy ở bước 2
-RJ_DEVICE_IP=192.168.1.201       # IP thật của máy chấm công
-RJ_COMM_KEY=0                    # comm key trên máy, chưa đặt thì để 0
+ATTENDANCE_BRIDGE_TOKEN=rj_...     # token vừa copy ở bước 2
+RJ_DEVICE_IP=192.168.110.197       # IP thật của máy chấm công
+RJ_COMM_KEY=<mật khẩu kết nối>     # xem Ronald Jack Pro > Quản lý thiết bị
 ```
+
+Máy hiện tại đã dò ra và điền sẵn: `192.168.110.197:4370`, MAC `00:17:61:11:4D:F6`,
+serial `1313245000324`, firmware `Ver 6.60 Feb 7 2025`, 46 người dùng. Máy đang lấy IP qua
+**DHCP** — nên đặt IP tĩnh hoặc reservation theo MAC, nếu không bridge sẽ im lặng ngừng
+chảy dữ liệu vào ngày máy đổi địa chỉ.
 
 File này nằm trong `.gitignore`, không bị đẩy lên git.
 
@@ -181,22 +192,42 @@ Unregister-ScheduledTask -TaskName "HRM Attendance Bridge" -Confirm:$false
 
 ## Cách bridge quy ra ngày công
 
-Mỗi nhân viên, mỗi ngày (theo `timezone` khai ở thiết bị, mặc định `Asia/Ho_Chi_Minh`):
+Máy đang dùng (`ZMM510_TFT`, serial `1313245000324`) **chỉ ghi giờ vào**. Số liệu thật từ
+7262 bản ghi, 2025-06-03 → 2026-09-30:
+
+- 93% cặp người-ngày chỉ có **đúng một** lần chấm (6221/6725).
+- 93% lần chấm rơi vào khung 07h–08h. Buổi chiều gần như trống.
+- Trong 504 cặp có từ 2 lần trở lên, **65% cách nhau dưới 1 giờ** — quét lại, không phải về sớm.
+- Trường `status` chỉ có hai giá trị `1` và `15`, cả hai đều xuất hiện lúc 7–8h sáng, nên
+  **không mã nào là "ra về"**. `verifyMode = 255` ở mọi bản ghi.
+
+Vì vậy mô hình là: **một lần quét = một ngày công**.
 
 - **Giờ vào** = lần chấm sớm nhất trong ngày.
-- **Giờ ra** = lần chấm gần nhất có `status` nằm trong `RJ_OUT_STATUS_CODES`; không có thì
-  lấy lần chấm muộn nhất, miễn là ngày đó có từ hai lần chấm.
-- Chấm đúng một lần trong ngày thì ngày công để trạng thái `active` (chưa ra), không tự
-  bịa giờ ra.
-- Ngày công từ máy được **tự động duyệt** (`approved_by_lead = true`) — người đã qua vân
-  tay/khuôn mặt tại máy rồi, không cần ai duyệt lại tay.
-- Nhân viên tự check-in bằng GPS rồi quét máy lúc về: hệ thống giữ giờ vào GPS và lấy giờ
-  ra từ máy.
+- **Giờ ra** = để trống (`NULL`). Không suy từ lần quét cuối — lần thứ hai ở máy này hầu hết
+  là quét lại sau vài phút, dùng làm giờ ra thì báo cáo sẽ nói người đó làm 5 phút.
+- Trạng thái = `completed`, tự động duyệt. Ngày công vào bảng lương đủ.
+- **Giờ công** = `workHours` bằng 0 nên `computePeriodStats` dùng nhánh dự phòng
+  `workDays × hoursPerDay`. Đây là lý do phải để `NULL` thay vì bịa giờ ra: chỉ cần một
+  ngày trong tháng có khoảng cách thật là `workHours > 0`, và tổng giờ cả tháng tụt xuống
+  còn đúng hôm đó — khoản lương tính theo giờ sẽ trả thiếu mà không báo lỗi.
 
-Mã `status` khác nhau theo firmware. Bước 4 với `--logs` in ra đúng các mã máy đang dùng;
-nếu bridge hiểu sai chiều vào/ra thì sửa `RJ_IN_STATUS_CODES` / `RJ_OUT_STATUS_CODES`. Máy
-không phân biệt vào/ra (tất cả cùng một mã) cũng chạy được: quy tắc lần đầu/lần cuối ở
-trên vẫn đúng.
+Vì `status` không mang nghĩa vào/ra, `.env.attendance-bridge` khai rỗng hai biến:
+
+```ini
+RJ_IN_STATUS_CODES=
+RJ_OUT_STATUS_CODES=
+```
+
+Nếu sau này đổi sang máy **có** chấm giờ ra thật, bật cờ trên thiết bị đó:
+
+```sql
+update public.attendance_devices set records_checkout = true where id = '<id thiết bị>';
+```
+
+Khi đó hàm quay lại cách gộp cũ: giờ ra = lần chấm có `punch_type` là `OUT`, không có thì
+lấy lần chấm muộn nhất khi ngày đó có từ hai lần.
+
 
 ## Khi có sự cố
 

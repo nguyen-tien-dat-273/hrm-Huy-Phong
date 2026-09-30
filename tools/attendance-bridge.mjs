@@ -16,10 +16,17 @@ function integer(name, fallback) {
   return value;
 }
 
+// Khai rong co chu dich: co may khong dung truong status de danh dau vao/ra
+// (may Ronald Jack o day chi phat 1 va 15, ca hai deu roi vao gio den). Phai
+// phan biet "khong khai" voi "khai la khong co ma nao" - dung `||` thi chuoi
+// rong roi ve mac dinh 0,2,4 va moi lan quet sang bi doc thanh gio ra.
 function codeSet(name, fallback) {
-  return new Set((process.env[name] || fallback)
+  const raw = process.env[name] ?? fallback;
+  return new Set(raw
     .split(',')
-    .map((value) => Number(value.trim()))
+    .map((value) => value.trim())
+    .filter((value) => value !== '')
+    .map(Number)
     .filter(Number.isFinite));
 }
 
