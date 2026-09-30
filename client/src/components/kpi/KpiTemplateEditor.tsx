@@ -75,6 +75,7 @@ interface Criteria {
   name: string;
   weight_percent: number;
   max_score: number;
+  allow_over_standard: boolean;
   score_levels: ScoreLevel[];
   measure_unit: string | null;
   measure_hint: string | null;
@@ -96,7 +97,7 @@ const DEFAULT_LEVELS: ScoreLevel[] = [
 ];
 
 const BLANK_CRITERIA = {
-  name: '', weight_percent: '', max_score: '4',
+  name: '', weight_percent: '', max_score: '4', allow_over_standard: false,
   measure_unit: 'lần', measure_hint: '',
   levels: DEFAULT_LEVELS,
 };
@@ -267,6 +268,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       name: item.name,
       weight_percent: String(Number(item.weight_percent)),
       max_score: String(Number(item.max_score)),
+      allow_over_standard: item.allow_over_standard ?? false,
       measure_unit: item.measure_unit ?? '',
       measure_hint: item.measure_hint ?? '',
       levels: Array.isArray(item.score_levels) && item.score_levels.length > 0
@@ -293,6 +295,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       name: criteriaForm.name.trim(),
       weight_percent: Number(criteriaForm.weight_percent || '0'),
       max_score: maxScore,
+      allow_over_standard: criteriaForm.allow_over_standard,
       measure_unit: criteriaForm.measure_unit.trim() || null,
       measure_hint: criteriaForm.measure_hint.trim() || null,
       // Bỏ mức rỗng do người dùng thêm rồi để trống — lưu vào chỉ làm thang
@@ -758,6 +761,21 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
               value={criteriaForm.max_score}
               onChange={(e) => setCriteriaForm({ ...criteriaForm, max_score: e.target.value.replace(/[^\d.]/g, '') })}
             />
+            <label className="flex items-start gap-2 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                checked={criteriaForm.allow_over_standard}
+                onChange={(e) => setCriteriaForm({ ...criteriaForm, allow_over_standard: e.target.checked })}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300"
+              />
+              <span>
+                Cho chấm vượt thang điểm
+                <span className="block text-[11px] leading-relaxed text-slate-400">
+                  Ví dụ chấm 4,5 trên thang 4 khi làm vượt yêu cầu. Trần thật nằm ở tổng KPI
+                  (120%), không ở từng tiêu chí. Chỉ bật khi tiêu chí có mô tả mức vượt.
+                </span>
+              </span>
+            </label>
             <Input
               label="Đơn vị số đo"
               placeholder="lần, %, ngày…"

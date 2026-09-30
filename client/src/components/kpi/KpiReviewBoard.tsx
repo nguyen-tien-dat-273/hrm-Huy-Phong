@@ -71,6 +71,8 @@ interface Score {
   review_id: string;
   criteria_id: string;
   manager_score: number | null;
+  not_applicable: boolean;
+  not_applicable_reason: string | null;
   manager_comment: string | null;
   actual_value: number | null;
   auto_scored: boolean;
@@ -190,6 +192,26 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
       .update({ actual_value: value })
       .eq('id', score.id);
     if (error) toast('Không lưu được số đo: ' + describeDbError(error), 'error');
+    await loadReviews(month);
+  };
+
+  const setNotApplicable = async (score: Score, on: boolean) => {
+    if (!supabase) return;
+    let reason: string | null = null;
+    if (on) {
+      reason = window.prompt('Vì sao tiêu chí này tháng nay không phát sinh?')?.trim() || null;
+      // BRD doi "QL xac nhan kem ly do": tat mot tieu chi lam TANG KPI cua
+      // nguoi duoc tat, nen khong cho tat im lang.
+      if (!reason) return;
+    }
+    setScores((prev) => prev.map((item) => (
+      item.id === score.id ? { ...item, not_applicable: on, not_applicable_reason: reason } : item
+    )));
+    const { error } = await supabase
+      .from('performance_review_scores')
+      .update({ not_applicable: on, not_applicable_reason: reason })
+      .eq('id', score.id);
+    if (error) toast(describeDbError(error), 'error');
     await loadReviews(month);
   };
 
@@ -379,7 +401,14 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                           return (
                             <div key={row.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-white px-3 py-2.5">
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-semibold text-slate-800">{row.name}</p>
+                                <p className="text-xs font-semibold text-slate-800">
+                                  {row.name}
+                                  {score?.not_applicable && (
+                                    <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+                                      KHÔNG PHÁT SINH
+                                    </span>
+                                  )}
+                                </p>
                                 <p className="text-[11px] text-slate-400">
                                   Trọng số {Number(row.weight_percent)}% · thang điểm {Number(row.max_score)}
                                   {auto && ' · hệ thống tự chấm'}
@@ -389,7 +418,26 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                                 )}
                               </div>
 
-                              {auto ? (
+                              {/* Tat tieu chi khong phat sinh: ty trong cua no
+                                  chia lai cho cac tieu chi con lai, thay vi
+                                  tinh 0 diem va keo tut KPI cua nguoi khong co
+                                  loi gi. */}
+                              <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                                <input
+                                  type="checkbox"
+                                  disabled={locked || !score}
+                                  checked={score?.not_applicable ?? false}
+                                  onChange={(e) => score && void setNotApplicable(score, e.target.checked)}
+                                  className="h-3.5 w-3.5 rounded border-slate-300"
+                                />
+                                Không phát sinh
+                              </label>
+
+                              {score?.not_applicable ? (
+                                <span className="text-[11px] italic text-slate-400">
+                                  {score.not_applicable_reason}
+                                </span>
+                              ) : auto ? (
                                 <>
                                   {/* Người chấm chỉ nhập SỐ ĐO, không tự quy ra
                                       điểm — đó là chỗ mỗi quản lý quy một kiểu. */}
