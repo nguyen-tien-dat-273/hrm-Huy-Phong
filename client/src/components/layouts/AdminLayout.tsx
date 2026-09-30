@@ -130,14 +130,23 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     .map((group) => ({ ...group, items: navItems.filter((item) => item.group === group.name) }))
     .filter((group) => group.items.length > 0);
 
-  // Cum chua trang dang mo. Doi trang (ke ca tu tim nhanh hay mot link trong
-  // noi dung) thi sidebar tu nhay theo, khong de nguoi dung dung o cum cu.
-  const groupOfCurrentPath = groupsWithItems.find((group) =>
-    group.items.some((item) => {
-      const base = item.to.split(/[?#]/, 1)[0];
-      return location.pathname === base || location.pathname.startsWith(base + '/');
-    }),
-  )?.name ?? null;
+  /**
+   * Cum chua trang dang mo. Doi trang (ke ca tu tim nhanh hay mot link trong
+   * noi dung) thi sidebar tu nhay theo, khong de nguoi dung dung o cum cu.
+   *
+   * Lay duong dan KHOP DAI NHAT chu khong phai cum dau tien khop: duong dan
+   * cua muc nay co the la tien to cua muc kia. `/admin/payroll/kpi` khop ca
+   * `/admin/payroll` (Bang luong, cum Luong & Dai ngo) lan chinh no (cum Phat
+   * trien nhan su) - lay cai dau tien thi sidebar liet ke mot cum trong khi
+   * dong dinh vi tren dau trang ghi mot cum khac.
+   */
+  const groupOfCurrentPath = groupsWithItems
+    .flatMap((group) => group.items.map((item) => ({
+      group: group.name,
+      base: item.to.split(/[?#]/, 1)[0],
+    })))
+    .filter(({ base }) => location.pathname === base || location.pathname.startsWith(base + '/'))
+    .sort((a, b) => b.base.length - a.base.length)[0]?.group ?? null;
 
   useEffect(() => {
     if (groupOfCurrentPath) setOpenGroup(groupOfCurrentPath);
