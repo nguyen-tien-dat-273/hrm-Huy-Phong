@@ -210,7 +210,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <a href="#main-content" className="skip-link">Bỏ qua điều hướng</a>
 
       {/* Sidebar */}
-      <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[17rem] bg-slate-950 text-slate-200 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+      <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[18.5rem] bg-slate-950 text-slate-200 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="min-h-20 flex items-center px-5 border-b border-slate-800">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-indigo-600 rounded-lg flex flex-col items-center justify-center gap-0.5">
@@ -233,13 +233,16 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <div className="space-y-1">
               {/* Nhac lai dang dung trong module nao: thanh ngang o tren co the
                   bi cuon khuat, va man hinh hep thi no xuong dong. */}
-              <div className="mb-2 flex items-center gap-2.5 px-3 pb-2">
-                <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white">
-                  <activeGroup.icon className="h-4.5 w-4.5" />
+              <div className="mb-3 flex items-center gap-3 border-b border-white/10 px-3 pb-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white">
+                  <activeGroup.icon className="h-5 w-5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-bold leading-snug text-white">{activeGroup.name}</span>
-                  <span className="block text-[11px] text-slate-500">
+                  <span className="block text-[15px] font-bold leading-snug text-white">{activeGroup.name}</span>
+                  {/* slate-400 chu khong phai slate-500: tren nen slate-950,
+                      slate-500 chi dat ~3.9:1, duoi nguong 4.5:1 cua WCAG AA
+                      cho chu nho. */}
+                  <span className="mt-0.5 block text-xs text-slate-400">
                     {activeGroup.items.length} chức năng
                   </span>
                 </span>
@@ -254,27 +257,52 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     onClick={() => setSidebarOpen(false)}
                     end={exactMatchPaths.has(item.to.split(/[?#]/, 1)[0])}
                     className={({ isActive }) =>
-                      `group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200 ${
+                      `group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors duration-200 ${
                         isActive
-                          ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-950/25 ring-1 ring-white/10'
-                          : 'text-slate-300 hover:bg-white/[0.07] hover:text-white'
+                          ? 'bg-indigo-600 shadow-lg shadow-indigo-950/25 ring-1 ring-white/10'
+                          : 'hover:bg-white/[0.07]'
                       }`
                     }
                   >
-                    <Icon className="h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110" />
-                    <span className="min-w-0 flex-1">{item.label}</span>
-                    {item.to === '/admin/assignments' && pendingAssignments > 0 && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-white/20 px-1.5 text-[11px] font-bold text-white">
-                        {pendingAssignments}
-                      </span>
+                    {({ isActive }) => (
+                      <>
+                        <Icon
+                          className={`mt-0.5 h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                            isActive ? 'text-white' : 'text-indigo-300'
+                          }`}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className={`block text-sm font-semibold leading-snug ${
+                            isActive ? 'text-white' : 'text-slate-100'
+                          }`}>
+                            {item.label}
+                          </span>
+                          {/* Cau mo ta cua tung chuc nang: nhan khong noi
+                              duoc "Co che luong" khac "Tham so luong" cho
+                              nao, ma do la thu nguoi dung can biet truoc khi
+                              bam chu khong phai sau. */}
+                          <span className={`mt-0.5 block text-[11px] leading-snug ${
+                            isActive ? 'text-indigo-100' : 'text-slate-400'
+                          }`}>
+                            {item.description}
+                          </span>
+                        </span>
+                        {item.to === '/admin/assignments' && pendingAssignments > 0 && (
+                          <span className={`mt-0.5 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                            isActive ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
+                          }`}>
+                            {pendingAssignments}
+                          </span>
+                        )}
+                      </>
                     )}
                   </NavLink>
                 );
               })}
             </div>
           ) : (
-            <p className="px-3 py-6 text-xs leading-relaxed text-slate-500">
-              Chọn một module ở thanh trên để xem các chức năng bên trong.
+            <p className="px-3 py-6 text-xs leading-relaxed text-slate-400">
+              Chọn một module ở nút lưới trên đầu trang để xem các chức năng bên trong.
             </p>
           )}
         </nav>
