@@ -125,9 +125,13 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   },
   {
     name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ',
-    iconIdle: 'bg-violet-50 text-violet-600', iconOn: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30',
-    tileOn: 'bg-violet-50', textOn: 'text-violet-700',
-    chip: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30 hover:bg-violet-700',
+    // Cam chu khong phai tim: tim nam ngay canh indigo cua "Tong quan" nen
+    // hai o dau bang luoi nhin gan nhu cung mot mau. Cam la mau am duy nhat
+    // o khu vuc do, va trong luoi no o goc doi dien voi amber cua "Thoi gian"
+    // nen hai mau am khong ke nhau.
+    iconIdle: 'bg-orange-50 text-orange-600', iconOn: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30',
+    tileOn: 'bg-orange-50', textOn: 'text-orange-700',
+    chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
   },
   {
     name: 'Thời gian & Nghỉ phép', icon: Clock, hint: 'Chấm công, bảng công và đơn nghỉ',
