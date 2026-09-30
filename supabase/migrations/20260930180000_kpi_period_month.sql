@@ -44,6 +44,8 @@ alter table public.performance_reviews
   alter column period_month set default date_trunc('month', current_date)::date;
 
 alter table public.performance_reviews
+  drop constraint if exists performance_review_period_is_month;
+alter table public.performance_reviews
   add constraint performance_review_period_is_month
   check (period_month = date_trunc('month', period_month)::date)
   not valid;
