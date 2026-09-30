@@ -54,9 +54,10 @@ alter table public.performance_reviews
 
 -- Một người một phiếu mỗi tháng. Ràng buộc cũ khoá theo (cycle_id, user_id)
 -- không còn nghĩa khi cycle_id để trống.
-drop index if exists performance_reviews_cycle_id_user_id_key;
 alter table public.performance_reviews
   drop constraint if exists performance_reviews_cycle_id_user_id_key;
+-- Phong truong hop moi truong nay co chi muc roi, khong gan voi rang buoc nao.
+drop index if exists performance_reviews_cycle_id_user_id_key;
 create unique index if not exists performance_reviews_period_user_idx
   on public.performance_reviews(period_month, user_id);
 
