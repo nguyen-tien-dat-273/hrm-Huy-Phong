@@ -91,7 +91,7 @@ export function AdminOrganization() {
   );
   const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
-  const [unitForm, setUnitForm] = useState({ code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '', manager_id: '' });
+  const [unitForm, setUnitForm] = useState({ code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '', manager_id: '', position_ids: [] as string[] });
   const [positionForm, setPositionForm] = useState({ code: '', title: '', unit_id: '', reports_to_position_id: '', is_manager: false, permissions: [] as string[], function_permissions: [] as AdminFunctionCode[] });
   const [assignmentForm, setAssignmentForm] = useState({ user_id: '', employee_code: '', unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active' as EmploymentStatus });
 
@@ -375,15 +375,54 @@ export function AdminOrganization() {
       parent_id: unitForm.parent_id || null,
       manager_id: unitForm.manager_id || null,
     };
-    const { error } = editingUnit
-      ? await supabase.from('organization_units').update(payload).eq('id', editingUnit.id)
-      : await supabase.from('organization_units').insert(payload);
+    const result = editingUnit
+      ? await supabase.from('organization_units').update(payload).eq('id', editingUnit.id).select('id').maybeSingle()
+      : await supabase.from('organization_units').insert(payload).select('id').maybeSingle();
+    const error = result.error;
+    if (error) { setSubmitting(false); return toast('Không tạo được đơn vị: ' + describeDbError(error), 'error'); }
+
+    // Gan vi tri vao don vi ngay trong form nay.
+    //
+    // `job_positions.unit_id` la mot cot BEN VI TRI, nen doi chu so huu cua
+    // mot vi tri chinh la ghi lai cot do. Lam o day de khoi phai sang tab Vi
+    // tri sua tung cai mot - noi ma nguoi dung khong co ly do gi de doan la
+    // phai vao.
+    const unitId = result.data?.id ?? editingUnit?.id ?? null;
+    if (unitId) {
+      const before = positions.filter((item) => item.unit_id === unitId).map((item) => item.id);
+      const after = unitForm.position_ids;
+      const added = after.filter((id) => !before.includes(id));
+      // Bo chon mot vi tri KHONG duoc xoa no: don vi la cot bat buoc. Vi tri
+      // bi bo ra se thanh vi tri cua don vi CAP TREN, hoac o nguyen neu day
+      // da la don vi goc - khong co cho nao cao hon de day len.
+      const removed = before.filter((id) => !after.includes(id));
+      const fallbackId = units.find((item) => item.id === (payload.parent_id ?? ''))?.id ?? null;
+
+      const moves = [
+        added.length > 0 ? { ids: added, unit: unitId } : null,
+        removed.length > 0 && fallbackId ? { ids: removed, unit: fallbackId } : null,
+      ].filter(Boolean) as { ids: string[]; unit: string }[];
+
+      for (const move of moves) {
+        const { error: moveError } = await supabase
+          .from('job_positions')
+          .update({ unit_id: move.unit })
+          .in('id', move.ids);
+        if (moveError) {
+          setSubmitting(false);
+          return toast('Đã lưu đơn vị nhưng không gán được vị trí: ' + describeDbError(moveError), 'error');
+        }
+      }
+      if (removed.length > 0 && !fallbackId) {
+        toast(`${removed.length} vị trí vẫn ở lại vì đây là đơn vị gốc, không có cấp trên để chuyển lên.`, 'warning');
+      }
+    }
+
     setSubmitting(false);
-    if (error) return toast('Không tạo được đơn vị: ' + describeDbError(error), 'error');
     toast(editingUnit ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị vào cơ cấu tổ chức.', 'success');
     setUnitModal(false);
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_id: '' });
+    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_id: '', position_ids: [] });
     void load();
   };
 
@@ -470,6 +509,7 @@ export function AdminOrganization() {
   const openNewUnit = () => {
     setEditingUnit(null);
     setUnitForm({
+      position_ids: [],
       code: '', name: '',
       unit_type: activeCompany ? 'department' : 'company',
       parent_id: activeCompany?.id ?? '',
@@ -481,13 +521,17 @@ export function AdminOrganization() {
   /** Tạo doanh nghiệp mới: đơn vị cấp gốc, không có cha. */
   const openNewCompany = () => {
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_id: '' });
+    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_id: '', position_ids: [] });
     setUnitModal(true);
   };
 
   const openEditUnit = (unit: OrganizationUnit) => {
     setEditingUnit(unit);
-    setUnitForm({ code: unit.code, name: unit.name, unit_type: unit.unit_type, parent_id: unit.parent_id || '', manager_id: unit.manager_id || '' });
+    setUnitForm({
+      code: unit.code, name: unit.name, unit_type: unit.unit_type,
+      parent_id: unit.parent_id || '', manager_id: unit.manager_id || '',
+      position_ids: positions.filter((item) => item.unit_id === unit.id).map((item) => item.id),
+    });
     setUnitModal(true);
   };
 
@@ -496,7 +540,7 @@ export function AdminOrganization() {
       : parent.unit_type === 'company' ? 'branch'
         : parent.unit_type === 'branch' ? 'department' : 'team';
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_id: '' });
+    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_id: '', position_ids: [] });
     setUnitModal(true);
   };
 
@@ -1094,6 +1138,52 @@ export function AdminOrganization() {
           <Input label="Tên đơn vị" value={unitForm.name} onChange={(event) => setUnitForm({ ...unitForm, name: event.target.value })} required />
           <Select label="Đơn vị cấp trên" value={unitForm.parent_id} onChange={(event) => setUnitForm({ ...unitForm, parent_id: event.target.value })}><option value="">Không có (đơn vị gốc)</option>{units.filter((unit) => unit.is_active && unit.id !== editingUnit?.id).map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
           <Select label="Người phụ trách" value={unitForm.manager_id} onChange={(event) => setUnitForm({ ...unitForm, manager_id: event.target.value })}><option value="">Chưa gán</option>{users.filter((user) => user.is_active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>
+
+          {/* ---- Gan thang cac vi tri da tao vao don vi nay ---- */}
+          {companyPositions.length > 0 && (
+            <fieldset className="rounded-xl border border-slate-200 p-3">
+              <legend className="px-1 text-sm font-semibold text-slate-700">Vị trí trong đơn vị</legend>
+              <p className="text-xs leading-relaxed text-slate-500">
+                Tích để chuyển vị trí đã tạo về đơn vị này. Bỏ tích thì vị trí đó chuyển lên
+                đơn vị cấp trên, không bị xóa.
+              </p>
+              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+                {companyPositions.filter((position) => position.is_active).map((position) => {
+                  const checked = unitForm.position_ids.includes(position.id);
+                  const currentUnit = unitById.get(position.unit_id);
+                  const elsewhere = !checked && position.unit_id !== editingUnit?.id;
+                  return (
+                    <label key={position.id} className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) => setUnitForm({
+                          ...unitForm,
+                          position_ids: event.target.checked
+                            ? [...unitForm.position_ids, position.id]
+                            : unitForm.position_ids.filter((id) => id !== position.id),
+                        })}
+                        className="mt-0.5 h-4 w-4 accent-indigo-600"
+                      />
+                      <span className="min-w-0">
+                        <span className="font-medium">{position.title}</span>
+                        <span className="ml-1.5 text-xs text-slate-400">{position.code}</span>
+                        {/* Noi ro vi tri dang thuoc don vi nao, de nguoi dung
+                            biet minh dang KEO no ra khoi cho cu chu khong
+                            phai tao them mot ban sao. */}
+                        {elsewhere && currentUnit && (
+                          <span className="block text-xs text-amber-600">
+                            Đang thuộc {currentUnit.name} — tích vào sẽ chuyển sang đây
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
+
           <div className="flex gap-3 pt-2"><Button type="button" variant="outline" className="flex-1" onClick={() => setUnitModal(false)}>Hủy</Button><Button type="submit" theme="admin" className="flex-1" disabled={submitting}>{submitting ? 'Đang lưu…' : editingUnit ? 'Lưu thay đổi' : 'Tạo đơn vị'}</Button></div>
         </form>
       </Modal>

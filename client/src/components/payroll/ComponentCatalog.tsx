@@ -195,18 +195,13 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-bold text-slate-800">Danh mục khoản lương</h3>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Định nghĩa cách tính một lần, gán cho từng người ở tab Cơ chế lương.
-          </p>
-          {/* Nhắc ở đây để không ai tạo lại khoản "BHXH doanh nghiệp đóng" —
-              engine tự tính từ tỷ lệ khai ở tab Tham số lương. */}
-          <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
-            Bảo hiểm bắt buộc và thuế TNCN không nằm ở đây — hệ thống tự tính theo tỷ lệ khai
-            ở tab <strong className="text-slate-500">Tham số lương</strong>.
-          </p>
-        </div>
+        {/* Tiêu đề và câu mô tả do TRANG in ra rồi (AdminPayroll, bảng
+            TAB_INTRO) — in lại ở đây thành hai dòng tiêu đề giống nhau chồng
+            nhau. Chỉ giữ lại lưu ý riêng của tab này. */}
+        <p className="max-w-2xl text-xs leading-relaxed text-slate-400">
+          Bảo hiểm bắt buộc và thuế TNCN không nằm ở đây — hệ thống tự tính theo tỷ lệ khai
+          ở tab <strong className="text-slate-500">Tham số lương</strong>.
+        </p>
         <Button onClick={() => setDraft({ ...BLANK })}>
           <Plus className="h-4 w-4" /> Thêm khoản
         </Button>

@@ -109,12 +109,10 @@ export function MonthlyInputsTab({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-bold text-slate-800">Số liệu tháng</h3>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Giờ tăng ca, sản lượng, doanh số — đầu vào cho công thức lương của tháng này.
-          </p>
-        </div>
+        {/* Tiêu đề do trang in, xem ghi chú trong ComponentCatalog. */}
+        <p className="max-w-2xl text-xs leading-relaxed text-slate-400">
+          Giờ tăng ca, sản lượng, doanh số — đầu vào cho công thức lương của tháng này.
+        </p>
         {!readOnly && (
           <Button onClick={handleSave} disabled={saving || dirtyCount === 0}>
             <Save className="h-4 w-4" />
