@@ -226,8 +226,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                       <Icon className="h-4.5 w-4.5" />
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{group.name}</span>
-                      <span className="block truncate text-[11px] text-slate-500">{group.hint}</span>
+                      {/* Ten cum duoc XUONG DONG chu khong cat: day la nhan
+                          chinh de bam, "Thoi gian & Nghi p..." thi khong con
+                          doc ra la cai gi. Cau mo ta thi cat duoc. */}
+                      <span className="block text-sm font-medium leading-snug">{group.name}</span>
+                      <span className="mt-0.5 block truncate text-[11px] text-slate-500">{group.hint}</span>
                     </span>
                     {pending > 0 && (
                       <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
