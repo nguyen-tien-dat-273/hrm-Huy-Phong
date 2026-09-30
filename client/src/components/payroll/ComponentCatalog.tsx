@@ -57,6 +57,7 @@ interface Draft {
   insurable: boolean;
   prorate: boolean;
   sort_order: string;
+  group_name: string;
   ot_multiplier: string;
   tax_exempt_cap: string;
   max_amount: string;
@@ -95,6 +96,25 @@ function codeFromName(name: string, taken: string[]): string {
  * thức. Dùng để nhắc trên danh sách, không chặn gì — ai cố ý khai một khoản
  * 0đ vẫn khai được.
  */
+/**
+ * Gom cac khoan cung mot loai thanh cac nhom, giu nguyen thu tu sort_order.
+ *
+ * Khoan chua khai nhom xuong cuoi va khong co dong tieu de - de danh muc cu
+ * (chua ai gom nhom) trong y het truoc day.
+ */
+function groupRows(items: PayComponent[]): { group: string | null; items: PayComponent[] }[] {
+  const order: (string | null)[] = [];
+  const buckets = new Map<string | null, PayComponent[]>();
+  for (const item of items) {
+    const key = item.group_name?.trim() || null;
+    if (!buckets.has(key)) { buckets.set(key, []); order.push(key); }
+    buckets.get(key)!.push(item);
+  }
+  return order
+    .sort((a, b) => (a === null ? 1 : 0) - (b === null ? 1 : 0))
+    .map((group) => ({ group, items: buckets.get(group)! }));
+}
+
 function needsSetup(component: PayComponent): boolean {
   return component.calc_type === 'FIXED'
     && Number(component.default_amount) === 0
@@ -104,7 +124,7 @@ function needsSetup(component: PayComponent): boolean {
 const BLANK: Draft = {
   code: '', name: '', kind: 'EARNING', calc_type: 'FIXED', default_amount: '0',
   input_code: '', base_code: '', formula: '', taxable: true, insurable: false,
-  prorate: false, sort_order: '500', ot_multiplier: '',
+  prorate: false, sort_order: '500', group_name: '', ot_multiplier: '',
   tax_exempt_cap: '', max_amount: '', is_active: true, note: '',
 };
 
@@ -121,7 +141,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
    * đang muốn liệt kê ra công ty trả những khoản gì; cách tính là việc của
    * bước sau, và mỗi khoản một kiểu.
    */
-  const [quickAdd, setQuickAdd] = useState<{ name: string; kind: PayComponentKind } | null>(null);
+  const [quickAdd, setQuickAdd] = useState<{ name: string; kind: PayComponentKind; group_name: string } | null>(null);
   const [quickSaving, setQuickSaving] = useState(false);
 
   const formulaScope = useMemo(() => {
@@ -135,6 +155,12 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
   const formulaError = draft?.calc_type === 'FORMULA' && draft.formula.trim()
     ? validateFormula(draft.formula, formulaScope)
     : null;
+
+  /** Cac nhom da dung, de goi y thay vi bat go lai va go lech chinh ta. */
+  const knownGroups = useMemo(
+    () => [...new Set(components.map((item) => item.group_name).filter(Boolean) as string[])].sort(),
+    [components],
+  );
 
   const grouped = useMemo(() => ({
     EARNING: components.filter((item) => item.kind === 'EARNING'),
@@ -156,6 +182,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
     insurable: component.insurable,
     prorate: component.prorate,
     sort_order: String(component.sort_order),
+    group_name: component.group_name ?? '',
     ot_multiplier: component.ot_multiplier == null ? '' : String(Number(component.ot_multiplier)),
     tax_exempt_cap: component.tax_exempt_cap == null ? '' : String(Number(component.tax_exempt_cap)),
     max_amount: component.max_amount == null ? '' : String(Number(component.max_amount)),
@@ -202,6 +229,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
       insurable: draft.insurable,
       prorate: draft.prorate,
       sort_order: Number(draft.sort_order) || 500,
+      group_name: draft.group_name.trim() || null,
       ot_multiplier: draft.ot_multiplier ? Number(draft.ot_multiplier) : null,
       tax_exempt_cap: draft.tax_exempt_cap ? Number(draft.tax_exempt_cap) : null,
       max_amount: draft.max_amount ? Number(draft.max_amount) : null,
@@ -246,6 +274,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
       insurable: false,
       prorate: false,
       sort_order: nextOrder,
+      group_name: quickAdd.group_name.trim() || null,
       ot_multiplier: null,
       tax_exempt_cap: null,
       max_amount: null,
@@ -259,7 +288,9 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
       return;
     }
     toast(`Đã thêm "${name}". Khai cách tính khi nào cần.`, 'success');
-    if (keepOpen) setQuickAdd({ name: '', kind: quickAdd.kind });
+    // Giu lai nhom khi them tiep: liet ke thi thuong go het mot nhom moi sang
+    // nhom khac, go lai ten nhom moi lan la thua.
+    if (keepOpen) setQuickAdd({ name: '', kind: quickAdd.kind, group_name: quickAdd.group_name });
     else setQuickAdd(null);
     onChanged();
   };
@@ -286,6 +317,13 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
 
   return (
     <div className="space-y-5">
+      {/* Nam o goc chu khong trong modal: hai form deu tro toi id nay, ma
+          modal nao mo thi modal kia dong - de trong mot modal thi form con
+          lai tro vao mot datalist khong ton tai. */}
+      <datalist id="pay-component-groups">
+        {knownGroups.map((group) => <option key={group} value={group} />)}
+      </datalist>
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         {/* Tiêu đề và câu mô tả do TRANG in ra rồi (AdminPayroll, bảng
             TAB_INTRO) — in lại ở đây thành hai dòng tiêu đề giống nhau chồng
@@ -294,7 +332,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
           Bảo hiểm bắt buộc và thuế TNCN không nằm ở đây — hệ thống tự tính theo tỷ lệ khai
           ở tab <strong className="text-slate-500">Tham số lương</strong>.
         </p>
-        <Button onClick={() => setQuickAdd({ name: '', kind: 'EARNING' })}>
+        <Button onClick={() => setQuickAdd({ name: '', kind: 'EARNING', group_name: '' })}>
           <Plus className="h-4 w-4" /> Thêm khoản
         </Button>
       </div>
@@ -311,7 +349,19 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
               <p className="px-5 py-6 text-center text-sm text-slate-400">Chưa có khoản nào.</p>
             ) : (
               <ul className="divide-y divide-slate-50">
-                {grouped[kind].map((component) => (
+                {groupRows(grouped[kind]).map(({ group, items }) => (
+                  <li key={group ?? '__none__'}>
+                    {/* Chi in dong tieu de nhom khi THUC SU co nhom. Danh muc
+                        chua ai gom nhom van la mot danh sach phang nhu cu,
+                        khong tu nhien moc them mot cap trong rong. */}
+                    {group && (
+                      <p className="bg-slate-50/70 px-5 py-1.5 text-[11px] font-bold text-slate-500">
+                        {group}
+                        <span className="ml-1.5 font-normal text-slate-400">({items.length})</span>
+                      </p>
+                    )}
+                    <ul className="divide-y divide-slate-50">
+                {items.map((component) => (
                   <li
                     key={component.id}
                     title={component.note ?? undefined}
@@ -390,6 +440,9 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                     </div>
                   </li>
                 ))}
+                    </ul>
+                  </li>
+                ))}
               </ul>
             )}
           </CardContent>
@@ -421,15 +474,30 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
               autoFocus
             />
 
-            <Select
-              label="Loại"
-              value={quickAdd.kind}
-              onChange={(e) => setQuickAdd({ ...quickAdd, kind: e.target.value as PayComponentKind })}
-            >
-              {Object.entries(KIND_LABEL).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </Select>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Select
+                label="Loại"
+                value={quickAdd.kind}
+                onChange={(e) => setQuickAdd({ ...quickAdd, kind: e.target.value as PayComponentKind })}
+              >
+                {Object.entries(KIND_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </Select>
+              <div>
+                <Input
+                  label="Nhóm (không bắt buộc)"
+                  placeholder="VD: Phụ cấp"
+                  list="pay-component-groups"
+                  value={quickAdd.group_name}
+                  onChange={(e) => setQuickAdd({ ...quickAdd, group_name: e.target.value })}
+                />
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                  Gom các khoản cùng cơ chế lại. Một loại lương thường có nhiều khoản nhỏ —
+                  Phụ cấp có văn phòng, vận chuyển, công tác.
+                </p>
+              </div>
+            </div>
 
             {quickAdd.name.trim() && (
               <p className="text-[11px] text-slate-400">
@@ -515,6 +583,13 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                 inputMode="numeric"
                 value={draft.sort_order}
                 onChange={(e) => setDraft({ ...draft, sort_order: e.target.value.replace(/[^\d]/g, '') })}
+              />
+              <Input
+                label="Nhóm"
+                placeholder="VD: Phụ cấp"
+                list="pay-component-groups"
+                value={draft.group_name}
+                onChange={(e) => setDraft({ ...draft, group_name: e.target.value })}
               />
               <Input
                 label="Trần số tiền (VND) — trống = không chặn"

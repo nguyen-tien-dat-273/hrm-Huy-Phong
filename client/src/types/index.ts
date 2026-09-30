@@ -404,6 +404,13 @@ export interface PayComponent {
   /** Trần số tiền của khoản, áp sau khi tính xong. */
   max_amount: number | null;
   sort_order: number;
+  /**
+   * Tên nhóm để gom các khoản cùng cơ chế lại (Phụ cấp, Làm thêm giờ…).
+   *
+   * Chỉ để sắp xếp danh mục, không tham gia tính toán — một nhóm không phải
+   * một khoản lương nên không có số tiền nào thuộc về nó.
+   */
+  group_name: string | null;
   is_active: boolean;
   is_system: boolean;
   note: string | null;
