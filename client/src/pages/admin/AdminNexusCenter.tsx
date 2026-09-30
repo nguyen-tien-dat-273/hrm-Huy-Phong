@@ -30,7 +30,7 @@ interface FeatureFlag { key: string; name: string; description: string | null; e
 
 const meta: Record<Section, { title: string; desc: string }> = {
   lifecycle: { title: 'Onboarding & Offboarding', desc: 'Checklist hội nhập 30–60–90 ngày và quy trình bàn giao khi nghỉ việc.' },
-  performance: { title: 'KPI / OKR & đánh giá', desc: 'Quản lý chu kỳ, mục tiêu và tiến độ hiệu suất của nhân viên.' },
+  performance: { title: 'KPI & đánh giá', desc: 'Bộ tiêu chí, chu kỳ và kết quả chấm điểm hiệu suất.' },
   locations: { title: 'Địa điểm chấm công', desc: 'Cấu hình chi nhánh, bán kính GPS và Wi-Fi dự phòng cho check-in.' },
   flags: { title: 'Feature Flags', desc: 'Bật hoặc tắt an toàn các chức năng mới trước khi áp dụng toàn công ty.' },
 };

@@ -24,7 +24,6 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { formatVND } from '@/lib/utils';
 import { describeLevelIssues, isAutoScorable, scoreFromLevels, type ScoreLevel } from '@/lib/kpiScoring';
 
 interface Template {
@@ -457,7 +456,6 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
                           {SCORE_METHODS.find((m) => m.value === template.score_method)?.label
                             ?? 'Trung bình có trọng số'}
                           {template.result_cap_percent != null && ` · trần ${Number(template.result_cap_percent)}%`}
-                          {' · Lương KPI '}{formatVND(Number(template.default_kpi_amount))}
                         </p>
                       </div>
                       <Badge className={balanced ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}>
@@ -636,16 +634,17 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
               )}
             </div>
             <div>
-              <Input
-                label="Mức lương KPI (VND)"
-                inputMode="numeric"
-                value={templateForm.default_kpi_amount}
-                onChange={(e) => setTemplateForm({ ...templateForm, default_kpi_amount: e.target.value.replace(/[^\d]/g, '') })}
-              />
-              <p className="mt-1.5 text-xs text-slate-500">
-                Lương KPI = mức này × % kết quả. Đạt {Number(templateForm.default_kpi_amount || '0') > 0 ? '100%' : 'kết quả'} thì nhận{' '}
-                {formatVND(Number(templateForm.default_kpi_amount || '0'))}.
-              </p>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                <p className="text-xs font-semibold text-slate-700">Mức lương KPI khai ở đâu?</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                  Không khai ở đây. Bộ KPI chỉ sinh ra <strong>% kết quả</strong>; số tiền là việc
+                  của module lương. Vào <strong>Cơ chế lương</strong> gán khoản{' '}
+                  <strong>Lương KPI</strong> kèm mức tiền cho từng người hoặc cả phòng.
+                </p>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+                  Tách như vậy để sửa mức của một người không làm đổi mức của cả nhóm cùng vị trí.
+                </p>
+              </div>
             </div>
           </div>
           {/* ---- Cách tính, khác nhau giữa các phòng ban ---- */}
@@ -696,19 +695,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
               </div>
             </div>
 
-            {Number(templateForm.default_kpi_amount || '0') > 0 && (
-              <p className="mt-3 border-t border-slate-200 pt-3 text-[11px] leading-relaxed text-slate-500">
-                Lương KPI tối đa của bộ này:{' '}
-                <strong className="text-indigo-700">
-                  {formatVND(Math.round(
-                    (Number(templateForm.default_kpi_amount || '0')
-                      * (templateForm.result_cap_percent === '' ? 100 : Number(templateForm.result_cap_percent)))
-                    / 100,
-                  ))}
-                </strong>
-                {templateForm.result_cap_percent === '' && ' — chưa đặt trần nên thực tế có thể cao hơn'}
-              </p>
-            )}
+
           </div>
 
           <Textarea

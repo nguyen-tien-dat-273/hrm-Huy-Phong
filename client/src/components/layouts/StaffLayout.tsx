@@ -28,7 +28,7 @@ const navItems = [
   { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ' },
 
   { to: '/staff/training', label: 'Đào tạo của tôi', description: 'Khóa học được giao và tiến độ hoàn thành', icon: BookOpen, group: 'Phát triển' },
-  { to: '/staff/growth', label: 'Lộ trình & mục tiêu', description: 'Onboarding, KPI và OKR cá nhân', icon: Target, group: 'Phát triển' },
+  { to: '/staff/growth', label: 'Lộ trình phát triển', description: 'Checklist hội nhập và bàn giao của tôi', icon: Target, group: 'Phát triển' },
 ];
 
 export function StaffLayout({ children }: { children: ReactNode }) {
