@@ -56,11 +56,15 @@ body {
 }
 
 /* ===== Application shell ===== */
+/* Sidebar nen sang.
+   `background-image` o day de len lop `bg-white` cua Tailwind (anh nen ve
+   tren mau nen), nen doi mau bang class thoi khong an - phai sua ca o day.
+   Giu mot vet xanh rat nhat o goc tren de mang sidebar khong phang lì. */
 .app-sidebar {
   background-image:
-    radial-gradient(420px 260px at 15% -5%, rgb(99 102 241 / 0.22), transparent 62%),
-    linear-gradient(180deg, #0f172a 0%, #0b1220 100%);
-  box-shadow: 18px 0 50px -42px rgb(15 23 42 / 0.9);
+    radial-gradient(460px 280px at 12% -8%, rgb(99 102 241 / 0.09), transparent 64%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 14px 0 40px -38px rgb(15 23 42 / 0.35);
 }
 
 .app-header {

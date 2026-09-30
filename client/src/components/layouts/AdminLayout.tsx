@@ -210,8 +210,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <a href="#main-content" className="skip-link">Bỏ qua điều hướng</a>
 
       {/* Sidebar */}
-      <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[18.5rem] bg-slate-950 text-slate-200 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="min-h-20 flex items-center px-5 border-b border-slate-800">
+      <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[18.5rem] border-r border-slate-200 bg-white text-slate-700 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
+        <div className="min-h-20 flex items-center px-5 border-b border-slate-200">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 bg-indigo-600 rounded-lg flex flex-col items-center justify-center gap-0.5">
               <div className="w-4 h-0.5 bg-white/30 rounded-full" />
@@ -219,11 +219,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <div className="w-4 h-0.5 bg-white/30 rounded-full" />
             </div>
             <div className="min-w-0">
-              <p className="text-white font-bold text-sm truncate">{orgName || 'HRM Huy Phong'}</p>
-              <p className="text-slate-400 text-[11px] mt-0.5">Hệ thống quản lý nhân sự</p>
+              <p className="truncate text-sm font-bold text-slate-900">{orgName || 'HRM Huy Phong'}</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">Hệ thống quản lý nhân sự</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-slate-400">
+          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -233,16 +233,13 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <div className="space-y-1">
               {/* Nhac lai dang dung trong module nao: thanh ngang o tren co the
                   bi cuon khuat, va man hinh hep thi no xuong dong. */}
-              <div className="mb-3 flex items-center gap-3 border-b border-white/10 px-3 pb-3">
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white">
+              <div className="mb-3 flex items-center gap-3 border-b border-slate-200 px-3 pb-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-600/25">
                   <activeGroup.icon className="h-5 w-5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[15px] font-bold leading-snug text-white">{activeGroup.name}</span>
-                  {/* slate-400 chu khong phai slate-500: tren nen slate-950,
-                      slate-500 chi dat ~3.9:1, duoi nguong 4.5:1 cua WCAG AA
-                      cho chu nho. */}
-                  <span className="mt-0.5 block text-xs text-slate-400">
+                  <span className="block text-[15px] font-bold leading-snug text-slate-900">{activeGroup.name}</span>
+                  <span className="mt-0.5 block text-xs text-slate-500">
                     {activeGroup.items.length} chức năng
                   </span>
                 </span>
@@ -259,8 +256,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     className={({ isActive }) =>
                       `group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors duration-200 ${
                         isActive
-                          ? 'bg-indigo-600 shadow-lg shadow-indigo-950/25 ring-1 ring-white/10'
-                          : 'hover:bg-white/[0.07]'
+                          ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30'
+                          : 'hover:bg-slate-100'
                       }`
                     }
                   >
@@ -268,12 +265,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                       <>
                         <Icon
                           className={`mt-0.5 h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                            isActive ? 'text-white' : 'text-indigo-300'
+                            isActive ? 'text-white' : 'text-indigo-500'
                           }`}
                         />
                         <span className="min-w-0 flex-1">
                           <span className={`block text-sm font-semibold leading-snug ${
-                            isActive ? 'text-white' : 'text-slate-100'
+                            isActive ? 'text-white' : 'text-slate-800'
                           }`}>
                             {item.label}
                           </span>
@@ -282,7 +279,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                               nao, ma do la thu nguoi dung can biet truoc khi
                               bam chu khong phai sau. */}
                           <span className={`mt-0.5 block text-[11px] leading-snug ${
-                            isActive ? 'text-indigo-100' : 'text-slate-400'
+                            isActive ? 'text-indigo-100' : 'text-slate-500'
                           }`}>
                             {item.description}
                           </span>
@@ -301,18 +298,18 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               })}
             </div>
           ) : (
-            <p className="px-3 py-6 text-xs leading-relaxed text-slate-400">
+            <p className="px-3 py-6 text-xs leading-relaxed text-slate-500">
               Chọn một module ở nút lưới trên đầu trang để xem các chức năng bên trong.
             </p>
           )}
         </nav>
 
-        <div className="p-3 border-t border-white/10">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-xl bg-white/5">
+        <div className="border-t border-slate-200 p-3">
+          <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-2">
             <Avatar name={profile?.name || ''} url={profile?.avatar_url} size="sm" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{profile?.name}</p>
-              <p className="text-xs text-slate-400 capitalize">{profile?.role}</p>
+              <p className="truncate text-sm font-medium text-slate-900">{profile?.name}</p>
+              <p className="text-xs capitalize text-slate-500">{profile?.role}</p>
             </div>
           </div>
         </div>
