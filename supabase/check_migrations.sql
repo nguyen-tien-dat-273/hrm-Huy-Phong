@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Dò xem migration nào ĐÃ chạy trên database này.
 -- ----------------------------------------------------------------------------
--- Dán cả file vào Supabase → SQL Editor → Run. Chỉ ĐỌC, không sửa gì.
+-- Dán cả file vào Supabase -> SQL Editor -> Run. Chỉ ĐỌC, không sửa gì.
 --
 -- Không tra bảng `supabase_migrations.schema_migrations` vì bảng đó chỉ ghi
 -- nhận những lần chạy qua `supabase db push`. SQL dán tay vào SQL Editor vẫn
@@ -73,18 +73,18 @@ order by applied, migration;
 -- Trước khi chạy 20260928150000: nó XOÁ bảng `salary_profiles`.
 -- Bảng này là mô hình lương đời đầu, dữ liệu đã được chép sang
 -- `employee_pay_profiles` từ migration 20260921090000. Chạy câu dưới để tự
--- kiểm chứng trước khi xoá — nếu trả về 0 dòng hoặc báo bảng không tồn tại
+-- kiểm chứng trước khi xoá - nếu trả về 0 dòng hoặc báo bảng không tồn tại
 -- thì xoá là an toàn.
 -- ---------------------------------------------------------------------------
 -- Câu này KHÔNG được nhắc `salary_profiles` như một bảng ở bất kỳ đâu.
--- PostgreSQL phân giải tên bảng lúc lập kế hoạch, trước khi chạy — nên kể cả
+-- PostgreSQL phân giải tên bảng lúc lập kế hoạch, trước khi chạy - nên kể cả
 -- đặt trong nhánh `else` của CASE, hay bọc trong `exists`, thì bảng không tồn
 -- tại vẫn làm hỏng cả câu lệnh. Chỉ `to_regclass` nhận tên dạng CHUỖI mới an
 -- toàn.
 select
   case
     when to_regclass('public.salary_profiles') is null
-      then 'Bảng lương cũ đã không còn — lệnh xoá trong 20260928150000 là vô hại, cứ chạy.'
+      then 'Bảng lương cũ đã không còn - lệnh xoá trong 20260928150000 là vô hại, cứ chạy.'
     else 'Bảng lương cũ VẪN CÒN. Chạy câu ở cuối file này để đếm số dòng trước khi xoá.'
   end as salary_profiles,
   (select count(*) from public.employee_pay_profiles) as so_dong_bang_moi;

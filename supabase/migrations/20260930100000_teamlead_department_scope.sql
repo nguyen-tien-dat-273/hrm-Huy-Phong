@@ -1,24 +1,24 @@
 -- ============================================================================
--- RC1.2 — Trưởng phòng chỉ thấy nhân viên PHÒNG MÌNH.
+-- RC1.2 - Trưởng phòng chỉ thấy nhân viên PHÒNG MÌNH.
 -- ----------------------------------------------------------------------------
 -- BRD Huy Phong v1.0, RC1.2 (Quan trọng, Giai đoạn 1):
---   "Cấp 2 – Trưởng phòng: quản lý danh sách nhân viên phòng mình, theo dõi
+--   "Cấp 2 - Trưởng phòng: quản lý danh sách nhân viên phòng mình, theo dõi
 --    ngày công thực tế, giờ vào/ra, đi muộn/về sớm, duyệt đơn từ..."
 -- Mục 2A ghi rõ đây là điểm BẮT BUỘC tuỳ chỉnh, không phải cấu hình mặc định
--- của 1Office: "phân quyền theo trường dữ liệu (field-level) — cần dựng ma
+-- của 1Office: "phân quyền theo trường dữ liệu (field-level) - cần dựng ma
 -- trận quyền riêng".
 --
 -- Hiện trạng: `attendance_sessions` cho đọc khi `user_id = auth.uid() or
 -- public.can('attendance')`, nghĩa là Trưởng phòng đọc được chấm công của
--- TOÀN CÔNG TY. Giao diện có lọc hay không cũng vô nghĩa — dữ liệu đã nằm
+-- TOÀN CÔNG TY. Giao diện có lọc hay không cũng vô nghĩa - dữ liệu đã nằm
 -- trong tay client.
 --
 -- ⚠️ MỘT ĐIỂM KỸ THUẬT QUYẾT ĐỊNH CẢ MIGRATION NÀY
 -- `attendance` và `leave_requests` KHÔNG có policy nào trong thư mục
--- migrations — chúng được tạo thẳng trên Supabase nên tên policy không biết
+-- migrations - chúng được tạo thẳng trên Supabase nên tên policy không biết
 -- trước. Viết `drop policy if exists <tên đoán>` rồi tạo policy mới sẽ THÊM
 -- một policy bên cạnh cái cũ, mà nhiều policy permissive cho SELECT được
--- Postgres gộp bằng phép HOẶC — policy rộng cũ vẫn thắng, và migration vẫn
+-- Postgres gộp bằng phép HOẶC - policy rộng cũ vẫn thắng, và migration vẫn
 -- báo thành công. Siết hụt mà tưởng đã siết.
 --
 -- Nên phải dò `pg_policies` rồi xoá ĐỘNG mọi policy SELECT hiện có, sau đó
@@ -68,7 +68,7 @@ as $$
 $$;
 
 comment on function public.manages_employee(uuid) is
-  'Người đang đăng nhập có phải quản lý của nhân sự này không — quản lý trực tiếp, hoặc phụ trách đơn vị/đơn vị cấp trên. Dùng cho RC1.2.';
+  'Người đang đăng nhập có phải quản lý của nhân sự này không - quản lý trực tiếp, hoặc phụ trách đơn vị/đơn vị cấp trên. Dùng cho RC1.2.';
 
 revoke all on function public.manages_employee(uuid) from public;
 grant execute on function public.manages_employee(uuid) to authenticated;
@@ -117,7 +117,7 @@ begin
 
     -- Admin/CEO/Kế toán trưởng (Cấp 1) vẫn thấy toàn bộ qua `is_admin()`.
     -- Người có quyền nghiệp vụ nhưng KHÔNG phải Cấp 1 chỉ thấy nhân sự trong
-    -- phạm vi quản lý của mình — đúng RC1.2.
+    -- phạm vi quản lý của mình - đúng RC1.2.
     execute format($sql$
       create policy %I on public.%I
       for select to authenticated using (

@@ -1,5 +1,5 @@
 -- ============================================================================
--- RC2.5 — Web form đăng tuyển công khai.
+-- RC2.5 - Web form đăng tuyển công khai.
 -- ----------------------------------------------------------------------------
 -- BRD Huy Phong v1.0, RC2.5 (Trung bình, Giai đoạn 2):
 --   "Tích hợp Link Web Form đăng tuyển công khai: dữ liệu CV ứng viên tự động
@@ -12,8 +12,8 @@
 -- được bằng cách gọi thẳng API:
 --
 -- 1. Người ẩn danh CHỈ được INSERT, tuyệt đối không SELECT.
---    Cho đọc là biếu không toàn bộ danh sách ứng viên — tên, email, số điện
---    thoại — cho bất kỳ ai biết URL.
+--    Cho đọc là biếu không toàn bộ danh sách ứng viên - tên, email, số điện
+--    thoại - cho bất kỳ ai biết URL.
 --
 -- 2. Chỉ nộp được vào tin tuyển dụng ĐANG MỞ.
 --    Không có ràng buộc này thì một requisition đã đóng từ năm ngoái vẫn nhận
@@ -64,7 +64,7 @@ grant execute on function public.public_job_posting(text) to anon, authenticated
 -- ---------------------------------------------------------------------------
 -- Toàn bộ việc ghi đi qua hàm này, KHÔNG mở policy INSERT trực tiếp trên
 -- `recruitment_candidates` cho anon. Lý do: bảng đó có `stage`, `note`,
--- `created_by` — mở insert thẳng là cho người lạ tự đặt giai đoạn của mình.
+-- `created_by` - mở insert thẳng là cho người lạ tự đặt giai đoạn của mình.
 create or replace function public.submit_public_application(
   p_code text,
   p_full_name text,
@@ -137,4 +137,4 @@ revoke all on function public.submit_public_application(text, text, text, text, 
 grant execute on function public.submit_public_application(text, text, text, text, text) to anon, authenticated;
 
 comment on function public.submit_public_application(text, text, text, text, text) is
-  'RC2.5 — nhận hồ sơ từ form công khai. Người ẩn danh chỉ gọi được hàm này, không đọc được bảng ứng viên.';
+  'RC2.5 - nhận hồ sơ từ form công khai. Người ẩn danh chỉ gọi được hàm này, không đọc được bảng ứng viên.';

@@ -1,5 +1,5 @@
 -- ============================================================================
--- RC3.1 / RC3.2 / RC3.5 — Thư viện quy trình điện tử.
+-- RC3.1 / RC3.2 / RC3.5 - Thư viện quy trình điện tử.
 -- ----------------------------------------------------------------------------
 -- BRD Huy Phong v1.0:
 --   RC3.1 (Cao) "Thư viện quy trình/quy định điện tử: lưu trữ file PDF quy
@@ -22,28 +22,28 @@ create table if not exists public.process_documents (
 
   code text not null,
   title text not null check (length(trim(title)) >= 3),
-  /* Phiên bản do người ban hành đặt: "v1.0", "2026-01", "Lần 3"… Không ép
-     định dạng vì mỗi công ty đánh số một kiểu. */
+  -- Phiên bản do người ban hành đặt: "v1.0", "2026-01", "Lần 3"... Không ép
+  -- định dạng vì mỗi công ty đánh số một kiểu.
   version_label text not null default 'v1.0',
 
   category text not null default 'PROCESS'
     check (category in ('PROCESS', 'POLICY', 'GUIDE', 'FORM')),
 
-  /* Đường dẫn file trong Supabase Storage. */
+  -- Đường dẫn file trong Supabase Storage.
   file_path text,
   file_name text,
 
-  /* NULL = quy trình LIÊN PHÒNG BAN, cả công ty đọc được (RC3.2). */
+  -- NULL = quy trình LIÊN PHÒNG BAN, cả công ty đọc được (RC3.2).
   unit_id uuid references public.organization_units(id) on delete set null,
 
   status text not null default 'ACTIVE'
     check (status in ('DRAFT', 'ACTIVE', 'SUPERSEDED', 'ARCHIVED')),
 
   effective_from date not null default current_date,
-  /* Do trigger RC3.5 điền khi có bản thay thế; không nhập tay. */
+  -- Do trigger RC3.5 điền khi có bản thay thế; không nhập tay.
   superseded_at timestamptz,
 
-  /* Bản này thay thế bản nào. Chính là chỗ RC3.5 bám vào. */
+  -- Bản này thay thế bản nào. Chính là chỗ RC3.5 bám vào.
   supersedes_id uuid references public.process_documents(id) on delete set null,
 
   summary text,
@@ -51,9 +51,9 @@ create table if not exists public.process_documents (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
-  /* Cùng một mã thì mỗi phiên bản chỉ tồn tại một lần. */
+  -- Cùng một mã thì mỗi phiên bản chỉ tồn tại một lần.
   unique (code, version_label),
-  /* Không tự thay thế chính mình — vòng lặp một node. */
+  -- Không tự thay thế chính mình - vòng lặp một node.
   constraint process_document_no_self_supersede check (supersedes_id is distinct from id)
 );
 
@@ -68,7 +68,7 @@ comment on column public.process_documents.supersedes_id is
   'Bản bị thay thế. Trigger RC3.5 tự chuyển bản đó sang SUPERSEDED.';
 
 -- ---------------------------------------------------------------------------
--- RC3.5 — Thời hiệu tự động
+-- RC3.5 - Thời hiệu tự động
 -- ---------------------------------------------------------------------------
 create or replace function public.apply_process_supersede()
 returns trigger
@@ -118,7 +118,7 @@ begin
   v_cursor := new.supersedes_id;
   while v_cursor is not null and v_depth < 20 loop
     if v_cursor = new.id then
-      raise exception 'Chuỗi thay thế quy trình bị lặp vòng — kiểm tra lại bản được thay thế.'
+      raise exception 'Chuỗi thay thế quy trình bị lặp vòng - kiểm tra lại bản được thay thế.'
         using errcode = 'check_violation';
     end if;
     select supersedes_id into v_cursor from public.process_documents where id = v_cursor;
@@ -140,7 +140,7 @@ before update on public.process_documents
 for each row execute function public.touch_payroll_updated_at();
 
 -- ---------------------------------------------------------------------------
--- RC3.2 — Phân quyền đọc theo phòng ban
+-- RC3.2 - Phân quyền đọc theo phòng ban
 -- ---------------------------------------------------------------------------
 alter table public.process_documents enable row level security;
 

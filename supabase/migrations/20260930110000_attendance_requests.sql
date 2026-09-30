@@ -1,5 +1,5 @@
 -- ============================================================================
--- RC4.5 — Đơn đi muộn/về sớm và đơn làm thêm giờ.
+-- RC4.5 - Đơn đi muộn/về sớm và đơn làm thêm giờ.
 -- ----------------------------------------------------------------------------
 -- BRD Huy Phong v1.0, RC4.5 (Quan trọng):
 --   "Xử lý đơn từ phát sinh tập trung: đơn nghỉ phép (phép năm/ốm/không lương),
@@ -8,7 +8,7 @@
 -- Đơn nghỉ phép đã có ở `leave_requests`. Hai loại còn lại chưa có chỗ nào.
 --
 -- KHÔNG nhét chúng vào `leave_requests`: bảng đó có sổ quỹ phép, kiểm tra
--- trùng ngày, và luồng duyệt hai cấp theo SỐ NGÀY NGHỈ — cả ba đều vô nghĩa
+-- trùng ngày, và luồng duyệt hai cấp theo SỐ NGÀY NGHỈ - cả ba đều vô nghĩa
 -- với một đơn xin đi muộn 30 phút. Gộp vào sẽ phải viết `if` khắp nơi để loại
 -- trừ, và mỗi lần thêm quy tắc nghỉ phép lại phải nhớ nó không áp cho đi muộn.
 --
@@ -24,10 +24,10 @@ create table if not exists public.attendance_requests (
   request_type text not null check (request_type in ('LATE_ARRIVAL', 'EARLY_LEAVE', 'OVERTIME')),
   work_date date not null,
 
-  /* Đi muộn/về sớm: số phút xin phép.
-     Làm thêm giờ: để null, dùng `hours` bên dưới. */
+  -- Đi muộn/về sớm: số phút xin phép.
+  -- Làm thêm giờ: để null, dùng `hours` bên dưới.
   minutes integer check (minutes is null or (minutes > 0 and minutes <= 480)),
-  /* Làm thêm giờ: số giờ xin làm thêm. */
+  -- Làm thêm giờ: số giờ xin làm thêm.
   hours numeric(5, 2) check (hours is null or (hours > 0 and hours <= 12)),
 
   reason text not null check (length(trim(reason)) >= 5),
@@ -40,12 +40,12 @@ create table if not exists public.attendance_requests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
-  /* Đúng một đơn mỗi loại cho mỗi ngày — hai đơn đi muộn cùng ngày là dấu
-     hiệu nhập nhầm, không phải nghiệp vụ thật. */
+  -- Đúng một đơn mỗi loại cho mỗi ngày - hai đơn đi muộn cùng ngày là dấu
+  -- hiệu nhập nhầm, không phải nghiệp vụ thật.
   unique (user_id, work_date, request_type),
 
-  /* Loại đơn nào dùng đơn vị đo nào: ràng buộc ngay tại đây thay vì tin vào
-     giao diện, vì dữ liệu sai đơn vị sẽ lặng lẽ chảy vào bảng công. */
+  -- Loại đơn nào dùng đơn vị đo nào: ràng buộc ngay tại đây thay vì tin vào
+  -- giao diện, vì dữ liệu sai đơn vị sẽ lặng lẽ chảy vào bảng công.
   constraint attendance_request_measure_matches_type check (
     (request_type in ('LATE_ARRIVAL', 'EARLY_LEAVE') and minutes is not null and hours is null)
     or (request_type = 'OVERTIME' and hours is not null and minutes is null)
@@ -162,7 +162,7 @@ before update on public.attendance_requests
 for each row execute function public.touch_payroll_updated_at();
 
 -- ---------------------------------------------------------------------------
--- RLS — cùng phạm vi RC1.2 với chấm công
+-- RLS - cùng phạm vi RC1.2 với chấm công
 -- ---------------------------------------------------------------------------
 alter table public.attendance_requests enable row level security;
 
