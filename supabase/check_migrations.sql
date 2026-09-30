@@ -10,6 +10,10 @@
 --
 -- Thay vao do do truc tiep object ma moi migration tao ra. Co object = da chay.
 --
+-- Ca file la MOT cau lenh duy nhat. Supabase SQL Editor chi hien ket qua cua
+-- cau lenh CUOI CUNG, nen tach lam hai cau se nuot mat bang dau - phan viec
+-- lam tay o cuoi duoc noi thang vao cung mot bang bang UNION ALL.
+--
 -- LUU Y khi doc ket qua: moi dong do MOT object dac trung. Migration nao chay
 -- do dang (dut giua chung) van co the bao "DA CHAY" neu object duoc do nam o
 -- dau file. Gap truong hop nghi ngo thi cu chay lai - moi migration trong thu
@@ -190,24 +194,32 @@ select
   migration,
   mo_ta
 from probe
-order by applied, migration;
 
--- ---------------------------------------------------------------------------
--- Viec ngoai migration: phai lam tay tren dashboard
--- ---------------------------------------------------------------------------
+union all
+
+-- Viec ngoai migration: phai lam tay tren dashboard, khong file nao chay ho.
 select
-  'Bucket process-documents' as viec,
   case
     when exists (select 1 from storage.buckets where id = 'process-documents')
-      then 'DA CO'
-    else '>>> CHUA TAO - Storage -> New bucket -> ten process-documents'
-  end as trang_thai
+      then 'DA CHAY'
+    else '>>> CHUA CHAY'
+  end,
+  'zz1. Bucket process-documents',
+  'Storage -> New bucket -> ten process-documents (thu vien quy trinh)'
+
 union all
+
 select
-  'Khoan cong doan bi trung',
   case
     when (select count(*) from public.payroll_components
           where code in ('QUY_CONG_DOAN', 'PHI_CONG_DOAN', 'UNION_FEE') and is_active) > 1
-      then '>>> Dang co nhieu hon mot khoan cong doan bat - kiem tra lai'
-    else 'Chi con mot khoan dang bat'
-  end;
+      then '>>> CHUA CHAY'
+    else 'DA CHAY'
+  end,
+  'zz2. Khoan cong doan trung',
+  'Dang bat ' || (select count(*) from public.payroll_components
+                  where code in ('QUY_CONG_DOAN', 'PHI_CONG_DOAN', 'UNION_FEE') and is_active)
+    || ' khoan cong doan. Nen chi bat mot - gan hai khoan cho cung mot nguoi la tru hai lan.'
+
+-- Chua chay len dau: doc tu tren xuong la ra viec phai lam.
+order by 1 desc, 2;
