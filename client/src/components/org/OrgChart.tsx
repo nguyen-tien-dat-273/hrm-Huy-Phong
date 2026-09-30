@@ -14,8 +14,13 @@
 // con thì chỉ còn đúng một cuống dọc, không thừa mẩu ngang nào.
 // ============================================================================
 
-import { Building2, CircleAlert, Plus, Trash2, UserRound } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Building2, CircleAlert, Maximize2, Minus, Plus, Trash2, UserRound } from 'lucide-react';
 import type { OrganizationUnit } from '@/types';
+
+/** Giới hạn thu/phóng. Dưới 40% thì chữ trong ô không còn đọc được nữa. */
+const MIN_SCALE = 0.4;
+const MAX_SCALE = 1;
 
 export interface OrgChartProps {
   roots: OrganizationUnit[];
@@ -47,11 +52,124 @@ export interface OrgChartProps {
 }
 
 export function OrgChart(props: OrgChartProps) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Thu nhỏ để nhìn hết cây.
+   *
+   * Một công ty vài chục phòng ban luôn rộng hơn màn hình, và cuộn ngang thì
+   * không bao giờ thấy được hình dạng tổng thể — vốn là lý do duy nhất người
+   * ta mở sơ đồ thay vì mở danh sách. Mặc định tự co vừa khung; bấm +/− thì
+   * chuyển sang mức tự chọn và giữ nguyên mức đó.
+   */
+  const [autoFit, setAutoFit] = useState(true);
+  const [scale, setScale] = useState(1);
+  /** Kích thước THẬT của cây, đo trước khi co — `transform` không đổi offsetWidth. */
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  /** Bề rộng khung nhìn, giữ trong state — đọc ref lúc dựng giao diện thì
+      con số cũ không bao giờ được vẽ lại. */
+  const [viewportWidth, setViewportWidth] = useState(0);
+
+  const measure = useCallback(() => {
+    const content = contentRef.current;
+    const viewport = viewportRef.current;
+    if (!content || !viewport) return;
+    const width = content.offsetWidth;
+    const height = content.offsetHeight;
+    const available = viewport.clientWidth;
+
+    // Chỉ ghi state khi số đo thực sự đổi.
+    //
+    // Đo → đổi tỷ lệ → đổi chiều cao hộp giữ chỗ → thanh cuộn dọc hiện/biến →
+    // đổi bề rộng khung nhìn → đo lại. Không có ngưỡng này thì vòng đó có thể
+    // dao động mãi, sơ đồ rủng liên tục và trình duyệt báo "ResizeObserver loop".
+    setSize((current) => (
+      Math.abs(current.width - width) < 1 && Math.abs(current.height - height) < 1
+        ? current
+        : { width, height }
+    ));
+    setViewportWidth((current) => (Math.abs(current - available) < 1 ? current : available));
+
+    if (!autoFit || width === 0) return;
+    // Trừ padding hai bên của khung nhìn.
+    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, (available - 40) / width));
+    setScale((current) => (Math.abs(current - next) < 0.01 ? current : next));
+  }, [autoFit]);
+
+  useLayoutEffect(measure, [measure, props.roots, props.collapsed]);
+
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    if (viewportRef.current) observer.observe(viewportRef.current);
+    if (contentRef.current) observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  const zoomBy = (delta: number) => {
+    setAutoFit(false);
+    setScale((current) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, current + delta)));
+  };
+
+  // Cây nhỏ hơn khung thì không có gì để co — giấu thanh điều khiển đi thay vì
+  // bày ba nút không làm gì.
+  const needsScaling = size.width > 0 && (scale < MAX_SCALE || size.width > viewportWidth - 40);
+
   return (
-    // Cây rộng hơn màn hình là chuyện bình thường — cuộn ngang trong khung
-    // riêng để không đẩy cả trang lệch đi.
-    <div className="overflow-x-auto px-5 py-6">
-      <div className="flex min-w-full flex-col items-center">
+    <div className="relative">
+      {needsScaling && (
+        <div className="absolute right-4 top-3 z-10 flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/95 p-0.5 shadow-sm backdrop-blur">
+          <button
+            type="button"
+            onClick={() => zoomBy(-0.1)}
+            disabled={scale <= MIN_SCALE}
+            aria-label="Thu nhỏ sơ đồ"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-10 text-center text-[11px] font-bold tabular-nums text-slate-600">
+            {Math.round(scale * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => zoomBy(0.1)}
+            disabled={scale >= MAX_SCALE}
+            aria-label="Phóng to sơ đồ"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <span aria-hidden className="mx-0.5 h-4 w-px bg-slate-200" />
+          <button
+            type="button"
+            onClick={() => setAutoFit(true)}
+            aria-pressed={autoFit}
+            title="Co cả cây cho vừa khung"
+            className={`flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-bold transition ${
+              autoFit ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+            }`}
+          >
+            <Maximize2 className="h-3 w-3" />Vừa khung
+          </button>
+        </div>
+      )}
+
+      {/* Khung nhìn. Cây rộng hơn khung thì vẫn cuộn ngang được — thu nhỏ có
+          giới hạn, không ép mọi cây phải vừa bằng mọi giá. */}
+      <div ref={viewportRef} className="overflow-auto px-5 py-6">
+        {/* Hộp giữ chỗ mang kích thước SAU khi co: `transform` không làm đổi
+            vùng cuộn, thiếu hộp này thì phần dưới cây bị cắt mất. */}
+        <div
+          style={size.width > 0 ? { width: size.width * scale, height: size.height * scale } : undefined}
+          className="mx-auto"
+        >
+          <div
+            ref={contentRef}
+            style={{ transform: `scale(${scale})`, transformOrigin: 'top left', width: 'max-content' }}
+          >
+      <div className="flex flex-col items-center">
         {props.rootLabel && (
           <>
             <span className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
@@ -85,6 +203,9 @@ export function OrgChart(props: OrgChartProps) {
               </div>
             );
           })}
+        </div>
+      </div>
+          </div>
         </div>
       </div>
     </div>
