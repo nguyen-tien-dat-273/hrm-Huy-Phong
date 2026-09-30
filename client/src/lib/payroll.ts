@@ -721,10 +721,28 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     }
   }
 
+  // Lấy thẳng từ các dòng đã đẩy vào phiếu, thay vì tính lại: cơ chế HOURLY/PIECE
+  // chỉ có một dòng lương gốc duy nhất, không tách ba, nên mọi cách tính lại đều
+  // phải rẽ nhánh theo cơ chế — cộng từ dòng thật thì luôn khớp với phiếu.
+  const amountOfLine = (code: string) => round(
+    lines.filter((line) => line.code === code).reduce((sum, line) => sum + line.amount, 0),
+  );
+
   // --- Phạm vi biến cho công thức -------------------------------------------
   // Mọi số liệu tháng đều thành biến, cộng thêm mã của các khoản đã tính xong.
   const scope: Record<string, number> = {
     BASE: round(base.amount),
+
+    // Ba cấu phần của lương gốc, tách riêng.
+    //
+    // `BASE` là tổng cả ba, nên mọi khoản tính % trên "lương thời gian" mà
+    // viết `BASE` đều thu dư phần lương phép và lương nghỉ lễ. Kinh phí công
+    // đoàn của Huy Phong tính trên lương thời gian + lương doanh số, không
+    // phải trên cả ba — không có ba biến này thì không khai đúng được.
+    BASE_WORK: amountOfLine(SYSTEM_CODES.baseWork),
+    BASE_LEAVE: amountOfLine(SYSTEM_CODES.baseLeave),
+    BASE_HOLIDAY: amountOfLine(SYSTEM_CODES.baseHoliday),
+
     GROSS: round(base.amount), // tổng thu nhập TỚI THỜI ĐIỂM đang tính
     HOURLY_RATE: hourlyRate,
     DAILY_RATE: basis === 'DAILY' ? baseAmount : baseAmount / standardDays,

@@ -178,9 +178,25 @@ export function AdminOrganization() {
    * cứng theo loại sẽ làm cả trang trống trơn mà không nói vì sao. Thay vào đó
    * nhận mọi đơn vị gốc rồi nhắc riêng cái nào khai sai loại.
    */
+  /**
+   * Doanh nghiep = don vi goc VA khai dung loai phap nhan.
+   *
+   * Truoc day moi don vi goc deu duoc coi la doanh nghiep, nen mot phong ban
+   * tao thieu don vi cha se hien ngang hang voi Huy Phong Group - nhin vao
+   * tuong cong ty co ba phap nhan. Nhung cung khong loc bo chung di: an mot
+   * don vi khoi man hinh duy nhat quan ly no thi khong con duong nao sua.
+   */
+  const rootUnits = useMemo(() => childUnitsByParent.get(null) || [], [childUnitsByParent]);
+
   const companies = useMemo(
-    () => childUnitsByParent.get(null) || [],
-    [childUnitsByParent],
+    () => rootUnits.filter((unit) => unit.unit_type === 'company' || unit.unit_type === 'group'),
+    [rootUnits],
+  );
+
+  /** Don vi goc nhung khong phai phap nhan: hoac tao thieu cha, hoac khai nham loai. */
+  const orphanUnits = useMemo(
+    () => rootUnits.filter((unit) => unit.unit_type !== 'company' && unit.unit_type !== 'group'),
+    [rootUnits],
   );
 
   /**
@@ -480,6 +496,39 @@ export function AdminOrganization() {
     setPositionModal(true);
   };
 
+  /** Dua mot don vi goc vao lam con cua mot phap nhan. */
+  const moveIntoCompany = async (unit: OrganizationUnit, companyId: string) => {
+    const company = unitById.get(companyId);
+    const accepted = await confirm({
+      title: `Chuyển “${unit.name}” vào ${company?.name ?? 'doanh nghiệp'}?`,
+      message: 'Đơn vị này và toàn bộ cấp dưới của nó sẽ nằm trong sơ đồ của doanh nghiệp đó.',
+      confirmLabel: 'Chuyển vào',
+    });
+    if (!accepted) return;
+    const { error } = await supabase
+      .from('organization_units')
+      .update({ parent_id: companyId })
+      .eq('id', unit.id);
+    if (error) toast('Không chuyển được đơn vị: ' + describeDbError(error), 'error');
+    else { toast('Đã chuyển đơn vị.', 'success'); await load(); }
+  };
+
+  /** Don vi goc nay dung la mot cong ty, chi khai nham loai. */
+  const promoteToCompany = async (unit: OrganizationUnit) => {
+    const accepted = await confirm({
+      title: `Đổi “${unit.name}” thành pháp nhân?`,
+      message: 'Đơn vị sẽ thành một doanh nghiệp riêng, có sơ đồ tổ chức của riêng nó.',
+      confirmLabel: 'Đổi thành pháp nhân',
+    });
+    if (!accepted) return;
+    const { error } = await supabase
+      .from('organization_units')
+      .update({ unit_type: 'company' })
+      .eq('id', unit.id);
+    if (error) toast('Không đổi được loại đơn vị: ' + describeDbError(error), 'error');
+    else { toast('Đã đổi thành pháp nhân.', 'success'); await load(); }
+  };
+
   const removeUnit = async (unit: OrganizationUnit) => {
     const hasDependencies = units.some((item) => item.parent_id === unit.id)
       || positions.some((item) => item.unit_id === unit.id)
@@ -664,7 +713,6 @@ export function AdminOrganization() {
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                       {companies.map((company) => {
                         const children = childUnitsByParent.get(company.id) || [];
-                        const mistyped = company.unit_type !== 'company' && company.unit_type !== 'group';
                         return (
                           /* Vung bam mo so do va nut sua/xoa phai la hai nut
                              ANH EM, khong long nhau: button trong button vua
@@ -693,12 +741,6 @@ export function AdminOrganization() {
                                 <span><strong className="text-slate-800">{companyHeadcount(company)}</strong> nhân sự</span>
                                 <span><strong className="text-slate-800">{children.length}</strong> đơn vị trực thuộc</span>
                               </span>
-                              {mistyped && (
-                                <span className="mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-700">
-                                  <CircleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                                  Đang khai loại là {UNIT_TYPES[company.unit_type]}, không phải pháp nhân.
-                                </span>
-                              )}
                             </button>
                             <div className="absolute right-2.5 top-2.5 flex gap-1 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
                               <Button
@@ -721,6 +763,59 @@ export function AdminOrganization() {
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+
+                  {/* ---- Don vi goc nhung khong phai phap nhan ----
+                      Khong an di: day la man hinh duy nhat sua duoc chung.
+                      Nhung cung khong xep chung voi doanh nghiep, vi nhin vao
+                      se tuong cong ty co them mot phap nhan nua. */}
+                  {orphanUnits.length > 0 && (
+                    <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                      <p className="flex items-start gap-1.5 text-xs font-bold text-amber-800">
+                        <CircleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        {orphanUnits.length} đơn vị chưa thuộc doanh nghiệp nào
+                      </p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+                        Được tạo mà không chọn đơn vị cấp trên nên đang đứng riêng, không nằm trong
+                        sơ đồ nào. Chuyển vào đúng doanh nghiệp, hoặc đổi thành pháp nhân nếu đây
+                        thực sự là một công ty.
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        {orphanUnits.map((unit) => (
+                          <div key={unit.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+                            <span className="min-w-0 flex-1">
+                              <strong className="block truncate text-xs text-slate-900">{unit.name}</strong>
+                              <span className="block truncate text-[11px] text-slate-500">
+                                {unit.code} · {UNIT_TYPES[unit.unit_type]}
+                              </span>
+                            </span>
+                            <Select
+                              aria-label={`Chuyển ${unit.name} vào doanh nghiệp`}
+                              value=""
+                              onChange={(event) => event.target.value && void moveIntoCompany(unit, event.target.value)}
+                              className="h-9 w-auto min-w-[10rem] text-xs"
+                            >
+                              <option value="">Chuyển vào…</option>
+                              {companies.map((company) => (
+                                <option key={company.id} value={company.id}>{company.name}</option>
+                              ))}
+                            </Select>
+                            <Button size="sm" variant="secondary" onClick={() => void promoteToCompany(unit)}>
+                              Đổi thành pháp nhân
+                            </Button>
+                            <Button size="sm" variant="danger" onClick={() => void removeUnit(unit)} aria-label={`Xóa ${unit.name}`}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      {companies.length === 0 && (
+                        <p className="mt-2.5 text-[11px] leading-relaxed text-amber-700">
+                          Chưa có pháp nhân nào để chuyển vào — đổi một đơn vị ở trên thành pháp nhân,
+                          hoặc bấm <strong>Thêm doanh nghiệp</strong>.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
