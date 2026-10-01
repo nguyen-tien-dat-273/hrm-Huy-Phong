@@ -460,6 +460,19 @@ export function AdminOrganization() {
 
   const activeUsers = useMemo(() => users.filter((user) => user.is_active), [users]);
 
+  /** Chinh don vi dang sua va toan bo con chau cua no. */
+  const descendantsOfEditingUnit = useMemo(() => {
+    const blocked = new Set<string>();
+    if (!editingUnit) return blocked;
+    const walk = (unitId: string) => {
+      if (blocked.has(unitId)) return;
+      blocked.add(unitId);
+      for (const child of childUnitsByParent.get(unitId) || []) walk(child.id);
+    };
+    walk(editingUnit.id);
+    return blocked;
+  }, [editingUnit, childUnitsByParent]);
+
   /**
    * Loc nhan su cho hai danh sach trong modal don vi.
    *
@@ -606,31 +619,33 @@ export function AdminOrganization() {
       for (const id of before) {
         if (after.includes(id)) continue;
         const person = users.find((user) => user.id === id);
-        if (!person) continue;
-        moves.push({
-          person,
-          unit: null,
-          // Chuc danh thuoc dung don vi vua go thi bo theo, con chuc danh
-          // khong gan don vi nao thi giu.
-          position: positions.find((item) => item.id === person.position_id)?.unit_id === unitId
-            ? null : person.position_id || null,
-        });
+        if (person) moves.push({ person, unit: null, position: null });
       }
 
+      // Do tuyen quan ly theo trang thai SAU khi ca lo chuyen xong: tich ca
+      // truong phong lan nhan vien vao cung mot phong trong MOT lan luu la
+      // chuyen rat thuong, do theo trang thai cu thi nhan vien bi tu choi oan.
+      const plannedUnits = new Map(moves.map((move) => [move.person.id, move.unit]));
+      const unitOfPerson = (userId: string) => (
+        plannedUnits.has(userId) ? plannedUnits.get(userId) ?? null : userById.get(userId)?.unit_id ?? null
+      );
+
+      let managersReset = 0;
       for (const move of moves) {
-        const { error: moveError } = await supabase.rpc('assign_employee_organization', {
-          target_user: move.person.id,
-          target_employee_code: move.person.employee_code || null,
-          target_unit: move.unit,
-          target_position: move.position,
-          target_manager: move.person.manager_id || null,
-          target_hire_date: move.person.hire_date || null,
-          target_employment_status: move.person.employment_status || 'active',
+        const resolved = orgMovePayload(move.person, move.unit, {
+          position: move.position,
+          unitOfPerson,
+          primaryManagerId: unitForm.manager_ids[0] ?? null,
         });
+        if (resolved.managerDropped) managersReset += 1;
+        const { error: moveError } = await supabase.rpc('assign_employee_organization', resolved.payload);
         if (moveError) {
           setSubmitting(false);
-          return toast('Đã lưu đơn vị nhưng không gán được nhân sự: ' + describeDbError(moveError), 'error');
+          return toast(`Đã lưu đơn vị nhưng dừng ở ${move.person.name}: ` + describeDbError(moveError), 'error');
         }
+      }
+      if (managersReset > 0) {
+        toast(`${managersReset} người có quản lý trực tiếp không còn hợp lệ nên đã được đặt lại.`, 'warning');
       }
     }
 
@@ -728,19 +743,18 @@ export function AdminOrganization() {
     if (!accepted) return;
 
     setSubmitting(true);
+    // Do tuyen quan ly theo trang thai SAU khi ca lo chuyen xong: lo nay toan
+    // nguoi phu trach, rat de co nguoi nay la quan ly cua nguoi kia.
+    const plannedUnits = new Map(moving.map(({ person, unit }) => [person.id, unit.id as string | null]));
+    const unitOfPerson = (userId: string) => (
+      plannedUnits.has(userId) ? plannedUnits.get(userId) ?? null : userById.get(userId)?.unit_id ?? null
+    );
+
     for (const { person, unit } of moving) {
-      const { error } = await supabase.rpc('assign_employee_organization', {
-        target_user: person.id,
-        target_employee_code: person.employee_code || null,
-        target_unit: unit.id,
-        // Chuc danh cu thuoc don vi khac thi bo: de lai se thanh nguoi dung o
-        // phong moi ma giu chuc danh cua phong cu.
-        target_position: positions.find((item) => item.id === person.position_id)?.unit_id === unit.id
-          ? person.position_id : null,
-        target_manager: person.manager_id || null,
-        target_hire_date: person.hire_date || null,
-        target_employment_status: person.employment_status || 'active',
-      });
+      const { error } = await supabase.rpc(
+        'assign_employee_organization',
+        orgMovePayload(person, unit.id, { unitOfPerson }).payload,
+      );
       if (error) {
         setSubmitting(false);
         return toast(`Dừng ở ${person.name}: ${describeDbError(error)}`, 'error');
@@ -894,33 +908,123 @@ export function AdminOrganization() {
   };
 
   /**
+   * Chuoi don vi tu `unitId` len toi goc, ke ca chinh no.
+   *
+   * RPC `assign_employee_organization` doi quan ly truc tiep phai thuoc dung
+   * don vi nay hoac mot don vi CAP TREN, nen moi lan doi don vi deu phai do
+   * lai tuyen quan ly truoc khi goi.
+   */
+  const unitLineageIds = (unitId: string | null): string[] => {
+    const ids: string[] = [];
+    let cursor = unitId ? unitById.get(unitId) : undefined;
+    // Chan quay vong: trigger cua database da cam chu trinh, nhung du lieu cu
+    // co the con, va vong lap vo han o day treo ca trang.
+    for (let depth = 0; cursor && depth < 20; depth += 1) {
+      ids.push(cursor.id);
+      cursor = cursor.parent_id ? unitById.get(cursor.parent_id) : undefined;
+    }
+    return ids;
+  };
+
+  /**
+   * Dung tham so cho `assign_employee_organization` khi chuyen mot nguoi.
+   *
+   * NOI DUY NHAT dung payload nay. Truoc day nam cho goi RPC tu dung quy tac
+   * rieng cua minh, lech nhau o dung nhung cho RPC chan - sinh ra loi chi hien
+   * ra voi mot vai nguoi co du lieu "khong dep".
+   *
+   * Ba rang buoc cua RPC phai ton trong:
+   *  1. Khong co don vi thi KHONG duoc co chuc danh lan quan ly truc tiep.
+   *  2. Chuc danh phai thuoc dung don vi dang gan.
+   *  3. Quan ly truc tiep phai dung trong don vi do hoac mot don vi cap tren.
+   *
+   * `unitOfPerson` cho phep do theo trang thai SAU khi luu: mot lan luu co the
+   * chuyen ca truong phong lan nhan vien vao cung mot phong, do theo trang
+   * thai cu thi nhan vien bi tu choi oan.
+   */
+  const orgMovePayload = (
+    person: Profile,
+    targetUnitId: string | null,
+    options?: {
+      position?: string | null;
+      unitOfPerson?: (userId: string) => string | null;
+      /**
+       * Nguoi phu trach chinh cua don vi dich, theo trang thai SAU khi luu.
+       *
+       * Trong modal don vi, nguoi phu trach duoc ghi truoc khoi nhan su, nen
+       * `unitManagers` trong state van la ban cu. Doc ban cu thi nguoi vua
+       * duoc tich vao phong se nhan nham quan ly cu cua phong.
+       */
+      primaryManagerId?: string | null;
+    },
+  ) => {
+    const base = {
+      target_user: person.id,
+      target_employee_code: person.employee_code || null,
+      target_hire_date: person.hire_date || null,
+      target_employment_status: person.employment_status || 'active',
+    };
+
+    // Rang buoc 1.
+    if (!targetUnitId) {
+      return {
+        payload: { ...base, target_unit: null, target_position: null, target_manager: null },
+        managerDropped: !!person.manager_id,
+      };
+    }
+
+    // Rang buoc 2: chuc danh do nguoi dung chon, hoac giu lai chuc danh cu neu
+    // no von thuoc dung don vi nay.
+    const requested = options?.position !== undefined ? options.position : person.position_id;
+    const position = positions.find((item) => item.id === requested)?.unit_id === targetUnitId
+      ? requested || null : null;
+
+    // Rang buoc 3.
+    const lineage = unitLineageIds(targetUnitId);
+    const unitOf = options?.unitOfPerson ?? ((userId: string) => userById.get(userId)?.unit_id ?? null);
+    const managerFits = (candidateId: string | null | undefined): candidateId is string => {
+      if (!candidateId || candidateId === person.id) return false;
+      const candidate = userById.get(candidateId);
+      if (!candidate?.is_active) return false;
+      const candidateUnit = unitOf(candidateId);
+      return !!candidateUnit && lineage.includes(candidateUnit);
+    };
+
+    // Quan ly cu con hop le thi giu. Khong hop le thi lui ve nguoi phu trach
+    // chinh cua don vi moi: de trong nghia la don nghi phep cua ho khong co
+    // ai duyet.
+    const keptManager = managerFits(person.manager_id) ? person.manager_id : null;
+    const unitPrimary = options?.primaryManagerId !== undefined
+      ? options.primaryManagerId
+      : unitManagers[targetUnitId]?.[0] ?? unitById.get(targetUnitId)?.manager_id ?? null;
+    const manager = keptManager ?? (managerFits(unitPrimary) ? unitPrimary : null);
+
+    return {
+      payload: { ...base, target_unit: targetUnitId, target_position: position, target_manager: manager },
+      managerDropped: !!person.manager_id && manager !== person.manager_id,
+    };
+  };
+
+  /**
    * Gan mot nguoi vao don vi ngay tren so do.
    *
    * Truoc day o day chi co mot cau "Gan o Phan cong nhan su" - nguoi dung
    * dang nhin dung cai phong trong, phai sang man khac, tim lai dung phong
    * do trong mot o chon. Dung dieu kien thi lam luon tai cho.
    *
-   * Goi RPC voi DUNG gia tri hien co cua nguoi do, chi doi don vi: RPC nay
-   * ghi de moi truong, truyen null cho ngay vao lam hay chuc danh la xoa mat
-   * du lieu that.
    */
   const assignPersonToUnit = async (person: Profile, unit: OrganizationUnit) => {
     setSubmitting(true);
-    const { error } = await supabase.rpc('assign_employee_organization', {
-      target_user: person.id,
-      target_employee_code: person.employee_code || null,
-      target_unit: unit.id,
-      // Chuc danh cu thuoc don vi KHAC thi bo di, neu khong nguoi nay dung o
-      // phong moi ma giu chuc danh phong cu.
-      target_position: positions.find((item) => item.id === person.position_id)?.unit_id === unit.id
-        ? person.position_id : null,
-      target_manager: person.manager_id || null,
-      target_hire_date: person.hire_date || null,
-      target_employment_status: person.employment_status || 'active',
-    });
+    const move = orgMovePayload(person, unit.id);
+    const { error } = await supabase.rpc('assign_employee_organization', move.payload);
     setSubmitting(false);
     if (error) return toast('Không gán được: ' + describeDbError(error), 'error');
-    toast(`Đã gán ${person.name} vào ${unit.name}.`, 'success');
+    toast(
+      move.managerDropped
+        ? `Đã gán ${person.name} vào ${unit.name}. Quản lý trực tiếp cũ không còn hợp lệ nên đã đặt lại.`
+        : `Đã gán ${person.name} vào ${unit.name}.`,
+      'success',
+    );
     await load();
   };
 
@@ -934,25 +1038,18 @@ export function AdminOrganization() {
   const removePersonFromUnit = async (person: Profile, unit: OrganizationUnit) => {
     const accepted = await confirm({
       title: `Gỡ “${person.name}” khỏi ${unit.name}?`,
-      message: 'Tài khoản vẫn còn, chỉ là không thuộc đơn vị nào nữa — nên cũng thôi nhận khoản lương khai cho đơn vị.',
+      message: 'Tài khoản vẫn còn, chỉ là không thuộc đơn vị nào nữa — nên cũng thôi nhận khoản '
+        + 'lương khai cho đơn vị, và chức danh cùng quản lý trực tiếp trong đơn vị này cũng bỏ theo.',
       confirmLabel: 'Gỡ khỏi đơn vị',
       danger: true,
     });
     if (!accepted) return;
 
     setSubmitting(true);
-    const { error } = await supabase.rpc('assign_employee_organization', {
-      target_user: person.id,
-      target_employee_code: person.employee_code || null,
-      target_unit: null,
-      // Chuc danh thuoc don vi vua go thi bo luon, neu khong nguoi nay khong
-      // thuoc don vi nao ma van giu chuc danh cua don vi do.
-      target_position: positions.find((item) => item.id === person.position_id)?.unit_id === unit.id
-        ? null : person.position_id,
-      target_manager: person.manager_id || null,
-      target_hire_date: person.hire_date || null,
-      target_employment_status: person.employment_status || 'active',
-    });
+    const { error } = await supabase.rpc(
+      'assign_employee_organization',
+      orgMovePayload(person, null).payload,
+    );
     setSubmitting(false);
     if (error) return toast('Không gỡ được: ' + describeDbError(error), 'error');
     toast(`Đã gỡ ${person.name} khỏi ${unit.name}.`, 'success');
@@ -968,10 +1065,36 @@ export function AdminOrganization() {
     const childUnits = units.filter((item) => item.parent_id === unit.id);
     const unitPositions = positions.filter((item) => item.unit_id === unit.id);
     const unitUsers = users.filter((item) => item.unit_id === unit.id);
+
+    // Dem ca nhung thu KHOA NGOAI se xoa theo (on delete cascade).
+    //
+    // Truoc day chi dem don vi con, vi tri va nhan su. Mot phong moi lap chua
+    // co ai nhung da khai khoan luong va bo KPI thi bi ket luan la "chua co du
+    // lieu lien quan" roi xoa han - keo theo ca hai thu do, khong bao gi het.
+    setSubmitting(true);
+    const countOf = async (table: string) => {
+      const { count, error } = await supabase.from(table)
+        .select('id', { count: 'exact', head: true }).eq('unit_id', unit.id);
+      // Bang chua co (thieu migration) thi coi nhu khong co du lieu, thay vi
+      // chan dung ca nut xoa.
+      return error ? 0 : count || 0;
+    };
+    const [payItems, kpiSchemes, workLocations] = await Promise.all([
+      countOf('unit_pay_items'),
+      countOf('unit_kpi_schemes'),
+      supabase.from('organization_unit_work_locations')
+        .select('location_id', { count: 'exact', head: true }).eq('unit_id', unit.id)
+        .then(({ count, error }) => (error ? 0 : count || 0)),
+    ]);
+    setSubmitting(false);
+
     const blockers = [
       childUnits.length > 0 ? `${childUnits.length} đơn vị con (${childUnits.map((item) => item.name).join(', ')})` : null,
       unitPositions.length > 0 ? `${unitPositions.length} vị trí` : null,
       unitUsers.length > 0 ? `${unitUsers.length} nhân sự` : null,
+      payItems > 0 ? `${payItems} khoản lương khai cho đơn vị` : null,
+      kpiSchemes > 0 ? `${kpiSchemes} bộ KPI gán cho đơn vị` : null,
+      workLocations > 0 ? `${workLocations} điểm chấm công` : null,
     ].filter(Boolean) as string[];
     const hasDependencies = blockers.length > 0;
     const accepted = await confirm({
@@ -1000,11 +1123,29 @@ export function AdminOrganization() {
   };
 
   const removePosition = async (position: JobPosition) => {
-    const hasDependencies = positions.some((item) => item.reports_to_position_id === position.id)
-      || users.some((item) => item.position_id === position.id);
+    const holders = users.filter((item) => item.position_id === position.id);
+    const reportingLines = positions.filter((item) => item.reports_to_position_id === position.id);
+
+    // Mau KPI tro toi vi tri nay: khoa ngoai la `on delete set null` nen xoa
+    // han khong bao loi, mau KPI chi am tham mat lien ket roi khong con ap
+    // cho ai - kieu hong im lang khong ai phat hien ra.
+    setSubmitting(true);
+    const { count: kpiTemplates } = await supabase.from('kpi_position_templates')
+      .select('id', { count: 'exact', head: true }).eq('position_id', position.id);
+    setSubmitting(false);
+
+    const blockers = [
+      holders.length > 0 ? `${holders.length} nhân sự đang giữ` : null,
+      reportingLines.length > 0 ? `${reportingLines.length} vị trí báo cáo lên` : null,
+      (kpiTemplates || 0) > 0 ? `${kpiTemplates} bộ KPI gắn theo vị trí` : null,
+    ].filter(Boolean) as string[];
+    const hasDependencies = blockers.length > 0;
     const accepted = await confirm({
       title: hasDependencies ? `Ngừng hoạt động “${position.title}”?` : `Xóa vị trí “${position.title}”?`,
-      message: hasDependencies ? 'Vị trí đang được sử dụng nên sẽ được ngừng hoạt động để bảo toàn lịch sử.' : 'Vị trí chưa được sử dụng và sẽ bị xóa.',
+      message: hasDependencies
+        ? `Không xóa hẳn được vì còn ${blockers.join(', ')}. Vị trí sẽ được đánh dấu ngừng hoạt `
+          + 'động để lịch sử không mất.'
+        : 'Vị trí chưa được sử dụng và sẽ bị xóa.',
       confirmLabel: hasDependencies ? 'Ngừng hoạt động' : 'Xóa vị trí', danger: true,
     });
     if (!accepted) return;
@@ -1138,15 +1279,13 @@ export function AdminOrganization() {
   };
 
   const positionOptions = companyPositions.filter((position) => !assignmentForm.unit_id || position.unit_id === assignmentForm.unit_id);
-  const assignmentUnitLineage = useMemo(() => {
-    const ids = new Set<string>();
-    let current = assignmentForm.unit_id ? unitById.get(assignmentForm.unit_id) : undefined;
-    while (current && !ids.has(current.id)) {
-      ids.add(current.id);
-      current = current.parent_id ? unitById.get(current.parent_id) : undefined;
-    }
-    return ids;
-  }, [assignmentForm.unit_id, unitById]);
+  // Cung mot phep do voi `orgMovePayload`: o chon quan ly truc tiep phai liet
+  // ke dung nhung nguoi ma RPC se chap nhan, khong thi nguoi dung chon duoc
+  // roi luu moi bao loi.
+  const assignmentUnitLineage = useMemo(
+    () => new Set(unitLineageIds(assignmentForm.unit_id || null)),
+    [assignmentForm.unit_id, unitById],
+  );
   const managerOptions = users.filter((user) => user.is_active
     && user.id !== assignmentForm.user_id
     && Boolean(user.unit_id && assignmentUnitLineage.has(user.unit_id)));
@@ -1719,7 +1858,15 @@ export function AdminOrganization() {
         <form onSubmit={saveUnit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><Input label="Mã đơn vị" value={unitForm.code} onChange={(event) => setUnitForm({ ...unitForm, code: event.target.value })} placeholder="VD: HP-HCM" required /><Select label="Loại đơn vị" value={unitForm.unit_type} onChange={(event) => setUnitForm({ ...unitForm, unit_type: event.target.value as OrganizationUnitType })}>{Object.entries(UNIT_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></div>
           <Input label="Tên đơn vị" value={unitForm.name} onChange={(event) => setUnitForm({ ...unitForm, name: event.target.value })} required />
-          <Select label="Đơn vị cấp trên" value={unitForm.parent_id} onChange={(event) => setUnitForm({ ...unitForm, parent_id: event.target.value })}><option value="">Không có (đơn vị gốc)</option>{units.filter((unit) => unit.is_active && unit.id !== editingUnit?.id).map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
+          {/* Chon cap tren la mot don vi con chau cua chinh no se tao chu
+              trinh. Database co trigger chan, nhung de nguoi dung chon roi moi
+              bao loi thi ho khong hieu vi sao - loc thang khoi danh sach. */}
+          <Select label="Đơn vị cấp trên" value={unitForm.parent_id} onChange={(event) => setUnitForm({ ...unitForm, parent_id: event.target.value })}>
+            <option value="">Không có (đơn vị gốc)</option>
+            {units
+              .filter((unit) => unit.is_active && !descendantsOfEditingUnit.has(unit.id))
+              .map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+          </Select>
           {/* ---- Người phụ trách: chọn được nhiều người ---- */}
           <fieldset className="rounded-xl border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Người phụ trách</legend>

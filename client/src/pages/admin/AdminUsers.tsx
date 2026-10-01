@@ -203,6 +203,11 @@ export function AdminUsers() {
     setSubmitting(true);
 
     if (editingUser) {
+      const current = (editingUser.permissions ?? []).filter((code): code is AdminPermission =>
+        (ADMIN_PERMISSIONS as readonly string[]).includes(code),
+      );
+      const permissionsChanged = current.length !== form.permissions.length
+        || current.some((code) => !form.permissions.includes(code));
       const { error } = await updateUser(editingUser.id, {
         name: form.name,
         role: fullAdmin ? form.role : 'staff',
@@ -218,8 +223,12 @@ export function AdminUsers() {
         school_name: form.school_name.trim() || null,
         major: form.major.trim() || null,
         graduation_year: form.graduation_year ? Number(form.graduation_year) : null,
-        // Admin/CEO ngầm định có mọi quyền nên không lưu quyền lẻ cho họ.
-        permissions: fullAdmin && form.role === 'staff' ? form.permissions : [],
+        // Quyền lẻ CHỈ gửi đi khi người dùng thực sự đổi nó ở form này.
+        //
+        // Trước đây mọi lần lưu đều gửi `[]` cho ai không phải staff, nên sửa
+        // số điện thoại cho một trưởng nhóm là xóa sạch quyền riêng đã cấp cho
+        // họ bên Phân công nhân sự — mất im lặng, không báo gì.
+        ...(permissionsChanged ? { permissions: form.permissions } : {}),
       });
       if (error) {
         toast('Cập nhật thất bại: ' + error, 'error');
