@@ -122,6 +122,14 @@ export function AdminOrganization() {
      * hieu vi sao. O nay lam ca hai viec trong mot lan bam.
      */
     move_managers_in: false,
+    /**
+     * Nhan su thuoc don vi.
+     *
+     * Khac `manager_ids`: phu trach chi la mot cai ten tren so do, con day
+     * moi la `profiles.unit_id` - thu quyet dinh khoan luong khai cho don vi
+     * co ap cho ho hay khong.
+     */
+    member_ids: [] as string[],
   });
   /** Bang noi organization_unit_managers da ton tai chua. */
   const [multiManagerSupported, setMultiManagerSupported] = useState(true);
@@ -504,6 +512,46 @@ export function AdminOrganization() {
       }
     }
 
+    // --- Nhan su thuoc don vi ----------------------------------------------
+    // Goi RPC voi DUNG gia tri hien co cua tung nguoi, chi doi don vi: RPC
+    // ghi de moi truong nen truyen null la xoa mat du lieu that cua ho.
+    if (unitId) {
+      const before = users.filter((user) => user.unit_id === unitId).map((user) => user.id);
+      const after = unitForm.member_ids;
+
+      const moves: { person: Profile; unit: string | null }[] = [];
+      for (const id of after) {
+        if (before.includes(id)) continue;
+        const person = users.find((user) => user.id === id);
+        if (person) moves.push({ person, unit: unitId });
+      }
+      // Bo tich = go khoi don vi, KHONG xoa nguoi. Ho ve trang thai "chua gan
+      // don vi" chu khong bi day len don vi cha: day len cha la am tham doi
+      // pham vi luong cua ho sang mot don vi khac.
+      for (const id of before) {
+        if (after.includes(id)) continue;
+        const person = users.find((user) => user.id === id);
+        if (person) moves.push({ person, unit: null });
+      }
+
+      for (const move of moves) {
+        const { error: moveError } = await supabase.rpc('assign_employee_organization', {
+          target_user: move.person.id,
+          target_employee_code: move.person.employee_code || null,
+          target_unit: move.unit,
+          target_position: positions.find((item) => item.id === move.person.position_id)?.unit_id === move.unit
+            ? move.person.position_id : null,
+          target_manager: move.person.manager_id || null,
+          target_hire_date: move.person.hire_date || null,
+          target_employment_status: move.person.employment_status || 'active',
+        });
+        if (moveError) {
+          setSubmitting(false);
+          return toast('Đã lưu đơn vị nhưng không gán được nhân sự: ' + describeDbError(moveError), 'error');
+        }
+      }
+    }
+
     // --- Vi tri tao moi ngay trong form ------------------------------------
     if (unitId) {
       const fresh = unitForm.new_positions
@@ -553,7 +601,7 @@ export function AdminOrganization() {
     toast(editingUnit ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị vào cơ cấu tổ chức.', 'success');
     setUnitModal(false);
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], new_positions: [], move_managers_in: false });
+    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], new_positions: [], move_managers_in: false, member_ids: [] });
     void load();
   };
 
@@ -702,7 +750,7 @@ export function AdminOrganization() {
   const openNewUnit = () => {
     setEditingUnit(null);
     setUnitForm({
-      new_positions: [], manager_ids: [], move_managers_in: false,
+      new_positions: [], manager_ids: [], move_managers_in: false, member_ids: [],
       code: '', name: '',
       unit_type: activeCompany ? 'department' : 'company',
       parent_id: activeCompany?.id ?? '',
@@ -713,7 +761,7 @@ export function AdminOrganization() {
   /** Tạo doanh nghiệp mới: đơn vị cấp gốc, không có cha. */
   const openNewCompany = () => {
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_ids: [], new_positions: [], move_managers_in: false });
+    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_ids: [], new_positions: [], move_managers_in: false, member_ids: [] });
     setUnitModal(true);
   };
 
@@ -725,6 +773,7 @@ export function AdminOrganization() {
       manager_ids: unitManagers[unit.id] ?? (unit.manager_id ? [unit.manager_id] : []),
       new_positions: [],
       move_managers_in: false,
+      member_ids: users.filter((user) => user.unit_id === unit.id).map((user) => user.id),
     });
     setUnitModal(true);
   };
@@ -734,7 +783,7 @@ export function AdminOrganization() {
       : parent.unit_type === 'company' ? 'branch'
         : parent.unit_type === 'branch' ? 'department' : 'team';
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_ids: [], new_positions: [], move_managers_in: false });
+    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_ids: [], new_positions: [], move_managers_in: false, member_ids: [] });
     setUnitModal(true);
   };
 
@@ -1630,6 +1679,56 @@ export function AdminOrganization() {
                 </label>
               );
             })()}
+          </fieldset>
+
+          {/* ---- Nhan su thuoc don vi ----
+               Khac han khoi Nguoi phu trach ngay tren: phu trach chi la mot
+               cai ten tren so do, con day moi la `profiles.unit_id` - thu
+               quyet dinh khoan luong khai cho don vi co ap cho ho hay khong.
+               Hai khoi nam canh nhau nen phai noi ro, neu khong nguoi dung
+               tich mot cai roi tuong da xong ca hai. */}
+          <fieldset className="rounded-xl border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">Nhân sự thuộc đơn vị</legend>
+            <p className="text-xs leading-relaxed text-slate-500">
+              Tích để đưa người vào đơn vị này. Bỏ tích thì họ về trạng thái{' '}
+              <em>chưa gán đơn vị</em>, không bị xóa — nhưng cũng thôi nhận khoản lương khai cho
+              đơn vị.
+            </p>
+
+            <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
+              {users.filter((user) => user.is_active).map((user) => {
+                const checked = unitForm.member_ids.includes(user.id);
+                const elsewhere = !checked && !!user.unit_id && user.unit_id !== editingUnit?.id;
+                return (
+                  <label key={user.id} className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => setUnitForm({
+                        ...unitForm,
+                        member_ids: event.target.checked
+                          ? [...unitForm.member_ids, user.id]
+                          : unitForm.member_ids.filter((id) => id !== user.id),
+                      })}
+                      className="mt-0.5 h-4 w-4 accent-indigo-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium">{user.name}</span>
+                      {user.employee_code && (
+                        <span className="ml-1.5 text-xs text-slate-400">{user.employee_code}</span>
+                      )}
+                      {/* Dang o don vi khac: noi ro de nguoi dung biet minh
+                          dang KEO ho sang, khong phai them mot ban sao. */}
+                      {elsewhere && (
+                        <span className="block text-xs text-amber-600">
+                          Đang thuộc {unitById.get(user.unit_id || '')?.name ?? '?'} — tích vào sẽ chuyển sang đây
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
           </fieldset>
 
           {/* ---- Vi tri cua don vi: mot khoi duy nhat ----
