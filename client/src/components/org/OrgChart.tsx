@@ -34,6 +34,13 @@ export interface OrgChartProps {
   typeLabel: (unit: OrganizationUnit) => string;
   managerName: (unit: OrganizationUnit) => string | null;
   employeeCount: (unitId: string) => number;
+  /**
+   * Nguoi treo THANG vao don vi, de ve ten ngay trong o.
+   *
+   * Con so "3 ns" khong tra loi duoc cau hoi thuc te la AI dang o trong
+   * phong nay - nhin so do to chuc thi do moi la thu nguoi ta muon biet.
+   */
+  membersOf: (unitId: string) => { id: string; name: string }[];
   needsAttention: (unitId: string) => boolean;
   selectedId: string | null;
   onSelect: (unitId: string) => void;
@@ -273,7 +280,7 @@ function Stem() {
 }
 
 function NodeBox({
-  unit, typeLabel, managerName, employeeCount, needsAttention,
+  unit, typeLabel, managerName, employeeCount, membersOf, needsAttention,
   selectedId, onSelect, childrenOf, collapsed, onToggle, onAddChild, onRemove,
 }: OrgChartProps & { unit: OrganizationUnit }) {
   const isSelected = selectedId === unit.id;
@@ -329,6 +336,31 @@ function NodeBox({
           </span>
           <span className="shrink-0 font-bold text-slate-600">{employeeCount(unit.id)} ns</span>
         </div>
+
+        {/* Ten nguoi trong don vi, cat o 4 dong.
+            O rong 176px va so do co the thu con 30%, nen in het ten cua mot
+            phong 20 nguoi se lam o cao gap may lan cac o khac va pha vo hinh
+            dang cay - thu duy nhat so do nay ve ra. */}
+        {(() => {
+          const members = membersOf(unit.id);
+          if (members.length === 0) return null;
+          const shown = members.slice(0, 4);
+          const rest = members.length - shown.length;
+          return (
+            <div className="mt-1.5 flex flex-col gap-0.5 border-t border-slate-100 pt-1.5">
+              {shown.map((person) => (
+                <span key={person.id} className="truncate text-[10px] leading-tight text-slate-500">
+                  {person.name}
+                </span>
+              ))}
+              {rest > 0 && (
+                <span className="text-[10px] font-semibold leading-tight text-slate-400">
+                  +{rest} người nữa
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </button>
 
       {/* Nút thao tác chỉ hiện khi rê chuột: sơ đồ là để NHÌN, nút bấm luôn

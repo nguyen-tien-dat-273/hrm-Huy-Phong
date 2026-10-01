@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Building2, BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, LayoutGrid, List, Network, Pencil, Plus, Search,
-  ShieldCheck, Trash2, UserCog, UsersRound,
+  ShieldCheck, Trash2, UserCog, UserMinus, UsersRound,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -823,6 +823,41 @@ export function AdminOrganization() {
     await load();
   };
 
+  /**
+   * Go mot nguoi khoi don vi - KHONG xoa tai khoan cua ho.
+   *
+   * Ve trang thai "chua gan don vi" chu khong day len don vi cha: day len
+   * cha la am tham doi pham vi luong cua ho sang mot don vi khac ma khong ai
+   * yeu cau.
+   */
+  const removePersonFromUnit = async (person: Profile, unit: OrganizationUnit) => {
+    const accepted = await confirm({
+      title: `Gỡ “${person.name}” khỏi ${unit.name}?`,
+      message: 'Tài khoản vẫn còn, chỉ là không thuộc đơn vị nào nữa — nên cũng thôi nhận khoản lương khai cho đơn vị.',
+      confirmLabel: 'Gỡ khỏi đơn vị',
+      danger: true,
+    });
+    if (!accepted) return;
+
+    setSubmitting(true);
+    const { error } = await supabase.rpc('assign_employee_organization', {
+      target_user: person.id,
+      target_employee_code: person.employee_code || null,
+      target_unit: null,
+      // Chuc danh thuoc don vi vua go thi bo luon, neu khong nguoi nay khong
+      // thuoc don vi nao ma van giu chuc danh cua don vi do.
+      target_position: positions.find((item) => item.id === person.position_id)?.unit_id === unit.id
+        ? null : person.position_id,
+      target_manager: person.manager_id || null,
+      target_hire_date: person.hire_date || null,
+      target_employment_status: person.employment_status || 'active',
+    });
+    setSubmitting(false);
+    if (error) return toast('Không gỡ được: ' + describeDbError(error), 'error');
+    toast(`Đã gỡ ${person.name} khỏi ${unit.name}.`, 'success');
+    await load();
+  };
+
   const removeUnit = async (unit: OrganizationUnit) => {
     // Liet ke CU THE cai gi dang chan, thay vi chi noi "co du lieu lien quan".
     //
@@ -1265,6 +1300,7 @@ export function AdminOrganization() {
                       typeLabel={(unit) => UNIT_TYPES[unit.unit_type]}
                       managerName={(unit) => (unit.manager_id ? userById.get(unit.manager_id)?.name || null : null)}
                       employeeCount={(unitId) => employeeCountByUnit.get(unitId) || 0}
+                      membersOf={(unitId) => users.filter((user) => user.is_active && user.unit_id === unitId)}
                       needsAttention={(unitId) => attentionUnitIds.has(unitId)}
                       selectedId={selectedUnit?.id ?? null}
                       onSelect={setSelectedUnitId}
@@ -1415,6 +1451,15 @@ export function AdminOrganization() {
                                   className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
                                 >
                                   <UserCog className="h-4 w-4" />
+                                </button>
+                                {/* Go khoi don vi, KHONG xoa nguoi. */}
+                                <button
+                                  type="button"
+                                  onClick={() => void removePersonFromUnit(person, selectedUnit)}
+                                  aria-label={`Gỡ ${person.name} khỏi đơn vị`}
+                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <UserMinus className="h-4 w-4" />
                                 </button>
                               </li>
                             ))}
@@ -1641,6 +1686,17 @@ export function AdminOrganization() {
                       className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
                     >
                       <Pencil className="h-4 w-4" />
+                    </button>
+                    {/* Xoa ngay tai day thay vi bat sang tab Vi tri: dang
+                        nhin dung cai vi tri can bo ma phai di tim lai no o
+                        mot danh sach phang la thua mot buoc. */}
+                    <button
+                      type="button"
+                      onClick={() => void removePosition(position)}
+                      aria-label={`Xóa ${position.title}`}
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
                 ))}
