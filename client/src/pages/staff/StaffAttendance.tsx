@@ -186,6 +186,28 @@ export function StaffAttendance() {
   const handleCheckIn = async () => {
     setSubmitting(true);
 
+    // Hoi lai database truoc khi chen.
+    //
+    // Giao dien che nut Check-in khi da cham, nhung do la che theo trang thai
+    // TREN MAN. Mo hai tab, dung hai may, hoac mat mang roi bam lai thi man
+    // nay van tuong chua ai cham. Database da co rang buoc chan (migration
+    // 20261001110000), nhung de no bao loi thi nguoi dung nhan mot cau ky
+    // thuat - hoi truoc de noi bang tieng Viet.
+    const { data: existing } = await supabase
+      .from('attendance')
+      .select('id')
+      .eq('user_id', profile?.id ?? '')
+      .eq('date', getTodayString())
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (existing) {
+      toast('Hôm nay bạn đã check-in rồi. Tải lại trang để thấy ca đang mở.', 'warning');
+      setSubmitting(false);
+      await loadData(true);
+      return;
+    }
+
     const [{ data: flag }, { data: locationRows }] = await Promise.all([
       supabase.from('feature_flags').select('enabled').eq('key', 'geofence_attendance').maybeSingle(),
       supabase.from('work_locations').select('id, name, address, latitude, longitude, radius_meters').eq('is_active', true).not('latitude', 'is', null).not('longitude', 'is', null),
