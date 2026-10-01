@@ -108,6 +108,98 @@ công không vào bảng công. Cần đếm, đối chiếu với
 
 ---
 
+## Code thừa: thứ gì đang nằm trên bản Vercel mà không ai tới được
+
+Quét toàn bộ `client/src` + `api`, đối chiếu với chính bản dựng trong
+`client/dist`. Phải tách hai loại, vì cách xử lý khác hẳn nhau.
+
+### A. CÓ lên Vercel nhưng không ai tới được — thừa thật
+
+**A1. `AdminAttendance` — một chunk 11.274 byte không route nào nạp nổi**
+
+```
+client/dist/assets/AdminAttendance-De1CunGa.js      11.274 byte
+```
+
+Được `lazyRoute` import ở `App.tsx:28`, nhưng không `<Route>` nào render. Tôi
+dò toàn bộ component lazy trong App.tsx — đây là cái **duy nhất** bị bỏ rơi.
+Vite vẫn sinh chunk cho nó và chunk đó nằm trên Vercel, chỉ là không bao giờ
+được tải.
+
+Trớ trêu: đây đồng thời là **trang duy nhất duyệt chấm công** (xem mục A2 phần
+*Hướng đã chốt*). Nên nó vừa là code thừa vừa là chức năng đang thiếu — xoá đi
+thì mất luôn đường duyệt, mà để nguyên thì không ai dùng được. Phải trả route,
+không phải xoá.
+
+**A2. Hai section chết trong `AdminNexusCenter`**
+
+`Section` khai bốn giá trị (`AdminNexusCenter.tsx:21`) nhưng `App.tsx` chỉ gắn
+route cho hai: `lifecycle` và `performance`. Hai cái còn lại — `locations` và
+`flags` — không có đường vào, nhưng mã của chúng **vẫn nằm trong chunk 89,62 kB
+đang được tải thật** mỗi khi ai đó mở Hội nhập hoặc KPI:
+
+| Phần chết | Dòng |
+|---|---|
+| `interface FeatureFlag`, state `flags` | 28, 67 |
+| `emptyLocation`, state `locationForm` | 40, 72 |
+| Lưu địa điểm + gán đơn vị | 117–150 |
+| `toggleFlag` | 182 |
+| Khối render `section === 'locations'` | 205–210 |
+| Khối render `section === 'flags'` | 211 |
+| Form địa điểm đầy đủ | 218–235 |
+
+Khác với A1, phần này **không chỉ chiếm chỗ**: nó còn kéo theo 5 truy vấn thừa
+mỗi lần mở KPI, và là nguyên nhân của lỗi "một bảng thiếu là sập cả module"
+ở mục 2.
+
+Lưu ý: phần `locations` **phải trả lại route**, không được xoá — `work_locations`
+vẫn là nơi khai mỗi máy chấm công đặt ở đâu. Chỉ `flags` mới là thứ có thể bỏ
+hẳn sau khi gỡ geofence.
+
+### B. KHÔNG lên Vercel — rác trong repo, không phải gánh nặng bản build
+
+Tree-shaking đã loại sạch những thứ này khỏi bản dựng. Đã kiểm bằng cách tìm
+trực tiếp trong `client/dist/assets/`, không có dấu vết nào:
+
+| Thứ | Vị trí | Quy mô |
+|---|---|---|
+| `KpiScoreMethodCatalog` | `components/kpi/KpiScoreMethodCatalog.tsx` | **cả file 369 dòng**, không ai import |
+| `coversDate` | `lib/leave.ts` | một hàm |
+| `STANDARD_DAY_HOURS` | `lib/worklog.ts` | một hằng |
+| `FORMULA_FUNCTION_NAMES` | `lib/payrollFormula.ts` | một hằng |
+| `createSupabaseClient` | `lib/supabase.ts` | một hàm — comment còn ghi *"used by the /setup page"*, nhưng `/setup` không gọi nó |
+
+Xoá nhóm này **không làm bản live nhẹ đi một byte nào**. Giá trị của việc xoá
+là ở chỗ khác: đỡ một file 369 dòng mà người đọc tưởng đang chạy, và đỡ một
+comment nói sai.
+
+### C. Đã kiểm và KHÔNG phải thừa — đừng đụng vào
+
+- **`xlsx` (424 kB, gzip 141 kB)** — nhìn số thì giật mình, nhưng nó được nạp
+  bằng `await import('xlsx')` trong `EmployeeImportModal.tsx:53,68`, tức tách
+  chunk riêng và chỉ tải khi có người thật sự nhập hồ sơ từ Excel. Đây là cách
+  làm đúng, không phải chỗ cần tối ưu.
+- **26 hàm/hằng `export` nhưng chỉ dùng trong chính file nó** — ví dụ
+  `TEAMLEAD_PERMISSIONS`, `parseExcelDate`, `calculateBalance`. Code vẫn chạy,
+  chỉ thừa chữ `export`. Không phải code chết, và bỏ `export` đi không đổi gì
+  trên bản build.
+- **Mọi thư viện còn lại trong `dependencies`** đều có nơi dùng.
+- **`attendance_sessions`** — client chỉ đọc nên nhìn tưởng chết, nhưng có
+  trigger database tự ghi.
+
+### D. Một chi tiết nhỏ
+
+`zkteco-protocol` nằm ở `dependencies`, nhưng chỉ ba file trong `tools/` dùng
+nó — mà `tools/` chạy trên máy trong văn phòng, không nằm trong bản build
+Vercel. Nghĩa là mỗi lần Vercel build lại tải một thư viện không bao giờ dùng
+tới.
+
+Chuyển sang `devDependencies` thì Vercel đỡ, **nhưng** phải xem máy chạy bridge
+ngoài văn phòng cài bằng lệnh gì — nếu nó cài kiểu chỉ-lấy-production thì
+chuyển xong bridge sẽ chết. Kiểm cách cài trên máy đó trước khi đổi.
+
+---
+
 ## P0 — Hỏng chức năng, cần sửa trước
 
 ### 1. Nút Check-in thủ công còn sống song song với máy chấm công — và một lần quét vân tay có thể bị nuốt mất
