@@ -1148,25 +1148,46 @@ export function AdminOrganization() {
                     </p>
                   )}
 
+                  {/* Dai thong bao, khong phai mot nut nho lan giua cac bo loc.
+                      Day la viec DUY NHAT con lai giua "so do da dung xong" va
+                      "bang luong chia dung phong", nen no phai doi mat nguoi
+                      dung chu khong de ho tu tim ra. */}
+                  {managersOutsideTheirUnit.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3.5">
+                      <p className="flex min-w-0 items-start gap-2.5 text-xs leading-relaxed text-amber-900">
+                        <CircleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                        <span>
+                          <strong className="block text-sm">
+                            {managersOutsideTheirUnit.length} người đang phụ trách đơn vị nhưng
+                            chưa được xếp vào đơn vị đó
+                          </strong>
+                          <span className="mt-0.5 block">
+                            {managersOutsideTheirUnit.slice(0, 4).map(({ person, unit }) => `${person.name} → ${unit.name}`).join(' · ')}
+                            {managersOutsideTheirUnit.length > 4 && ` · và ${managersOutsideTheirUnit.length - 4} người nữa`}
+                          </span>
+                          <span className="mt-1 block">
+                            Vì vậy sơ đồ ghi <strong>0 nhân sự</strong>, và ở{' '}
+                            <strong>Cơ chế lương</strong> họ chưa nằm trong phòng nào nên không
+                            nhận khoản lương khai cho phòng.
+                          </span>
+                        </span>
+                      </p>
+                      <Button
+                        type="button"
+                        theme="admin"
+                        disabled={submitting}
+                        onClick={() => void assignManagersToTheirUnits()}
+                      >
+                        <UsersRound className="h-4 w-4" />
+                        {submitting ? 'Đang xếp…' : 'Xếp vào đơn vị ngay'}
+                      </Button>
+                    </div>
+                  )}
+
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => setUnitScope('all')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Tất cả ({unitIdsInCompany.size})</button>
                   <button type="button" onClick={() => setUnitScope('attention')} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'attention' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}><CircleAlert className="h-3.5 w-3.5" />Cần bổ sung ({attentionInCompany})</button>
-                  {/* Du lieu de gan da nam san trong so do - khong bat nguoi
-                      dung mo tung don vi ra tich lai tung nguoi. */}
-                  {managersOutsideTheirUnit.length > 0 && (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={submitting}
-                      onClick={() => void assignManagersToTheirUnits()}
-                    >
-                      <UsersRound className="h-3.5 w-3.5" />
-                      Gán {managersOutsideTheirUnit.length} người phụ trách vào đơn vị
-                    </Button>
-                  )}
-
                   {/* Don vi da ngung hoat dong van ve trong so do kem nhan xam.
                       O nay de giau chung di khi khong con muon nhin. */}
                   {inactiveInCompany > 0 && (
