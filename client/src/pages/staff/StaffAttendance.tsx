@@ -91,7 +91,12 @@ export function StaffAttendance() {
     // daily_assignments có 3 khóa ngoại tới profiles nên phải chỉ rõ khóa khi
     // embed, tránh lỗi PGRST201 như từng gặp ở shifts/attendance.
     const [{ data: attData, error: attErr }, { data: asgData, error: asgErr }, { data: weekData }] = await Promise.all([
-      supabase.from('attendance').select('*, location:work_locations(id,name,address,latitude,longitude,radius_meters)').eq('user_id', profile.id).eq('date', today).maybeSingle(),
+      // KHONG `maybeSingle()`: no nem loi khi co nhieu hon mot dong, ma mot
+      // ngay lam hai ca la hop le - chi cam hai dong cung DANG MO (chi muc
+      // attendance_one_open_per_user_day).
+      supabase.from('attendance').select('*, location:work_locations(id,name,address,latitude,longitude,radius_meters)')
+        .eq('user_id', profile.id).eq('date', today)
+        .order('check_in_time', { ascending: false }),
       supabase
         .from('daily_assignments')
         .select('*, assigner:profiles!daily_assignments_assigned_by_fkey(id,name,avatar_url)')
@@ -107,11 +112,16 @@ export function StaffAttendance() {
     ]);
 
     const firstError = attErr ?? asgErr;
-    const sessionResult = attData
-      ? await supabase.from('attendance_sessions').select('*').eq('attendance_id', attData.id).order('started_at')
+    // Uu tien ca DANG MO - do la ca nguoi dung can check-out. Khong co ca
+    // nao mo thi lay ca gan nhat, de man hinh bao "ngay lam viec da ket thuc".
+    const todayRows = (attData ?? []) as Attendance[];
+    const todayShift = todayRows.find((row) => row.status === 'active') ?? todayRows[0] ?? null;
+
+    const sessionResult = todayShift
+      ? await supabase.from('attendance_sessions').select('*').eq('attendance_id', todayShift.id).order('started_at')
       : { data: [], error: null };
     setLoadError(firstError ? describeDbError(firstError) : null);
-    setAttendance(attData as Attendance | null);
+    setAttendance(todayShift);
     // Migration chưa chạy: giữ cách tính một phiên cũ thay vì làm hỏng trang.
     setSessions(sessionResult.error ? [] : (sessionResult.data || []) as AttendanceSession[]);
     setAssignments((asgData || []) as DailyAssignment[]);

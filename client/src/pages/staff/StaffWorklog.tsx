@@ -55,12 +55,20 @@ export function StaffWorklog() {
 
     const [entryResult, attResult] = await Promise.all([
       fetchDayEntries(profile.id, date),
-      supabase.from('attendance').select('*').eq('user_id', profile.id).eq('date', date).maybeSingle(),
+      // KHONG dung `maybeSingle()`: no nem loi khi co nhieu hon mot dong.
+      //
+      // Mot ngay lam hai ca (sang, toi) la chuyen binh thuong va he thong cho
+      // phep - chi cam hai dong cung DANG MO (chi muc
+      // attendance_one_open_per_user_day). Dung maybeSingle thi dung nguoi
+      // lam hai ca se thay trang nhat ky gio bao loi, khong vao duoc.
+      supabase.from('attendance').select('*').eq('user_id', profile.id).eq('date', date)
+        .order('check_in_time', { ascending: true }),
     ]);
 
     setLoadError(entryResult.error ?? describeDbErrorOrNull(attResult.error) ?? null);
     setEntries(entryResult.entries);
-    setAttendance((attResult.data as Attendance) ?? null);
+    // Lay ca dau tien trong ngay lam moc gio vao.
+    setAttendance(((attResult.data ?? [])[0] as Attendance) ?? null);
     setLoading(false);
   };
 
