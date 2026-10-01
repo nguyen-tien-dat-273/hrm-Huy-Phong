@@ -80,7 +80,17 @@ export function AdminAssignments() {
     if (!silent) setLoading(true);
 
     const [staffRes, weekRes, queueRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('role', 'staff').eq('is_active', true).order('name'),
+      // KHONG loc `role = 'staff'`.
+      //
+      // Loc nhu vay thi truong nhom, truong phong va giam doc bien mat khoi
+      // bang giao viec - trong khi o cong ty vua va nho ho van nhan viec hang
+      // ngay nhu moi nguoi. Thuc te tren he thong nay: chi dung mot tai khoan
+      // co vai tro Nhan vien, nen bang chi hien dung mot dong.
+      //
+      // RLS cua `daily_assignments` cung khong he chan theo vai tro nguoi
+      // duoc giao - no chi doi nguoi tao phai la chinh minh hoac nguoi giao.
+      // Tuc la bo loc nay khong do mot quy tac nghiep vu nao ca.
+      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
       supabase
         .from('daily_assignments')
         .select('*, profile:profiles!daily_assignments_user_id_fkey(*)')
