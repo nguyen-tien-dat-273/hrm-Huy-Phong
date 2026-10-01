@@ -223,7 +223,13 @@ with probe as (
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'kpi_template_criteria'
                and column_name = 'score_method'),
-     'Cach tinh diem theo TUNG TIEU CHI thay vi ca bo KPI')
+     'Cach tinh diem theo TUNG TIEU CHI thay vi ca bo KPI'),
+
+    ('20261001140000_kpi_template_unit',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'kpi_position_templates'
+               and column_name = 'unit_id'),
+     'Bo KPI gan thang vao phong ban; kpi_scheme_for xet ca duong nay')
 
   ) as t(migration, applied, mo_ta)
 )

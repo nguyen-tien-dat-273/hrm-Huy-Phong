@@ -797,6 +797,37 @@ export function AdminOrganization() {
     else { toast('Đã đổi thành pháp nhân.', 'success'); await load(); }
   };
 
+  /**
+   * Gan mot nguoi vao don vi ngay tren so do.
+   *
+   * Truoc day o day chi co mot cau "Gan o Phan cong nhan su" - nguoi dung
+   * dang nhin dung cai phong trong, phai sang man khac, tim lai dung phong
+   * do trong mot o chon. Dung dieu kien thi lam luon tai cho.
+   *
+   * Goi RPC voi DUNG gia tri hien co cua nguoi do, chi doi don vi: RPC nay
+   * ghi de moi truong, truyen null cho ngay vao lam hay chuc danh la xoa mat
+   * du lieu that.
+   */
+  const assignPersonToUnit = async (person: Profile, unit: OrganizationUnit) => {
+    setSubmitting(true);
+    const { error } = await supabase.rpc('assign_employee_organization', {
+      target_user: person.id,
+      target_employee_code: person.employee_code || null,
+      target_unit: unit.id,
+      // Chuc danh cu thuoc don vi KHAC thi bo di, neu khong nguoi nay dung o
+      // phong moi ma giu chuc danh phong cu.
+      target_position: positions.find((item) => item.id === person.position_id)?.unit_id === unit.id
+        ? person.position_id : null,
+      target_manager: person.manager_id || null,
+      target_hire_date: person.hire_date || null,
+      target_employment_status: person.employment_status || 'active',
+    });
+    setSubmitting(false);
+    if (error) return toast('Không gán được: ' + describeDbError(error), 'error');
+    toast(`Đã gán ${person.name} vào ${unit.name}.`, 'success');
+    await load();
+  };
+
   const removeUnit = async (unit: OrganizationUnit) => {
     // Liet ke CU THE cai gi dang chan, thay vi chi noi "co du lieu lien quan".
     //
@@ -1322,17 +1353,47 @@ export function AdminOrganization() {
                           <span className="font-normal text-slate-400">({direct.length})</span>
                         </p>
 
+                        {/* ---- Nguoi phu trach chua thuoc don vi ----
+                             Dat ai do lam phu trach chi ghi `manager_id`;
+                             `profiles.unit_id` moi la cai quyet dinh ho co
+                             nhan khoan luong khai cho don vi hay khong. Nen
+                             KHONG dem ho vao con so - dem vao la noi doi ve
+                             luong. Thay vao do bay ra mot nut gan ngay. */}
+                        {(() => {
+                          const managerIds = unitManagers[selectedUnit.id]
+                            ?? (selectedUnit.manager_id ? [selectedUnit.manager_id] : []);
+                          const outside = managerIds
+                            .map((id) => users.find((user) => user.id === id))
+                            .filter((user): user is Profile => !!user && user.unit_id !== selectedUnit.id);
+                          if (outside.length === 0) return null;
+                          return (
+                            <div className="border-b border-slate-100 bg-amber-50/70 px-3.5 py-2.5">
+                              <p className="text-[11px] leading-relaxed text-amber-900">
+                                <strong>{outside.length === 1 ? outside[0].name : `${outside.length} người phụ trách`}</strong>{' '}
+                                đang phụ trách đơn vị này nhưng chưa phải nhân sự của nó, nên chưa
+                                nhận khoản lương khai cho đơn vị.
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {outside.map((person) => (
+                                  <Button
+                                    key={person.id}
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={submitting}
+                                    onClick={() => void assignPersonToUnit(person, selectedUnit)}
+                                  >
+                                    <UsersRound className="h-3.5 w-3.5" />
+                                    Đưa {person.name} vào đơn vị
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {direct.length === 0 ? (
                           <p className="px-3.5 py-3 text-xs leading-relaxed text-slate-500">
-                            Chưa ai được gán vào đơn vị này. Gán ở{' '}
-                            <button
-                              type="button"
-                              onClick={() => setTab('assignments')}
-                              className="font-semibold text-indigo-600 underline hover:text-indigo-700"
-                            >
-                              Phân công nhân sự
-                            </button>
-                            . Đặt người phụ trách ở sơ đồ không tính là gán vào đơn vị.
+                            Chưa ai được gán vào đơn vị này. Chọn người ở ô bên dưới để gán ngay.
                           </p>
                         ) : (
                           <ul className="divide-y divide-slate-50">
@@ -1363,6 +1424,34 @@ export function AdminOrganization() {
                             ))}
                           </ul>
                         )}
+
+                        {/* ---- Gan nguoi ngay tai day ----
+                             Chi liet ke nguoi CHUA thuoc don vi nay. Nguoi
+                             dang o don vi khac van hien kem ten don vi cu, de
+                             bam vao la biet minh dang KEO ho sang chu khong
+                             phai them mot ban sao. */}
+                        <div className="border-t border-slate-100 px-3.5 py-2.5">
+                          <Select
+                            aria-label={`Gán nhân sự vào ${selectedUnit.name}`}
+                            value=""
+                            disabled={submitting}
+                            onChange={(event) => {
+                              const person = users.find((item) => item.id === event.target.value);
+                              if (person) void assignPersonToUnit(person, selectedUnit);
+                            }}
+                            className="h-10 text-xs"
+                          >
+                            <option value="">+ Gán nhân sự vào đơn vị này…</option>
+                            {users
+                              .filter((person) => person.is_active && person.unit_id !== selectedUnit.id)
+                              .map((person) => (
+                                <option key={person.id} value={person.id}>
+                                  {person.name}
+                                  {person.unit_id ? ` — đang ở ${unitById.get(person.unit_id)?.name ?? '?'}` : ' — chưa gán đơn vị'}
+                                </option>
+                              ))}
+                          </Select>
+                        </div>
 
                         {nested.length > 0 && (
                           <p className="border-t border-slate-100 px-3.5 py-2.5 text-[11px] leading-relaxed text-slate-500">

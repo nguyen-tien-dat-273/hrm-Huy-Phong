@@ -35,6 +35,7 @@ interface Template {
   code: string;
   name: string;
   block_code: string;
+  unit_id: string | null;
   default_kpi_amount: number;
   score_method: string;
   result_cap_percent: number | null;
@@ -77,7 +78,7 @@ interface Criteria {
 }
 
 const BLANK_TEMPLATE = {
-  code: '', name: '', block_code: 'VAN_PHONG', default_kpi_amount: '0', note: '',
+  code: '', name: '', block_code: 'VAN_PHONG', unit_id: '', default_kpi_amount: '0', note: '',
   score_method: 'WEIGHTED_PERCENT', result_cap_percent: '', result_floor_percent: '0',
 };
 
@@ -106,6 +107,8 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
   const [criteria, setCriteria] = useState<Criteria[]>([]);
   const [bands, setBands] = useState<RatingBand[]>([]);
   const [blocks, setBlocks] = useState<Block[]>([]);
+  const [units, setUnits] = useState<{ id: string; name: string; parent_id: string | null }[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string; avatar_url: string | null; unit_id: string | null; position_id: string | null }[]>([]);
   const [blockSupported, setBlockSupported] = useState(true);
   const [blockModal, setBlockModal] = useState(false);
   const [blockForm, setBlockForm] = useState({ code: '', name: '' });
@@ -131,11 +134,13 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
-    const [templateRes, criteriaRes, bandRes, blockRes, methodRes] = await Promise.all([
+    const [templateRes, criteriaRes, bandRes, blockRes, unitRes, peopleRes, methodRes] = await Promise.all([
       supabase.from('kpi_position_templates').select('*').order('name'),
       supabase.from('kpi_template_criteria').select('*').order('sort_order'),
       supabase.from('kpi_rating_bands').select('*').order('sort_order'),
       supabase.from('kpi_blocks').select('*').order('sort_order'),
+      supabase.from('organization_units').select('id, name, parent_id').eq('is_active', true).order('name'),
+      supabase.from('profiles').select('id, name, avatar_url, unit_id, position_id').eq('is_active', true).order('name'),
       supabase.from('kpi_score_methods').select('*').order('sort_order').order('name'),
     ]);
     if (templateRes.error || criteriaRes.error) {
@@ -157,6 +162,8 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       ]
       : ((blockRes.data || []) as Block[]));
     setBlockSupported(!blockRes.error);
+    setUnits((unitRes.data || []) as typeof units);
+    setPeople((peopleRes.data || []) as typeof people);
     // Chua chay migration 20260930190000 thi lui ve hai cach khai cung, va an
     // nut "Them cach tinh" di - bam vao chi de nhan loi khong bang.
     const methodRows = (methodRes.data || []) as ScoreMethod[];
@@ -166,6 +173,23 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
   };
 
   useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Danh sach don vi xep theo CAY, thut dau dong de thay cap. */
+  const unitOptions = useMemo(() => {
+    const childrenOf = (parent: string | null) => units.filter((u) => (u.parent_id ?? null) === parent);
+    const rows: { unit: typeof units[number]; label: string }[] = [];
+    const walk = (parent: string | null, depth: number) => {
+      for (const unit of childrenOf(parent)) {
+        rows.push({ unit, label: `${'\u00a0\u00a0\u00a0\u00a0'.repeat(depth)}${depth > 0 ? '\u2514 ' : ''}${unit.name}` });
+        walk(unit.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return rows;
+  }, [units]);
+
+  /** Nguoi treo THANG vao don vi nay - khong gom don vi con. */
+  const peopleInUnit = (unitId: string) => people.filter((person) => person.unit_id === unitId);
 
   const criteriaByTemplate = useMemo(() => {
     const map = new Map<string, Criteria[]>();
@@ -191,6 +215,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       code: template.code,
       name: template.name,
       block_code: template.block_code,
+      unit_id: template.unit_id ?? '',
       default_kpi_amount: String(Number(template.default_kpi_amount)),
       note: template.note ?? '',
       score_method: template.score_method ?? 'WEIGHTED_PERCENT',
@@ -208,6 +233,9 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       code: templateForm.code.trim().toUpperCase(),
       name: templateForm.name.trim(),
       block_code: templateForm.block_code,
+      // Rong = chua gan phong ban nao. Khai duoc phong thi bo KPI tu ap cho
+      // moi nguoi trong phong do, khong phai di gan tung nguoi.
+      unit_id: templateForm.unit_id || null,
       default_kpi_amount: Number(templateForm.default_kpi_amount || '0'),
       score_method: templateForm.score_method,
       result_cap_percent: templateForm.result_cap_percent === '' ? null : Number(templateForm.result_cap_percent),
@@ -552,6 +580,38 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
 
                     {isOpen && (
                       <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+                        {/* Nhan su cua phong ban duoc gan bo KPI nay. Khai
+                            xong ma khong thay ai la dau hieu phong do chua co
+                            nguoi - biet ngay thay vi doi toi luc mo phieu
+                            cham moi phat hien. */}
+                        {template.unit_id && (
+                          <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] font-bold text-slate-600">
+                              Nhân sự dùng bộ này
+                              <span className="ml-1 font-normal text-slate-400">
+                                ({peopleInUnit(template.unit_id).length})
+                              </span>
+                            </p>
+                            {peopleInUnit(template.unit_id).length === 0 ? (
+                              <p className="mt-1 text-[11px] leading-relaxed text-amber-700">
+                                Phòng này chưa có nhân sự nào. Gán người vào phòng ở Cơ cấu tổ chức
+                                thì họ tự dùng bộ KPI này.
+                              </p>
+                            ) : (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {peopleInUnit(template.unit_id).map((person) => (
+                                  <span
+                                    key={person.id}
+                                    className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
+                                  >
+                                    {person.name}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {!balanced && (
                           <p className="mb-3 flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
                             <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
@@ -680,6 +740,28 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
               onChange={(e) => setTemplateForm({ ...templateForm, code: e.target.value.toUpperCase() })}
             />
           </div>
+          {/* ---- Phong ban ap bo KPI nay ----
+               Khai phong la xong: moi nguoi trong phong do dung bo nay. Khong
+               khai thi bo KPI chi la mot mau nam do, phai di gan tung nguoi o
+               man khac - dung thu vua bo di. */}
+          <div>
+            <Select
+              label="Phòng ban áp dụng"
+              value={templateForm.unit_id}
+              onChange={(e) => setTemplateForm({ ...templateForm, unit_id: e.target.value })}
+            >
+              <option value="">Chưa gán phòng ban</option>
+              {unitOptions.map((row) => (
+                <option key={row.unit.id} value={row.unit.id}>{row.label}</option>
+              ))}
+            </Select>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+              {templateForm.unit_id
+                ? `${peopleInUnit(templateForm.unit_id).length} nhân sự trong phòng này sẽ dùng bộ KPI vừa tạo.`
+                : 'Để trống thì bộ KPI chưa áp cho ai — phải gán riêng từng người ở màn Gán KPI.'}
+            </p>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Select
