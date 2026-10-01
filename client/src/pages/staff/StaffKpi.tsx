@@ -6,17 +6,25 @@
 // hay thấp ở tiêu chí nào — tức là con số quyết định một phần lương của họ
 // nằm ngoài tầm nhìn của chính họ.
 //
-// Màn này CHỈ ĐỌC. Việc tự chấm (RC6.2) chưa dựng, nên không bày ô nhập để
-// khỏi hứa một thứ chưa có.
+// Màn này cũng là nơi TỰ CHẤM (RC6.2): nhân viên chấm trước, gửi đi, rồi
+// quản lý chấm lại. Hai cột điểm nằm cạnh nhau nên chênh lệch lộ ra ngay —
+// đó chính là chỗ cần trao đổi.
+//
+// Nhân viên chỉ ghi được `self_score`. Trigger `guard_kpi_score_columns`
+// dưới database chặn mọi đường ghi vào `manager_score`, kể cả gọi thẳng API
+// — giao diện chỉ là một trong nhiều lối vào.
 // ============================================================================
 
 import { useEffect, useState } from 'react';
-import { Target, TriangleAlert } from 'lucide-react';
+import { Send, Target, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
+import { describeDbError } from '@/lib/dbError';
 import { supabase } from '@/lib/supabase';
 import { getTodayString } from '@/lib/utils';
 
@@ -27,12 +35,14 @@ interface Review {
   final_pct: number | null;
   rating: string | null;
   locked_at: string | null;
+  self_submitted_at: string | null;
 }
 
 interface Score {
   id: string;
   review_id: string;
   criteria_id: string;
+  self_score: number | null;
   manager_score: number | null;
   not_applicable: boolean;
   not_applicable_reason: string | null;
@@ -56,6 +66,42 @@ export function StaffKpi() {
   const [loading, setLoading] = useState(true);
   const [supported, setSupported] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  /**
+   * Ghi diem tu cham.
+   *
+   * Chi ghi `self_score` - trigger duoi database chan san neu co ai co ghi
+   * `manager_score`, nen day khong phai lop bao ve duy nhat.
+   */
+  const setSelfScore = async (score: Score, raw: string) => {
+    if (!supabase) return;
+    const value = raw.trim() === '' ? null : Number(raw);
+    if (value !== null && !Number.isFinite(value)) return;
+
+    setScores((prev) => prev.map((item) => (
+      item.id === score.id ? { ...item, self_score: value } : item
+    )));
+
+    const { error } = await supabase
+      .from('performance_review_scores')
+      .update({ self_score: value })
+      .eq('id', score.id);
+    if (error) toast(describeDbError(error), 'error');
+  };
+
+  const submitSelf = async (review: Review) => {
+    if (!supabase) return;
+    setSaving(review.id);
+    const { data, error } = await supabase.rpc('submit_kpi_self_scores', { p_review: review.id });
+    setSaving(null);
+    if (error) return toast(describeDbError(error), 'error');
+    setReviews((prev) => prev.map((item) => (
+      item.id === review.id ? { ...item, self_submitted_at: (data as string) ?? new Date().toISOString() } : item
+    )));
+    toast('Đã gửi bản tự chấm cho quản lý.', 'success');
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -63,7 +109,7 @@ export function StaffKpi() {
       setLoading(true);
       const reviewRes = await supabase
         .from('performance_reviews')
-        .select('id, period_month, template_id, final_pct, rating, locked_at')
+        .select('id, period_month, template_id, final_pct, rating, locked_at, self_submitted_at')
         .eq('user_id', profile.id)
         .order('period_month', { ascending: false });
 
@@ -124,9 +170,10 @@ export function StaffKpi() {
   return (
     <div className="space-y-4">
       <p className="text-xs leading-relaxed text-slate-500">
-        Kết quả do quản lý chấm. KPI% ở đây là con số dùng để tính khoản{' '}
-        <strong className="text-slate-700">Lương KPI</strong> trên phiếu lương — nếu thấy chưa đúng,
-        trao đổi với quản lý trước khi kỳ được khóa.
+        Bạn tự chấm trước, gửi đi, rồi quản lý chấm lại. KPI% cuối cùng lấy theo{' '}
+        <strong className="text-slate-700">điểm quản lý chấm</strong> và là con số dùng để tính
+        khoản <strong className="text-slate-700">Lương KPI</strong> trên phiếu lương — thấy chưa
+        đúng thì trao đổi trước khi kỳ được khóa.
       </p>
 
       {reviews.map((review) => {
@@ -134,6 +181,11 @@ export function StaffKpi() {
         const rows = criteria
           .filter((item) => item.template_id === review.template_id && item.is_active)
           .map((item) => ({ item, score: scores.find((s) => s.review_id === review.id && s.criteria_id === item.id) }));
+
+        // Gui roi thi khoa lai - sua sau khi gui lam quan ly cham tren mot
+        // ban khac voi ban ho da doc.
+        const canSelfScore = !review.locked_at && !review.self_submitted_at;
+        const missingSelf = rows.filter(({ score }) => score && score.self_score == null).length;
 
         return (
           <Card key={review.id}>
@@ -162,6 +214,30 @@ export function StaffKpi() {
                 </span>
               </button>
 
+              {isOpen && rows.length > 0 && canSelfScore && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3.5 py-2.5">
+                  <p className="min-w-0 text-xs leading-relaxed text-indigo-900">
+                    {missingSelf > 0
+                      ? <>Còn <strong>{missingSelf} tiêu chí</strong> bạn chưa tự chấm. Chấm đủ rồi hãy gửi.</>
+                      : <>Đã chấm đủ. Gửi đi để quản lý chấm lại — <strong>gửi rồi không sửa được nữa</strong>.</>}
+                  </p>
+                  <Button
+                    size="sm"
+                    disabled={missingSelf > 0 || saving === review.id}
+                    onClick={() => void submitSelf(review)}
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    {saving === review.id ? 'Đang gửi…' : 'Gửi bản tự chấm'}
+                  </Button>
+                </div>
+              )}
+
+              {isOpen && rows.length > 0 && review.self_submitted_at && (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
+                  Đã gửi bản tự chấm. Muốn sửa thì nhờ quản lý mở lại.
+                </p>
+              )}
+
               {isOpen && rows.length > 0 && (
                 <ul className="divide-y divide-slate-50 border-t border-slate-100 pt-1">
                   {rows.map(({ item, score }) => (
@@ -181,10 +257,38 @@ export function StaffKpi() {
                             ? ` · ${score.not_applicable_reason}` : ''}
                         </span>
                       </span>
-                      <span className="text-sm font-bold text-slate-700">
-                        {score?.not_applicable
-                          ? '—'
-                          : score?.manager_score == null ? 'Chưa chấm' : Number(score.manager_score)}
+                      {/* Hai cot canh nhau: tu cham va quan ly cham. Nguoi
+                          dung thay chenh lech ngay, khong phai nho so cu. */}
+                      <span className="flex items-center gap-3">
+                        <span className="text-center">
+                          <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                            Bạn chấm
+                          </span>
+                          {canSelfScore && score && !score.not_applicable ? (
+                            <input
+                              inputMode="decimal"
+                              value={score.self_score == null ? '' : String(score.self_score)}
+                              onChange={(event) => void setSelfScore(score, event.target.value.replace(/[^\d.]/g, ''))}
+                              placeholder="—"
+                              aria-label={`Tự chấm ${item.name}`}
+                              className="mt-0.5 h-9 w-16 rounded-lg border border-slate-200 text-center text-sm outline-none focus:border-indigo-500"
+                            />
+                          ) : (
+                            <span className="mt-0.5 block text-sm font-bold text-slate-600">
+                              {score?.not_applicable ? '—' : score?.self_score == null ? '—' : Number(score.self_score)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-center">
+                          <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                            Quản lý
+                          </span>
+                          <span className="mt-0.5 block text-sm font-bold text-slate-800">
+                            {score?.not_applicable
+                              ? '—'
+                              : score?.manager_score == null ? 'Chưa chấm' : Number(score.manager_score)}
+                          </span>
+                        </span>
                       </span>
                     </li>
                   ))}

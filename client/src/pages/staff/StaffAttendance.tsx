@@ -44,7 +44,6 @@ export function StaffAttendance() {
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [assignments, setAssignments] = useState<DailyAssignment[]>([]);
   /** Toàn bộ phân công của tuần hiện tại — cho dải "Kế hoạch tuần này". */
-  const [weekAssignments, setWeekAssignments] = useState<DailyAssignment[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
 
@@ -90,7 +89,7 @@ export function StaffAttendance() {
 
     // daily_assignments có 3 khóa ngoại tới profiles nên phải chỉ rõ khóa khi
     // embed, tránh lỗi PGRST201 như từng gặp ở shifts/attendance.
-    const [{ data: attData, error: attErr }, { data: asgData, error: asgErr }, { data: weekData }] = await Promise.all([
+    const [{ data: attData, error: attErr }, { data: asgData, error: asgErr }] = await Promise.all([
       // KHONG `maybeSingle()`: no nem loi khi co nhieu hon mot dong, ma mot
       // ngay lam hai ca la hop le - chi cam hai dong cung DANG MO (chi muc
       // attendance_one_open_per_user_day).
@@ -103,12 +102,6 @@ export function StaffAttendance() {
         .eq('user_id', profile.id)
         .eq('work_date', today)
         .order('created_at', { ascending: true }),
-      supabase
-        .from('daily_assignments')
-        .select('id, work_date, title, status')
-        .eq('user_id', profile.id)
-        .gte('work_date', toDateString(monday))
-        .lte('work_date', toDateString(addDays(monday, 6))),
     ]);
 
     const firstError = attErr ?? asgErr;
@@ -125,7 +118,6 @@ export function StaffAttendance() {
     // Migration chưa chạy: giữ cách tính một phiên cũ thay vì làm hỏng trang.
     setSessions(sessionResult.error ? [] : (sessionResult.data || []) as AttendanceSession[]);
     setAssignments((asgData || []) as DailyAssignment[]);
-    setWeekAssignments((weekData || []) as DailyAssignment[]);
     setLoading(false);
   }, [profile]);
 
@@ -795,58 +787,6 @@ export function StaffAttendance() {
               </div>
             )}
           </div>
-        </Card>
-      )}
-
-      {/* ================= Kế hoạch tuần này ================= */}
-      {weekAssignments.length > 0 && (
-        <Card>
-          <div className="px-5 py-4 border-b border-slate-100">
-            <h3 className="text-base font-semibold text-slate-800">Kế hoạch tuần này</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Công việc quản lý đã giao cho bạn trong tuần — biết trước để chủ động</p>
-          </div>
-          <CardContent>
-            <div className="grid grid-cols-7 gap-1.5">
-              {weekDates(mondayOf(new Date())).map((d) => {
-                const dayAsg = weekAssignments.filter((a) => a.work_date === toDateString(d));
-                const dayApproved = dayAsg.filter((a) => a.status === 'approved').length;
-                const today = isToday(d);
-                return (
-                  <div
-                    key={d.toISOString()}
-                    className={`rounded-xl p-2 text-center border ${
-                      today ? 'border-emerald-300 bg-emerald-50/60' : 'border-slate-100 bg-slate-50/50'
-                    }`}
-                  >
-                    <p className={`text-[11px] font-semibold ${today ? 'text-emerald-700' : 'text-slate-500'}`}>
-                      {dayLabel(d)}
-                    </p>
-                    {dayAsg.length === 0 ? (
-                      <p className="text-[11px] text-slate-300 mt-1.5">—</p>
-                    ) : (
-                      <>
-                        <p className={`text-sm font-bold mt-1 ${today ? 'text-emerald-700' : 'text-slate-700'}`}>
-                          {dayAsg.length} việc
-                        </p>
-                        <div className="flex items-center justify-center gap-1 mt-1.5 flex-wrap">
-                          {dayAsg.slice(0, 4).map((a) => (
-                            <span
-                              key={a.id}
-                              title={`${a.title} — ${ASSIGNMENT_STATUS_CONFIG[a.status].label}`}
-                              className={`w-1.5 h-1.5 rounded-full ${ASSIGNMENT_STATUS_CONFIG[a.status].dot}`}
-                            />
-                          ))}
-                        </div>
-                        {dayApproved === dayAsg.length && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 mx-auto mt-1" />
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
         </Card>
       )}
 

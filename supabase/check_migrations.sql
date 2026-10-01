@@ -211,7 +211,13 @@ with probe as (
      exists (select 1 from pg_indexes
              where schemaname = 'public'
                and indexname = 'attendance_one_open_per_user_day'),
-     'Moi nguoi moi ngay chi mot ban ghi cham cong dang mo')
+     'Moi nguoi moi ngay chi mot ban ghi cham cong dang mo'),
+
+    ('20261001120000_kpi_self_scoring',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'performance_reviews'
+               and column_name = 'self_submitted_at'),
+     'Tu cham KPI hai cap; chan nhan vien sua diem quan ly cham')
 
   ) as t(migration, applied, mo_ta)
 )

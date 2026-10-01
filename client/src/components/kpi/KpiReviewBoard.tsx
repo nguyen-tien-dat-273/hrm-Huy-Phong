@@ -63,6 +63,7 @@ interface Review {
   final_pct: number | null;
   rating: string | null;
   locked_at: string | null;
+  self_submitted_at: string | null;
   status: string;
 }
 
@@ -70,6 +71,7 @@ interface Score {
   id: string;
   review_id: string;
   criteria_id: string;
+  self_score: number | null;
   manager_score: number | null;
   not_applicable: boolean;
   not_applicable_reason: string | null;
@@ -284,6 +286,27 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 
   if (loading) return <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
 
+  /**
+   * Mo lai ban tu cham cho nhan vien sua.
+   *
+   * Gui xong la khoa, nen phai co duong mo lai - nguoi cham nham mot o roi
+   * khong sua duoc se di nho quan tri sua thang duoi database, dung thu can
+   * tranh nhat voi du lieu cham diem.
+   */
+  const reopenSelf = async (review: Review) => {
+    if (!supabase) return;
+    const ok = await confirm({
+      title: 'Mở lại bản tự chấm?',
+      message: 'Nhân viên sẽ sửa được điểm tự chấm của họ. Điểm bạn đã chấm giữ nguyên.',
+      confirmLabel: 'Mở lại',
+    });
+    if (!ok) return;
+    const { error } = await supabase.rpc('reopen_kpi_self_scores', { p_review: review.id });
+    if (error) return toast(describeDbError(error), 'error');
+    toast('Đã mở lại bản tự chấm.', 'success');
+    await loadReviews(month);
+  };
+
   const lockedCount = reviews.filter((item) => item.locked_at).length;
 
   return (
@@ -362,6 +385,22 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                           {RATING_LABEL[review.rating] || review.rating}
                         </Badge>
                       )}
+                      {/* Trang thai ban tu cham: quan ly can biet nen cham
+                          ngay hay cho nhan vien gui xong da. */}
+                      {!locked && (
+                        review.self_submitted_at ? (
+                          <button
+                            type="button"
+                            onClick={() => void reopenSelf(review)}
+                            title="Mở lại cho nhân viên sửa điểm tự chấm"
+                            className="rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100"
+                          >
+                            Đã tự chấm
+                          </button>
+                        ) : (
+                          <Badge className="bg-amber-50 text-amber-700">Chờ tự chấm</Badge>
+                        )
+                      )}
                       {locked && <Badge className="bg-slate-100 text-slate-600"><Lock className="mr-1 inline h-3 w-3" />Đã khoá</Badge>}
                     </div>
                   )}
@@ -417,6 +456,17 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                                   <p className="mt-0.5 text-[11px] text-slate-400">{row.measure_hint}</p>
                                 )}
                               </div>
+
+                              {/* Diem nhan vien tu cham, dat ngay canh o
+                                  nhap cua quan ly. Khong de xem cho vui:
+                                  chenh lech lon la dau hieu hai ben hieu
+                                  tieu chi khac nhau, va do la thu phai noi
+                                  ra truoc khi khoa ky. */}
+                              {score?.self_score != null && !score.not_applicable && (
+                                <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                                  Tự chấm: {Number(score.self_score)}
+                                </span>
+                              )}
 
                               {/* Tat tieu chi khong phat sinh: ty trong cua no
                                   chia lai cho cac tieu chi con lai, thay vi
