@@ -70,6 +70,8 @@ interface Criteria {
   score_levels: ScoreLevel[];
   measure_unit: string | null;
   measure_hint: string | null;
+  description: string | null;
+  score_method: string | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -90,6 +92,9 @@ const DEFAULT_LEVELS: ScoreLevel[] = [
 const BLANK_CRITERIA = {
   name: '', weight_percent: '', max_score: '4', allow_over_standard: false,
   measure_unit: 'lần', measure_hint: '',
+  description: '',
+  /** Rỗng = theo cách tính của cả bộ KPI. */
+  score_method: '',
   levels: DEFAULT_LEVELS,
 };
 
@@ -331,6 +336,8 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       allow_over_standard: item.allow_over_standard ?? false,
       measure_unit: item.measure_unit ?? '',
       measure_hint: item.measure_hint ?? '',
+      description: item.description ?? '',
+      score_method: item.score_method ?? '',
       levels: Array.isArray(item.score_levels) && item.score_levels.length > 0
         ? item.score_levels
         : DEFAULT_LEVELS,
@@ -356,6 +363,9 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       weight_percent: Number(criteriaForm.weight_percent || '0'),
       max_score: maxScore,
       allow_over_standard: criteriaForm.allow_over_standard,
+      description: criteriaForm.description.trim() || null,
+      // Rỗng = để trống, tức là theo cách tính của cả bộ KPI.
+      score_method: criteriaForm.score_method || null,
       measure_unit: criteriaForm.measure_unit.trim() || null,
       measure_hint: criteriaForm.measure_hint.trim() || null,
       // Bỏ mức rỗng do người dùng thêm rồi để trống — lưu vào chỉ làm thang
@@ -841,6 +851,50 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
             value={criteriaForm.name}
             onChange={(e) => setCriteriaForm({ ...criteriaForm, name: e.target.value })}
           />
+
+          <Textarea
+            label="Mô tả tiêu chí"
+            rows={2}
+            placeholder="Đo cái gì, lấy số ở đâu, thế nào là đạt. VD: Đếm số đơn nhập sai trong tháng, lấy từ sổ kho."
+            value={criteriaForm.description}
+            onChange={(e) => setCriteriaForm({ ...criteriaForm, description: e.target.value })}
+          />
+
+          {/* ---- Cách tính riêng cho tiêu chí này ----
+               Một bộ KPI thường trộn nhiều loại tiêu chí khác hẳn nhau:
+               doanh số quy về %, số lần sai thì đếm, tuân thủ thì chấm mức.
+               Ép chung một cách tính thì hoặc phải tách làm ba bộ KPI, hoặc
+               phải bóp tiêu chí cho vừa cách tính. */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-bold text-slate-700">Cách tính điểm của tiêu chí này</p>
+              {methodsSupported && (
+                <Button type="button" size="sm" variant="secondary" onClick={openNewMethod}>
+                  <Plus className="h-3.5 w-3.5" />Thêm cách tính
+                </Button>
+              )}
+            </div>
+
+            <Select
+              className="mt-2"
+              value={criteriaForm.score_method}
+              onChange={(e) => setCriteriaForm({ ...criteriaForm, score_method: e.target.value })}
+              aria-label="Cách tính điểm của tiêu chí"
+            >
+              <option value="">Theo cách tính của cả bộ KPI</option>
+              {methods.map((method) => (
+                <option key={method.code} value={method.code}>{method.name}</option>
+              ))}
+            </Select>
+
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+              {criteriaForm.score_method
+                ? (methods.find((m) => m.code === criteriaForm.score_method)?.description
+                   || describeMethod(methods.find((m) => m.code === criteriaForm.score_method)!))
+                : 'Để trống thì tiêu chí này dùng chung cách tính đã khai cho cả bộ KPI.'}
+            </p>
+          </div>
+
           <div className="grid gap-3 sm:grid-cols-3">
             <Input
               label="Trọng số (%)" required inputMode="decimal"

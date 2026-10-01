@@ -217,7 +217,13 @@ with probe as (
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'performance_reviews'
                and column_name = 'self_submitted_at'),
-     'Tu cham KPI hai cap; chan nhan vien sua diem quan ly cham')
+     'Tu cham KPI hai cap; chan nhan vien sua diem quan ly cham'),
+
+    ('20261001130000_criteria_score_method',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'kpi_template_criteria'
+               and column_name = 'score_method'),
+     'Cach tinh diem theo TUNG TIEU CHI thay vi ca bo KPI')
 
   ) as t(migration, applied, mo_ta)
 )

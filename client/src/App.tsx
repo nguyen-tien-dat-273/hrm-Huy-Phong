@@ -202,6 +202,8 @@ function AppRoutes() {
       <Route path="/admin/worker-documents" element={admin('users', <AdminWorkforceCenter section="documents" />, { functionCode: 'admin.worker_documents' })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/performance" element={admin('reports', <AdminNexusCenter section="performance" />, { functionCode: 'admin.performance_manage' })} />
+      <Route path="/admin/performance/schemes" element={admin('reports', <AdminNexusCenter section="kpiSchemes" />, { functionCode: 'admin.performance_manage' })} />
+      <Route path="/admin/performance/review" element={admin('reports', <AdminNexusCenter section="kpiReview" />, { functionCode: 'admin.performance_manage' })} />
       {/* Trang cờ tính năng đã gỡ: không mã nào đọc `feature_flags` để
           bật/tắt chức năng, nên nó chỉ là công tắc không nối vào đâu. */}
       <Route path="/admin/feature-flags" element={<Navigate to="/admin/settings" replace />} />
