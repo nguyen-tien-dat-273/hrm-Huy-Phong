@@ -94,7 +94,7 @@ const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: bool
   },
   catalog: {
     title: 'Danh mục khoản lương',
-    hint: 'Định nghĩa CÁCH tính của từng khoản. Khai một lần ở đây rồi đơn vị và nhân sự chọn lại.',
+    hint: 'Liệt kê các khoản lương dùng trong công ty kèm ghi chú để đơn vị và nhân sự chọn đúng.',
     monthScoped: false,
   },
   kpiPay: {
@@ -686,7 +686,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       {tab === 'catalog' && data && (
         <ComponentCatalog
           components={data.components}
-          params={params}
           onChanged={() => loadData(true)}
         />
       )}

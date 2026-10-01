@@ -1,9 +1,8 @@
 // ============================================================================
 // Danh mục khoản lương của công ty.
 // ----------------------------------------------------------------------------
-// Định nghĩa một lần ở đây, gán cho từng người ở PaySchemeModal. Nhờ tách hai
-// việc này mà "tăng ca 150%" chỉ cần viết công thức một lần cho cả công ty,
-// trong khi mỗi người vẫn ghi đè được đơn giá hoặc công thức của riêng mình.
+// Đây chỉ là danh mục tham chiếu: tên khoản, loại, nhóm và mô tả. Cơ chế tính
+// được quản lý ở các luồng nghiệp vụ tương ứng, không bày trong danh mục.
 // ============================================================================
 
 import { useMemo, useState } from 'react';
@@ -14,11 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
-import { formatVND } from '@/lib/utils';
-import { sampleFormulaScope } from '@/lib/payroll';
-import { validateFormula } from '@/lib/payrollFormula';
 import { deleteComponent, saveComponent } from '@/lib/payrollData';
-import type { PayrollParams } from '@/lib/payrollSettings';
 import type { PayCalcType, PayComponent, PayComponentKind } from '@/types';
 
 const KIND_LABEL: Record<PayComponentKind, string> = {
@@ -27,18 +22,7 @@ const KIND_LABEL: Record<PayComponentKind, string> = {
   EMPLOYER_COST: 'Chi phí doanh nghiệp',
 };
 
-const CALC_LABEL: Record<PayCalcType, string> = {
-  FIXED: 'Số tiền cố định',
-  PER_DAY: 'Đơn giá × ngày công',
-  PER_HOUR: 'Đơn giá × số giờ',
-  PER_UNIT: 'Đơn giá × sản lượng',
-  PERCENT: 'Phần trăm của khoản khác',
-  FORMULA: 'Công thức tự do',
-};
-
 interface ComponentCatalogProps {
-  /** Tham số lương, dùng dựng bộ biến mẫu khi kiểm tra công thức. */
-  params: PayrollParams;
   components: PayComponent[];
   onChanged: () => void;
 }
@@ -65,13 +49,7 @@ interface Draft {
   note: string;
 }
 
-/**
- * Sinh mã từ tên khoản.
- *
- * Mã chỉ để viết trong công thức, nhưng bắt người khai tự nghĩ ra một chuỗi
- * viết hoa không dấu ngay ở bước đầu là dựng một rào chắn trước việc đơn
- * giản nhất họ muốn làm: liệt kê ra những khoản công ty đang trả.
- */
+/** Sinh mã hệ thống ổn định từ tên khoản, người dùng không cần tự khai. */
 function codeFromName(name: string, taken: string[]): string {
   const base = name
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -89,13 +67,6 @@ function codeFromName(name: string, taken: string[]): string {
   return `${base}_${Date.now().toString().slice(-4)}`;
 }
 
-/**
- * Khoản mới khai tên mà chưa động tới cách tính.
- *
- * Đúng trạng thái mà nút "Thêm khoản" tạo ra: tiền cố định 0đ, không công
- * thức. Dùng để nhắc trên danh sách, không chặn gì — ai cố ý khai một khoản
- * 0đ vẫn khai được.
- */
 /**
  * Gom cac khoan cung mot loai thanh cac nhom, giu nguyen thu tu sort_order.
  *
@@ -115,12 +86,6 @@ function groupRows(items: PayComponent[]): { group: string | null; items: PayCom
     .map((group) => ({ group, items: buckets.get(group)! }));
 }
 
-function needsSetup(component: PayComponent): boolean {
-  return component.calc_type === 'FIXED'
-    && Number(component.default_amount) === 0
-    && !component.formula;
-}
-
 const BLANK: Draft = {
   code: '', name: '', kind: 'EARNING', calc_type: 'FIXED', default_amount: '0',
   input_code: '', base_code: '', formula: '', taxable: true, insurable: false,
@@ -128,33 +93,18 @@ const BLANK: Draft = {
   tax_exempt_cap: '', max_amount: '', is_active: true, note: '',
 };
 
-export function ComponentCatalog({ components, params, onChanged }: ComponentCatalogProps) {
+export function ComponentCatalog({ components, onChanged }: ComponentCatalogProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
-  /**
-   * Form khai NHANH: chỉ tên và loại.
-   *
-   * Form đầy đủ hỏi 13 thứ cùng lúc — cách tính, đơn giá, thứ tự tính, trần
-   * tiền, hệ số tăng ca, chịu thuế, tính bảo hiểm... Người khai lần đầu chỉ
-   * đang muốn liệt kê ra công ty trả những khoản gì; cách tính là việc của
-   * bước sau, và mỗi khoản một kiểu.
-   */
-  const [quickAdd, setQuickAdd] = useState<{ name: string; kind: PayComponentKind; group_name: string } | null>(null);
+  const [quickAdd, setQuickAdd] = useState<{
+    name: string;
+    kind: PayComponentKind;
+    group_name: string;
+    note: string;
+  } | null>(null);
   const [quickSaving, setQuickSaving] = useState(false);
-
-  const formulaScope = useMemo(() => {
-    const codes = components.flatMap((component) => [
-      component.code,
-      ...(component.input_code ? [component.input_code] : []),
-    ]);
-    return sampleFormulaScope(params, codes);
-  }, [components, params]);
-
-  const formulaError = draft?.calc_type === 'FORMULA' && draft.formula.trim()
-    ? validateFormula(draft.formula, formulaScope)
-    : null;
 
   /** Cac nhom da dung, de goi y thay vi bat go lai va go lech chinh ta. */
   const knownGroups = useMemo(
@@ -201,19 +151,6 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
       toast('Nhập tên khoản lương.', 'warning');
       return;
     }
-    if (formulaError) {
-      toast('Công thức chưa hợp lệ: ' + formulaError, 'warning');
-      return;
-    }
-    if (draft.calc_type === 'PERCENT' && !draft.base_code.trim()) {
-      toast('Khoản tính theo phần trăm cần chỉ rõ tính trên mã nào.', 'warning');
-      return;
-    }
-    if ((draft.calc_type === 'PER_HOUR' || draft.calc_type === 'PER_UNIT') && !draft.input_code.trim()) {
-      toast('Khoản tính theo số lượng cần một mã số liệu tháng.', 'warning');
-      return;
-    }
-
     setSaving(true);
     const error = await saveComponent({
       ...(draft.id ? { id: draft.id } : {}),
@@ -247,7 +184,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
     onChanged();
   };
 
-  /** Lưu khoản mới ở dạng tối thiểu, cách tính để bước sau. */
+  /** Thêm một mục danh mục; các trường tính toán dùng mặc định an toàn. */
   const handleQuickSave = async (keepOpen: boolean) => {
     if (!quickAdd) return;
     const name = quickAdd.name.trim();
@@ -279,7 +216,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
       tax_exempt_cap: null,
       max_amount: null,
       is_active: true,
-      note: null,
+      note: quickAdd.note.trim() || null,
     });
     setQuickSaving(false);
 
@@ -287,10 +224,9 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
       toast('Lưu khoản lương thất bại: ' + error, 'error');
       return;
     }
-    toast(`Đã thêm "${name}". Khai cách tính khi nào cần.`, 'success');
-    // Giu lai nhom khi them tiep: liet ke thi thuong go het mot nhom moi sang
-    // nhom khac, go lai ten nhom moi lan la thua.
-    if (keepOpen) setQuickAdd({ name: '', kind: quickAdd.kind, group_name: quickAdd.group_name });
+    toast(`Đã thêm "${name}" vào danh mục.`, 'success');
+    // Giữ lại loại và nhóm khi thêm liên tiếp nhiều mục cùng danh mục.
+    if (keepOpen) setQuickAdd({ name: '', kind: quickAdd.kind, group_name: quickAdd.group_name, note: '' });
     else setQuickAdd(null);
     onChanged();
   };
@@ -328,11 +264,11 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
         {/* Tiêu đề và câu mô tả do TRANG in ra rồi (AdminPayroll, bảng
             TAB_INTRO) — in lại ở đây thành hai dòng tiêu đề giống nhau chồng
             nhau. Chỉ giữ lại lưu ý riêng của tab này. */}
-        <p className="max-w-2xl text-xs leading-relaxed text-slate-400">
-          Bảo hiểm bắt buộc và thuế TNCN không nằm ở đây — hệ thống tự tính theo tỷ lệ khai
-          ở tab <strong className="text-slate-500">Tham số lương</strong>.
+        <p className="max-w-2xl text-sm leading-relaxed text-slate-500">
+          Danh sách các khoản thu nhập, khấu trừ và chi phí của doanh nghiệp. Ghi chú ngắn giúp
+          người sử dụng hiểu khoản này dùng trong trường hợp nào.
         </p>
-        <Button onClick={() => setQuickAdd({ name: '', kind: 'EARNING', group_name: '' })}>
+        <Button onClick={() => setQuickAdd({ name: '', kind: 'EARNING', group_name: '', note: '' })}>
           <Plus className="h-4 w-4" /> Thêm khoản
         </Button>
       </div>
@@ -389,38 +325,18 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                           </span>
                         )}
                       </div>
-                      {needsSetup(component) ? (
-                        <p className="mt-1 text-xs font-medium text-amber-600">
-                          Chưa khai cách tính — hiện đang là 0đ
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-xs text-slate-500">
-                          {CALC_LABEL[component.calc_type]}
-                          {component.calc_type === 'PERCENT' && ` — ${Number(component.default_amount)}% của ${component.base_code}`}
-                          {component.calc_type === 'FIXED' && ` — mặc định ${formatVND(Number(component.default_amount))}`}
-                          {component.calc_type === 'FORMULA' && (
-                            <code className="ml-1 font-mono text-slate-600">{component.formula}</code>
-                          )}
-                        </p>
-                      )}
+                      <p className={`mt-1 text-sm leading-relaxed ${component.note ? 'text-slate-500' : 'italic text-slate-400'}`}>
+                        {component.note || 'Chưa có ghi chú mô tả.'}
+                      </p>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-1">
-                      {needsSetup(component) ? (
-                        // Buoc hai cua luong khai: bam thang vao day chu khong
-                        // phai tim ra rang cai but chi nho o goc moi la cho
-                        // khai cach tinh.
-                        <Button size="sm" variant="outline" onClick={() => openEdit(component)}>
-                          Khai cách tính
-                        </Button>
-                      ) : (
-                        <button
-                          onClick={() => openEdit(component)}
-                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
-                          aria-label={`Sửa ${component.name}`}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <button
+                        onClick={() => openEdit(component)}
+                        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                        aria-label={`Sửa ${component.name}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
                       {component.is_system ? (
                         <span
                           className="p-1.5 text-slate-200"
@@ -449,7 +365,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
         </Card>
       ))}
 
-      {/* ---- Bước 1: liệt kê khoản ---- */}
+      {/* ---- Thêm mục vào danh mục ---- */}
       <Modal
         open={!!quickAdd}
         onClose={() => setQuickAdd(null)}
@@ -462,8 +378,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
             onSubmit={(event) => { event.preventDefault(); void handleQuickSave(false); }}
           >
             <p className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3.5 py-2.5 text-xs leading-relaxed text-indigo-900">
-              Liệt kê trước những khoản công ty đang trả. <strong>Cách tính khai sau</strong> —
-              mỗi khoản một kiểu, và có khoản phải chờ chốt lại mới biết tính thế nào.
+              Thêm tên khoản và mô tả ngắn để mọi người hiểu thống nhất khi lựa chọn và sử dụng.
             </p>
 
             <Input
@@ -493,21 +408,19 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                   onChange={(e) => setQuickAdd({ ...quickAdd, group_name: e.target.value })}
                 />
                 <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                  Gom các khoản cùng cơ chế lại. Một loại lương thường có nhiều khoản nhỏ —
+                  Gom các khoản cùng chủ đề lại. Một loại lương thường có nhiều khoản nhỏ —
                   Phụ cấp có văn phòng, vận chuyển, công tác.
                 </p>
               </div>
             </div>
 
-            {quickAdd.name.trim() && (
-              <p className="text-[11px] text-slate-400">
-                Mã dùng trong công thức:{' '}
-                <code className="font-mono text-slate-600">
-                  {codeFromName(quickAdd.name, components.map((item) => item.code))}
-                </code>
-                {' '}· đổi được ở bước khai cách tính
-              </p>
-            )}
+            <Textarea
+              label="Ghi chú / mô tả"
+              placeholder="VD: Hỗ trợ chi phí đi lại hàng tháng cho nhân viên thường xuyên di chuyển."
+              rows={3}
+              value={quickAdd.note}
+              onChange={(e) => setQuickAdd({ ...quickAdd, note: e.target.value })}
+            />
 
             <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" variant="secondary" onClick={() => setQuickAdd(null)} disabled={quickSaving}>
@@ -525,30 +438,21 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
         )}
       </Modal>
 
-      {/* ---- Bước 2: khai cách tính ---- */}
+      {/* ---- Sửa thông tin danh mục ---- */}
       <Modal
         open={!!draft}
         onClose={() => setDraft(null)}
-        title={draft?.id ? 'Cách tính khoản lương' : 'Thêm khoản lương'}
-        size="lg"
+        title="Sửa khoản lương"
+        size="md"
       >
         {draft && (
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                label="Tên khoản"
-                placeholder="VD: Thưởng doanh số quý"
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-              <Input
-                label="Mã (viết hoa, dùng trong công thức)"
-                placeholder="VD: BONUS_QUARTER"
-                value={draft.code}
-                onChange={(e) => setDraft({ ...draft, code: e.target.value.toUpperCase() })}
-                className="font-mono"
-              />
-            </div>
+            <Input
+              label="Tên khoản"
+              placeholder="VD: Thưởng doanh số quý"
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            />
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Select
@@ -560,146 +464,28 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
                   <option key={value} value={value}>{label}</option>
                 ))}
               </Select>
-              <Select
-                label="Cách tính"
-                value={draft.calc_type}
-                onChange={(e) => setDraft({ ...draft, calc_type: e.target.value as PayCalcType })}
-              >
-                {Object.entries(CALC_LABEL).map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </Select>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
               <Input
-                label={draft.calc_type === 'PERCENT' ? 'Tỷ lệ mặc định (%)' : 'Giá trị / đơn giá mặc định'}
-                inputMode="decimal"
-                value={draft.default_amount}
-                onChange={(e) => setDraft({ ...draft, default_amount: e.target.value.replace(/[^\d.]/g, '') })}
-              />
-              <Input
-                label="Thứ tự tính (số nhỏ tính trước)"
-                inputMode="numeric"
-                value={draft.sort_order}
-                onChange={(e) => setDraft({ ...draft, sort_order: e.target.value.replace(/[^\d]/g, '') })}
-              />
-              <Input
-                label="Nhóm"
+                label="Nhóm (không bắt buộc)"
                 placeholder="VD: Phụ cấp"
                 list="pay-component-groups"
                 value={draft.group_name}
                 onChange={(e) => setDraft({ ...draft, group_name: e.target.value })}
               />
-              <Input
-                label="Trần số tiền (VND) — trống = không chặn"
-                inputMode="numeric"
-                placeholder="VD: 234000 cho đoàn phí công đoàn"
-                value={draft.max_amount}
-                onChange={(e) => setDraft({ ...draft, max_amount: e.target.value.replace(/[^\d]/g, '') })}
-              />
-              <p className="text-xs leading-relaxed text-slate-500">Áp sau khi tính xong. Phiếu lương sẽ ghi rõ khoản đã chạm trần.</p>
             </div>
 
-            {/* T04: phần tiền làm thêm trả cao hơn giờ thường được miễn thuế
-                TNCN. Khai hệ số ở đây, engine tự suy ra phần miễn — bắt HR tự
-                tính tỷ lệ là mời thêm một chỗ nhập sai. */}
-            {draft.kind === 'EARNING' && (
-              <div>
-                <Input
-                  label="Hệ số làm thêm giờ (để trống nếu không phải tăng ca)"
-                  inputMode="decimal"
-                  placeholder="VD: 1.5 cho ngày thường, 2 cho ngày nghỉ, 3 cho ngày lễ"
-                  value={draft.ot_multiplier}
-                  onChange={(e) => setDraft({ ...draft, ot_multiplier: e.target.value.replace(/[^\d.]/g, '') })}
-                />
-                <p className="mt-1 text-xs leading-relaxed text-slate-500">
-                  {Number(draft.ot_multiplier) > 1
-                    ? `Phần trả cao hơn giờ thường được miễn thuế TNCN — tức ${
-                      Math.round(((Number(draft.ot_multiplier) - 1) / Number(draft.ot_multiplier)) * 100)
-                    }% số tiền của khoản này không tính vào thu nhập chịu thuế.`
-                    : 'Chỉ khai cho khoản tăng ca. Khoản thường chịu thuế toàn bộ.'}
-                </p>
-              </div>
-            )}
-
-            {(draft.calc_type === 'PER_HOUR' || draft.calc_type === 'PER_UNIT') && (
-              <Input
-                label="Mã số liệu tháng"
-                placeholder="VD: OT_WEEKDAY_HOURS hoặc UNITS"
-                value={draft.input_code}
-                onChange={(e) => setDraft({ ...draft, input_code: e.target.value.toUpperCase() })}
-                className="font-mono"
-              />
-            )}
-
-            {draft.calc_type === 'PERCENT' && (
-              <Input
-                label="Tính phần trăm trên mã nào"
-                placeholder="VD: BASE, GROSS, INSURANCE_BASE, REVENUE"
-                value={draft.base_code}
-                onChange={(e) => setDraft({ ...draft, base_code: e.target.value.toUpperCase() })}
-                className="font-mono"
-              />
-            )}
-
-            {draft.calc_type === 'FORMULA' && (
-              <Input
-                label="Công thức"
-                placeholder="VD: HOURLY_RATE * 1.5 * OT_WEEKDAY_HOURS"
-                value={draft.formula}
-                onChange={(e) => setDraft({ ...draft, formula: e.target.value })}
-                error={formulaError ?? undefined}
-                className="font-mono text-xs"
-              />
-            )}
-
-            <div className="space-y-2.5 rounded-xl border border-slate-200 p-3.5">
-              <Toggle
-                checked={draft.taxable}
-                onChange={(taxable) => setDraft({ ...draft, taxable })}
-                label="Tính vào thu nhập chịu thuế TNCN"
-                hint="Tắt cho tiền ăn ca trong mức miễn, công tác phí, trang phục."
-              />
-              {/* Ngưỡng miễn thuế chỉ có nghĩa khi khoản được đánh KHÔNG chịu
-                  thuế: nó nói "miễn tới đây thôi, phần vượt vẫn phải tính". */}
-              {!draft.taxable && (
-                <div>
-                  <Input
-                    label="Miễn thuế tới mức (VND) — trống = miễn toàn bộ"
-                    inputMode="numeric"
-                    placeholder="VD: 730000 cho tiền ăn ca"
-                    value={draft.tax_exempt_cap}
-                    onChange={(e) => setDraft({ ...draft, tax_exempt_cap: e.target.value.replace(/[^\d]/g, '') })}
-                  />
-                  <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                    Trả vượt ngưỡng này thì phần vượt tự động tính vào thu nhập chịu thuế.
-                  </p>
-                </div>
-              )}
-              <Toggle
-                checked={draft.insurable}
-                onChange={(insurable) => setDraft({ ...draft, insurable })}
-                label="Tính vào lương đóng bảo hiểm"
-                hint="Thường chỉ bật cho phụ cấp có tính chất lương như chức vụ, thâm niên."
-              />
-              <Toggle
-                checked={draft.prorate}
-                onChange={(prorate) => setDraft({ ...draft, prorate })}
-                label="Chia theo ngày công thực tế"
-                hint="Tắt nếu khoản trả trọn tháng bất kể đi làm bao nhiêu ngày."
-              />
+            <div className="rounded-xl border border-slate-200 p-3.5">
               <Toggle
                 checked={draft.is_active}
                 onChange={(is_active) => setDraft({ ...draft, is_active })}
                 label="Đang sử dụng"
-                hint="Tắt để ngừng áp dụng mà không xóa lịch sử."
+                hint="Tắt để ẩn khỏi lựa chọn mới nhưng vẫn giữ lịch sử đã sử dụng."
               />
             </div>
 
             <Textarea
-              label="Ghi chú"
-              rows={2}
+              label="Ghi chú / mô tả"
+              placeholder="Mô tả mục đích và trường hợp áp dụng của khoản này."
+              rows={4}
               value={draft.note}
               onChange={(e) => setDraft({ ...draft, note: e.target.value })}
             />
@@ -708,7 +494,7 @@ export function ComponentCatalog({ components, params, onChanged }: ComponentCat
               <Button variant="outline" onClick={() => setDraft(null)} className="flex-1" disabled={saving}>
                 Hủy
               </Button>
-              <Button onClick={handleSave} className="flex-1" disabled={saving || !!formulaError}>
+              <Button onClick={handleSave} className="flex-1" disabled={saving}>
                 {saving ? 'Đang lưu…' : 'Lưu khoản'}
               </Button>
             </div>
