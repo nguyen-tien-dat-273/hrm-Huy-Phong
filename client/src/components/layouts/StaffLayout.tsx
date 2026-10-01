@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Briefcase, KanbanSquare, Fingerprint, CalendarOff,
   FileBarChart, NotebookPen, Bell, ChevronDown, Building2, Menu, X, ArrowLeft, Eye, KeyRound, LogOut, ShieldCheck,
-  UserCircle, BookOpen, Target, WalletCards, LayoutGrid, Clock, Search,
+  UserCircle, BookOpen, Target, WalletCards, Clock,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useViewMode } from '@/contexts/ViewModeContext';
@@ -74,6 +74,7 @@ const navItems = [
 
   { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ' },
 
+  { to: '/staff/kpi', label: 'KPI của tôi', description: 'Kết quả chấm điểm và điểm từng tiêu chí', icon: Target, group: 'Phát triển' },
   { to: '/staff/training', label: 'Đào tạo của tôi', description: 'Khóa học được giao và tiến độ hoàn thành', icon: BookOpen, group: 'Phát triển' },
   { to: '/staff/growth', label: 'Lộ trình phát triển', description: 'Checklist hội nhập và bàn giao của tôi', icon: Target, group: 'Phát triển' },
 ];
@@ -89,9 +90,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const notifRef = useRef<HTMLDivElement>(null);
-  const launcherRef = useRef<HTMLDivElement>(null);
-  const [launcherOpen, setLauncherOpen] = useState(false);
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
 
   // URL khu nhân viên + tài khoản quản trị là tín hiệu đáng tin cậy hơn state
@@ -115,7 +113,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
-      if (launcherRef.current && !launcherRef.current.contains(e.target as Node)) setLauncherOpen(false);
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
     };
     document.addEventListener('mousedown', onClick);
@@ -155,27 +152,8 @@ export function StaffLayout({ children }: { children: ReactNode }) {
     .map((group) => ({ ...group, items: navItems.filter((item) => item.group === group.name) }))
     .filter((group) => group.items.length > 0);
 
-  // Lay duong dan KHOP DAI NHAT, giong khu quan tri: duong dan cua muc nay co
-  // the la tien to cua muc kia.
-  const groupOfCurrentPath = groupsWithItems
-    .flatMap((group) => group.items.map((item) => ({ group: group.name, base: item.to })))
-    .filter(({ base }) => location.pathname === base || location.pathname.startsWith(base + '/'))
-    .sort((a, b) => b.base.length - a.base.length)[0]?.group ?? null;
 
-  useEffect(() => {
-    if (groupOfCurrentPath) setOpenGroup(groupOfCurrentPath);
-  }, [groupOfCurrentPath]);
 
-  const activeGroup = groupsWithItems.find((group) => group.name === openGroup) ?? null;
-
-  const openModule = (name: string) => {
-    setOpenGroup(name);
-    setSidebarOpen(false);
-    setLauncherOpen(false);
-    if (name === groupOfCurrentPath) return;
-    const first = groupsWithItems.find((group) => group.name === name)?.items[0];
-    if (first) navigate(first.to);
-  };
 
   return (
     <div className="app-shell min-h-screen bg-ambient flex">
@@ -199,62 +177,67 @@ export function StaffLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
+        {/* ---- Hien HET chuc nang, khong giau sau mot cu bam ----
+             Khu quan tri co 30 muc nen chia hai cap la dang: khong ai doc het
+             30 dong moi lan doi trang. Khu nhan vien chi co 10 muc, vua mot
+             man hinh - giau 8 trong so do sau mot cu bam chi lam nguoi dung
+             phai nho xem "Cham cong" nam trong cum nao.
+
+             Van giu mau va cau mo ta giong khu quan tri, chi khac do sau. */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
-          {activeGroup ? (
-            <div className="space-y-1">
-              <div className="mb-3 flex items-center gap-3 border-b border-slate-200 px-3 pb-3">
-                <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${activeGroup.iconOn}`}>
-                  <activeGroup.icon className="h-5 w-5" />
+          {groupsWithItems.map((group, groupIndex) => (
+            <div key={group.name} className={groupIndex === 0 ? '' : 'mt-4'}>
+              <div className="flex items-center gap-2 px-3 pb-2">
+                <span className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${group.iconIdle}`}>
+                  <group.icon className="h-3.5 w-3.5" />
                 </span>
-                <span className="min-w-0">
-                  <span className="block text-[15px] font-bold leading-snug text-slate-900">{activeGroup.name}</span>
-                  <span className="mt-0.5 block text-xs text-slate-500">{activeGroup.items.length} chức năng</span>
-                </span>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+                  {group.name}
+                </p>
+                <span className="h-px flex-1 bg-slate-200" />
               </div>
 
-              {activeGroup.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setSidebarOpen(false)}
-                    className={({ isActive }) =>
-                      `group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors duration-200 ${
-                        isActive
-                          ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30'
-                          : 'hover:bg-slate-100'
-                      }`
-                    }
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <Icon className={`mt-0.5 h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
-                          isActive ? 'text-white' : 'text-indigo-500'
-                        }`} />
-                        <span className="min-w-0 flex-1">
-                          <span className={`block text-sm font-semibold leading-snug ${
-                            isActive ? 'text-white' : 'text-slate-800'
-                          }`}>
-                            {item.label}
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      onClick={() => setSidebarOpen(false)}
+                      className={({ isActive }) =>
+                        `group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors duration-200 ${
+                          isActive
+                            ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30'
+                            : 'hover:bg-slate-100'
+                        }`
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <Icon className={`mt-0.5 h-5 w-5 flex-shrink-0 transition-transform duration-200 group-hover:scale-110 ${
+                            isActive ? 'text-white' : 'text-indigo-500'
+                          }`} />
+                          <span className="min-w-0 flex-1">
+                            <span className={`block text-sm font-semibold leading-snug ${
+                              isActive ? 'text-white' : 'text-slate-800'
+                            }`}>
+                              {item.label}
+                            </span>
+                            <span className={`mt-0.5 block text-[11px] leading-snug ${
+                              isActive ? 'text-indigo-100' : 'text-slate-500'
+                            }`}>
+                              {item.description}
+                            </span>
                           </span>
-                          <span className={`mt-0.5 block text-[11px] leading-snug ${
-                            isActive ? 'text-indigo-100' : 'text-slate-500'
-                          }`}>
-                            {item.description}
-                          </span>
-                        </span>
-                      </>
-                    )}
-                  </NavLink>
-                );
-              })}
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </div>
             </div>
-          ) : (
-            <p className="px-3 py-6 text-xs leading-relaxed text-slate-500">
-              Chọn một mục ở nút lưới trên đầu trang.
-            </p>
-          )}
+          ))}
         </nav>
       </aside>
 
@@ -284,59 +267,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2">
-            {/* Bang module, dung khuon voi khu quan tri. */}
-            <div className="relative" ref={launcherRef}>
-              <button
-                onClick={() => { setLauncherOpen(!launcherOpen); setNotifOpen(false); }}
-                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
-                  activeGroup ? activeGroup.chip : 'bg-slate-800 text-white hover:bg-slate-900'
-                }`}
-                aria-label="Mở bảng chức năng"
-                aria-expanded={launcherOpen}
-              >
-                <LayoutGrid className="h-4.5 w-4.5 flex-shrink-0" />
-                <span className="hidden max-w-[11rem] truncate sm:inline">
-                  {activeGroup?.name ?? 'Chọn mục'}
-                </span>
-                <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${launcherOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* Tren dien thoai neo vao MAN HINH chu khong vao nut, neu khong
-                  canh trai bang lot ra ngoai man va mat mot cot o. */}
-              {launcherOpen && (
-                <div className="fixed inset-x-4 top-[4.5rem] z-50 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(32rem,calc(100vw-2rem))]">
-                  <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
-                    {groupsWithItems.map((group) => {
-                      const Icon = group.icon;
-                      const isActive = group.name === openGroup;
-                      return (
-                        <button
-                          key={group.name}
-                          type="button"
-                          onClick={() => openModule(group.name)}
-                          aria-current={isActive ? 'true' : undefined}
-                          className={`flex flex-col items-center gap-2 rounded-xl px-2 py-3.5 text-center transition-colors ${
-                            isActive ? group.tileOn : 'hover:bg-slate-50'
-                          }`}
-                        >
-                          <span className={`flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
-                            isActive ? group.iconOn : group.iconIdle
-                          }`}>
-                            <Icon className="h-5 w-5" />
-                          </span>
-                          <span className={`text-xs font-semibold leading-tight ${
-                            isActive ? group.textOn : 'text-slate-700'
-                          }`}>
-                            {group.name}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
             {isAdminViewingAsStaff && (
               <button
                 type="button"
