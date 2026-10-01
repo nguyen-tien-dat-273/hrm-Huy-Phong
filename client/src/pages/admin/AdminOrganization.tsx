@@ -591,6 +591,68 @@ export function AdminOrganization() {
     void load();
   };
 
+  /**
+   * Nhung nguoi dang PHU TRACH mot don vi nhung chua phai thanh vien don vi do.
+   *
+   * So do to chuc da noi ro ai quan ly phong nao, nhung `manager_id` va
+   * `profiles.unit_id` la hai cot khac nhau - dat nguoi phu trach khong dat
+   * don vi cho ho. Hau qua thay o Co che luong: moi nguoi dung chung mot
+   * nhom "Huy Phong Group" thay vi nam trong phong cua minh, va khoan luong
+   * khai cho tung phong khong ap cho ai ca.
+   */
+  const managersOutsideTheirUnit = useMemo(() => {
+    const out: { person: Profile; unit: OrganizationUnit }[] = [];
+    for (const unit of units) {
+      if (!unit.is_active || !unitIdsInCompany.has(unit.id)) continue;
+      const ids = unitManagers[unit.id] ?? (unit.manager_id ? [unit.manager_id] : []);
+      for (const id of ids) {
+        const person = users.find((user) => user.id === id);
+        if (person && person.unit_id !== unit.id) out.push({ person, unit });
+      }
+    }
+    // Mot nguoi phu trach NHIEU don vi thi chi gan vao don vi dau tien gap:
+    // `unit_id` la mot cot don, khong the o hai cho.
+    const seen = new Set<string>();
+    return out.filter(({ person }) => !seen.has(person.id) && seen.add(person.id));
+  }, [units, users, unitManagers, unitIdsInCompany]);
+
+  const assignManagersToTheirUnits = async () => {
+    const moving = managersOutsideTheirUnit;
+    if (moving.length === 0) return;
+    const accepted = await confirm({
+      title: `Đưa ${moving.length} người phụ trách vào đơn vị của họ?`,
+      message: moving
+        .map(({ person, unit }) => `• ${person.name} → ${unit.name}`)
+        .join('\n')
+        + '\n\nSau bước này họ mới nhận khoản lương khai cho đơn vị đó.',
+      confirmLabel: 'Gán vào đơn vị',
+    });
+    if (!accepted) return;
+
+    setSubmitting(true);
+    for (const { person, unit } of moving) {
+      const { error } = await supabase.rpc('assign_employee_organization', {
+        target_user: person.id,
+        target_employee_code: person.employee_code || null,
+        target_unit: unit.id,
+        // Chuc danh cu thuoc don vi khac thi bo: de lai se thanh nguoi dung o
+        // phong moi ma giu chuc danh cua phong cu.
+        target_position: positions.find((item) => item.id === person.position_id)?.unit_id === unit.id
+          ? person.position_id : null,
+        target_manager: person.manager_id || null,
+        target_hire_date: person.hire_date || null,
+        target_employment_status: person.employment_status || 'active',
+      });
+      if (error) {
+        setSubmitting(false);
+        return toast(`Dừng ở ${person.name}: ${describeDbError(error)}`, 'error');
+      }
+    }
+    setSubmitting(false);
+    toast(`Đã gán ${moving.length} người vào đơn vị của họ.`, 'success');
+    await load();
+  };
+
   const inactiveInCompany = useMemo(
     () => units.filter((unit) => !unit.is_active && unitIdsInCompany.has(unit.id)).length,
     [units, unitIdsInCompany],
@@ -1078,6 +1140,21 @@ export function AdminOrganization() {
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => setUnitScope('all')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Tất cả ({unitIdsInCompany.size})</button>
                   <button type="button" onClick={() => setUnitScope('attention')} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'attention' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}><CircleAlert className="h-3.5 w-3.5" />Cần bổ sung ({attentionInCompany})</button>
+                  {/* Du lieu de gan da nam san trong so do - khong bat nguoi
+                      dung mo tung don vi ra tich lai tung nguoi. */}
+                  {managersOutsideTheirUnit.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={submitting}
+                      onClick={() => void assignManagersToTheirUnits()}
+                    >
+                      <UsersRound className="h-3.5 w-3.5" />
+                      Gán {managersOutsideTheirUnit.length} người phụ trách vào đơn vị
+                    </Button>
+                  )}
+
                   {/* Don vi da ngung hoat dong van ve trong so do kem nhan xam.
                       O nay de giau chung di khi khong con muon nhin. */}
                   {inactiveInCompany > 0 && (
@@ -1184,6 +1261,88 @@ export function AdminOrganization() {
                     <div><dt className="text-xs font-semibold text-slate-400">Đơn vị cấp trên</dt><dd className="mt-1 font-semibold text-slate-700">{selectedUnit.parent_id ? unitById.get(selectedUnit.parent_id)?.name || 'Không còn tồn tại' : 'Đơn vị gốc'}</dd></div>
                     <div><dt className="text-xs font-semibold text-slate-400">Người phụ trách</dt><dd className={`mt-1 font-semibold ${selectedUnit.manager_id ? 'text-slate-700' : 'text-amber-600'}`}>{selectedUnit.manager_id ? userById.get(selectedUnit.manager_id)?.name || 'Không còn hoạt động' : 'Chưa gán'}</dd></div>
                   </dl>
+                  {/* ---- Danh sach nhan su trong don vi ----
+                       Truoc day chi co con SO "Nhan su: 3". Con so do khong
+                       tra loi duoc cau hoi thuc te: ai dang o trong phong
+                       nay. Va khi no bang 0 thi cung khong noi duoc la chua
+                       ai duoc gan, hay la nguoi o cac to truc thuoc. */}
+                  {(() => {
+                    const direct = users.filter((user) => user.unit_id === selectedUnit.id);
+                    // Nguoi nam trong cac don vi con, dem rieng: khoan luong
+                    // khai cho don vi nay KHONG ap cho ho, nen gop chung mot
+                    // con so se lam nguoi dung tuong nguoc lai.
+                    const childIds = new Set<string>();
+                    const walk = (unit: OrganizationUnit) => {
+                      (childUnitsByParent.get(unit.id) || []).forEach((child) => {
+                        childIds.add(child.id);
+                        walk(child);
+                      });
+                    };
+                    walk(selectedUnit);
+                    const nested = users.filter((user) => user.unit_id && childIds.has(user.unit_id));
+
+                    return (
+                      <div className="rounded-xl border border-slate-200">
+                        <p className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2.5 text-xs font-bold text-slate-700">
+                          <UsersRound className="h-3.5 w-3.5" />
+                          Nhân sự thuộc {selectedUnit.name}
+                          <span className="font-normal text-slate-400">({direct.length})</span>
+                        </p>
+
+                        {direct.length === 0 ? (
+                          <p className="px-3.5 py-3 text-xs leading-relaxed text-slate-500">
+                            Chưa ai được gán vào đơn vị này. Gán ở{' '}
+                            <button
+                              type="button"
+                              onClick={() => setTab('assignments')}
+                              className="font-semibold text-indigo-600 underline hover:text-indigo-700"
+                            >
+                              Phân công nhân sự
+                            </button>
+                            . Đặt người phụ trách ở sơ đồ không tính là gán vào đơn vị.
+                          </p>
+                        ) : (
+                          <ul className="divide-y divide-slate-50">
+                            {direct.map((person) => (
+                              <li key={person.id} className="flex items-center gap-2.5 px-3.5 py-2.5">
+                                <Avatar name={person.name} url={person.avatar_url} size="sm" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-semibold text-slate-800">
+                                    {person.name}
+                                  </span>
+                                  <span className="block truncate text-[11px] text-slate-500">
+                                    {positionById.get(person.position_id || '')?.title || 'Chưa gán vị trí'}
+                                    {person.employee_code ? ` · ${person.employee_code}` : ''}
+                                  </span>
+                                </span>
+                                {selectedUnit.manager_id === person.id && (
+                                  <Badge className="bg-indigo-50 text-indigo-700">Phụ trách</Badge>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openAssignment(person)}
+                                  aria-label={`Sửa phân công của ${person.name}`}
+                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                                >
+                                  <UserCog className="h-4 w-4" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+
+                        {nested.length > 0 && (
+                          <p className="border-t border-slate-100 px-3.5 py-2.5 text-[11px] leading-relaxed text-slate-500">
+                            Thêm <strong className="text-slate-700">{nested.length} người</strong> ở các
+                            đơn vị trực thuộc. Khoản lương khai cho{' '}
+                            <strong className="text-slate-700">{selectedUnit.name}</strong> không áp cho
+                            họ — phải khai ở đúng đơn vị của họ.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {attentionUnitIds.has(selectedUnit.id) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><strong className="mb-1 block">Cần hoàn thiện</strong>{!selectedUnit.manager_id && <p>• Gán người phụ trách đơn vị.</p>}{(positionCountByUnit.get(selectedUnit.id) || 0) === 0 && <p>• Khai báo ít nhất một vị trí/chức danh.</p>}{!selectedUnit.is_active && <p>• Đơn vị đang ngừng hoạt động.</p>}</div>}
                   <div className="grid grid-cols-2 gap-2">
                     <Button size="sm" variant="outline" onClick={() => openEditUnit(selectedUnit)}><Pencil className="h-4 w-4" />Chỉnh sửa</Button>
