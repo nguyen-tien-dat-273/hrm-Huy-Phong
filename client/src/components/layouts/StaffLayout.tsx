@@ -199,16 +199,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <div className="border-b border-slate-200 px-4 py-4">
-          <div className="flex items-center gap-3">
-            <Avatar name={profile?.name || ''} url={profile?.avatar_url} size="md" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-900">{profile?.name}</p>
-              <p className="text-xs text-slate-500">{profile?.department || 'Nhân viên'}</p>
-            </div>
-          </div>
-        </div>
-
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           {activeGroup ? (
             <div className="space-y-1">

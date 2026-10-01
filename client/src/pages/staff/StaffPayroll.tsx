@@ -39,7 +39,7 @@ import {
 import {
   computePayslip, itemsForPeriod, mergeUnitAndEmployeeItems, payBasisLabel,
   payProfileForPeriod, summarisePeriod,
-  type AssignedPayItem,
+  type AssignedPayItem, type PayrollAdjustment,
 } from '@/lib/payroll';
 import type {
   Attendance, EmployeePayItem, EmployeePayProfile, LeaveRequest,
@@ -58,6 +58,7 @@ export function StaffPayroll() {
   const [payProfiles, setPayProfiles] = useState<EmployeePayProfile[]>([]);
   const [items, setItems] = useState<EmployeePayItem[]>([]);
   const [unitItems, setUnitItems] = useState<UnitPayItem[]>([]);
+  const [adjustments, setAdjustments] = useState<PayrollAdjustment[]>([]);
   const [components, setComponents] = useState<PayComponent[]>([]);
   const [inputs, setInputs] = useState<PayrollInput[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
@@ -101,7 +102,7 @@ export function StaffPayroll() {
 
     const [
       payProfileRes, itemRes, unitItemRes, componentRes, inputRes, attendanceRes, leaveRes, periodRes,
-      payrollParams, workSchedules, taxBrackets,
+      adjustmentRes, payrollParams, workSchedules, taxBrackets,
     ] = await Promise.all([
       supabase.from('employee_pay_profiles').select('*').eq('user_id', profile.id).lte('effective_from', monthEndStr),
       supabase.from('employee_pay_items').select('*').eq('user_id', profile.id),
@@ -120,6 +121,16 @@ export function StaffPayroll() {
         .eq('user_id', profile.id).eq('status', 'approved').neq('leave_type', 'unpaid')
         .lte('start_date', monthEndStr).gte('end_date', monthStartStr),
       supabase.rpc('get_payroll_period_status', { target_month: monthStartStr }),
+      // Truy linh / truy thu ky truoc. Khong nap thi so nhan vien tu xem
+      // LECH han so ke toan tinh - dung thang co dieu chinh, nguoi lao dong
+      // doi chieu phieu luong voi man nay se thay hai con so khac nhau ma
+      // khong chuong nao giai thich.
+      //
+      // RLS cho phep doc dong cua chinh minh (`user_id = auth.uid()`).
+      supabase
+        .from('payroll_adjustments')
+        .select('id, user_id, kind, amount, reason, taxable, origin_month')
+        .eq('user_id', profile.id).eq('month_start', monthStartStr),
       fetchPayrollSettings(),
       fetchWorkSchedules(),
       fetchPitBrackets(),
@@ -136,6 +147,7 @@ export function StaffPayroll() {
     setPayProfiles((payProfileRes.data || []) as EmployeePayProfile[]);
     setItems((itemRes.data || []) as EmployeePayItem[]);
     setUnitItems((unitItemRes.data || []) as UnitPayItem[]);
+    setAdjustments((adjustmentRes.data || []) as PayrollAdjustment[]);
     // Nhân viên KHÔNG đọc được `payroll_components` (RLS chỉ mở cho admin), nên
     // lỗi ở đây là bình thường — bản tạm tính khi đó chỉ có lương gốc.
     setComponents((componentRes.data || []) as PayComponent[]);
@@ -228,6 +240,7 @@ export function StaffPayroll() {
       stats,
       settings: params,
       catalogCodes: components.map((component) => component.code),
+      adjustments,
     });
 
     return {
