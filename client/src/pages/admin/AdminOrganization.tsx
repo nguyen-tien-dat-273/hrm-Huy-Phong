@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Building2, BriefcaseBusiness, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, LayoutGrid, List, Network, Pencil, Plus, Search,
-  ShieldCheck, Trash2, UserCog, UserMinus, UsersRound,
+  Building2, BriefcaseBusiness, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, LayoutGrid, List, Network, Pencil, Plus,
+  Search, ShieldCheck, Trash2, UserCog, UserMinus, UsersRound, X,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -1872,7 +1872,11 @@ export function AdminOrganization() {
               .filter((unit) => unit.is_active && !descendantsOfEditingUnit.has(unit.id))
               .map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
           </Select>
-          {/* ---- Người phụ trách: chọn được nhiều người ---- */}
+          {/* ---- Người phụ trách ----
+               Hai vung tach bach: o tim mo ra KHO nguoi de chon, con ben
+               duoi la nhung nguoi DA CHON. Tron hai thu vao mot danh sach
+               thi muon biet don vi dang co ai phai doc het ca danh sach roi
+               nhat ra nhung dong co dau tich. */}
           <fieldset className="rounded-xl border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Người phụ trách</legend>
             <p className="text-xs leading-relaxed text-slate-500">
@@ -1880,9 +1884,7 @@ export function AdminOrganization() {
                 ? 'Chọn được nhiều người. Người đầu tiên là phụ trách chính — tên hiện trên sơ đồ tổ chức. Tất cả đều xem được chấm công và duyệt đơn của đơn vị này.'
                 : 'Chưa chạy migration 20261001100000 nên tạm thời chỉ chọn được một người.'}
             </p>
-            {/* Bam vao o tim moi bung toan bo danh sach ra. Dong lai thi chi
-                con nhung nguoi dang duoc chon - do moi la noi dung cua don vi
-                nay, phan con lai chi la kho de chon them. */}
+
             <div className="relative mt-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -1894,84 +1896,101 @@ export function AdminOrganization() {
               />
             </div>
 
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-slate-500">
-                {unitForm.manager_ids.length === 0 ? 'Chưa chọn ai' : `Đã chọn ${unitForm.manager_ids.length} người`}
-              </span>
-              {managerPickerOpen && (
-                <button
-                  type="button"
-                  onClick={() => { setManagerPickerOpen(false); setManagerQuery(''); }}
-                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
-                >
-                  Thu gọn
-                </button>
-              )}
-            </div>
+            {managerPickerOpen && (
+              <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 p-2">
+                <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
+                  <span className="text-[11px] font-semibold text-slate-500">Bấm vào tên để chọn</span>
+                  {/* Dong bang nut chu khong phai blur: bam vao mot dong trong
+                      danh sach cung la blur o tim, danh sach se sap ngay giua
+                      luc dang chon. */}
+                  <button
+                    type="button"
+                    onClick={() => { setManagerPickerOpen(false); setManagerQuery(''); }}
+                    className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                  >
+                    Xong
+                  </button>
+                </div>
+                <div className="max-h-48 space-y-0.5 overflow-y-auto">
+                  {searchPeople(managerQuery).length === 0 && (
+                    <p className="px-2 py-3 text-xs text-slate-400">Không có ai khớp “{managerQuery}”.</p>
+                  )}
+                  {searchPeople(managerQuery).map((user) => {
+                    const checked = unitForm.manager_ids.includes(user.id);
+                    return (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => setUnitForm({
+                          ...unitForm,
+                          manager_ids: checked
+                            ? unitForm.manager_ids.filter((id) => id !== user.id)
+                            // Chua co ai thi nguoi vua chon thanh phu trach chinh.
+                            : (multiManagerSupported ? [...unitForm.manager_ids, user.id] : [user.id]),
+                          // Phu trach chua thuoc don vi nao thi dua luon vao
+                          // danh sach nhan su: khong co gi de mat vi ho chua o
+                          // dau ca. Nguoi da thuoc don vi khac thi KHONG tu
+                          // them - chuyen ho di la doi pham vi luong.
+                          member_ids: !checked && !user.unit_id && !unitForm.member_ids.includes(user.id)
+                            ? [...unitForm.member_ids, user.id]
+                            : unitForm.member_ids,
+                        })}
+                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${checked ? 'bg-white font-medium text-indigo-700' : 'text-slate-700 hover:bg-white/70'}`}
+                      >
+                        <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}`}>
+                          {checked && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{user.name}</span>
+                        {user.employee_code && (
+                          <span className="flex-shrink-0 text-xs text-slate-400">{user.employee_code}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-            <div className="mt-1 max-h-44 space-y-1 overflow-y-auto">
-              {(() => {
-                const list = managerPickerOpen
-                  ? searchPeople(managerQuery)
-                  : activeUsers.filter((user) => unitForm.manager_ids.includes(user.id)
-                    || (unitManagers[editingUnit?.id ?? ''] ?? []).includes(user.id));
-                if (list.length > 0) return null;
+            <div className="mt-2 space-y-1">
+              <p className="px-1 text-[11px] font-semibold text-slate-500">
+                {unitForm.manager_ids.length === 0 ? 'Chưa chọn ai' : `Đã chọn ${unitForm.manager_ids.length} người`}
+              </p>
+              {unitForm.manager_ids.length === 0 ? (
+                <p className="px-2 pb-1 text-xs text-slate-400">
+                  Bấm vào ô tìm bên trên để chọn người phụ trách.
+                </p>
+              ) : unitForm.manager_ids.map((id, index) => {
+                const person = userById.get(id);
+                if (!person) return null;
                 return (
-                  <p className="px-2 py-3 text-xs text-slate-400">
-                    {managerPickerOpen
-                      ? `Không có ai khớp “${managerQuery}”.`
-                      : 'Bấm vào ô tìm bên trên để chọn người phụ trách.'}
-                  </p>
-                );
-              })()}
-              {(managerPickerOpen
-                ? searchPeople(managerQuery)
-                : activeUsers.filter((user) => unitForm.manager_ids.includes(user.id)
-                    || (unitManagers[editingUnit?.id ?? ''] ?? []).includes(user.id))
-              ).map((user) => {
-                const index = unitForm.manager_ids.indexOf(user.id);
-                const checked = index >= 0;
-                return (
-                  <label key={user.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => setUnitForm({
-                        ...unitForm,
-                        manager_ids: event.target.checked
-                          // Chua co ai thi nguoi vua tich thanh phu trach chinh.
-                          ? (multiManagerSupported ? [...unitForm.manager_ids, user.id] : [user.id])
-                          : unitForm.manager_ids.filter((id) => id !== user.id),
-                        // Phu trach chua thuoc don vi nao thi tich luon vao
-                        // danh sach nhan su ben duoi: khong co gi de mat vi
-                        // ho chua o dau ca, va dung sơ đồ vốn là để khai ai ở
-                        // đâu. Người đã thuộc đơn vị khác thì KHÔNG tự tích -
-                        // chuyển họ đi là đổi phạm vi lương, phải do người
-                        // dùng quyết.
-                        member_ids: event.target.checked && !user.unit_id
-                          && !unitForm.member_ids.includes(user.id)
-                          ? [...unitForm.member_ids, user.id]
-                          : unitForm.member_ids,
-                      })}
-                      className="h-4 w-4 accent-indigo-600"
-                    />
-                    <span className="min-w-0 flex-1 truncate">{user.name}</span>
-                    {index === 0 && (
+                  <div key={id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-sm">
+                    <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{person.name}</span>
+                    {index === 0 ? (
                       <Badge className="bg-indigo-50 text-indigo-700">Phụ trách chính</Badge>
-                    )}
-                    {index > 0 && (
+                    ) : (
                       <button
                         type="button"
                         onClick={() => setUnitForm({
                           ...unitForm,
-                          manager_ids: [user.id, ...unitForm.manager_ids.filter((id) => id !== user.id)],
+                          manager_ids: [id, ...unitForm.manager_ids.filter((item) => item !== id)],
                         })}
-                        className="rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                        className="flex-shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-200 hover:text-slate-800"
                       >
                         Đặt làm chính
                       </button>
                     )}
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() => setUnitForm({
+                        ...unitForm,
+                        manager_ids: unitForm.manager_ids.filter((item) => item !== id),
+                      })}
+                      aria-label={`Bỏ ${person.name} khỏi danh sách phụ trách`}
+                      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -1980,21 +1999,15 @@ export function AdminOrganization() {
           {/* ---- Nhan su thuoc don vi ----
                Khac han khoi Nguoi phu trach ngay tren: phu trach chi la mot
                cai ten tren so do, con day moi la `profiles.unit_id` - thu
-               quyet dinh khoan luong khai cho don vi co ap cho ho hay khong.
-               Hai khoi nam canh nhau nen phai noi ro, neu khong nguoi dung
-               tich mot cai roi tuong da xong ca hai. */}
+               quyet dinh khoan luong khai cho don vi co ap cho ho hay khong. */}
           <fieldset className="rounded-xl border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Nhân sự thuộc đơn vị</legend>
             <p className="text-xs leading-relaxed text-slate-500">
-              Tích để đưa người vào đơn vị này, rồi chọn chức danh cho từng người. Bỏ tích thì
-              họ về trạng thái <em>chưa gán đơn vị</em>, không bị xóa — nhưng cũng thôi nhận
-              khoản lương khai cho đơn vị.
+              Chọn người rồi gán chức danh cho từng người. Bỏ chọn thì họ về trạng thái{' '}
+              <em>chưa gán đơn vị</em>, không bị xóa — nhưng cũng thôi nhận khoản lương khai
+              cho đơn vị.
             </p>
 
-            {/* Bam vao o tim moi bung toan bo danh sach ra. Dong lai thi chi
-                con nguoi DA CHON: day moi la nhan su cua don vi, con lai chi
-                la kho de chon them - bay het ra lam modal dai ngoang ma thu
-                can nhin nhat lai bi day xuong duoi. */}
             <div className="relative mt-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -2006,29 +2019,63 @@ export function AdminOrganization() {
               />
             </div>
 
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-slate-500">
-                Đã chọn {unitForm.member_ids.length}/{activeUsers.length} người
-              </span>
-              {memberPickerOpen && (
-                <button
-                  type="button"
-                  onClick={() => { setMemberPickerOpen(false); setMemberQuery(''); }}
-                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
-                >
-                  Thu gọn
-                </button>
-              )}
-            </div>
+            {memberPickerOpen && (
+              <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 p-2">
+                <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
+                  <span className="text-[11px] font-semibold text-slate-500">Bấm vào tên để chọn</span>
+                  <button
+                    type="button"
+                    onClick={() => { setMemberPickerOpen(false); setMemberQuery(''); }}
+                    className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                  >
+                    Xong
+                  </button>
+                </div>
+                <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                  {searchPeople(memberQuery).length === 0 && (
+                    <p className="px-2 py-3 text-xs text-slate-400">Không có ai khớp “{memberQuery}”.</p>
+                  )}
+                  {searchPeople(memberQuery).map((user) => {
+                    const checked = unitForm.member_ids.includes(user.id);
+                    const elsewhere = !checked && !!user.unit_id && user.unit_id !== editingUnit?.id;
+                    return (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => setUnitForm({
+                          ...unitForm,
+                          member_ids: checked
+                            ? unitForm.member_ids.filter((id) => id !== user.id)
+                            : [...unitForm.member_ids, user.id],
+                        })}
+                        className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${checked ? 'bg-white font-medium text-indigo-700' : 'text-slate-700 hover:bg-white/70'}`}
+                      >
+                        <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}`}>
+                          {checked && <Check className="h-3 w-3" />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">
+                            {user.name}
+                            {user.employee_code && (
+                              <span className="ml-1.5 text-xs font-normal text-slate-400">{user.employee_code}</span>
+                            )}
+                          </span>
+                          {/* Dang o don vi khac: noi ro de nguoi dung biet minh
+                              dang KEO ho sang, khong phai them mot ban sao. */}
+                          {elsewhere && (
+                            <span className="block text-xs font-normal text-amber-600">
+                              Đang thuộc {unitById.get(user.unit_id || '')?.name ?? '?'} — chọn sẽ chuyển sang đây
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {(() => {
-              // Dong lai van giu nguoi VUA BO TICH cho toi luc luu: bo tich
-              // xong ma ho bien mat ngay thi khong con dau vet de kiem lai.
-              const list = memberPickerOpen
-                ? searchPeople(memberQuery)
-                : activeUsers.filter((user) => unitForm.member_ids.includes(user.id)
-                  || user.unit_id === editingUnit?.id);
-
               // Chuc danh chon duoc: vi tri da co cua don vi, cong voi vi tri
               // dang go do o khoi ben duoi (chua co id, tam dinh danh bang
               // `new:<index>` roi doi sang id that luc luu).
@@ -2042,67 +2089,62 @@ export function AdminOrganization() {
                   .map((item) => ({ value: item.value, label: `${item.title} (mới)` })),
               ];
 
-              if (list.length === 0) {
-                return (
-                  <p className="px-2 py-3 text-xs text-slate-400">
-                    {memberPickerOpen
-                      ? `Không có ai khớp “${memberQuery}”.`
-                      : 'Chưa có ai trong đơn vị. Bấm vào ô tìm bên trên để thêm.'}
-                  </p>
-                );
-              }
-
               return (
-                <div className="mt-1 max-h-72 space-y-1 overflow-y-auto">
-                  {list.map((user) => {
-                    const checked = unitForm.member_ids.includes(user.id);
-                    const elsewhere = !checked && !!user.unit_id && user.unit_id !== editingUnit?.id;
-                    return (
-                      <div key={user.id} className={`rounded-lg px-2 py-1.5 ${checked ? 'bg-indigo-50/60' : 'hover:bg-slate-50'}`}>
-                        <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={(event) => setUnitForm({
-                              ...unitForm,
-                              member_ids: event.target.checked
-                                ? [...unitForm.member_ids, user.id]
-                                : unitForm.member_ids.filter((id) => id !== user.id),
-                            })}
-                            className="mt-0.5 h-4 w-4 accent-indigo-600"
-                          />
-                          <span className="min-w-0">
-                            <span className="font-medium">{user.name}</span>
-                            {user.employee_code && (
-                              <span className="ml-1.5 text-xs text-slate-400">{user.employee_code}</span>
-                            )}
-                            {/* Dang o don vi khac: noi ro de nguoi dung biet minh
-                                dang KEO ho sang, khong phai them mot ban sao. */}
-                            {elsewhere && (
-                              <span className="block text-xs text-amber-600">
-                                Đang thuộc {unitById.get(user.unit_id || '')?.name ?? '?'} — tích vào sẽ chuyển sang đây
+                <div className="mt-2 space-y-1">
+                  <p className="px-1 text-[11px] font-semibold text-slate-500">
+                    {unitForm.member_ids.length === 0
+                      ? 'Chưa có ai trong đơn vị'
+                      : `Đã chọn ${unitForm.member_ids.length}/${activeUsers.length} người`}
+                  </p>
+                  {unitForm.member_ids.length === 0 ? (
+                    <p className="px-2 pb-1 text-xs text-slate-400">
+                      Bấm vào ô tìm bên trên để thêm nhân sự.
+                    </p>
+                  ) : (
+                    <div className="max-h-72 space-y-1 overflow-y-auto">
+                      {unitForm.member_ids.map((id) => {
+                        const person = userById.get(id);
+                        if (!person) return null;
+                        const moving = !!person.unit_id && person.unit_id !== editingUnit?.id;
+                        return (
+                          <div key={id} className="rounded-lg bg-slate-50 px-2.5 py-2">
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
+                                {person.name}
+                                {person.employee_code && (
+                                  <span className="ml-1.5 text-xs font-normal text-slate-400">{person.employee_code}</span>
+                                )}
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => setUnitForm({
+                                  ...unitForm,
+                                  member_ids: unitForm.member_ids.filter((item) => item !== id),
+                                })}
+                                aria-label={`Bỏ ${person.name} khỏi đơn vị`}
+                                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                            {moving && (
+                              <p className="text-xs text-amber-600">
+                                Đang thuộc {unitById.get(person.unit_id || '')?.name ?? '?'} — lưu xong sẽ chuyển sang đây
+                              </p>
                             )}
-                          </span>
-                        </label>
-
-                        {/* O chon chuc danh nam NGOAI the label: nam trong thi
-                            bam vao no la bo tich dung nguoi vua chon. */}
-                        {checked && (
-                          <div className="mt-1.5 pl-6">
                             {positionChoices.length === 0 ? (
-                              <p className="text-[11px] text-slate-400">
+                              <p className="mt-1 text-[11px] text-slate-400">
                                 Đơn vị chưa có vị trí nào — thêm ở mục <em>Vị trí trong đơn vị</em> bên dưới.
                               </p>
                             ) : (
                               <select
-                                value={unitForm.member_positions[user.id] ?? ''}
+                                value={unitForm.member_positions[id] ?? ''}
                                 onChange={(event) => setUnitForm({
                                   ...unitForm,
-                                  member_positions: { ...unitForm.member_positions, [user.id]: event.target.value },
+                                  member_positions: { ...unitForm.member_positions, [id]: event.target.value },
                                 })}
-                                aria-label={`Chức danh của ${user.name}`}
-                                className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-indigo-500"
+                                aria-label={`Chức danh của ${person.name}`}
+                                className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-indigo-500"
                               >
                                 <option value="">Chưa gán chức danh</option>
                                 {positionChoices.map((choice) => (
@@ -2111,10 +2153,10 @@ export function AdminOrganization() {
                               </select>
                             )}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })()}
