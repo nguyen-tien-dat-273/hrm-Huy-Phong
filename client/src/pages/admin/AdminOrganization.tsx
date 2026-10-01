@@ -464,10 +464,22 @@ export function AdminOrganization() {
     // Goi lai RPC phan cong voi DUNG gia tri hien co cua tung nguoi, chi doi
     // don vi. RPC nay ghi de moi truong, nen truyen null cho vi tri hay ngay
     // vao lam la xoa mat du lieu that cua ho.
-    if (unitId && unitForm.move_managers_in) {
-      const moving = unitForm.manager_ids
+    if (unitId) {
+      const candidates = unitForm.manager_ids
         .map((id) => users.find((user) => user.id === id))
         .filter((user): user is Profile => !!user && user.unit_id !== unitId);
+
+      // Chua thuoc don vi nao thi gan LUON, khong hoi.
+      //
+      // Dung so do to chuc la de khai ai o dau; bat nguoi dung khai xong roi
+      // con phai tich them mot o nua moi "that su" vao don vi la bat ho lam
+      // cung mot viec hai lan. O day khong co gi de mat: ho chua o dau ca.
+      //
+      // Nguoi DA thuoc don vi khac thi van hoi, vi chuyen di la ho thoi nhan
+      // khoan luong cua don vi cu - do la doi tien, khong phai don dep.
+      const moving = candidates.filter(
+        (user) => !user.unit_id || unitForm.move_managers_in,
+      );
 
       for (const person of moving) {
         const { error: moveError } = await supabase.rpc('assign_employee_organization', {
@@ -1469,8 +1481,20 @@ export function AdminOrganization() {
               const outside = unitForm.manager_ids
                 .map((id) => users.find((user) => user.id === id))
                 .filter((user): user is Profile => !!user && user.unit_id !== editingUnit?.id);
-              if (outside.length === 0) return null;
+              const fresh = outside.filter((user) => !user.unit_id);
               const elsewhere = outside.filter((user) => !!user.unit_id);
+
+              // Nguoi chua co don vi: chi bao cho biet, khong hoi.
+              if (elsewhere.length === 0) {
+                if (fresh.length === 0) return null;
+                return (
+                  <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs leading-relaxed text-emerald-900">
+                    <strong>{fresh.length} người</strong> sẽ được xếp vào đơn vị này khi lưu, nên
+                    khoản lương khai cho đơn vị sẽ áp cho họ ngay.
+                  </p>
+                );
+              }
+
               return (
                 <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-xs leading-relaxed text-indigo-900">
                   <input
@@ -1480,18 +1504,18 @@ export function AdminOrganization() {
                     className="mt-0.5 h-4 w-4 accent-indigo-600"
                   />
                   <span>
-                    Đưa <strong>{outside.length} người phụ trách</strong> vào luôn làm thành viên
-                    đơn vị này.
-                    <span className="mt-1 block text-indigo-800">
-                      Đặt người phụ trách chỉ ghi tên lên sơ đồ, không tính họ là nhân sự của đơn
-                      vị — nên khoản lương khai cho đơn vị sẽ không áp cho họ.
-                    </span>
-                    {elsewhere.length > 0 && (
-                      <span className="mt-1 block font-semibold text-amber-700">
-                        {elsewhere.length} người đang thuộc đơn vị khác ({elsewhere.map((user) => unitById.get(user.unit_id || '')?.name || '?').join(', ')}).
-                        Chuyển sang đây là họ thôi nhận khoản lương của đơn vị cũ.
+                    Chuyển <strong>{elsewhere.length} người</strong> đang thuộc đơn vị khác sang
+                    đây.
+                    {fresh.length > 0 && (
+                      <span className="mt-1 block text-indigo-800">
+                        ({fresh.length} người chưa có đơn vị sẽ được xếp vào đây tự động, không
+                        cần tích.)
                       </span>
                     )}
+                    <span className="mt-1 block font-semibold text-amber-700">
+                      Đang thuộc: {elsewhere.map((user) => unitById.get(user.unit_id || '')?.name || '?').join(', ')}.
+                      Chuyển sang đây là họ thôi nhận khoản lương của đơn vị cũ.
+                    </span>
                   </span>
                 </label>
               );
