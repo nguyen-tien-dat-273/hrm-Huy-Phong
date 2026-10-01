@@ -24,7 +24,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode } from '@/lib/permissions';
+import { ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import type {
   EmploymentStatus, JobPosition, OrganizationUnit, OrganizationUnitType, Profile,
 } from '@/types';
@@ -111,10 +111,8 @@ export function AdminOrganization() {
     code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '',
     /** Nguoi phu trach. Phan tu DAU TIEN la nguoi phu trach chinh. */
     manager_ids: [] as string[],
-    /** Vi tri da ton tai duoc keo ve don vi nay. */
-    position_ids: [] as string[],
     /** Vi tri tao moi ngay trong form nay, de khoi phai sang tab Vi tri. */
-    new_positions: [] as { code: string; title: string }[],
+    new_positions: [] as { code: string; title: string; permissions: AdminPermission[] }[],
     /**
      * Dua luon nguoi phu trach vao lam THANH VIEN cua don vi.
      *
@@ -497,60 +495,53 @@ export function AdminOrganization() {
     // --- Vi tri tao moi ngay trong form ------------------------------------
     if (unitId) {
       const fresh = unitForm.new_positions
-        .map((item) => ({ code: item.code.trim().toUpperCase(), title: item.title.trim() }))
+        .map((item) => ({
+          code: item.code.trim().toUpperCase() || positionCodeFrom(item.title, positions.map((entry) => entry.code)),
+          title: item.title.trim(),
+          permissions: item.permissions,
+        }))
         .filter((item) => item.title.length > 1);
+
       if (fresh.length > 0) {
-        const { error: posError } = await supabase.from('job_positions').insert(
+        // `select()` de lay lai id: quyen cua vi tri nam o bang khac, khong
+        // co id thi khong gan quyen duoc.
+        const { data: created, error: posError } = await supabase.from('job_positions').insert(
           fresh.map((item) => ({
-            code: item.code || positionCodeFrom(item.title, positions.map((p) => p.code)),
+            code: item.code,
             title: item.title,
             unit_id: unitId,
             is_manager: false,
             is_active: true,
           })),
-        );
+        ).select('id, code');
+
         if (posError) {
           setSubmitting(false);
           return toast('Đã lưu đơn vị nhưng không tạo được vị trí: ' + describeDbError(posError), 'error');
         }
-      }
-    }
 
-    if (unitId) {
-      const before = positions.filter((item) => item.unit_id === unitId).map((item) => item.id);
-      const after = unitForm.position_ids;
-      const added = after.filter((id) => !before.includes(id));
-      // Bo chon mot vi tri KHONG duoc xoa no: don vi la cot bat buoc. Vi tri
-      // bi bo ra se thanh vi tri cua don vi CAP TREN, hoac o nguyen neu day
-      // da la don vi goc - khong co cho nao cao hon de day len.
-      const removed = before.filter((id) => !after.includes(id));
-      const fallbackId = units.find((item) => item.id === (payload.parent_id ?? ''))?.id ?? null;
-
-      const moves = [
-        added.length > 0 ? { ids: added, unit: unitId } : null,
-        removed.length > 0 && fallbackId ? { ids: removed, unit: fallbackId } : null,
-      ].filter(Boolean) as { ids: string[]; unit: string }[];
-
-      for (const move of moves) {
-        const { error: moveError } = await supabase
-          .from('job_positions')
-          .update({ unit_id: move.unit })
-          .in('id', move.ids);
-        if (moveError) {
-          setSubmitting(false);
-          return toast('Đã lưu đơn vị nhưng không gán được vị trí: ' + describeDbError(moveError), 'error');
+        const rows = (created || []) as { id: string; code: string }[];
+        const grants = fresh.flatMap((item) => {
+          const id = rows.find((row) => row.code === item.code)?.id;
+          if (!id) return [];
+          return item.permissions.map((permission) => ({ position_id: id, permission_code: permission }));
+        });
+        if (grants.length > 0 && positionPermissionsSupported) {
+          const { error: grantError } = await supabase.from('job_position_permissions').insert(grants);
+          if (grantError) {
+            setSubmitting(false);
+            return toast('Đã tạo vị trí nhưng không gán được quyền: ' + describeDbError(grantError), 'error');
+          }
         }
       }
-      if (removed.length > 0 && !fallbackId) {
-        toast(`${removed.length} vị trí vẫn ở lại vì đây là đơn vị gốc, không có cấp trên để chuyển lên.`, 'warning');
-      }
     }
+
 
     setSubmitting(false);
     toast(editingUnit ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị vào cơ cấu tổ chức.', 'success');
     setUnitModal(false);
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], position_ids: [], new_positions: [], move_managers_in: false });
+    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], new_positions: [], move_managers_in: false });
     void load();
   };
 
@@ -637,7 +628,7 @@ export function AdminOrganization() {
   const openNewUnit = () => {
     setEditingUnit(null);
     setUnitForm({
-      position_ids: [], new_positions: [], manager_ids: [], move_managers_in: false,
+      new_positions: [], manager_ids: [], move_managers_in: false,
       code: '', name: '',
       unit_type: activeCompany ? 'department' : 'company',
       parent_id: activeCompany?.id ?? '',
@@ -648,7 +639,7 @@ export function AdminOrganization() {
   /** Tạo doanh nghiệp mới: đơn vị cấp gốc, không có cha. */
   const openNewCompany = () => {
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_ids: [], position_ids: [], new_positions: [], move_managers_in: false });
+    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_ids: [], new_positions: [], move_managers_in: false });
     setUnitModal(true);
   };
 
@@ -658,7 +649,6 @@ export function AdminOrganization() {
       code: unit.code, name: unit.name, unit_type: unit.unit_type,
       parent_id: unit.parent_id || '',
       manager_ids: unitManagers[unit.id] ?? (unit.manager_id ? [unit.manager_id] : []),
-      position_ids: positions.filter((item) => item.unit_id === unit.id).map((item) => item.id),
       new_positions: [],
       move_managers_in: false,
     });
@@ -670,7 +660,7 @@ export function AdminOrganization() {
       : parent.unit_type === 'company' ? 'branch'
         : parent.unit_type === 'branch' ? 'department' : 'team';
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_ids: [], position_ids: [], new_positions: [], move_managers_in: false });
+    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_ids: [], new_positions: [], move_managers_in: false });
     setUnitModal(true);
   };
 
@@ -1349,44 +1339,119 @@ export function AdminOrganization() {
             })()}
           </fieldset>
 
-          {/* ---- Tạo vị trí ngay khi tạo đơn vị ---- */}
+          {/* ---- Vi tri cua don vi: mot khoi duy nhat ----
+               Truoc day la HAI khoi canh nhau - mot de tao vi tri moi, mot de
+               keo vi tri da ton tai ve day. Nguoi dung doc hai cai tieu de
+               gan giong nhau roi phai tu doan cai nao lam gi. Gio gop lam mot:
+               ben tren la nhung vi tri dang co, ben duoi go them vi tri moi. */}
           <fieldset className="rounded-xl border border-slate-200 p-3">
-            <legend className="px-1 text-sm font-semibold text-slate-700">Vị trí mới trong đơn vị</legend>
+            <legend className="px-1 text-sm font-semibold text-slate-700">Vị trí trong đơn vị</legend>
+
+            {editingUnit && positions.filter((item) => item.unit_id === editingUnit.id).length > 0 && (
+              <div className="mb-3 space-y-1">
+                {positions.filter((item) => item.unit_id === editingUnit.id).map((position) => (
+                  <div key={position.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-sm">
+                    <BriefcaseBusiness className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                    <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{position.title}</span>
+                    <code className="hidden font-mono text-[11px] text-slate-400 sm:block">{position.code}</code>
+                    {(positionPermissions[position.id]?.length || 0) > 0 && (
+                      <Badge className="bg-indigo-50 text-indigo-700">
+                        {positionPermissions[position.id].length} quyền
+                      </Badge>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setUnitModal(false); openEditPosition(position); }}
+                      aria-label={`Sửa ${position.title}`}
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <p className="text-xs leading-relaxed text-slate-500">
-              Gõ thẳng tên vị trí ở đây, hệ thống tạo luôn trong đơn vị này — khỏi phải sang tab
-              Vị trí khai lại. Mã sinh tự động, đổi được sau ở tab Vị trí.
+              Gõ tên vị trí rồi tích quyền cho nó — lưu đơn vị là tạo luôn. Mã sinh tự động.
             </p>
-            <div className="mt-2 space-y-2">
+
+            <div className="mt-2 space-y-3">
               {unitForm.new_positions.map((item, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <input
-                    value={item.title}
-                    onChange={(event) => setUnitForm({
-                      ...unitForm,
-                      new_positions: unitForm.new_positions.map((entry, i) => (
-                        i === index ? { ...entry, title: event.target.value } : entry
-                      )),
-                    })}
-                    placeholder="VD: Trưởng phòng Kho vận"
-                    className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500"
-                  />
-                  <code className="hidden w-32 shrink-0 truncate font-mono text-[11px] text-slate-400 sm:block">
-                    {item.title.trim() ? positionCodeFrom(item.title, positions.map((p) => p.code)) : ''}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => setUnitForm({
-                      ...unitForm,
-                      new_positions: unitForm.new_positions.filter((_, i) => i !== index),
-                    })}
-                    aria-label={`Bỏ vị trí thứ ${index + 1}`}
-                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                <div key={index} className="rounded-xl border border-slate-200 p-2.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={item.title}
+                      onChange={(event) => setUnitForm({
+                        ...unitForm,
+                        new_positions: unitForm.new_positions.map((entry, i) => (
+                          i === index ? { ...entry, title: event.target.value } : entry
+                        )),
+                      })}
+                      placeholder="VD: Trưởng phòng Kho vận"
+                      className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500"
+                    />
+                    <code className="hidden w-28 shrink-0 truncate font-mono text-[11px] text-slate-400 sm:block">
+                      {item.title.trim() ? positionCodeFrom(item.title, positions.map((entry) => entry.code)) : ''}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => setUnitForm({
+                        ...unitForm,
+                        new_positions: unitForm.new_positions.filter((_, i) => i !== index),
+                      })}
+                      aria-label={`Bỏ vị trí thứ ${index + 1}`}
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Quyen khai ngay tai day: vi tri la NOI DUY NHAT cap quyen
+                      quan tri, tao xong ma khong cap thi phai nho quay lai. */}
+                  <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="mt-2">
+                    <p className="text-[11px] font-semibold text-slate-500">Quyền vào khu quản trị</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {ADMIN_PERMISSIONS.map((permission) => {
+                        const on = item.permissions.includes(permission);
+                        return (
+                          <button
+                            key={permission}
+                            type="button"
+                            onClick={() => setUnitForm({
+                              ...unitForm,
+                              new_positions: unitForm.new_positions.map((entry, i) => (
+                                i === index
+                                  ? {
+                                    ...entry,
+                                    permissions: on
+                                      ? entry.permissions.filter((code) => code !== permission)
+                                      : [...entry.permissions, permission],
+                                  }
+                                  : entry
+                              )),
+                            })}
+                            aria-pressed={on}
+                            title={PERMISSION_LABELS[permission].desc}
+                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                              on ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {PERMISSION_LABELS[permission].label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {item.permissions.length === 0 && (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Không tích gì thì vị trí này chỉ dùng khu nhân viên.
+                      </p>
+                    )}
+                  </fieldset>
                 </div>
               ))}
             </div>
+
             <Button
               type="button"
               size="sm"
@@ -1394,57 +1459,13 @@ export function AdminOrganization() {
               className="mt-2"
               onClick={() => setUnitForm({
                 ...unitForm,
-                new_positions: [...unitForm.new_positions, { code: '', title: '' }],
+                new_positions: [...unitForm.new_positions, { code: '', title: '', permissions: [] }],
               })}
             >
               <Plus className="h-3.5 w-3.5" />Thêm vị trí
             </Button>
           </fieldset>
 
-          {/* ---- Gan thang cac vi tri da tao vao don vi nay ---- */}
-          {companyPositions.length > 0 && (
-            <fieldset className="rounded-xl border border-slate-200 p-3">
-              <legend className="px-1 text-sm font-semibold text-slate-700">Vị trí trong đơn vị</legend>
-              <p className="text-xs leading-relaxed text-slate-500">
-                Tích để chuyển vị trí đã tạo về đơn vị này. Bỏ tích thì vị trí đó chuyển lên
-                đơn vị cấp trên, không bị xóa.
-              </p>
-              <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
-                {companyPositions.filter((position) => position.is_active).map((position) => {
-                  const checked = unitForm.position_ids.includes(position.id);
-                  const currentUnit = unitById.get(position.unit_id);
-                  const elsewhere = !checked && position.unit_id !== editingUnit?.id;
-                  return (
-                    <label key={position.id} className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => setUnitForm({
-                          ...unitForm,
-                          position_ids: event.target.checked
-                            ? [...unitForm.position_ids, position.id]
-                            : unitForm.position_ids.filter((id) => id !== position.id),
-                        })}
-                        className="mt-0.5 h-4 w-4 accent-indigo-600"
-                      />
-                      <span className="min-w-0">
-                        <span className="font-medium">{position.title}</span>
-                        <span className="ml-1.5 text-xs text-slate-400">{position.code}</span>
-                        {/* Noi ro vi tri dang thuoc don vi nao, de nguoi dung
-                            biet minh dang KEO no ra khoi cho cu chu khong
-                            phai tao them mot ban sao. */}
-                        {elsewhere && currentUnit && (
-                          <span className="block text-xs text-amber-600">
-                            Đang thuộc {currentUnit.name} — tích vào sẽ chuyển sang đây
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
-          )}
 
           <div className="flex gap-3 pt-2"><Button type="button" variant="outline" className="flex-1" onClick={() => setUnitModal(false)}>Hủy</Button><Button type="submit" theme="admin" className="flex-1" disabled={submitting}>{submitting ? 'Đang lưu…' : editingUnit ? 'Lưu thay đổi' : 'Tạo đơn vị'}</Button></div>
         </form>
