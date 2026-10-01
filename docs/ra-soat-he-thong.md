@@ -8,6 +8,106 @@ sau khỏi mất công nghi lại.
 
 ---
 
+## Hướng đã chốt: bỏ check-in thủ công, lấy công từ máy
+
+Phần này rà riêng theo hướng đã quyết — gỡ đường check-in trên trình duyệt,
+chấm công lấy từ máy, bảng công là sổ cái. Liệt kê đúng những gì phải đổi.
+
+### A. Hai lỗ hổng phải bịt TRƯỚC khi gỡ nút check-in
+
+**A1. Gỡ nút đi là không còn đường nào tạo bản ghi chấm công ngoài máy.**
+
+Rà cả hệ thống, chỉ có **đúng một** chỗ ghi thêm dòng vào bảng `attendance`:
+
+```
+client/src/pages/staff/StaffAttendance.tsx:289     supabase.from('attendance').insert({ ... })
+```
+
+`AdminAttendance` chỉ duyệt / bỏ duyệt / xoá — **không có insert**. Không trang
+quản trị nào thêm được một dòng chấm công.
+
+Nghĩa là ngày máy hỏng, ngày mất điện, người mới chưa đăng ký vân tay, hay ai
+đó quên quét — **ngày công đó không có cách nào ghi nhận**. `attendance_requests`
+không đỡ được: nó chỉ có `LATE_ARRIVAL`, `EARLY_LEAVE`, `OVERTIME`, không có
+loại "thiếu ngày công".
+
+⇒ Phải làm đường nhập công tay cho quản lý **trước**, rồi mới gỡ nút. Làm
+ngược thứ tự là có ngày cả công ty không chấm được công.
+
+**A2. Trang duyệt chấm công không có route.**
+
+`AdminAttendance` được import ở `App.tsx:28` nhưng **không `<Route>` nào render
+nó** — tôi đã dò toàn bộ component lazy, đây là cái duy nhất bị bỏ rơi.
+
+Mà đó là nơi **duy nhất** trong giao diện đặt `approved_by_lead = true`
+(dòng 102 và 189). Trong khi bảng công tháng chỉ đếm:
+
+```
+.eq('status', 'completed').eq('approved_by_lead', true)      // AdminTimesheet.tsx:84
+```
+
+Dòng do máy đẩy vào được đặt `approved_by_lead = true` sẵn nên không sao. Nhưng
+mọi dòng **không** do máy tạo thì kẹt vĩnh viễn ngoài bảng công, vì không còn
+giao diện nào duyệt được.
+
+Chua hơn: `AdminTimesheet.tsx:97` có đếm sẵn số dòng chưa duyệt để cảnh báo —
+người dùng thấy cảnh báo, bấm vào thì không có chỗ nào xử lý.
+
+### B. Gỡ được những gì
+
+| Gỡ | Vị trí |
+|---|---|
+| Nút CHECK-IN và `handleCheckIn` | `StaffAttendance.tsx:188–320`, `550` |
+| 5 chốt geofence | `StaffAttendance.tsx:237, 269, 274, 279` |
+| Đọc cờ `geofence_attendance` | `StaffAttendance.tsx:214` |
+| Tra `work_locations` để tính khoảng cách | `StaffAttendance.tsx:215` và đoạn lọc theo đơn vị |
+| `check_in_method` giá trị `'GPS'`, `'WIFI'` | còn lại `'DEVICE'` và `'MANUAL'` cho đường nhập tay |
+| Quyền `admin.feature_flags` | sau khi không còn ai đọc cờ |
+
+Nút **Check-out cũng hết nghĩa**: máy chỉ ghi giờ vào và đánh `completed` ngay,
+nên không còn ca nào "đang mở" để đóng. Kéo theo phải sửa mô tả menu
+`StaffLayout.tsx:82` — hiện vẫn ghi *"Xem dữ liệu từ máy chấm công và hoàn tất
+check-out"*.
+
+Trang Chấm công của nhân viên khi đó còn lại đúng vai trò **xem**: hôm nay máy
+ghi nhận mình lúc mấy giờ, tháng này được bao nhiêu công, việc được giao hôm
+nay là gì.
+
+### C. KHÔNG được gỡ nhầm
+
+- **`work_locations` vẫn cần.** `attendance_devices.location_id` tham chiếu tới
+  nó (migration `20260926100000`, dòng 11), và hàm ingest ghi
+  `selected_device.location_id` vào từng dòng chấm công. Gỡ geofence không làm
+  bảng này thừa — nó là nơi khai mỗi máy đặt ở đâu.
+  **Nhưng** giao diện tạo/sửa điểm nằm ở section `locations` của
+  `AdminNexusCenter`, mà `App.tsx` không gắn route. Thêm một máy mới mà chưa có
+  điểm nào trong bảng thì không gán được. ⇒ Vẫn phải trả lại giao diện này,
+  chỉ là vì lý do khác chứ không phải vì geofence.
+- **`attendance_sessions` vẫn sống** — có trigger `sync_attendance_sessions()`
+  ở database tự ghi từ bảng `attendance` (migration `20260909110000`). Client
+  chỉ đọc, không ghi, nên nhìn tưởng chết.
+
+### D. Dữ liệu cũ phải dọn
+
+Mọi dòng `attendance` có `status = 'active'` và `check_in_method = 'GPS'` ở các
+ngày đã qua là nạn nhân của lỗi mục 1: lần quét vân tay của họ đã bị nuốt, ngày
+công không vào bảng công. Cần đếm, đối chiếu với
+`attendance_device_events` cùng ngày, rồi bù trước khi chốt kỳ lương tới.
+
+### E. Thứ tự làm
+
+1. **Đường nhập công tay cho quản lý** *(A1)* — không có cái này thì không được
+   gỡ gì cả
+2. **Trả route cho trang duyệt chấm công** *(A2)* — và kiểm lại điều kiện duyệt
+   hàng loạt ở dòng 174, hiện đòi `check_out_time` khác rỗng nên dòng từ máy
+   không lọt vào
+3. **Trả route cho giao diện điểm chấm công** *(C)*
+4. **Dọn dữ liệu cũ** *(D)* — làm trước kỳ lương tới
+5. **Gỡ đường check-in thủ công và bộ geofence** *(B)* — bước cuối, khi bốn
+   bước trên đã xong
+
+---
+
 ## P0 — Hỏng chức năng, cần sửa trước
 
 ### 1. Nút Check-in thủ công còn sống song song với máy chấm công — và một lần quét vân tay có thể bị nuốt mất
@@ -49,7 +149,9 @@ Nghịch lý đáng chú ý: nhân viên **bật** GPS thì mất ngày công; n
 **tắt** GPS thì `check_in_method = null`, `coalesce(null,'DEVICE') = 'DEVICE'`,
 nhánh 2 chạy và dòng được gộp đúng. Người làm đúng hơn lại thiệt.
 
-**Hai hướng sửa, phải chọn trước khi code:**
+**Hướng đã chốt: A** (bỏ hẳn check-in thủ công) — xem phần *Hướng đã chốt* ở
+đầu tài liệu để biết phải đổi những gì và theo thứ tự nào. Hai hướng ban đầu
+ghi lại ở đây để giữ lý do:
 
 - **A — Gỡ hẳn nút check-in thủ công.** Đúng hướng đã chọn khi tích hợp máy.
   Gỡ được luôn cả bộ geofence ăn theo (xem ghi chú dưới). Rủi ro: máy hỏng
@@ -59,7 +161,9 @@ nhánh 2 chạy và dòng được gộp đúng. Người làm đúng hơn lại
   không phải DEVICE: gộp giờ vào, đặt `completed`, `approved_by_lead = true`.
   Rẻ hơn, nhưng giữ nguyên hai đường chấm công song song.
 
-Nên làm **B trước** (bịt chỗ mất lương ngay), rồi quyết A sau.
+Vì đã chốt hướng A, nhánh ingest vẫn nên vá **nếu** đường nhập công tay sắp
+tới cũng ghi `check_in_method` khác `'DEVICE'` — nếu không, đúng cái bẫy này sẽ
+lặp lại với dòng nhập tay. Kiểm điều đó khi làm bước 1 của phần *Hướng đã chốt*.
 
 > **Ghi chú — bộ geofence giờ chỉ còn ăn theo đường thủ công.**
 > Cờ `feature_flags.geofence_attendance` vẫn được đọc ở
