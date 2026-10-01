@@ -115,6 +115,15 @@ export function AdminOrganization() {
     position_ids: [] as string[],
     /** Vi tri tao moi ngay trong form nay, de khoi phai sang tab Vi tri. */
     new_positions: [] as { code: string; title: string }[],
+    /**
+     * Dua luon nguoi phu trach vao lam THANH VIEN cua don vi.
+     *
+     * Dat nguoi phu trach chi ghi `manager_id`, khong dat `profiles.unit_id`.
+     * Hai thu khac nhau that, nhung trong dau nguoi dung thi "da gan vao so
+     * do" la xong - roi sang Co che luong thay don vi bao 0 nguoi va khong
+     * hieu vi sao. O nay lam ca hai viec trong mot lan bam.
+     */
+    move_managers_in: false,
   });
   /** Bang noi organization_unit_managers da ton tai chua. */
   const [multiManagerSupported, setMultiManagerSupported] = useState(true);
@@ -453,6 +462,38 @@ export function AdminOrganization() {
       }
     }
 
+    // --- Dua nguoi phu trach vao lam thanh vien ----------------------------
+    // Goi lai RPC phan cong voi DUNG gia tri hien co cua tung nguoi, chi doi
+    // don vi. RPC nay ghi de moi truong, nen truyen null cho vi tri hay ngay
+    // vao lam la xoa mat du lieu that cua ho.
+    if (unitId && unitForm.move_managers_in) {
+      const moving = unitForm.manager_ids
+        .map((id) => users.find((user) => user.id === id))
+        .filter((user): user is Profile => !!user && user.unit_id !== unitId);
+
+      for (const person of moving) {
+        const { error: moveError } = await supabase.rpc('assign_employee_organization', {
+          target_user: person.id,
+          target_employee_code: person.employee_code || null,
+          target_unit: unitId,
+          // Vi tri cu thuoc don vi KHAC thi bo di, neu khong nguoi nay se
+          // dung don vi moi ma giu chuc danh cua phong cu.
+          target_position: positions.find((item) => item.id === person.position_id)?.unit_id === unitId
+            ? person.position_id : null,
+          target_manager: person.manager_id || null,
+          target_hire_date: person.hire_date || null,
+          target_employment_status: person.employment_status || 'active',
+        });
+        if (moveError) {
+          setSubmitting(false);
+          return toast('Đã lưu đơn vị nhưng không đưa được người phụ trách vào: ' + describeDbError(moveError), 'error');
+        }
+      }
+      if (moving.length > 0) {
+        toast(`Đã đưa ${moving.length} người phụ trách vào ${payload.name}.`, 'success');
+      }
+    }
+
     // --- Vi tri tao moi ngay trong form ------------------------------------
     if (unitId) {
       const fresh = unitForm.new_positions
@@ -509,7 +550,7 @@ export function AdminOrganization() {
     toast(editingUnit ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị vào cơ cấu tổ chức.', 'success');
     setUnitModal(false);
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], position_ids: [], new_positions: [] });
+    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], position_ids: [], new_positions: [], move_managers_in: false });
     void load();
   };
 
@@ -596,7 +637,7 @@ export function AdminOrganization() {
   const openNewUnit = () => {
     setEditingUnit(null);
     setUnitForm({
-      position_ids: [], new_positions: [], manager_ids: [],
+      position_ids: [], new_positions: [], manager_ids: [], move_managers_in: false,
       code: '', name: '',
       unit_type: activeCompany ? 'department' : 'company',
       parent_id: activeCompany?.id ?? '',
@@ -607,7 +648,7 @@ export function AdminOrganization() {
   /** Tạo doanh nghiệp mới: đơn vị cấp gốc, không có cha. */
   const openNewCompany = () => {
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_ids: [], position_ids: [], new_positions: [] });
+    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_ids: [], position_ids: [], new_positions: [], move_managers_in: false });
     setUnitModal(true);
   };
 
@@ -619,6 +660,7 @@ export function AdminOrganization() {
       manager_ids: unitManagers[unit.id] ?? (unit.manager_id ? [unit.manager_id] : []),
       position_ids: positions.filter((item) => item.unit_id === unit.id).map((item) => item.id),
       new_positions: [],
+      move_managers_in: false,
     });
     setUnitModal(true);
   };
@@ -628,7 +670,7 @@ export function AdminOrganization() {
       : parent.unit_type === 'company' ? 'branch'
         : parent.unit_type === 'branch' ? 'department' : 'team';
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_ids: [], position_ids: [], new_positions: [] });
+    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_ids: [], position_ids: [], new_positions: [], move_managers_in: false });
     setUnitModal(true);
   };
 
@@ -1271,6 +1313,40 @@ export function AdminOrganization() {
                 );
               })}
             </div>
+
+            {/* Chi hien khi THUC SU co nguoi can dua vao - khong bay mot o
+                tich khong lam gi cho don vi da day du thanh vien. */}
+            {(() => {
+              const outside = unitForm.manager_ids
+                .map((id) => users.find((user) => user.id === id))
+                .filter((user): user is Profile => !!user && user.unit_id !== editingUnit?.id);
+              if (outside.length === 0) return null;
+              const elsewhere = outside.filter((user) => !!user.unit_id);
+              return (
+                <label className="mt-2 flex cursor-pointer items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-xs leading-relaxed text-indigo-900">
+                  <input
+                    type="checkbox"
+                    checked={unitForm.move_managers_in}
+                    onChange={(event) => setUnitForm({ ...unitForm, move_managers_in: event.target.checked })}
+                    className="mt-0.5 h-4 w-4 accent-indigo-600"
+                  />
+                  <span>
+                    Đưa <strong>{outside.length} người phụ trách</strong> vào luôn làm thành viên
+                    đơn vị này.
+                    <span className="mt-1 block text-indigo-800">
+                      Đặt người phụ trách chỉ ghi tên lên sơ đồ, không tính họ là nhân sự của đơn
+                      vị — nên khoản lương khai cho đơn vị sẽ không áp cho họ.
+                    </span>
+                    {elsewhere.length > 0 && (
+                      <span className="mt-1 block font-semibold text-amber-700">
+                        {elsewhere.length} người đang thuộc đơn vị khác ({elsewhere.map((user) => unitById.get(user.unit_id || '')?.name || '?').join(', ')}).
+                        Chuyển sang đây là họ thôi nhận khoản lương của đơn vị cũ.
+                      </span>
+                    )}
+                  </span>
+                </label>
+              );
+            })()}
           </fieldset>
 
           {/* ---- Tạo vị trí ngay khi tạo đơn vị ---- */}

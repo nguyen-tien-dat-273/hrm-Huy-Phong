@@ -380,8 +380,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${launcherOpen ? 'rotate-180' : ''}`} />
               </button>
 
+              {/* Tren dien thoai bang neo vao MAN HINH chu khong vao nut.
+                  Nut nam gan giua header, ma bang rong gan het man - neo
+                  `right-0` vao nut thi canh trai bang lot ra ngoai man hinh
+                  va mat han mot cot o. */}
               {launcherOpen && (
-                <div className="absolute right-0 top-full z-50 mt-2 w-[min(38rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                <div className="fixed inset-x-4 top-[4.5rem] z-50 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(38rem,calc(100vw-2rem))]">
                   <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
                     {groupsWithItems.map((group) => {
                       const Icon = group.icon;
