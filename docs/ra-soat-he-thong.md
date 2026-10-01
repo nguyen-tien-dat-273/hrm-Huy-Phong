@@ -10,43 +10,71 @@ sau khỏi mất công nghi lại.
 
 ## P0 — Hỏng chức năng, cần sửa trước
 
-### 1. Tính năng geofence chấm công đang chạy nhưng không ai điều khiển được
+### 1. Nút Check-in thủ công còn sống song song với máy chấm công — và một lần quét vân tay có thể bị nuốt mất
 
-Cờ `feature_flags.geofence_attendance` là công tắc tổng của việc **check-in có
-bị ràng buộc vị trí hay không**. Nó điều khiển 5 chốt chặn:
+Chấm công đã chuyển sang chạy bằng máy: migration `20260930230000` khai rằng
+máy chỉ ghi GIỜ VÀO, và **một lần quét = một ngày công hoàn chỉnh**
+(`resolved_status := 'completed'`, dòng 207) kèm `approved_by_lead = true`.
 
-| Chốt | Vị trí |
-|---|---|
-| Bắt buộc có quyền GPS | `StaffAttendance.tsx:237` |
-| Phải ở gần một điểm đã khai | `StaffAttendance.tsx:269` |
-| Khoảng cách vượt bán kính thì chặn | `StaffAttendance.tsx:274` |
-| GPS quá nhiễu thì chặn | `StaffAttendance.tsx:279` |
-| Đọc cờ | `StaffAttendance.tsx:214` |
+Nhưng trang Chấm công vẫn render nút CHECK-IN tròn to màu xanh
+(`StaffAttendance.tsx:550`), không rào bởi cờ nào, không nhắc gì tới máy. Hễ
+bridge chưa kịp đồng bộ lần quét sáng nay thì màn hình hiện `not_checked_in`
+và mời người ta bấm.
 
-Dữ liệu đi kèm là `work_locations` và `organization_unit_work_locations`
-(danh sách điểm chấm công và ánh xạ theo đơn vị).
+Bấm vào thì ghi một dòng `status = 'active'`, `approved_by_lead = false`
+(dòng 294), `check_in_method = 'GPS'` nếu có GPS (dòng 296).
 
-**Vấn đề:** cả công tắc lẫn dữ liệu chỉ sửa được trong `AdminNexusCenter`, ở
-hai section `flags` và `locations`. Mà `App.tsx` chỉ gắn route cho `lifecycle`
-và `performance` (dòng 203–204). **Không section nào trong hai cái đó có
-đường vào.** Mã quản lý vẫn còn nguyên — form, `toggleFlag`, CRUD điểm — chỉ
-là không ai tới được.
+**Rồi khi bridge ingest lần quét vân tay cùng ngày đó** (migration
+`20260930230000`, dòng 212–241), nó xét ba nhánh:
 
-Hệ quả thực tế: muốn bật/tắt kiểm tra vị trí khi chấm công, hoặc thêm/sửa một
-điểm chấm công, phải vào thẳng database sửa tay.
+| Nhánh | Điều kiện | Với dòng GPS nói trên |
+|---|---|---|
+| 1 | chưa có dòng nào trong ngày | **trượt** — đã có dòng |
+| 2 | `coalesce(check_in_method,'DEVICE') = 'DEVICE'` | **trượt** — đang là `'GPS'` |
+| 3 | `resolved_out is not null` | **trượt** — máy chỉ ghi giờ vào nên `resolved_out := null` (dòng 205) |
 
-Hai điểm phụ cùng gốc:
+**Không nhánh nào chạy.** Nhưng ngay sau đó sự kiện vẫn bị đánh dấu đã xử lý
+(`processed_at = now()`, dòng 243). Lần quét vân tay biến mất không dấu vết.
 
-- `App.tsx:210` ghi *"không mã nào đọc `feature_flags`"* — **sai**.
-  `StaffAttendance.tsx:214` đọc nó mỗi lần check-in. Comment này nhiều khả
-  năng là lý do trang bị gỡ.
-- Fail-open: `const geofenceEnabled = flag?.enabled === true`
-  (`StaffAttendance.tsx:217`). Thiếu dòng cờ trong bảng ⇒ geofence **tắt im
-  lặng**, nhân viên chấm công được từ bất kỳ đâu mà không cảnh báo gì.
+Dòng chấm công nằm lại `status = 'active'`, `approved_by_lead = false`. Mà
+bảng công tháng chỉ đếm:
 
-**Cách sửa:** trả lại route và mục menu cho hai section (mã UI còn nguyên, chỉ
-thiếu đường vào) — ước lượng nửa ngày. Riêng chuyện fail-open nên quyết rõ:
-thiếu cờ thì coi là bật hay tắt, rồi ghi hẳn vào mã.
+```
+.eq('status', 'completed').eq('approved_by_lead', true)     // AdminTimesheet.tsx:84
+```
+
+⇒ **Ngày đó không vào bảng công tháng. Trả thiếu lương, không một cảnh báo nào.**
+
+Nghịch lý đáng chú ý: nhân viên **bật** GPS thì mất ngày công; nhân viên
+**tắt** GPS thì `check_in_method = null`, `coalesce(null,'DEVICE') = 'DEVICE'`,
+nhánh 2 chạy và dòng được gộp đúng. Người làm đúng hơn lại thiệt.
+
+**Hai hướng sửa, phải chọn trước khi code:**
+
+- **A — Gỡ hẳn nút check-in thủ công.** Đúng hướng đã chọn khi tích hợp máy.
+  Gỡ được luôn cả bộ geofence ăn theo (xem ghi chú dưới). Rủi ro: máy hỏng
+  hoặc người mới chưa đăng ký vân tay thì không còn đường chấm công nào —
+  phải có lối cho quản lý nhập tay thay.
+- **B — Vá nhánh ingest** để xử lý trường hợp `resolved_out is null` gặp dòng
+  không phải DEVICE: gộp giờ vào, đặt `completed`, `approved_by_lead = true`.
+  Rẻ hơn, nhưng giữ nguyên hai đường chấm công song song.
+
+Nên làm **B trước** (bịt chỗ mất lương ngay), rồi quyết A sau.
+
+> **Ghi chú — bộ geofence giờ chỉ còn ăn theo đường thủ công.**
+> Cờ `feature_flags.geofence_attendance` vẫn được đọc ở
+> `StaffAttendance.tsx:214` và vẫn gác 5 chốt (dòng 237, 269, 274, 279), nhưng
+> chỉ trên đường check-in thủ công. Cả cờ lẫn dữ liệu `work_locations` không
+> còn giao diện quản lý: chúng nằm ở hai section `flags` và `locations` của
+> `AdminNexusCenter`, mà `App.tsx` chỉ gắn route cho `lifecycle` và
+> `performance`. Nếu chọn hướng A thì xoá cả cụm này là gọn. Nếu chọn giữ
+> đường thủ công thì phải trả lại giao diện, vì hiện muốn bật/tắt kiểm tra vị
+> trí phải sửa thẳng database.
+>
+> Một chi tiết cần sửa dù chọn hướng nào: comment ở `App.tsx:210` ghi *"không
+> mã nào đọc `feature_flags`"* — sai, `StaffAttendance.tsx:214` đọc nó mỗi lần
+> check-in thủ công. Chính câu đó nhiều khả năng là lý do trang quản lý cờ bị
+> gỡ.
 
 ### 2. Một bảng không liên quan bị thiếu là sập cả hai module
 
@@ -199,6 +227,15 @@ Ghi lại để lần sau khỏi rà lại:
 - **Chấm công hai ca/ngày** — đã xử lý đúng: không dùng `maybeSingle()`, ưu
   tiên ca đang mở, có chỉ mục `attendance_one_open_per_user_day` chặn hai ca
   cùng mở.
+- **Giao diện nhận ra dòng do máy đẩy vào** — `state` tính từ
+  `attendance.status === 'completed' ? 'checked_out' : 'working'`
+  (`StaffAttendance.tsx:144-150`), nên khi máy đã ghi nhận lần quét thì nút
+  CHECK-IN không hiện. Tôi đã nghi đây là đường sinh bản ghi trùng ngày và
+  kiểm ra **không phải** — đường đi thường không tạo dòng trùng. Lỗi ở mục 1
+  nằm ở chiều ngược lại: người dùng bấm tay TRƯỚC khi bridge đồng bộ.
+- **Bridge gộp đúng khi máy có ghi giờ ra** — nhánh 3 của hàm ingest xử lý
+  trọn vẹn ca "nhân viên check-in GPS, máy bổ sung giờ ra". Lỗ hổng ở mục 1
+  chỉ xảy ra với máy **chỉ ghi giờ vào**, đúng loại máy đang dùng.
 
 ---
 
@@ -208,17 +245,24 @@ Xếp theo *thiệt hại nếu để nguyên*, không theo độ khó.
 
 **Đợt 1 — chặn chảy máu (~1 ngày)**
 
-1. Trả route + menu cho `flags` và `locations` *(mục 1)*
+1. **Vá nhánh ingest** để lần quét vân tay không bị nuốt khi trong ngày đã có
+   dòng check-in thủ công *(mục 1, hướng B)*. Đây là chỗ đang ăn mất ngày công
+   của người lao động — làm trước mọi thứ khác.
 2. Nạp theo section trong `AdminNexusCenter` *(mục 2)*
 3. Bật `core.hooksPath` *(mục 8)* — 1 phút, làm ngay
 
-Hai mục đầu cùng nằm trong `AdminNexusCenter` nên làm một lượt rẻ hơn tách ra.
+Kèm một việc không phải code: **dò lại dữ liệu cũ**. Mọi dòng `attendance` có
+`status = 'active'` và `check_in_method = 'GPS'` ở các ngày đã qua đều là nạn
+nhân tiềm năng của lỗi này — cần đếm xem đã mất bao nhiêu ngày công và bù
+trước khi chốt kỳ lương tới.
 
 **Đợt 2 — bịt chỗ sai âm thầm (~0,5 ngày)**
 
 4. Ba chỗ ngày/tháng UTC, thêm `toMonthString()` *(mục 3)*
 5. `api/` vào `tsc -b` *(mục 5)*
-6. Quyết `admin.feature_flags`: giữ hay gỡ *(mục 4)*
+6. **Quyết hướng A của mục 1**: giữ hay gỡ đường check-in thủ công. Quyết xong
+   mới biết `admin.feature_flags`, `work_locations` và bộ geofence là thứ cần
+   trả lại giao diện hay thứ cần xoá *(kéo theo mục 4)*.
 
 **Đợt 3 — trả nợ (~1,5 ngày)**
 
