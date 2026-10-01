@@ -23,8 +23,3 @@ export const supabase: SupabaseClient = cfg
       },
     })
   : (null as unknown as SupabaseClient);
-
-/** Create a new client from explicit credentials (used by the /setup page). */
-export function createSupabaseClient(url: string, anonKey: string): SupabaseClient {
-  return createClient(url, anonKey);
-}

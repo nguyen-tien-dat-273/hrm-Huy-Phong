@@ -7,9 +7,6 @@ import { describeDbError, describeDbErrorOrNull } from '@/lib/dbError';
 import { toDateString } from './utils';
 import type { Attendance, Task, TaskWorklog } from '@/types';
 
-/** Giờ làm chuẩn một ngày — dùng làm mốc so sánh khi không có dữ liệu chấm công. */
-export const STANDARD_DAY_HOURS = 8;
-
 /** Chênh lệch dưới ngưỡng này thì coi như khớp, không cảnh báo. */
 export const UNLOGGED_TOLERANCE_HOURS = 0.5;
 
