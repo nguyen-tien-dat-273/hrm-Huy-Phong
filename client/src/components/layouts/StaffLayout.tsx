@@ -93,6 +93,8 @@ export function StaffLayout({ children }: { children: ReactNode }) {
   const notifRef = useRef<HTMLDivElement>(null);
   const launcherRef = useRef<HTMLDivElement>(null);
   const [launcherOpen, setLauncherOpen] = useState(false);
+  const [bottomOpen, setBottomOpen] = useState(false);
+  const bottomLauncherRef = useRef<HTMLDivElement>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
 
@@ -118,6 +120,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
     const onClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
       if (launcherRef.current && !launcherRef.current.contains(e.target as Node)) setLauncherOpen(false);
+      if (bottomLauncherRef.current && !bottomLauncherRef.current.contains(e.target as Node)) setBottomOpen(false);
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
     };
     document.addEventListener('mousedown', onClick);
@@ -288,7 +291,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
           <div className="flex flex-shrink-0 items-center gap-2">
             {/* Bang module: dung khuon, dung vi tri, dung hanh vi voi khu
                 quan tri - doi che do xem khong phai hoc lai cach dieu huong. */}
-            <div className="relative" ref={launcherRef}>
+            <div className="relative hidden md:block" ref={launcherRef}>
               <button
                 onClick={() => { setLauncherOpen(!launcherOpen); setNotifOpen(false); setAvatarOpen(false); }}
                 className={`flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
@@ -305,7 +308,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
               </button>
 
               {launcherOpen && (
-                <div className="fixed inset-x-4 top-[4.5rem] z-50 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(32rem,calc(100vw-2rem))]">
+                <div className="absolute right-0 top-full z-50 mt-2 w-[min(32rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
                   <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
                     {groupsWithItems.map((group) => {
                       const Icon = group.icon;
@@ -464,9 +467,80 @@ export function StaffLayout({ children }: { children: ReactNode }) {
         </header>
 
         {/* Page content — chừa chỗ cho thanh điều hướng đáy trên điện thoại */}
-        <main id="main-content" tabIndex={-1} className="page-content flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
+        <main id="main-content" data-bottom-launcher tabIndex={-1} className="page-content flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
           {children}
         </main>
+      </div>
+      {/* ================================================================
+          Bảng module ở ĐÁY trên điện thoại.
+          ----------------------------------------------------------------
+          Nhân viên dùng điện thoại là chính, mà góc trên bên phải là chỗ
+          xa ngón cái nhất khi cầm một tay. Từ màn tablet trở lên thì nút
+          quay về header cho giống hệt khu quản trị — chuột thì góc trên
+          không phải vấn đề.
+
+          Chỉ một trong hai hiện tại mỗi thời điểm, nên không có chuyện hai
+          thanh điều hướng cùng tồn tại rồi phải đoán cái nào là chính.
+          ================================================================ */}
+      <div ref={bottomLauncherRef} className="md:hidden">
+        {bottomOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40 bg-slate-900/40"
+              onClick={() => setBottomOpen(false)}
+              aria-hidden
+            />
+            <div className="safe-bottom fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border-t border-slate-200 bg-white p-4 shadow-[0_-18px_40px_-20px_rgba(15,23,42,0.45)]">
+              <span aria-hidden className="mx-auto mb-3 block h-1 w-10 rounded-full bg-slate-300" />
+              <div className="grid grid-cols-3 gap-1">
+                {groupsWithItems.map((group) => {
+                  const Icon = group.icon;
+                  const isActive = group.name === openGroup;
+                  return (
+                    <button
+                      key={group.name}
+                      type="button"
+                      onClick={() => { openModule(group.name); setBottomOpen(false); }}
+                      aria-current={isActive ? 'true' : undefined}
+                      className={`flex flex-col items-center gap-2 rounded-xl px-2 py-3.5 text-center transition-colors ${
+                        isActive ? group.tileOn : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className={`flex h-12 w-12 items-center justify-center rounded-xl transition-colors ${
+                        isActive ? group.iconOn : group.iconIdle
+                      }`}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className={`text-xs font-semibold leading-tight ${
+                        isActive ? group.textOn : 'text-slate-700'
+                      }`}>
+                        {group.name}
+                      </span>
+                      <span className={`text-[10px] ${isActive ? group.textOn : 'text-slate-400'}`}>
+                        {group.items.length} chức năng
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setBottomOpen(!bottomOpen)}
+            aria-expanded={bottomOpen}
+            className={`flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold transition-colors ${
+              activeGroup ? activeGroup.chip : 'bg-slate-800 text-white'
+            }`}
+          >
+            <LayoutGrid className="h-5 w-5 flex-shrink-0" />
+            <span className="truncate">{activeGroup?.name ?? 'Chọn mục'}</span>
+            <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${bottomOpen ? '' : 'rotate-180'}`} />
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -402,6 +402,15 @@ a,
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Thanh module o day man dien thoai che mat phan cuoi noi dung, nen trang
+   phai chua san cho. Chi tren man hep - tu tablet tro len nut quay ve
+   header nen khong con thanh day nao. */
+@media (max-width: 767px) {
+  main[data-bottom-launcher] {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+}
+
 /* Chừa chỗ cho thanh home của iPhone và tai thỏ. */
 .safe-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
