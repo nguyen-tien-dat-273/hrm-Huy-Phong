@@ -96,7 +96,11 @@ export function AdminOrganization() {
   // muoi nguoi la da phai cuon, nen moi danh sach co o tim rieng.
   const [managerQuery, setManagerQuery] = useState('');
   const [memberQuery, setMemberQuery] = useState('');
-  const [memberPickedOnly, setMemberPickedOnly] = useState(false);
+  // Dong lai thi chi liet ke nguoi DA CHON. Mo danh sach toan bo nhan su ra
+  // san lam modal dai ngoang, trong khi thu nguoi dung can thay truoc het la
+  // don vi nay dang co ai.
+  const [managerPickerOpen, setManagerPickerOpen] = useState(false);
+  const [memberPickerOpen, setMemberPickerOpen] = useState(false);
   const [positionModal, setPositionModal] = useState(false);
   const [editingUnit, setEditingUnit] = useState<OrganizationUnit | null>(null);
   const [editingPosition, setEditingPosition] = useState<JobPosition | null>(null);
@@ -494,7 +498,8 @@ export function AdminOrganization() {
     if (!unitModal) return;
     setManagerQuery('');
     setMemberQuery('');
-    setMemberPickedOnly(false);
+    setManagerPickerOpen(false);
+    setMemberPickerOpen(false);
   }, [unitModal]);
 
   const saveUnit = async (event: React.FormEvent) => {
@@ -1875,20 +1880,55 @@ export function AdminOrganization() {
                 ? 'Chọn được nhiều người. Người đầu tiên là phụ trách chính — tên hiện trên sơ đồ tổ chức. Tất cả đều xem được chấm công và duyệt đơn của đơn vị này.'
                 : 'Chưa chạy migration 20261001100000 nên tạm thời chỉ chọn được một người.'}
             </p>
+            {/* Bam vao o tim moi bung toan bo danh sach ra. Dong lai thi chi
+                con nhung nguoi dang duoc chon - do moi la noi dung cua don vi
+                nay, phan con lai chi la kho de chon them. */}
             <div className="relative mt-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={managerQuery}
-                onChange={(event) => setManagerQuery(event.target.value)}
-                placeholder="Tìm theo tên hoặc mã nhân viên…"
+                onFocus={() => setManagerPickerOpen(true)}
+                onChange={(event) => { setManagerQuery(event.target.value); setManagerPickerOpen(true); }}
+                placeholder="Bấm để chọn người phụ trách…"
                 className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"
               />
             </div>
-            <div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
-              {searchPeople(managerQuery).length === 0 && (
-                <p className="px-2 py-3 text-xs text-slate-400">Không có ai khớp “{managerQuery}”.</p>
+
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold text-slate-500">
+                {unitForm.manager_ids.length === 0 ? 'Chưa chọn ai' : `Đã chọn ${unitForm.manager_ids.length} người`}
+              </span>
+              {managerPickerOpen && (
+                <button
+                  type="button"
+                  onClick={() => { setManagerPickerOpen(false); setManagerQuery(''); }}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
+                >
+                  Thu gọn
+                </button>
               )}
-              {searchPeople(managerQuery).map((user) => {
+            </div>
+
+            <div className="mt-1 max-h-44 space-y-1 overflow-y-auto">
+              {(() => {
+                const list = managerPickerOpen
+                  ? searchPeople(managerQuery)
+                  : activeUsers.filter((user) => unitForm.manager_ids.includes(user.id)
+                    || (unitManagers[editingUnit?.id ?? ''] ?? []).includes(user.id));
+                if (list.length > 0) return null;
+                return (
+                  <p className="px-2 py-3 text-xs text-slate-400">
+                    {managerPickerOpen
+                      ? `Không có ai khớp “${managerQuery}”.`
+                      : 'Bấm vào ô tìm bên trên để chọn người phụ trách.'}
+                  </p>
+                );
+              })()}
+              {(managerPickerOpen
+                ? searchPeople(managerQuery)
+                : activeUsers.filter((user) => unitForm.manager_ids.includes(user.id)
+                    || (unitManagers[editingUnit?.id ?? ''] ?? []).includes(user.id))
+              ).map((user) => {
                 const index = unitForm.manager_ids.indexOf(user.id);
                 const checked = index >= 0;
                 return (
@@ -1951,37 +1991,43 @@ export function AdminOrganization() {
               khoản lương khai cho đơn vị.
             </p>
 
+            {/* Bam vao o tim moi bung toan bo danh sach ra. Dong lai thi chi
+                con nguoi DA CHON: day moi la nhan su cua don vi, con lai chi
+                la kho de chon them - bay het ra lam modal dai ngoang ma thu
+                can nhin nhat lai bi day xuong duoi. */}
             <div className="relative mt-2">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={memberQuery}
-                onChange={(event) => setMemberQuery(event.target.value)}
-                placeholder="Tìm theo tên hoặc mã nhân viên…"
+                onFocus={() => setMemberPickerOpen(true)}
+                onChange={(event) => { setMemberQuery(event.target.value); setMemberPickerOpen(true); }}
+                placeholder="Bấm để thêm nhân sự vào đơn vị…"
                 className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"
               />
             </div>
 
-            {/* Dem + loc "chi da chon": voi danh sach dai thi sau khi tich vai
-                nguoi o giua, nguoi dung khong con cach nao soat lai minh da
-                chon dung nhung ai ngoai viec cuon lai tu dau. */}
             <div className="mt-2 flex items-center justify-between gap-2">
               <span className="text-[11px] font-semibold text-slate-500">
                 Đã chọn {unitForm.member_ids.length}/{activeUsers.length} người
               </span>
-              <button
-                type="button"
-                onClick={() => setMemberPickedOnly((on) => !on)}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${memberPickedOnly
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-              >
-                Chỉ người đã chọn
-              </button>
+              {memberPickerOpen && (
+                <button
+                  type="button"
+                  onClick={() => { setMemberPickerOpen(false); setMemberQuery(''); }}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
+                >
+                  Thu gọn
+                </button>
+              )}
             </div>
 
             {(() => {
-              const list = searchPeople(memberQuery)
-                .filter((user) => !memberPickedOnly || unitForm.member_ids.includes(user.id));
+              // Dong lai van giu nguoi VUA BO TICH cho toi luc luu: bo tich
+              // xong ma ho bien mat ngay thi khong con dau vet de kiem lai.
+              const list = memberPickerOpen
+                ? searchPeople(memberQuery)
+                : activeUsers.filter((user) => unitForm.member_ids.includes(user.id)
+                  || user.unit_id === editingUnit?.id);
 
               // Chuc danh chon duoc: vi tri da co cua don vi, cong voi vi tri
               // dang go do o khoi ben duoi (chua co id, tam dinh danh bang
@@ -1999,7 +2045,9 @@ export function AdminOrganization() {
               if (list.length === 0) {
                 return (
                   <p className="px-2 py-3 text-xs text-slate-400">
-                    {memberPickedOnly ? 'Chưa chọn ai.' : `Không có ai khớp “${memberQuery}”.`}
+                    {memberPickerOpen
+                      ? `Không có ai khớp “${memberQuery}”.`
+                      : 'Chưa có ai trong đơn vị. Bấm vào ô tìm bên trên để thêm.'}
                   </p>
                 );
               }
