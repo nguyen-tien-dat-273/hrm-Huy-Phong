@@ -14,11 +14,9 @@ import {
 import {
   FolderKanban, AlertTriangle, CalendarClock, Inbox, TrendingUp, ArrowRight,
   CalendarOff, Clock, Building2, Bell, Flag, ChevronRight, ShieldCheck,
-  ClipboardList, UserCircle,
+  ClipboardList, UserCircle, Plus, BarChart3, Sparkles, CheckCircle2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -27,7 +25,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { hasAdminFunction } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { describeDbErrorOrNull } from '@/lib/dbError';
-import { PROJECT_STATUS_CONFIG, formatDate } from '@/lib/utils';
+import { PROJECT_STATUS_CONFIG, getGreeting } from '@/lib/utils';
 import { formatEventTime } from '@/lib/projectEvents';
 import {
   buildMilestones, buildPortfolio, collectRisks, HEALTH_CONFIG, isLiveProject,
@@ -99,8 +97,14 @@ export function AdminOverview() {
 
   const live = portfolio.filter((ph) => isLiveProject(ph.project));
   const needAttention = live.filter((ph) => ph.health !== 'good').length;
+  const healthyProjects = live.filter((ph) => ph.health === 'good').length;
   const overdueTasksTotal = live.reduce((s, ph) => s + ph.overdueTasks, 0);
   const pendingTotal = pending.leave + pending.assignments;
+  const healthyRate = live.length > 0 ? Math.round((healthyProjects / live.length) * 100) : 0;
+  const displayName = profile?.name?.trim().split(/\s+/).at(-1) || 'bạn';
+  const todayLabel = new Intl.DateTimeFormat('vi-VN', {
+    weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+  }).format(new Date());
 
   // Phân bố sức khỏe cho donut.
   const healthDist = useMemo(() => {
@@ -140,27 +144,76 @@ export function AdminOverview() {
   if (loadError) return <ErrorState message={loadError} onRetry={load} />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5 sm:space-y-6">
+      {/* ============ Mở đầu & hành động nhanh ============ */}
+      <section className="dashboard-hero relative overflow-hidden rounded-[1.75rem] border border-slate-200/70 px-5 py-6 shadow-card sm:px-7 sm:py-7 lg:px-8" aria-labelledby="overview-heading">
+        <div className="dashboard-hero-orb" aria-hidden="true" />
+        <div className="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-600">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/80 bg-white/75 px-2.5 py-1 shadow-sm backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" /> Trung tâm điều hành
+              </span>
+              <span className="font-semibold normal-case tracking-normal text-slate-500 first-letter:uppercase">{todayLabel}</span>
+            </div>
+            <h2 id="overview-heading" className="font-display text-2xl font-extrabold tracking-[-0.035em] text-slate-950 sm:text-3xl">
+              {getGreeting()}, {displayName}
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600 sm:text-[15px]">
+              {needAttention > 0 || pendingTotal > 0
+                ? `Hôm nay có ${needAttention} dự án cần theo dõi và ${pendingTotal} yêu cầu đang chờ xử lý.`
+                : 'Danh mục dự án đang vận hành ổn định. Không có yêu cầu khẩn cần xử lý.'}
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/72 px-4 py-3 shadow-sm backdrop-blur">
+              <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-sm font-extrabold text-emerald-700 ring-1 ring-emerald-100">
+                {healthyRate}%
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500">Sức khỏe danh mục</p>
+                <p className="text-sm font-bold text-slate-900">{healthyProjects}/{live.length} dự án ổn định</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => navigate('/admin/projects')} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md sm:flex-none">
+                <Plus className="h-4 w-4" /> Dự án
+              </button>
+              <button onClick={() => navigate('/admin/reports')} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:bg-slate-800 sm:flex-none">
+                <BarChart3 className="h-4 w-4" /> Báo cáo
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ============ KPI ============ */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={<FolderKanban className="w-5 h-5" />} gradient="from-blue-500 to-indigo-500"
-          value={live.length} label="Dự án đang triển khai" />
-        <KpiCard icon={<AlertTriangle className="w-5 h-5" />} gradient="from-amber-500 to-orange-500"
-          value={needAttention} label="Dự án cần chú ý" tone={needAttention > 0 ? 'amber' : undefined} />
-        <KpiCard icon={<Flag className="w-5 h-5" />} gradient="from-red-500 to-rose-500"
-          value={overdueTasksTotal} label="Tác vụ quá hạn" tone={overdueTasksTotal > 0 ? 'red' : undefined} />
-        <KpiCard icon={<Inbox className="w-5 h-5" />} gradient="from-violet-500 to-purple-500"
-          value={pendingTotal} label="Đơn / việc chờ duyệt" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+        <KpiCard icon={<FolderKanban className="h-5 w-5" />} value={live.length}
+          label="Dự án đang triển khai" hint={`${healthyProjects} dự án vận hành ổn định`} />
+        <KpiCard icon={<AlertTriangle className="h-5 w-5" />} value={needAttention}
+          label="Dự án cần chú ý" hint={needAttention > 0 ? 'Ưu tiên kiểm tra trong hôm nay' : 'Không có cảnh báo mới'} tone={needAttention > 0 ? 'amber' : 'green'} />
+        <KpiCard icon={<Flag className="h-5 w-5" />} value={overdueTasksTotal}
+          label="Tác vụ quá hạn" hint={overdueTasksTotal > 0 ? 'Cần điều phối lại nguồn lực' : 'Tất cả đúng thời hạn'} tone={overdueTasksTotal > 0 ? 'red' : 'green'} />
+        <KpiCard icon={<Inbox className="h-5 w-5" />} value={pendingTotal}
+          label="Yêu cầu chờ duyệt" hint={`${pending.assignments} công việc · ${pending.leave} nghỉ phép`} tone="violet" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ============ Sức khỏe dự án ============ */}
         <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                <span className="inline-flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" />Sức khỏe dự án</span>
-              </CardTitle>
+          <Card className="overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle>
+                  <span className="inline-flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" />Sức khỏe dự án</span>
+                </CardTitle>
+                <p className="mt-1 text-xs text-slate-500">Sắp xếp theo mức độ cần can thiệp</p>
+              </div>
+              <button onClick={() => navigate('/admin/projects')} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 transition hover:text-indigo-800">
+                Xem tất cả <ArrowRight className="h-3.5 w-3.5" />
+              </button>
             </CardHeader>
             <CardContent className="p-0">
               {live.length === 0 ? (
@@ -180,7 +233,7 @@ export function AdminOverview() {
         {/* ============ Cột phải: donut + rủi ro + mốc ============ */}
         <div className="space-y-6">
           {/* Donut sức khỏe */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader><CardTitle>Phân bố sức khỏe</CardTitle></CardHeader>
             <CardContent>
               {healthDist.length === 0 ? (
@@ -217,7 +270,7 @@ export function AdminOverview() {
           </Card>
 
           {/* Điểm cần xử lý */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>
                 <span className="inline-flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-amber-500" />Điểm cần xử lý</span>
@@ -234,7 +287,7 @@ export function AdminOverview() {
               )}
               {risks.length === 0 && pendingTotal === 0 ? (
                 <div className="flex flex-col items-center text-center py-8 px-5">
-                  <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-2"><ShieldCheck className="w-6 h-6 text-emerald-600" /></div>
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-2 ring-4 ring-emerald-50/60"><CheckCircle2 className="w-6 h-6 text-emerald-600" /></div>
                   <p className="text-sm font-medium text-slate-700">Mọi thứ đang ổn</p>
                   <p className="text-xs text-slate-400">Không có dự án nào cần xử lý gấp.</p>
                 </div>
@@ -257,7 +310,7 @@ export function AdminOverview() {
           </Card>
 
           {/* Mốc quan trọng sắp tới */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>
                 <span className="inline-flex items-center gap-2"><CalendarClock className="w-5 h-5 text-blue-600" />Mốc quan trọng sắp tới</span>
@@ -281,24 +334,32 @@ export function AdminOverview() {
 
 // ---------------------------------------------------------------------------
 
-function KpiCard({ icon, gradient, value, label, tone }: {
-  icon: React.ReactNode; gradient: string; value: number; label: string; tone?: 'amber' | 'red';
+function KpiCard({ icon, value, label, hint, tone = 'blue' }: {
+  icon: React.ReactNode;
+  value: number;
+  label: string;
+  hint: string;
+  tone?: 'blue' | 'amber' | 'red' | 'green' | 'violet';
 }) {
-  const cardTone = tone === 'red'
-    ? 'bg-rose-50 text-rose-700'
-    : tone === 'amber'
-      ? 'bg-amber-50 text-amber-700'
-      : gradient.includes('violet')
-        ? 'bg-violet-50 text-violet-700'
-        : 'bg-indigo-50 text-indigo-700';
+  const tones = {
+    blue: { icon: 'bg-blue-50 text-blue-700 ring-blue-100', line: 'bg-blue-500' },
+    amber: { icon: 'bg-amber-50 text-amber-700 ring-amber-100', line: 'bg-amber-500' },
+    red: { icon: 'bg-rose-50 text-rose-700 ring-rose-100', line: 'bg-rose-500' },
+    green: { icon: 'bg-emerald-50 text-emerald-700 ring-emerald-100', line: 'bg-emerald-500' },
+    violet: { icon: 'bg-violet-50 text-violet-700 ring-violet-100', line: 'bg-violet-500' },
+  }[tone];
   return (
-    <Card className={`${cardTone} overflow-hidden`}>
-      <CardContent className="flex items-center justify-between gap-4 py-5 px-5">
-        <div className="flex items-center gap-3 min-w-0">
-          <span className="opacity-80 flex-shrink-0">{icon}</span>
-          <p className="text-sm font-medium leading-tight">{label}</p>
+    <Card className="group relative overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lifted">
+      <span className={`absolute inset-x-0 top-0 h-0.5 ${tones.line}`} />
+      <CardContent className="flex items-start gap-4 px-5 py-5">
+        <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ring-1 ${tones.icon}`}>{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-semibold leading-tight text-slate-600">{label}</p>
+            <p className="font-display text-3xl font-extrabold leading-none tracking-tight text-slate-950">{value}</p>
+          </div>
+          <p className="mt-2 truncate text-xs text-slate-400">{hint}</p>
         </div>
-        <p className="text-3xl font-bold leading-none flex-shrink-0">{value}</p>
       </CardContent>
     </Card>
   );
@@ -312,14 +373,15 @@ function ProjectHealthRow({ ph, onClick }: { ph: ProjectHealth; onClick: () => v
   const behind = ph.timeElapsed - ph.progress >= 0.2;
 
   return (
-    <button onClick={onClick} className="w-full text-left px-6 py-5 hover:bg-indigo-50/40 transition-colors border-b border-slate-100 last:border-0 group">
+    <button onClick={onClick} aria-label={`Mở dự án ${ph.project.name}`} className="group w-full border-b border-slate-100 px-4 py-5 text-left transition-colors last:border-0 hover:bg-indigo-50/45 sm:px-6">
       <div className="flex items-start gap-4">
-        <div className="w-1 h-10 bg-slate-200 group-hover:bg-indigo-600 transition-colors mt-1" />
+        <div className={`mt-1 h-10 w-1 flex-shrink-0 rounded-full transition-transform group-hover:scale-y-110 ${cfg.dot}`} />
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-3 mb-2">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PRJ-{ph.project.id.slice(0,4).toUpperCase()}</span>
             <span className="text-sm font-bold text-slate-800 truncate">{ph.project.name}</span>
             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${cfg.color}`}>{cfg.label}</span>
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${status.color}`}>{status.label}</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
@@ -328,25 +390,32 @@ function ProjectHealthRow({ ph, onClick }: { ph: ProjectHealth; onClick: () => v
                 <span>Tiến độ vận hành</span>
                 <span>{progressPct}%</span>
               </div>
-              <div className="relative h-1 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="relative h-1 overflow-hidden rounded-full bg-slate-100"
+                role="progressbar"
+                aria-label={`Tiến độ dự án ${ph.project.name}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progressPct}
+              >
                 <div className={`absolute inset-y-0 left-0 ${behind ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${progressPct}%` }} />
                 <div className="absolute inset-y-0 w-0.5 bg-slate-400/50" style={{ left: `${timePct}%` }} />
               </div>
             </div>
             
-            <div className="flex items-center gap-6 text-[10px] font-bold text-slate-400 uppercase tracking-tight">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-bold uppercase tracking-tight text-slate-400">
               <div className="flex items-center gap-1.5">
                 <ClipboardList className="w-3 h-3" />
-                <span>{ph.doneTasks}/{ph.totalTasks} TASKS</span>
+                <span>{ph.doneTasks}/{ph.totalTasks} tác vụ</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <UserCircle className="w-3 h-3" />
-                <span>{ph.lead?.name.toUpperCase() || 'NO LEAD'}</span>
+                <span>{ph.lead?.name || 'Chưa có phụ trách'}</span>
               </div>
               {ph.daysLeft !== null && (
                 <div className={`flex items-center gap-1.5 ${ph.daysLeft < 0 ? 'text-red-500' : ''}`}>
                   <Clock className="w-3 h-3" />
-                  <span>{ph.daysLeft < 0 ? `OVERDUE ${Math.abs(ph.daysLeft)}D` : `DUE IN ${ph.daysLeft}D`}</span>
+                  <span>{ph.daysLeft < 0 ? `Quá hạn ${Math.abs(ph.daysLeft)} ngày` : `Còn ${ph.daysLeft} ngày`}</span>
                 </div>
               )}
             </div>
