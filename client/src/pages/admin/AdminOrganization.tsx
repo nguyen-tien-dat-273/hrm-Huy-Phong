@@ -51,6 +51,20 @@ type Tab = 'units' | 'positions' | 'assignments';
  *  đều dùng chung bộ lọc, ô tìm kiếm và panel chi tiết bên phải. */
 type UnitView = 'chart' | 'list';
 
+/** Sinh ma vi tri tu ten, de nguoi khai khong phai tu nghi ra ma. */
+function positionCodeFrom(title: string, taken: string[]): string {
+  const base = title
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    .slice(0, 30) || 'VI-TRI';
+  if (!taken.includes(base)) return base;
+  for (let i = 2; i < 100; i += 1) {
+    if (!taken.includes(`${base}-${i}`)) return `${base}-${i}`;
+  }
+  return `${base}-${Date.now().toString().slice(-4)}`;
+}
+
 export function AdminOrganization() {
   const { profile, users, loadUsers } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -59,6 +73,8 @@ export function AdminOrganization() {
   const [units, setUnits] = useState<OrganizationUnit[]>([]);
   const [positions, setPositions] = useState<JobPosition[]>([]);
   const [positionPermissions, setPositionPermissions] = useState<Record<string, string[]>>({});
+  /** unit_id -> danh sach nguoi phu trach, nguoi chinh dung dau. */
+  const [unitManagers, setUnitManagers] = useState<Record<string, string[]>>({});
   const [positionFunctionPermissions, setPositionFunctionPermissions] = useState<Record<string, string[]>>({});
   const [positionPermissionsSupported, setPositionPermissionsSupported] = useState(true);
   const [positionFunctionPermissionsSupported, setPositionFunctionPermissionsSupported] = useState(true);
@@ -91,17 +107,28 @@ export function AdminOrganization() {
   );
   const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
-  const [unitForm, setUnitForm] = useState({ code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '', manager_id: '', position_ids: [] as string[] });
+  const [unitForm, setUnitForm] = useState({
+    code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '',
+    /** Nguoi phu trach. Phan tu DAU TIEN la nguoi phu trach chinh. */
+    manager_ids: [] as string[],
+    /** Vi tri da ton tai duoc keo ve don vi nay. */
+    position_ids: [] as string[],
+    /** Vi tri tao moi ngay trong form nay, de khoi phai sang tab Vi tri. */
+    new_positions: [] as { code: string; title: string }[],
+  });
+  /** Bang noi organization_unit_managers da ton tai chua. */
+  const [multiManagerSupported, setMultiManagerSupported] = useState(true);
   const [positionForm, setPositionForm] = useState({ code: '', title: '', unit_id: '', reports_to_position_id: '', is_manager: false, permissions: [] as string[], function_permissions: [] as AdminFunctionCode[] });
   const [assignmentForm, setAssignmentForm] = useState({ user_id: '', employee_code: '', unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active' as EmploymentStatus });
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
-    const [unitResult, positionResult, positionPermissionResult, positionFunctionResult] = await Promise.all([
+    const [unitResult, positionResult, positionPermissionResult, positionFunctionResult, managerResult] = await Promise.all([
       supabase.from('organization_units').select('*').order('name'),
       supabase.from('job_positions').select('*').order('title'),
       supabase.from('job_position_permissions').select('position_id,permission_code'),
       supabase.from('job_position_function_permissions').select('position_id,function_code'),
+      supabase.from('organization_unit_managers').select('unit_id,user_id,is_primary'),
     ]);
     const error = unitResult.error || positionResult.error;
     setLoadError(error ? describeDbError(error) : null);
@@ -119,6 +146,24 @@ export function AdminOrganization() {
     setPositionPermissionsSupported(!positionPermissionResult.error);
     setPositionFunctionPermissionsSupported(!positionFunctionResult.error);
     setPositions(((positionResult.data || []) as JobPosition[]).map((position) => ({ ...position, permissions: permissionMap[position.id] || [] })));
+
+    // Chua chay migration 20261001100000 thi lui ve mot nguoi phu trach duy
+    // nhat doc tu `manager_id`, phan con lai cua trang chay nhu cu.
+    setMultiManagerSupported(!managerResult.error);
+    const managerMap: Record<string, string[]> = {};
+    if (managerResult.error) {
+      for (const unit of (unitResult.data || []) as OrganizationUnit[]) {
+        if (unit.manager_id) managerMap[unit.id] = [unit.manager_id];
+      }
+    } else {
+      const rows = (managerResult.data || []) as { unit_id: string; user_id: string; is_primary: boolean }[];
+      // Nguoi phu trach CHINH dung dau: ca form lan cho hien thi deu lay
+      // phan tu dau tien lam nguoi dai dien.
+      for (const row of [...rows].sort((a, b) => Number(b.is_primary) - Number(a.is_primary))) {
+        managerMap[row.unit_id] = [...(managerMap[row.unit_id] || []), row.user_id];
+      }
+    }
+    setUnitManagers(managerMap);
     setLoading(false);
   };
 
@@ -373,7 +418,9 @@ export function AdminOrganization() {
       name: unitForm.name.trim(),
       unit_type: unitForm.unit_type,
       parent_id: unitForm.parent_id || null,
-      manager_id: unitForm.manager_id || null,
+      // Nguoi dau danh sach la nguoi phu trach chinh. Cot nay van duoc giu
+      // dong bo vi so do to chuc va ham RLS `manages_employee` deu doc no.
+      manager_id: unitForm.manager_ids[0] || null,
     };
     const result = editingUnit
       ? await supabase.from('organization_units').update(payload).eq('id', editingUnit.id).select('id').maybeSingle()
@@ -388,6 +435,46 @@ export function AdminOrganization() {
     // tri sua tung cai mot - noi ma nguoi dung khong co ly do gi de doan la
     // phai vao.
     const unitId = result.data?.id ?? editingUnit?.id ?? null;
+
+    // --- Nguoi phu trach ---------------------------------------------------
+    if (unitId && multiManagerSupported) {
+      const { error: wipeError } = await supabase
+        .from('organization_unit_managers').delete().eq('unit_id', unitId);
+      if (!wipeError && unitForm.manager_ids.length > 0) {
+        const { error: addError } = await supabase.from('organization_unit_managers').insert(
+          unitForm.manager_ids.map((userId, index) => ({
+            unit_id: unitId, user_id: userId, is_primary: index === 0,
+          })),
+        );
+        if (addError) {
+          setSubmitting(false);
+          return toast('Đã lưu đơn vị nhưng không lưu được người phụ trách: ' + describeDbError(addError), 'error');
+        }
+      }
+    }
+
+    // --- Vi tri tao moi ngay trong form ------------------------------------
+    if (unitId) {
+      const fresh = unitForm.new_positions
+        .map((item) => ({ code: item.code.trim().toUpperCase(), title: item.title.trim() }))
+        .filter((item) => item.title.length > 1);
+      if (fresh.length > 0) {
+        const { error: posError } = await supabase.from('job_positions').insert(
+          fresh.map((item) => ({
+            code: item.code || positionCodeFrom(item.title, positions.map((p) => p.code)),
+            title: item.title,
+            unit_id: unitId,
+            is_manager: false,
+            is_active: true,
+          })),
+        );
+        if (posError) {
+          setSubmitting(false);
+          return toast('Đã lưu đơn vị nhưng không tạo được vị trí: ' + describeDbError(posError), 'error');
+        }
+      }
+    }
+
     if (unitId) {
       const before = positions.filter((item) => item.unit_id === unitId).map((item) => item.id);
       const after = unitForm.position_ids;
@@ -422,7 +509,7 @@ export function AdminOrganization() {
     toast(editingUnit ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị vào cơ cấu tổ chức.', 'success');
     setUnitModal(false);
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_id: '', position_ids: [] });
+    setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], position_ids: [], new_positions: [] });
     void load();
   };
 
@@ -509,11 +596,10 @@ export function AdminOrganization() {
   const openNewUnit = () => {
     setEditingUnit(null);
     setUnitForm({
-      position_ids: [],
+      position_ids: [], new_positions: [], manager_ids: [],
       code: '', name: '',
       unit_type: activeCompany ? 'department' : 'company',
       parent_id: activeCompany?.id ?? '',
-      manager_id: '',
     });
     setUnitModal(true);
   };
@@ -521,7 +607,7 @@ export function AdminOrganization() {
   /** Tạo doanh nghiệp mới: đơn vị cấp gốc, không có cha. */
   const openNewCompany = () => {
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_id: '', position_ids: [] });
+    setUnitForm({ code: '', name: '', unit_type: 'company', parent_id: '', manager_ids: [], position_ids: [], new_positions: [] });
     setUnitModal(true);
   };
 
@@ -529,8 +615,10 @@ export function AdminOrganization() {
     setEditingUnit(unit);
     setUnitForm({
       code: unit.code, name: unit.name, unit_type: unit.unit_type,
-      parent_id: unit.parent_id || '', manager_id: unit.manager_id || '',
+      parent_id: unit.parent_id || '',
+      manager_ids: unitManagers[unit.id] ?? (unit.manager_id ? [unit.manager_id] : []),
       position_ids: positions.filter((item) => item.unit_id === unit.id).map((item) => item.id),
+      new_positions: [],
     });
     setUnitModal(true);
   };
@@ -540,7 +628,7 @@ export function AdminOrganization() {
       : parent.unit_type === 'company' ? 'branch'
         : parent.unit_type === 'branch' ? 'department' : 'team';
     setEditingUnit(null);
-    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_id: '', position_ids: [] });
+    setUnitForm({ code: '', name: '', unit_type: childType, parent_id: parent.id, manager_ids: [], position_ids: [], new_positions: [] });
     setUnitModal(true);
   };
 
@@ -1137,7 +1225,105 @@ export function AdminOrganization() {
           <div className="grid grid-cols-2 gap-3"><Input label="Mã đơn vị" value={unitForm.code} onChange={(event) => setUnitForm({ ...unitForm, code: event.target.value })} placeholder="VD: HP-HCM" required /><Select label="Loại đơn vị" value={unitForm.unit_type} onChange={(event) => setUnitForm({ ...unitForm, unit_type: event.target.value as OrganizationUnitType })}>{Object.entries(UNIT_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></div>
           <Input label="Tên đơn vị" value={unitForm.name} onChange={(event) => setUnitForm({ ...unitForm, name: event.target.value })} required />
           <Select label="Đơn vị cấp trên" value={unitForm.parent_id} onChange={(event) => setUnitForm({ ...unitForm, parent_id: event.target.value })}><option value="">Không có (đơn vị gốc)</option>{units.filter((unit) => unit.is_active && unit.id !== editingUnit?.id).map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}</Select>
-          <Select label="Người phụ trách" value={unitForm.manager_id} onChange={(event) => setUnitForm({ ...unitForm, manager_id: event.target.value })}><option value="">Chưa gán</option>{users.filter((user) => user.is_active).map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</Select>
+          {/* ---- Người phụ trách: chọn được nhiều người ---- */}
+          <fieldset className="rounded-xl border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">Người phụ trách</legend>
+            <p className="text-xs leading-relaxed text-slate-500">
+              {multiManagerSupported
+                ? 'Chọn được nhiều người. Người đầu tiên là phụ trách chính — tên hiện trên sơ đồ tổ chức. Tất cả đều xem được chấm công và duyệt đơn của đơn vị này.'
+                : 'Chưa chạy migration 20261001100000 nên tạm thời chỉ chọn được một người.'}
+            </p>
+            <div className="mt-2 max-h-44 space-y-1 overflow-y-auto">
+              {users.filter((user) => user.is_active).map((user) => {
+                const index = unitForm.manager_ids.indexOf(user.id);
+                const checked = index >= 0;
+                return (
+                  <label key={user.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => setUnitForm({
+                        ...unitForm,
+                        manager_ids: event.target.checked
+                          // Chua co ai thi nguoi vua tich thanh phu trach chinh.
+                          ? (multiManagerSupported ? [...unitForm.manager_ids, user.id] : [user.id])
+                          : unitForm.manager_ids.filter((id) => id !== user.id),
+                      })}
+                      className="h-4 w-4 accent-indigo-600"
+                    />
+                    <span className="min-w-0 flex-1 truncate">{user.name}</span>
+                    {index === 0 && (
+                      <Badge className="bg-indigo-50 text-indigo-700">Phụ trách chính</Badge>
+                    )}
+                    {index > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setUnitForm({
+                          ...unitForm,
+                          manager_ids: [user.id, ...unitForm.manager_ids.filter((id) => id !== user.id)],
+                        })}
+                        className="rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                      >
+                        Đặt làm chính
+                      </button>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
+          {/* ---- Tạo vị trí ngay khi tạo đơn vị ---- */}
+          <fieldset className="rounded-xl border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">Vị trí mới trong đơn vị</legend>
+            <p className="text-xs leading-relaxed text-slate-500">
+              Gõ thẳng tên vị trí ở đây, hệ thống tạo luôn trong đơn vị này — khỏi phải sang tab
+              Vị trí khai lại. Mã sinh tự động, đổi được sau ở tab Vị trí.
+            </p>
+            <div className="mt-2 space-y-2">
+              {unitForm.new_positions.map((item, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <input
+                    value={item.title}
+                    onChange={(event) => setUnitForm({
+                      ...unitForm,
+                      new_positions: unitForm.new_positions.map((entry, i) => (
+                        i === index ? { ...entry, title: event.target.value } : entry
+                      )),
+                    })}
+                    placeholder="VD: Trưởng phòng Kho vận"
+                    className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500"
+                  />
+                  <code className="hidden w-32 shrink-0 truncate font-mono text-[11px] text-slate-400 sm:block">
+                    {item.title.trim() ? positionCodeFrom(item.title, positions.map((p) => p.code)) : ''}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => setUnitForm({
+                      ...unitForm,
+                      new_positions: unitForm.new_positions.filter((_, i) => i !== index),
+                    })}
+                    aria-label={`Bỏ vị trí thứ ${index + 1}`}
+                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="mt-2"
+              onClick={() => setUnitForm({
+                ...unitForm,
+                new_positions: [...unitForm.new_positions, { code: '', title: '' }],
+              })}
+            >
+              <Plus className="h-3.5 w-3.5" />Thêm vị trí
+            </Button>
+          </fieldset>
 
           {/* ---- Gan thang cac vi tri da tao vao don vi nay ---- */}
           {companyPositions.length > 0 && (
