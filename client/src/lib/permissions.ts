@@ -52,51 +52,6 @@ export const PERMISSION_LABELS: Record<AdminPermission, { label: string; desc: s
 };
 
 /**
- * Phạm vi chức năng thực tế của từng quyền module.
- *
- * Quyền lưu trong database vẫn là quyền module để giữ tương thích với các
- * policy/RLS hiện hữu. Bảng này giúp màn hình gán quyền minh bạch: người dùng
- * thấy chính xác quyền đó bao phủ những màn hình/nghiệp vụ nào, thay vì chỉ
- * nhìn 8 checkbox tên chung chung.
- */
-export const PERMISSION_FUNCTIONS: Record<AdminPermission, { label: string; adminOnly?: boolean; functionCode?: AdminFunctionCode }[]> = {
-  users: [
-    { label: 'Cơ cấu tổ chức, vị trí và tuyến quản lý' },
-    { label: 'Hồ sơ & tài khoản nhân sự' },
-    { label: 'Tuyển dụng nội bộ' },
-    { label: 'Hội nhập & nghỉ việc', functionCode: 'admin.employee_lifecycle' },
-    { label: 'Hồ sơ người lao động', functionCode: 'admin.workforce' },
-    { label: 'Hồ sơ giấy tờ lao động', functionCode: 'admin.worker_documents' },
-  ],
-  projects: [
-    { label: 'Dự án, thành viên và mốc công việc' },
-    { label: 'Chi tiết dự án, tác vụ, tài liệu và quyền thành viên' },
-    { label: 'Tuyển dụng nội bộ (phối hợp dự án)' },
-  ],
-  reports: [
-    { label: 'Tổng quan điều hành', functionCode: 'admin.overview' },
-    { label: 'Dashboard nhân sự' },
-    { label: 'Báo cáo & phân tích' },
-    { label: 'Nhật ký giờ và đối chiếu thời gian' },
-    { label: 'KPI & đánh giá hiệu suất' },
-  ],
-  attendance: [
-    { label: 'Giao việc hằng ngày' },
-    { label: 'Máy chấm công Ronald Jack', adminOnly: true },
-    { label: 'Bảng công tháng' },
-    { label: 'Khóa/mở kỳ bảng công', functionCode: 'admin.timesheet_lock' },
-    { label: 'Bảng lương', functionCode: 'admin.payroll' },
-  ],
-  leave: [{ label: 'Nghỉ phép và hạn mức phép năm' }],
-  training: [{ label: 'Đào tạo, khóa học và tiến độ' }],
-  settings: [
-    { label: 'Cấu hình hệ thống và vai trò', adminOnly: true },
-    { label: 'Tính năng thử nghiệm', functionCode: 'admin.feature_flags' },
-    { label: 'Nhật ký hệ thống', functionCode: 'admin.audit' },
-  ],
-};
-
-/**
  * Các chức năng khu nhân viên được cấp mặc định cho mọi tài khoản đang hoạt
  * động. Chúng không phải quyền quản trị nên không xuất hiện trong 8 checkbox
  * module ở database; hiển thị danh sách này trong form giúp người dùng phân

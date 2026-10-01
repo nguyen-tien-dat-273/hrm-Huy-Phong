@@ -17,9 +17,9 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { displayIdentifier, isInternalEmail, validateIdentifier } from '@/lib/identity';
 import { supabase } from '@/lib/supabase';
+import { PERMISSION_FUNCTIONS } from '@/config/permissionCoverage';
 import {
   ADMIN_PERMISSIONS,
-  PERMISSION_FUNCTIONS,
   PERMISSION_LABELS,
   isFullAdmin,
   type AdminPermission,
