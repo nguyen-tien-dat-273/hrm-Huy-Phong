@@ -18,7 +18,14 @@
 //   - /api/... của chính origin này.
 // ============================================================================
 
-const VERSION = 'hrm-v1';
+// `__BUILD_ID__` duoc thay bang dau thoi gian build (xem vite.config.ts).
+//
+// Day moi la thu lam cho co che tu tai lai hoat dong. Truoc day VERSION la
+// mot chuoi co dinh, nen moi lan deploy trinh duyet tai ve mot file sw.js
+// GIONG HET byte - no coi nhu khong co gi moi, khong cai worker moi, khong
+// ban `controllerchange`, va app dang mo tren may nguoi dung chay mai ban cu
+// cho toi khi ho tu bam tai lai.
+const VERSION = 'hrm-__BUILD_ID__';
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 

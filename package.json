@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node tools/stamp-sw.mjs",
     "preview": "vite preview",
     "attendance:find": "node --env-file=.env.attendance-bridge tools/attendance-find.mjs",
     "attendance:doctor": "node --env-file=.env.attendance-bridge tools/attendance-doctor.mjs",
