@@ -54,10 +54,19 @@ const navGroups: {
     chip: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700',
   },
   {
-    name: 'Phát triển', icon: Target, hint: 'Đào tạo và lộ trình',
+    name: 'KPI', icon: Target, hint: 'Kết quả chấm điểm của bạn',
     iconIdle: 'bg-rose-50 text-rose-600', iconOn: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30',
     tileOn: 'bg-rose-50', textOn: 'text-rose-700',
     chip: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30 hover:bg-rose-700',
+  },
+  {
+    // Teal, khong phai rose: KPI da tach ra thanh module rieng nen hai cum
+    // phai nhin ra la hai thu khac nhau. Teal cung khop voi cum "Dao tao &
+    // Quy trinh" ben khu quan tri.
+    name: 'Phát triển', icon: BookOpen, hint: 'Đào tạo, quy trình và lộ trình',
+    iconIdle: 'bg-teal-50 text-teal-600', iconOn: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30',
+    tileOn: 'bg-teal-50', textOn: 'text-teal-700',
+    chip: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30 hover:bg-teal-700',
   },
 ];
 
@@ -74,7 +83,7 @@ const navItems = [
 
   { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ' },
 
-  { to: '/staff/kpi', label: 'KPI của tôi', description: 'Kết quả chấm điểm và điểm từng tiêu chí', icon: Target, group: 'Phát triển' },
+  { to: '/staff/kpi', label: 'KPI của tôi', description: 'Kết quả chấm điểm và điểm từng tiêu chí', icon: Target, group: 'KPI' },
   { to: '/staff/training', label: 'Đào tạo của tôi', description: 'Khóa học được giao và tiến độ hoàn thành', icon: BookOpen, group: 'Phát triển' },
   { to: '/staff/processes', label: 'Quy trình & biểu mẫu', description: 'Tài liệu đang hiệu lực của công ty', icon: BookOpen, group: 'Phát triển' },
   { to: '/staff/growth', label: 'Lộ trình phát triển', description: 'Checklist hội nhập và bàn giao của tôi', icon: Target, group: 'Phát triển' },
