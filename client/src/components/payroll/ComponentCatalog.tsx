@@ -306,9 +306,6 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-bold text-slate-800">{component.name}</span>
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
-                          {component.code}
-                        </code>
                         {!component.is_active && (
                           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
                             TẮT
