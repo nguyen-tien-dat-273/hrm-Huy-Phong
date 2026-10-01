@@ -60,9 +60,10 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'thu vien quy trinh quy che huong dan pdf' },
   { to: '/admin/training', label: 'Đào tạo', description: 'Khóa học, phân công và tiến độ học tập', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'dao tao khoa hoc hoc tap' },
   { to: '/admin/payroll/kpi', label: 'Cách tính lương KPI', description: 'Quy KPI% chấm được thành tiền lương KPI', icon: Calculator, permission: 'attendance', group: 'KPI', keywords: 'luong kpi cach tinh quy doi kpi phan tram thanh tien nguong bac thang', functionCode: 'admin.payroll_components' },
-  { to: '/admin/performance', label: 'Bộ KPI', description: 'Tạo bộ KPI và khai tiêu chí kèm cách tính điểm', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi bo tieu chi cach tinh diem', functionCode: 'admin.performance_manage' },
-  { to: '/admin/performance/schemes', label: 'Gán KPI cho nhân sự', description: 'Bộ KPI nào áp cho phòng ban nào, ai dùng bộ riêng', icon: Users, permission: 'reports', group: 'KPI', keywords: 'gan kpi phong ban nguoi co che', functionCode: 'admin.performance_manage' },
-  { to: '/admin/performance/review', label: 'Chấm điểm theo tháng', description: 'Mở phiếu chấm, nhập điểm và khoá kỳ', icon: ClipboardCheck, permission: 'reports', group: 'KPI', keywords: 'cham diem ky thang khoa phieu danh gia', functionCode: 'admin.performance_manage' },
+  // Ba muc cu — Bo KPI, Gan KPI cho nhan su, Cham diem theo thang — gio la
+  // ba BUOC trong mot man. Tach ra lam ba muc menu bat nguoi dung tu biet thu
+  // tu va tu nho minh dang do o dau, trong khi he thong biet thua.
+  { to: '/admin/performance', label: 'KPI & Đánh giá', description: 'Khai bộ KPI, gán cho phòng ban rồi chấm điểm tháng', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi bo tieu chi cach tinh diem gan phong ban cham diem ky thang khoa phieu danh gia', functionCode: 'admin.performance_manage' },
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },

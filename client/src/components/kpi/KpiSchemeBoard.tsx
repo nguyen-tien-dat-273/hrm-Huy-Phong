@@ -32,7 +32,10 @@ interface Template { id: string; code: string; name: string; is_active: boolean;
 interface Scheme { id: string; user_id: string; template_id: string; effective_from: string }
 interface UnitScheme { id: string; unit_id: string; template_id: string; effective_from: string }
 
-export function KpiSchemeBoard() {
+export function KpiSchemeBoard({ onCreateTemplate }: {
+  /** Bam mot nhan su chua co bo KPI -> sang buoc tao bo cho phong cua ho. */
+  onCreateTemplate?: (unitId: string | null) => void;
+} = {}) {
   const { users } = useAuth();
   const { toast } = useToast();
 
@@ -322,13 +325,26 @@ export function KpiSchemeBoard() {
                 return (
                   <li key={person.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <Avatar name={person.name} url={person.avatar_url} size="sm" />
-                    <div className="min-w-0 flex-1">
+                    {/* Bam vao nguoi -> tao bo KPI cho phong cua ho, voi phong
+                        dien san. Thuong gap nhat o day la nhin thay "Chua co
+                        bo KPI" roi muon lam mot bo ngay. */}
+                    <button
+                      type="button"
+                      onClick={() => onCreateTemplate?.(person.unit_id ?? null)}
+                      disabled={!onCreateTemplate}
+                      className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition enabled:hover:bg-slate-50 disabled:cursor-default"
+                    >
                       <p className="truncate text-sm font-bold text-slate-800">{person.name}</p>
                       <p className="truncate text-xs text-slate-500">
                         {tpl ? tpl.name : <span className="font-bold text-amber-600">Chưa có bộ KPI</span>}
                         {own && ` · từ ${formatDate(own.effective_from)}`}
                       </p>
-                    </div>
+                      {onCreateTemplate && !tpl && (
+                        <p className="truncate text-[11px] font-semibold text-indigo-600">
+                          Bấm để tạo bộ KPI cho {current?.name ?? 'phòng ban của họ'}
+                        </p>
+                      )}
+                    </button>
                     {tpl && (
                       <Badge className={own ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}>
                         {source}

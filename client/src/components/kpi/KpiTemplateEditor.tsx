@@ -99,7 +99,24 @@ const BLANK_CRITERIA = {
   levels: DEFAULT_LEVELS,
 };
 
-export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
+export function KpiTemplateEditor({
+  actorId,
+  createRequested = false,
+  createForUnitId,
+  onCreateHandled,
+}: {
+  actorId: string | null;
+  /**
+   * Mo san form tao bo KPI, dien truoc phong ban neu biet.
+   *
+   * Dung khi nguoi dung bam mot nhan su "Chua co bo KPI" o buoc 2: ho dang
+   * dung truoc dung van de can giai quyet, bat ho sang buoc 1 roi tu tim lai
+   * phong ban do trong o chon la lam mat ngu canh vua co.
+   */
+  createRequested?: boolean;
+  createForUnitId?: string | null;
+  onCreateHandled?: () => void;
+}) {
   const { toast } = useToast();
   const confirm = useConfirm();
 
@@ -203,11 +220,20 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
       .reduce((sum, item) => sum + Number(item.weight_percent), 0);
 
   // ---- Mẫu ----------------------------------------------------------------
-  const openNewTemplate = () => {
+  const openNewTemplate = (unitId?: string | null) => {
     setEditingTemplate(null);
-    setTemplateForm(BLANK_TEMPLATE);
+    setTemplateForm({ ...BLANK_TEMPLATE, unit_id: unitId || '' });
     setTemplateModal(true);
   };
+
+  // Lenh tu buoc 2 chi dung MOT lan: khong xoa khoi URL thi dong modal xong
+  // no bat lai ngay, va F5 cung bat lai.
+  useEffect(() => {
+    if (!createRequested) return;
+    openNewTemplate(createForUnitId);
+    onCreateHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequested]);
 
   const openEditTemplate = (template: Template) => {
     setEditingTemplate(template);
@@ -522,7 +548,7 @@ export function KpiTemplateEditor({ actorId }: { actorId: string | null }) {
                 thực tế — hệ thống tự ra điểm.
               </p>
             </div>
-            <Button size="sm" onClick={openNewTemplate}>
+            <Button size="sm" onClick={() => openNewTemplate()}>
               <Plus className="h-4 w-4" /> Tạo bộ KPI
             </Button>
           </div>
