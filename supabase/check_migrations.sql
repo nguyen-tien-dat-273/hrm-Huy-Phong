@@ -200,7 +200,18 @@ with probe as (
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'attendance_devices'
                and column_name = 'records_checkout'),
-     'May chi ghi gio vao - THIEU THI DONG BO VANG EXCEPTION')
+     'May chi ghi gio vao - THIEU THI DONG BO VANG EXCEPTION'),
+
+    -- --- Ra soat trang nhan vien (01/10) ----------------------------------
+    ('20261001100000_unit_multiple_managers',
+     to_regclass('public.organization_unit_managers') is not null,
+     'Mot don vi nhieu nguoi phu trach; manages_employee xet ca nguoi dong phu trach'),
+
+    ('20261001110000_attendance_one_open_per_day',
+     exists (select 1 from pg_indexes
+             where schemaname = 'public'
+               and indexname = 'attendance_one_open_per_user_day'),
+     'Moi nguoi moi ngay chi mot ban ghi cham cong dang mo')
 
   ) as t(migration, applied, mo_ta)
 )
