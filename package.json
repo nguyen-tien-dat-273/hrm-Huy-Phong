@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "attendance:find": "node --env-file=.env.attendance-bridge tools/attendance-find.mjs",
     "attendance:doctor": "node --env-file=.env.attendance-bridge tools/attendance-doctor.mjs",
     "attendance:sync": "node --env-file=.env.attendance-bridge tools/attendance-bridge.mjs --once",
     "attendance:bridge": "node --env-file=.env.attendance-bridge tools/attendance-bridge.mjs",

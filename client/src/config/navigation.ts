@@ -59,8 +59,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
   { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'thu vien quy trinh quy che huong dan pdf' },
   { to: '/admin/training', label: 'Đào tạo', description: 'Khóa học, phân công và tiến độ học tập', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'dao tao khoa hoc hoc tap' },
-  { to: '/admin/payroll/kpi', label: 'Cách tính lương KPI', description: 'Quy KPI% chấm được thành tiền lương KPI', icon: Calculator, permission: 'attendance', group: 'Phát triển nhân sự', keywords: 'luong kpi cach tinh quy doi kpi phan tram thanh tien nguong bac thang', functionCode: 'admin.payroll_components' },
-  { to: '/admin/performance', label: 'KPI & đánh giá', description: 'Bộ tiêu chí, cơ chế theo người và kết quả chấm điểm', icon: Target, permission: 'reports', group: 'Phát triển nhân sự', keywords: 'kpi okr hieu suat danh gia', functionCode: 'admin.performance_manage' },
+  { to: '/admin/payroll/kpi', label: 'Cách tính lương KPI', description: 'Quy KPI% chấm được thành tiền lương KPI', icon: Calculator, permission: 'attendance', group: 'KPI', keywords: 'luong kpi cach tinh quy doi kpi phan tram thanh tien nguong bac thang', functionCode: 'admin.payroll_components' },
+  { to: '/admin/performance', label: 'Chấm điểm & bộ tiêu chí', description: 'Bộ tiêu chí, cơ chế theo người và kết quả chấm điểm', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi okr hieu suat danh gia', functionCode: 'admin.performance_manage' },
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },
@@ -149,7 +149,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     chip: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700',
   },
   {
-    name: 'Phát triển nhân sự', icon: Target, hint: 'KPI, đánh giá và cách quy ra lương',
+    name: 'KPI', icon: Target, hint: 'Chấm điểm, bộ tiêu chí và cách quy ra lương',
     iconIdle: 'bg-rose-50 text-rose-600', iconOn: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30',
     tileOn: 'bg-rose-50', textOn: 'text-rose-700',
     chip: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30 hover:bg-rose-700',

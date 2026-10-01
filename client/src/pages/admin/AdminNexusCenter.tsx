@@ -32,7 +32,7 @@ interface FeatureFlag { key: string; name: string; description: string | null; e
 
 const meta: Record<Section, { title: string; desc: string }> = {
   lifecycle: { title: 'Onboarding & Offboarding', desc: 'Checklist hội nhập 30–60–90 ngày và quy trình bàn giao khi nghỉ việc.' },
-  performance: { title: 'KPI & đánh giá', desc: 'Bộ tiêu chí, cơ chế theo người và kết quả chấm điểm.' },
+  performance: { title: 'Chấm điểm & bộ tiêu chí', desc: 'Bộ tiêu chí, cơ chế theo người và kết quả chấm điểm.' },
   locations: { title: 'Địa điểm chấm công', desc: 'Cấu hình chi nhánh, bán kính GPS và Wi-Fi dự phòng cho check-in.' },
   flags: { title: 'Feature Flags', desc: 'Bật hoặc tắt an toàn các chức năng mới trước khi áp dụng toàn công ty.' },
 };
