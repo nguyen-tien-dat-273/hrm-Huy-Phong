@@ -5,10 +5,13 @@ export function FunctionPermissionPicker({
   selected,
   onChange,
   disabled = false,
+  hint = 'Chọn đúng nghiệp vụ cho vai trò hoặc vị trí này, không cần cấp toàn quyền.',
 }: {
   selected: AdminFunctionCode[];
   onChange: (next: AdminFunctionCode[]) => void;
   disabled?: boolean;
+  /** Cau mo ta doi theo noi dung: gan cho vi tri hay cho dung mot nguoi. */
+  hint?: string;
 }) {
   const toggle = (code: AdminFunctionCode) => {
     if (selected.includes(code)) onChange(selected.filter((item) => item !== code));
@@ -17,7 +20,7 @@ export function FunctionPermissionPicker({
   return (
     <fieldset disabled={disabled} className="mt-4 rounded-xl border border-violet-100 bg-violet-50/50 p-3">
       <legend className="px-1 text-sm font-semibold text-slate-700">Chức năng nâng cao có thể cấp riêng</legend>
-      <p className="mb-2 text-xs text-slate-500">Admin/CEO luôn có sẵn. Chọn đúng nghiệp vụ cho vai trò hoặc vị trí này, không cần cấp toàn quyền.</p>
+      <p className="mb-2 text-xs text-slate-500">Admin/CEO luôn có sẵn. {hint}</p>
       <div className="grid gap-2 sm:grid-cols-2">
         {ADMIN_FUNCTION_CODES.map((code) => {
           const item = ADMIN_FUNCTIONS[code];

@@ -229,7 +229,11 @@ with probe as (
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'kpi_position_templates'
                and column_name = 'unit_id'),
-     'Bo KPI gan thang vao phong ban; kpi_scheme_for xet ca duong nay')
+     'Bo KPI gan thang vao phong ban; kpi_scheme_for xet ca duong nay'),
+
+    ('20261002100000_profile_function_permissions',
+     to_regclass('public.profile_function_permissions') is not null,
+     'Cap quyen chuc nang rieng cho tung tai khoan, khong phai mo ca vi tri')
 
   ) as t(migration, applied, mo_ta)
 )

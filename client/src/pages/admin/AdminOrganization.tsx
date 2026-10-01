@@ -24,7 +24,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
+import { ADMIN_FUNCTION_CODES, ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import type {
   EmploymentStatus, JobPosition, OrganizationUnit, OrganizationUnitType, Profile,
 } from '@/types';
@@ -143,16 +143,32 @@ export function AdminOrganization() {
   /** Bang noi organization_unit_managers da ton tai chua. */
   const [multiManagerSupported, setMultiManagerSupported] = useState(true);
   const [positionForm, setPositionForm] = useState({ code: '', title: '', unit_id: '', reports_to_position_id: '', is_manager: false, permissions: [] as string[], function_permissions: [] as AdminFunctionCode[] });
-  const [assignmentForm, setAssignmentForm] = useState({ user_id: '', employee_code: '', unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active' as EmploymentStatus });
+  const [assignmentForm, setAssignmentForm] = useState({
+    user_id: '', employee_code: '', unit_id: '', position_id: '', manager_id: '',
+    hire_date: '', employment_status: 'active' as EmploymentStatus,
+    /**
+     * Quyen cap RIENG cho ca nhan nay, chong len quyen thua tu vi tri.
+     *
+     * Co de xu ly truong hop mot nguoi can them dung mot chuc nang: khong co
+     * duong nay thi phai mo chuc nang do cho CA vi tri, keo theo tat ca nhung
+     * ai cung vi tri.
+     */
+    permissions: [] as AdminPermission[],
+    function_permissions: [] as AdminFunctionCode[],
+  });
+  /** Quyen chuc nang cap rieng theo tai khoan: userId -> ma chuc nang. */
+  const [userFunctionPermissions, setUserFunctionPermissions] = useState<Record<string, string[]>>({});
+  const [profileFunctionPermissionsSupported, setProfileFunctionPermissionsSupported] = useState(true);
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
-    const [unitResult, positionResult, positionPermissionResult, positionFunctionResult, managerResult] = await Promise.all([
+    const [unitResult, positionResult, positionPermissionResult, positionFunctionResult, managerResult, userFunctionResult] = await Promise.all([
       supabase.from('organization_units').select('*').order('name'),
       supabase.from('job_positions').select('*').order('title'),
       supabase.from('job_position_permissions').select('position_id,permission_code'),
       supabase.from('job_position_function_permissions').select('position_id,function_code'),
       supabase.from('organization_unit_managers').select('unit_id,user_id,is_primary'),
+      supabase.from('profile_function_permissions').select('user_id,function_code'),
     ]);
     const error = unitResult.error || positionResult.error;
     setLoadError(error ? describeDbError(error) : null);
@@ -167,6 +183,14 @@ export function AdminOrganization() {
       functionPermissionMap[item.position_id] = [...(functionPermissionMap[item.position_id] || []), item.function_code];
     }
     setPositionFunctionPermissions(functionPermissionMap);
+    const userFunctionMap: Record<string, string[]> = {};
+    for (const item of (userFunctionResult.data || []) as { user_id: string; function_code: string }[]) {
+      userFunctionMap[item.user_id] = [...(userFunctionMap[item.user_id] || []), item.function_code];
+    }
+    setUserFunctionPermissions(userFunctionMap);
+    // Chua chay migration 20261002100000 thi khoi quyen rieng tu an di, phan
+    // con lai cua man phan cong chay nhu cu.
+    setProfileFunctionPermissionsSupported(!userFunctionResult.error);
     setPositionPermissionsSupported(!positionPermissionResult.error);
     setPositionFunctionPermissionsSupported(!positionFunctionResult.error);
     setPositions(((positionResult.data || []) as JobPosition[]).map((position) => ({ ...position, permissions: permissionMap[position.id] || [] })));
@@ -192,7 +216,7 @@ export function AdminOrganization() {
   };
 
   useEffect(() => { void load(); }, []);
-  useRealtimeSync([{ table: 'organization_units' }, { table: 'job_positions' }, { table: 'job_position_permissions' }, { table: 'job_position_function_permissions' }, { table: 'profiles' }], () => {
+  useRealtimeSync([{ table: 'organization_units' }, { table: 'job_positions' }, { table: 'job_position_permissions' }, { table: 'job_position_function_permissions' }, { table: 'profile_function_permissions' }, { table: 'profiles' }], () => {
     void load(true);
     void loadUsers();
   }, { channelKey: 'organization-structure' });
@@ -991,6 +1015,21 @@ export function AdminOrganization() {
     else { toast(hasDependencies ? 'Đã ngừng hoạt động vị trí.' : 'Đã xóa vị trí.', 'success'); await load(); }
   };
 
+  /**
+   * Quyen cap rieng cho mot tai khoan, loc lai theo danh muc hien hanh.
+   *
+   * Du lieu cu co the con ma quyen da bo; de lot vao form thi luu lai la ghi
+   * nguoc ma rac vao database.
+   */
+  const ownGrantsOf = (user?: Profile) => ({
+    permissions: (user?.permissions ?? []).filter(
+      (code): code is AdminPermission => (ADMIN_PERMISSIONS as readonly string[]).includes(code),
+    ),
+    function_permissions: (userFunctionPermissions[user?.id ?? ''] ?? []).filter(
+      (code): code is AdminFunctionCode => (ADMIN_FUNCTION_CODES as readonly string[]).includes(code),
+    ),
+  });
+
   const openAssignment = (user?: Profile) => {
     const target = user || visibleUsers[0];
     setAssignmentForm({
@@ -1001,6 +1040,7 @@ export function AdminOrganization() {
       manager_id: target?.manager_id || '',
       hire_date: target?.hire_date || '',
       employment_status: target?.employment_status || 'active',
+      ...ownGrantsOf(target),
     });
     setAssignmentModal(true);
   };
@@ -1029,6 +1069,7 @@ export function AdminOrganization() {
       manager_id: user?.manager_id || '',
       hire_date: user?.hire_date || '',
       employment_status: user?.employment_status || 'active',
+      ...ownGrantsOf(user),
     });
   };
 
@@ -1044,11 +1085,56 @@ export function AdminOrganization() {
       target_hire_date: assignmentForm.hire_date || null,
       target_employment_status: assignmentForm.employment_status,
     });
+    if (error) {
+      setSubmitting(false);
+      return toast('Không cập nhật được phân công: ' + describeDbError(error), 'error');
+    }
+
+    // --- Quyen cap rieng cho ca nhan ---------------------------------------
+    // Tach khoi RPC o tren: RPC chi lo co cau to chuc, con quyen di qua hang
+    // rao `guard_profile_privilege_changes` nen chi Admin/CEO ghi duoc.
+    if (canManagePositionPermissions) {
+      const target = userById.get(assignmentForm.user_id);
+      const before = ownGrantsOf(target);
+      const sameList = (a: string[], b: string[]) => a.length === b.length && a.every((item) => b.includes(item));
+
+      if (!sameList(before.permissions, assignmentForm.permissions)) {
+        const { error: permError } = await supabase
+          .from('profiles')
+          .update({ permissions: assignmentForm.permissions })
+          .eq('id', assignmentForm.user_id);
+        if (permError) {
+          setSubmitting(false);
+          return toast('Đã lưu phân công nhưng không đổi được quyền: ' + describeDbError(permError), 'error');
+        }
+      }
+
+      if (profileFunctionPermissionsSupported
+        && !sameList(before.function_permissions, assignmentForm.function_permissions)) {
+        const { error: wipeError } = await supabase
+          .from('profile_function_permissions').delete().eq('user_id', assignmentForm.user_id);
+        if (wipeError) {
+          setSubmitting(false);
+          return toast('Đã lưu phân công nhưng không đổi được quyền chức năng: ' + describeDbError(wipeError), 'error');
+        }
+        if (assignmentForm.function_permissions.length > 0) {
+          const { error: grantError } = await supabase.from('profile_function_permissions').insert(
+            assignmentForm.function_permissions.map((function_code) => ({
+              user_id: assignmentForm.user_id, function_code,
+            })),
+          );
+          if (grantError) {
+            setSubmitting(false);
+            return toast('Đã lưu phân công nhưng không cấp được quyền chức năng: ' + describeDbError(grantError), 'error');
+          }
+        }
+      }
+    }
+
     setSubmitting(false);
-    if (error) return toast('Không cập nhật được phân công: ' + describeDbError(error), 'error');
     toast('Đã cập nhật vị trí và tuyến quản lý của nhân sự.', 'success');
     setAssignmentModal(false);
-    await loadUsers();
+    await Promise.all([loadUsers(), load(true)]);
   };
 
   const positionOptions = companyPositions.filter((position) => !assignmentForm.unit_id || position.unit_id === assignmentForm.unit_id);
@@ -1619,7 +1705,13 @@ export function AdminOrganization() {
             </div>
           ) : (
             <Card><CardContent className="p-0">
-              {visibleUsers.length === 0 ? <EmptyState title="Không tìm thấy nhân sự" /> : <div className="divide-y divide-slate-100">{visibleUsers.map((user) => <button key={user.id} type="button" onClick={() => openAssignment(user)} className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-slate-50"><Avatar name={user.name} url={user.avatar_url} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-900">{user.name}</strong>{user.employee_code && <Badge className="bg-indigo-50 text-indigo-700">{user.employee_code}</Badge>}</div><p className="mt-1 text-xs text-slate-500">{positionById.get(user.position_id || '')?.title || 'Chưa gán vị trí'} · {unitById.get(user.unit_id || '')?.name || user.department || 'Chưa gán đơn vị'}</p></div><div className="hidden text-right sm:block"><p className="text-xs font-semibold text-slate-600">{EMPLOYMENT_STATUSES[user.employment_status || 'active']}</p><p className="mt-1 text-[11px] text-slate-400">QL: {userById.get(user.manager_id || '')?.name || 'Chưa gán'}</p></div><UserCog className="h-4 w-4 text-slate-400" /></button>)}</div>}
+              {visibleUsers.length === 0 ? <EmptyState title="Không tìm thấy nhân sự" /> : <div className="divide-y divide-slate-100">{visibleUsers.map((user) => <button key={user.id} type="button" onClick={() => openAssignment(user)} className="flex w-full items-center gap-3 px-5 py-4 text-left transition hover:bg-slate-50"><Avatar name={user.name} url={user.avatar_url} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-900">{user.name}</strong>{user.employee_code && <Badge className="bg-indigo-50 text-indigo-700">{user.employee_code}</Badge>}{(() => {
+                /* Quyen cap rieng la ngoai le; khong danh dau thi vai thang
+                   sau khong ai nho con ai dang giu quyen ngoai vi tri. */
+                const own = ownGrantsOf(user);
+                const count = own.permissions.length + own.function_permissions.length;
+                return count > 0 ? <Badge className="bg-violet-50 text-violet-700">+{count} quyền riêng</Badge> : null;
+              })()}</div><p className="mt-1 text-xs text-slate-500">{positionById.get(user.position_id || '')?.title || 'Chưa gán vị trí'} · {unitById.get(user.unit_id || '')?.name || user.department || 'Chưa gán đơn vị'}</p></div><div className="hidden text-right sm:block"><p className="text-xs font-semibold text-slate-600">{EMPLOYMENT_STATUSES[user.employment_status || 'active']}</p><p className="mt-1 text-[11px] text-slate-400">QL: {userById.get(user.manager_id || '')?.name || 'Chưa gán'}</p></div><UserCog className="h-4 w-4 text-slate-400" /></button>)}</div>}
             </CardContent></Card>
           )}
 
@@ -2015,6 +2107,119 @@ export function AdminOrganization() {
             <p className="mt-1 text-xs text-slate-500">Chỉ hiển thị người đang hoạt động ở cùng đơn vị hoặc đơn vị cấp trên.</p>
           </div>
           <Select label="Trạng thái nhân sự" value={assignmentForm.employment_status} onChange={(event) => setAssignmentForm({ ...assignmentForm, employment_status: event.target.value as EmploymentStatus })}>{Object.entries(EMPLOYMENT_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+
+          {/* ---- Quyen tren he thong ----
+               Quyen thuong di theo VI TRI, nhung luon co nguoi can them dung
+               mot chuc nang. Khong co khoi nay thi phai mo chuc nang do cho
+               ca vi tri, keo theo tat ca nhung ai cung vi tri. */}
+          <fieldset disabled={!canManagePositionPermissions} className="rounded-xl border border-slate-200 p-3">
+            <legend className="px-1 text-sm font-semibold text-slate-700">Quyền trên hệ thống</legend>
+
+            {/* Thua tu vi tri dang chon o tren: khong sua duoc o day, nhung
+                phai thay, neu khong nguoi dung se cap trung lai nhung quyen
+                ho von da co. */}
+            {(() => {
+              const inheritedModules = positionPermissions[assignmentForm.position_id] || [];
+              const inheritedFunctions = positionFunctionPermissions[assignmentForm.position_id] || [];
+              const positionTitle = positionById.get(assignmentForm.position_id)?.title;
+              if (!positionTitle) {
+                return (
+                  <p className="text-xs leading-relaxed text-slate-500">
+                    Chưa chọn vị trí nên người này chưa thừa hưởng quyền nào.
+                  </p>
+                );
+              }
+              return (
+                <div className="rounded-lg bg-slate-50 p-2.5">
+                  <p className="text-[11px] font-semibold text-slate-500">
+                    Thừa hưởng từ vị trí <span className="text-slate-700">{positionTitle}</span>
+                  </p>
+                  {inheritedModules.length === 0 && inheritedFunctions.length === 0 ? (
+                    <p className="mt-1 text-xs text-slate-400">Vị trí này chưa được cấp quyền quản trị nào.</p>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {inheritedModules.map((code) => (
+                        <Badge key={code} className="bg-white text-slate-600">
+                          {PERMISSION_LABELS[code as AdminPermission]?.label ?? code}
+                        </Badge>
+                      ))}
+                      {inheritedFunctions.map((code) => (
+                        <Badge key={code} className="bg-white text-slate-600">
+                          {ADMIN_FUNCTIONS[code as AdminFunctionCode]?.label ?? code}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <p className="mt-3 text-xs leading-relaxed text-slate-500">
+              Cấp thêm riêng cho người này — chỉ dùng khi họ cần nhiều hơn vị trí của mình.
+              Đổi vị trí thì quyền riêng vẫn theo người, không mất đi.
+            </p>
+
+            <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+              {ADMIN_PERMISSIONS.map((permission) => {
+                const inherited = (positionPermissions[assignmentForm.position_id] || []).includes(permission);
+                const checked = assignmentForm.permissions.includes(permission);
+                return (
+                  <label
+                    key={permission}
+                    className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm ${inherited ? 'opacity-60' : 'cursor-pointer hover:bg-slate-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked || inherited}
+                      // Da co san tu vi tri thi khoa lai: tich them chi tao ra
+                      // mot ban ghi thua, go ra cung khong lam ho mat quyen.
+                      disabled={inherited}
+                      onChange={(event) => setAssignmentForm({
+                        ...assignmentForm,
+                        permissions: event.target.checked
+                          ? [...assignmentForm.permissions, permission]
+                          : assignmentForm.permissions.filter((item) => item !== permission),
+                      })}
+                      className="mt-0.5 h-4 w-4 accent-indigo-600"
+                    />
+                    <span className="min-w-0">
+                      <span className="font-medium">{PERMISSION_LABELS[permission].label}</span>
+                      <span className="block text-xs text-slate-500">
+                        {inherited ? 'Đã có sẵn từ vị trí' : PERMISSION_LABELS[permission].desc}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+
+            {profileFunctionPermissionsSupported ? (
+              <FunctionPermissionPicker
+                selected={assignmentForm.function_permissions}
+                onChange={(function_permissions) => setAssignmentForm({
+                  ...assignmentForm,
+                  function_permissions,
+                  // Chuc nang nao cung nam trong mot module; cap chuc nang ma
+                  // quen module thi vao den cua la bi chan.
+                  permissions: Array.from(new Set([
+                    ...assignmentForm.permissions,
+                    ...function_permissions.map((code) => ADMIN_FUNCTIONS[code].module),
+                  ])),
+                })}
+                disabled={!canManagePositionPermissions}
+                hint="Cấp riêng cho một mình người này, không ảnh hưởng ai cùng vị trí."
+              />
+            ) : (
+              <p className="mt-2 text-xs text-amber-700">
+                Hãy chạy migration <code className="font-mono">20261002100000_profile_function_permissions</code> trên
+                Supabase để cấp được quyền chức năng riêng cho từng người.
+              </p>
+            )}
+
+            {!canManagePositionPermissions && (
+              <p className="mt-2 text-xs text-amber-700">Chỉ Admin/CEO mới được thay đổi quyền.</p>
+            )}
+          </fieldset>
           <div className="flex gap-3 pt-2"><Button type="button" variant="outline" className="flex-1" onClick={() => setAssignmentModal(false)}>Hủy</Button><Button type="submit" theme="admin" className="flex-1" disabled={submitting || !assignmentForm.user_id}>{submitting ? 'Đang lưu…' : 'Lưu phân công'}</Button></div>
         </form>
       </Modal>
