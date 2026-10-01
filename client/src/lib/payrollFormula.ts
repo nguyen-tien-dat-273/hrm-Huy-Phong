@@ -27,8 +27,6 @@ const FUNCTIONS: Record<string, { arity: number | 'variadic'; fn: (...args: numb
   IF: { arity: 3, fn: (cond, a, b) => (cond !== 0 ? a : b) },
 };
 
-export const FORMULA_FUNCTION_NAMES = Object.keys(FUNCTIONS);
-
 type TokenType = 'number' | 'ident' | 'op' | 'paren' | 'comma';
 
 interface Token {

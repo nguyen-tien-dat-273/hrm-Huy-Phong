@@ -58,11 +58,6 @@ export function countWorkingDays(startDate: string, endDate: string): number {
   return days;
 }
 
-/** Đơn có bao trùm ngày này không (chỉ tính đơn đã duyệt). */
-export function coversDate(request: LeaveRequest, date: string): boolean {
-  return request.status === 'approved' && !request.is_cancelled && date >= request.start_date && date <= request.end_date;
-}
-
 export interface LeaveBalance {
   quota: number;
   /** Đã dùng: phép năm ĐÃ DUYỆT trong năm hiện tại. */
