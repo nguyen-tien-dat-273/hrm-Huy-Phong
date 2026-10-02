@@ -117,6 +117,17 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [templates, setTemplates] = useState<Template[]>([]);
   const [stageFilter, setStageFilter] = useState<Stage | 'tat_ca'>('tat_ca');
+  /**
+   * Phiếu mà người duyệt cố ý chấm trước khi nhân viên gửi.
+   *
+   * Luồng nghiệp vụ bắt đầu lượt của người duyệt ở bước "Nhận hồ sơ KPI chờ
+   * duyệt" — tức là SAU khi nhân viên gửi. Chấm trước thì không có gì để đối
+   * soát, và nửa "Cá nhân đánh giá / Cá nhân chấm" của phiếu sẽ trống.
+   *
+   * Vẫn mở được vì có trường hợp thật: người nghỉ việc, quá hạn không nộp.
+   * Nhưng phải là một cái bấm có chủ đích, không phải mặc định.
+   */
+  const [earlyScoring, setEarlyScoring] = useState<Set<string>>(new Set());
   /** Bộ KPI gán riêng cho từng người — đường chính từ khi KPI thuộc về người. */
   const [schemes, setSchemes] = useState<{ user_id: string; template_id: string }[]>([]);
   const [criteria, setCriteria] = useState<Criteria[]>([]);
@@ -290,10 +301,36 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     const pct = Number(review.final_pct ?? 0);
     const kpiPay = template ? Math.round((Number(template.default_kpi_amount) * pct) / 100) : 0;
 
+    // Chua cham du thi CHAN HAN, khong hoi.
+    //
+    // Khoa la day ket qua sang bang luong. Phieu con tieu chi trong thi
+    // `final_pct` tinh thieu, va cau cu `Number(review.final_pct ?? 0)` bien
+    // phieu chua cham thanh KPI 0% - tuc luong KPI bang 0 ma khong ai co y
+    // dinh do.
+    const rows = template ? (criteriaByTemplate.get(template.id) || []) : [];
+    const reviewScores = scores.filter((item) => item.review_id === review.id);
+    const unscored = rows.filter((row) => {
+      const score = reviewScores.find((item) => item.criteria_id === row.id);
+      return !score?.not_applicable && score?.manager_score == null;
+    });
+    if (unscored.length > 0) {
+      return toast(
+        `Còn ${unscored.length} tiêu chí bạn chưa chấm: ${unscored.slice(0, 3).map((row) => row.name).join(', ')}`
+        + `${unscored.length > 3 ? '…' : ''}. Chấm đủ rồi mới khoá được.`,
+        'error',
+      );
+    }
+
     const ok = await confirm({
       title: `Khoá kết quả KPI của ${profile.name}?`,
       message:
-        `Kết quả ${pct}% sẽ được đẩy sang bảng lương và KHÔNG sửa điểm được nữa.`
+        // Nhan vien chua gui ma van khoa duoc: co truong hop that (nguoi nghi
+        // viec, qua han khong nop) nen khong chan cung, nhung phai noi ro la
+        // dang chot KPI ma khong co y kien cua ho.
+        (review.self_submitted_at
+          ? ''
+          : 'CHÚ Ý: nhân viên chưa gửi bản tự chấm. Khoá luôn nghĩa là chốt KPI mà không có ý kiến của họ. ')
+        + `Kết quả ${pct}% sẽ được đẩy sang bảng lương và KHÔNG sửa điểm được nữa.`
         + (template
           ? ` Lương KPI dự kiến: ${formatVND(kpiPay)} (mức ${formatVND(Number(template.default_kpi_amount))} × ${pct}%).`
           : '')
@@ -749,6 +786,26 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                         <strong>Đã trả về bổ sung:</strong> {review.return_reason}
                       </p>
                     )}
+                    {/* Luot cua nguoi duyet bat dau o buoc "Nhan ho so KPI cho
+                        duyet" - tuc SAU khi nhan vien gui. Cham truoc thi
+                        khong co gi de doi soat, va nua "Ca nhan danh gia" cua
+                        phieu se trong. */}
+                    {!locked && !review.self_submitted_at && !earlyScoring.has(review.id) && (
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                        <p className="min-w-0 text-xs leading-relaxed text-amber-900">
+                          Đang chờ <strong>{profile.name}</strong> tự chấm và gửi. Chấm trước thì không
+                          có điểm của họ để đối chiếu.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setEarlyScoring((prev) => new Set(prev).add(review.id))}
+                          className="flex-shrink-0 rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-800 transition hover:bg-amber-100"
+                        >
+                          Chấm luôn không chờ
+                        </button>
+                      </div>
+                    )}
+
                     {rows.length === 0 ? (
                       <p className="py-3 text-center text-xs text-slate-500">
                         Mẫu này chưa có tiêu chí nào đang bật.
@@ -763,6 +820,9 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                           // ngay; điểm THẬT vẫn là manager_score do trigger ghi.
                           const preview = auto ? scoreFromLevels(levels, score?.actual_value ?? null) : null;
                           const shown = score?.manager_score ?? preview;
+                          // Chua gui va chua bam "cham luon" thi khoa o nhap:
+                          // doi soat ma khong co gi de doi chieu la cham mo.
+                          const waitingSelf = !review.self_submitted_at && !earlyScoring.has(review.id);
 
                           return (
                             <div key={row.id} className="rounded-lg bg-white px-3 py-2.5">
@@ -803,7 +863,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                               <label className="flex items-center gap-1.5 text-[11px] text-slate-500">
                                 <input
                                   type="checkbox"
-                                  disabled={locked || !score}
+                                  disabled={locked || !score || waitingSelf}
                                   checked={score?.not_applicable ?? false}
                                   onChange={(e) => score && void setNotApplicable(score, e.target.checked)}
                                   className="h-3.5 w-3.5 rounded border-slate-300"
@@ -823,7 +883,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                                     Số đo
                                     <input
                                       inputMode="decimal"
-                                      disabled={locked || !score}
+                                      disabled={locked || !score || waitingSelf}
                                       value={score?.actual_value == null ? '' : String(Number(score.actual_value))}
                                       onChange={(e) => {
                                         const clean = e.target.value.replace(/[^\d.-]/g, '');
@@ -857,7 +917,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                                 </>
                               ) : levels.length > 0 ? (
                                 <select
-                                  disabled={locked || !score}
+                                  disabled={locked || !score || waitingSelf}
                                   value={score?.manager_score == null ? '' : String(Number(score.manager_score))}
                                   onChange={(e) => score && void setScore(score, e.target.value === '' ? null : Number(e.target.value))}
                                   className="h-9 min-w-[200px] rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-400"
@@ -872,7 +932,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                               ) : (
                                 <input
                                   inputMode="decimal"
-                                  disabled={locked || !score}
+                                  disabled={locked || !score || waitingSelf}
                                   placeholder={`0–${Number(row.max_score)}`}
                                   value={score?.manager_score == null ? '' : String(Number(score.manager_score))}
                                   onChange={(e) => {
