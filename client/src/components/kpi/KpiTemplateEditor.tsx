@@ -83,7 +83,7 @@ const DEFAULT_LEVELS: ScoreLevel[] = [
 
 const BLANK_CRITERIA = {
   name: '', weight_percent: '', max_score: '4', allow_over_standard: false,
-  measure_unit: 'lần', measure_hint: '',
+  measure_unit: '', measure_hint: '',
   description: '',
   /** Rỗng = theo cách tính của cả bộ KPI. */
   score_method: '',
@@ -759,12 +759,6 @@ export function KpiTemplateEditor({
                 </span>
               </span>
             </label>
-            <Input
-              label="Đơn vị số đo"
-              placeholder="lần, %, ngày…"
-              value={criteriaForm.measure_unit}
-              onChange={(e) => setCriteriaForm({ ...criteriaForm, measure_unit: e.target.value })}
-            />
           </div>
           <Input
             label="Ghi chú"
@@ -789,13 +783,47 @@ export function KpiTemplateEditor({
               </Button>
             </div>
 
-            <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
-              <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              Đọc theo dòng: được mấy điểm khi đạt từ bao nhiêu đến bao nhiêu. Bấm{' '}
-              <strong>từ</strong> để đổi thành <strong>trên</strong> nếu không lấy chính số đó —
-              giống <strong>đến</strong> và <strong>dưới</strong>. Bỏ trống một đầu là đầu đó không
-              chặn. Dòng không điền số nào thì phải chấm tay.
-            </p>
+            {/* Don vi dat NGAY TRONG khoi muc tieu: no hien sau tung o so
+                o duoi, de o mot muc khac thi nguoi dung khong biet chu "lan"
+                kia tu dau ra ma sua. */}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-600">Đơn vị đo:</span>
+              <input
+                value={criteriaForm.measure_unit}
+                onChange={(e) => setCriteriaForm({ ...criteriaForm, measure_unit: e.target.value })}
+                placeholder="để trống nếu không cần"
+                aria-label="Đơn vị đo của tiêu chí"
+                className="h-8 w-28 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-indigo-500"
+              />
+              {/* Bon don vi hay dung nhat trong bang KPI that cua khach. */}
+              {['%', 'lần', 'đơn', 'ngày'].map((unit) => (
+                <button
+                  key={unit}
+                  type="button"
+                  onClick={() => setCriteriaForm({ ...criteriaForm, measure_unit: unit })}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                    criteriaForm.measure_unit === unit
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white text-slate-600 hover:bg-slate-100'
+                  }`}
+                >
+                  {unit}
+                </button>
+              ))}
+            </div>
+
+            {/* Icon va chu phai nam trong hai the rieng. De ca hai lam con
+                truc tiep cua mot the flex thi MOI tu in dam thanh mot flex
+                item va xuong dong rieng - cau giai thich vo thanh cot. */}
+            <div className="mt-1.5 flex items-start gap-1.5">
+              <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+              <p className="text-[11px] leading-relaxed text-slate-500">
+                Đọc theo dòng: được mấy điểm khi đạt từ bao nhiêu đến bao nhiêu. Bấm
+                chữ <strong>từ</strong> để đổi thành <strong>trên</strong> khi không lấy chính số
+                đó, <strong>đến</strong> thành <strong>dưới</strong> cũng vậy. Bỏ trống một đầu là
+                đầu đó không chặn. Dòng không điền số nào thì phải chấm tay.
+              </p>
+            </div>
 
             <div className="mt-3 space-y-2">
               {criteriaForm.levels.map((level, index) => (
