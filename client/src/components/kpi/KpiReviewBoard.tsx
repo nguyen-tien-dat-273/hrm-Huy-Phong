@@ -22,6 +22,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
+import { KpiEvidenceBox } from '@/components/kpi/KpiEvidenceBox';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -518,7 +519,8 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                           const shown = score?.manager_score ?? preview;
 
                           return (
-                            <div key={row.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-white px-3 py-2.5">
+                            <div key={row.id} className="rounded-lg bg-white px-3 py-2.5">
+                              <div className="flex flex-wrap items-center gap-3">
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-semibold text-slate-800">
                                   {row.name}
@@ -633,6 +635,32 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                                   }}
                                   className="h-9 w-24 rounded-lg border border-slate-200 bg-white px-2 text-right text-xs tabular-nums outline-none focus:border-indigo-500 disabled:bg-slate-100 disabled:text-slate-400"
                                 />
+                              )}
+                              </div>
+
+                              {/* ---- Bảng đối chiếu ----
+                                   Yêu cầu của tiêu chí ở trái, minh chứng
+                                   nhân viên nộp ở phải. Đây là bước "Đối soát"
+                                   trong luồng: chấm lại mà không nhìn bằng
+                                   chứng thì chỉ là chép lại điểm nhân viên tự
+                                   cho. Người duyệt xoá được minh chứng rác
+                                   nhưng không thêm hộ — thêm hộ là làm chứng
+                                   cho chính mình. */}
+                              {score && (
+                                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                  <KpiEvidenceBox
+                                    criteriaId={row.id}
+                                    uploadedBy={actorId}
+                                    readOnly
+                                    label="Yêu cầu của tiêu chí"
+                                  />
+                                  <KpiEvidenceBox
+                                    scoreId={score.id}
+                                    uploadedBy={actorId}
+                                    readOnly={locked}
+                                    label="Nhân viên nộp"
+                                  />
+                                </div>
                               )}
                             </div>
                           );

@@ -233,7 +233,11 @@ with probe as (
 
     ('20261002100000_profile_function_permissions',
      to_regclass('public.profile_function_permissions') is not null,
-     'Cap quyen chuc nang rieng cho tung tai khoan, khong phai mo ca vi tri')
+     'Cap quyen chuc nang rieng cho tung tai khoan, khong phai mo ca vi tri'),
+
+    ('20261002110000_kpi_evidence',
+     to_regclass('public.kpi_evidence') is not null,
+     'Minh chung KPI: admin dinh vao tieu chi, nhan vien dinh vao diem tu cham')
 
   ) as t(migration, applied, mo_ta)
 )
@@ -254,6 +258,17 @@ select
   end,
   'zz1. Bucket process-documents',
   'Storage -> New bucket -> ten process-documents (thu vien quy trinh)'
+
+union all
+
+select
+  case
+    when exists (select 1 from storage.buckets where id = 'kpi-evidence')
+      then 'DA CHAY'
+    else '>>> CHUA CHAY'
+  end,
+  'zz3. Bucket kpi-evidence',
+  'Storage -> New bucket -> ten kpi-evidence, Private (minh chung KPI)'
 
 union all
 

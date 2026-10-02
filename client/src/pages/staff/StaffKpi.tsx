@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { KpiEvidenceBox } from '@/components/kpi/KpiEvidenceBox';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { describeDbError } from '@/lib/dbError';
@@ -241,7 +242,8 @@ export function StaffKpi() {
               {isOpen && rows.length > 0 && (
                 <ul className="divide-y divide-slate-50 border-t border-slate-100 pt-1">
                   {rows.map(({ item, score }) => (
-                    <li key={item.id} className="flex flex-wrap items-center gap-3 py-2.5">
+                    <li key={item.id} className="py-2.5">
+                      <div className="flex flex-wrap items-center gap-3">
                       <span className="min-w-0 flex-1">
                         <span className="block text-sm font-medium text-slate-800">
                           {item.name}
@@ -290,6 +292,30 @@ export function StaffKpi() {
                           </span>
                         </span>
                       </span>
+                      </div>
+
+                      {/* Minh chung cua chinh diem vua cham.
+                          Khong co no thi nguoi duyet chi nhin thay mot con so
+                          do nhan vien tu dat ra, khong co gi de doi chieu. */}
+                      {score && (
+                        <div className="mt-2 space-y-2">
+                          <KpiEvidenceBox
+                            criteriaId={item.id}
+                            uploadedBy={profile?.id ?? null}
+                            readOnly
+                            label="Yêu cầu của tiêu chí"
+                          />
+                          <KpiEvidenceBox
+                            scoreId={score.id}
+                            uploadedBy={profile?.id ?? null}
+                            readOnly={!canSelfScore}
+                            label="Minh chứng của bạn"
+                            hint={canSelfScore
+                              ? 'Đính file hoặc viết giải trình. Gửi duyệt rồi thì không sửa được nữa.'
+                              : undefined}
+                          />
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

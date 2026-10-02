@@ -32,7 +32,7 @@ import { describeDbError } from '@/lib/dbError';
 import { formatDate, getTodayString } from '@/lib/utils';
 import type { Profile } from '@/types';
 
-interface Unit { id: string; name: string; unit_type: string; parent_id: string | null }
+interface Unit { id: string; code: string | null; name: string; unit_type: string; parent_id: string | null }
 interface Template { id: string; code: string; name: string; is_active: boolean; position_id: string | null }
 interface Scheme { id: string; user_id: string; template_id: string; effective_from: string }
 interface UnitScheme { id: string; unit_id: string; template_id: string; effective_from: string }
@@ -78,7 +78,7 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
     if (!supabase) return;
     setLoading(true);
     const [unitRes, tplRes, schemeRes, unitSchemeRes, criteriaRes] = await Promise.all([
-      supabase.from('organization_units').select('id, name, unit_type, parent_id').eq('is_active', true).order('name'),
+      supabase.from('organization_units').select('id, code, name, unit_type, parent_id').eq('is_active', true).order('name'),
       supabase.from('kpi_position_templates').select('id, code, name, is_active, position_id').order('name'),
       supabase.from('employee_kpi_schemes').select('*').order('effective_from', { ascending: false }),
       supabase.from('unit_kpi_schemes').select('*').order('effective_from', { ascending: false }),
@@ -214,6 +214,77 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
    * Bộ đã từng dùng để chấm thì KHÔNG xoá, chỉ tắt: phiếu chấm cũ trỏ vào
    * nó, xoá đi là lịch sử mất chỗ dựa.
    */
+  /**
+   * Tạo một bộ KPI rồi gán cho TẤT CẢ nhân sự trong phòng.
+   *
+   * Vẫn đúng mô hình "KPI thuộc về người": một bộ, gán riêng cho từng người
+   * trong phòng qua `employee_kpi_schemes`. Khác mỗi chỗ là khai một lần thay
+   * vì lặp lại 20 lần cho phòng 20 người — và sửa tiêu chí thì cả phòng đổi
+   * theo, đúng cái người dùng muốn khi nói "tạo KPI cho cả phòng ban".
+   *
+   * Người đã có bộ riêng thì GIỮ NGUYÊN: họ được khai riêng là có lý do, đè
+   * lên là xoá mất công khai đó mà không ai hỏi.
+   */
+  const createTemplateForUnit = async (unit: Unit) => {
+    if (!supabase) return;
+    const targets = users.filter((person) => person.is_active && person.unit_id === unit.id);
+    if (targets.length === 0) {
+      return toast(`${unit.name} chưa có nhân sự nào.`, 'error');
+    }
+    const keepOwn = targets.filter((person) => ownScheme(person.id));
+    const receivers = targets.filter((person) => !ownScheme(person.id));
+    if (receivers.length === 0) {
+      return toast('Mọi người trong phòng đều đã có bộ KPI riêng.', 'error');
+    }
+
+    const accepted = await confirm({
+      title: `Tạo bộ KPI cho cả ${unit.name}?`,
+      message: `Một bộ KPI chung cho ${receivers.length} người trong phòng — sửa tiêu chí thì cả `
+        + 'nhóm đổi theo.'
+        + (keepOwn.length > 0
+          ? ` ${keepOwn.length} người đã có bộ riêng sẽ giữ nguyên bộ của họ.`
+          : ''),
+      confirmLabel: 'Tạo cho cả phòng',
+    });
+    if (!accepted) return;
+
+    setSaving(true);
+    const slug = unit.code || unit.name;
+    const { data, error } = await supabase.from('kpi_position_templates').insert({
+      code: `KPI-${slug.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\u0111/g, 'd').replace(/\u0110/g, 'D')
+        .toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'PHONG'}`
+        + `-${unit.id.slice(0, 4).toUpperCase()}`,
+      name: `KPI ${unit.name}`,
+      block_code: 'VAN_PHONG',
+      // Khai unit_id để sau này nhìn ra bộ này sinh ra cho phòng nào; việc áp
+      // cho ai vẫn do employee_kpi_schemes quyết, không phải cột này.
+      unit_id: unit.id,
+      default_kpi_amount: 0,
+      score_method: 'WEIGHTED_PERCENT',
+      result_floor_percent: 0,
+      created_by: actorId,
+    }).select('id').single();
+
+    if (error || !data) {
+      setSaving(false);
+      return toast('Không tạo được bộ KPI: ' + describeDbError(error), 'error');
+    }
+
+    const { error: assignError } = await supabase.from('employee_kpi_schemes').upsert(
+      receivers.map((person) => ({
+        user_id: person.id, template_id: data.id, effective_from: getTodayString(),
+      })),
+      { onConflict: 'user_id,effective_from' },
+    );
+    setSaving(false);
+    if (assignError) {
+      return toast('Đã tạo bộ nhưng không gán được: ' + describeDbError(assignError), 'error');
+    }
+    toast(`Đã tạo bộ KPI cho ${receivers.length} người trong ${unit.name}. Thêm tiêu chí cho đủ 100% rồi bật lên.`, 'success');
+    await load();
+  };
+
   const clearPersonal = async (person: Profile, templateId: string) => {
     if (!supabase) return;
     const accepted = await confirm({
@@ -316,6 +387,32 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
             chấm: gán riêng → theo đơn vị (cấp gần nhất) → mẫu khớp vị trí.
           </p>
         )}
+
+        {/* ---- Bộ KPI cho cả phòng ----
+             Đứng ở một phòng ban, khai một lần cho cả phòng thay vì mở từng
+             người. Vẫn là bộ gán riêng cho từng người, chỉ là gán một lượt. */}
+        {!focusPerson && current && people.length > 0 && (() => {
+          const covered = people.filter((person) => ownScheme(person.id)).length;
+          return (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600">
+                <Target className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-800">Bộ KPI của {current.name}</p>
+                <p className="mt-0.5 text-[11px] text-slate-600">
+                  {covered}/{people.length} người trong phòng đã có bộ KPI riêng.
+                </p>
+              </div>
+              {covered < people.length && (
+                <Button size="sm" disabled={saving} onClick={() => void createTemplateForUnit(current)}>
+                  <Target className="h-3.5 w-3.5" />
+                  {saving ? 'Đang tạo…' : `Tạo bộ cho ${people.length - covered} người còn lại`}
+                </Button>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ---- Khu riêng của một nhân sự ----
              KPI ở đây là của RIÊNG người này, không phải một bộ dùng chung

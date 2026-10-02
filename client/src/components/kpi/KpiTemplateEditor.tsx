@@ -20,6 +20,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { KpiEvidenceBox } from '@/components/kpi/KpiEvidenceBox';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { supabase } from '@/lib/supabase';
@@ -650,7 +651,8 @@ export function KpiTemplateEditor({
                           {rows.map((item) => {
                             const auto = isAutoScorable(item.score_levels);
                             return (
-                              <div key={item.id} className="flex flex-wrap items-center gap-3 rounded-lg bg-white px-3 py-2.5">
+                              <div key={item.id} className="rounded-lg bg-white px-3 py-2.5">
+                                <div className="flex flex-wrap items-center gap-3">
                                 <div className="min-w-0 flex-1">
                                   <p className="text-xs font-semibold text-slate-800">{item.name}</p>
                                   <p className="text-[11px] text-slate-400">
@@ -667,6 +669,19 @@ export function KpiTemplateEditor({
                                 <Button size="sm" variant="danger" onClick={() => void removeCriteria(item)} aria-label={`Xoá ${item.name}`}>
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
+                                </div>
+
+                                {/* Minh chung cua TIEU CHI: mo ta cai gi duoc
+                                    tinh la dat. Nhan vien doc duoc truoc khi
+                                    tu cham, nguoi duyet doi chieu luc chot. */}
+                                <div className="mt-2">
+                                  <KpiEvidenceBox
+                                    criteriaId={item.id}
+                                    uploadedBy={actorId}
+                                    label="Minh chứng mẫu"
+                                    hint="Mô tả hoặc file cho thấy thế nào là đạt tiêu chí này."
+                                  />
+                                </div>
                               </div>
                             );
                           })}
