@@ -43,6 +43,17 @@ interface Template {
   is_active: boolean;
 }
 
+/** Bốn chặng của một người trong kỳ, theo đúng luồng duyệt. */
+type Stage = 'chua_gui' | 'cho_nhan_vien' | 'cho_duyet' | 'da_duyet';
+
+const STAGE_LABEL: Record<Stage | 'tat_ca', string> = {
+  tat_ca: 'Tất cả',
+  chua_gui: 'Chưa gửi yêu cầu',
+  cho_nhan_vien: 'Chờ nhân viên chấm',
+  cho_duyet: 'Chờ duyệt',
+  da_duyet: 'Đã duyệt',
+};
+
 interface Criteria {
   id: string;
   template_id: string;
@@ -102,6 +113,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   // phai mot thuc the tao truoc.
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [templates, setTemplates] = useState<Template[]>([]);
+  const [stageFilter, setStageFilter] = useState<Stage | 'tat_ca'>('tat_ca');
   /** Bộ KPI gán riêng cho từng người — đường chính từ khi KPI thuộc về người. */
   const [schemes, setSchemes] = useState<{ user_id: string; template_id: string }[]>([]);
   const [criteria, setCriteria] = useState<Criteria[]>([]);
@@ -356,6 +368,69 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 
   const lockedCount = reviews.filter((item) => item.locked_at).length;
 
+  /**
+   * Một người đang ở chặng nào của kỳ.
+   *
+   * Bốn chặng đúng theo luồng: admin mở phiếu (gửi yêu cầu) → nhân viên tự
+   * chấm rồi gửi → admin duyệt và khoá. Danh sách phẳng trộn cả bốn vào nhau
+   * thì công ty ba chục người là không biết phải làm gì tiếp — ai đang chờ
+   * mình, ai đang chờ người ta.
+   */
+  const stageOf = (person: Profile): Stage => {
+    const review = reviewByUser.get(person.id);
+    if (!review) return 'chua_gui';
+    if (review.locked_at) return 'da_duyet';
+    return review.self_submitted_at ? 'cho_duyet' : 'cho_nhan_vien';
+  };
+
+  const stageCount = (stage: Stage) => profiles.filter((person) => stageOf(person) === stage).length;
+
+  const visibleProfiles = stageFilter === 'tat_ca'
+    ? profiles
+    : profiles.filter((person) => stageOf(person) === stageFilter);
+
+  /**
+   * Mở phiếu hàng loạt cho những người chưa có.
+   *
+   * Mở từng người một cho cả phòng là hai chục lần bấm giống hệt nhau, và
+   * quên một người thì người đó không tự chấm được mà cũng không ai thấy.
+   */
+  const startAllPending = async () => {
+    if (!supabase) return;
+    const pending = profiles
+      .filter((person) => stageOf(person) === 'chua_gui')
+      .map((person) => ({ person, template: suggestTemplate(person) }));
+    const ready = pending.filter((row) => row.template);
+    const missing = pending.length - ready.length;
+
+    if (ready.length === 0) {
+      return toast('Không ai có bộ KPI để mở phiếu. Khai bộ KPI cho họ trước.', 'error');
+    }
+
+    const ok = await confirm({
+      title: `Gửi yêu cầu chấm KPI cho ${ready.length} người?`,
+      message: `Phiếu tháng ${month} sẽ mở ra để họ tự chấm.`
+        + (missing > 0 ? ` ${missing} người chưa có bộ KPI nên bỏ qua.` : ''),
+      confirmLabel: 'Gửi yêu cầu',
+    });
+    if (!ok) return;
+
+    setBusy(true);
+    const { error } = await supabase.from('performance_reviews').insert(
+      ready.map((row) => ({
+        period_month: `${month}-01`,
+        user_id: row.person.id,
+        template_id: row.template!.id,
+        reviewer_id: actorId,
+        status: 'MANAGER_REVIEW',
+      })),
+    );
+    setBusy(false);
+    if (error) return toast('Không mở được phiếu: ' + describeDbError(error), 'error');
+    toast(`Đã gửi yêu cầu cho ${ready.length} người.`, 'success');
+    await loadReviews(month);
+  };
+
   return (
     <Card>
       <CardContent className="space-y-4">
@@ -396,19 +471,48 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 
           return (
             <div className="grid gap-2 sm:grid-cols-4">
-              {[
-                { label: 'Chưa mở phiếu', value: String(notStarted), tone: notStarted > 0 ? 'warn' : 'ok' },
-                { label: 'Đang chấm', value: String(reviews.length - lockedCount), tone: reviews.length - lockedCount > 0 ? 'warn' : 'ok' },
-                { label: 'Đã khoá', value: `${lockedCount}/${profiles.length}`, tone: 'ok' },
-                { label: 'KPI trung bình', value: scored.length ? `${average.toFixed(1)}%` : '—', tone: 'ok' },
-              ].map((item) => (
-                <div key={item.label} className="rounded-xl border border-slate-200 px-3.5 py-2.5">
-                  <p className="text-[11px] font-semibold text-slate-500">{item.label}</p>
-                  <p className={`mt-0.5 text-lg font-bold ${item.tone === 'warn' ? 'text-amber-600' : 'text-slate-800'}`}>
-                    {item.value}
-                  </p>
+              {/* Bốn ô này VỪA là con số vừa là bộ lọc. Tách làm hai hàng —
+                  một hàng đếm, một hàng lọc — là bày hai lần cùng một thông
+                  tin và bắt người dùng tự nối chúng lại. */}
+              {([
+                { stage: 'chua_gui' as Stage, warn: true },
+                { stage: 'cho_nhan_vien' as Stage, warn: true },
+                { stage: 'cho_duyet' as Stage, warn: true },
+                { stage: 'da_duyet' as Stage, warn: false },
+              ]).map(({ stage, warn }) => {
+                const count = stageCount(stage);
+                const on = stageFilter === stage;
+                return (
+                  <button
+                    key={stage}
+                    type="button"
+                    onClick={() => setStageFilter(on ? 'tat_ca' : stage)}
+                    aria-pressed={on}
+                    className={`rounded-xl border px-3.5 py-2.5 text-left transition ${on
+                      ? 'border-indigo-400 bg-indigo-50/70 ring-1 ring-indigo-300'
+                      : 'border-slate-200 hover:border-indigo-200 hover:bg-slate-50'}`}
+                  >
+                    <p className="text-[11px] font-semibold text-slate-500">{STAGE_LABEL[stage]}</p>
+                    <p className={`mt-0.5 text-lg font-bold ${warn && count > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
+                      {count}
+                      <span className="ml-1 text-[11px] font-semibold text-slate-400">/{profiles.length}</span>
+                    </p>
+                  </button>
+                );
+              })}
+              <div className="rounded-xl border border-slate-200 px-3.5 py-2.5 sm:col-span-2">
+                <p className="text-[11px] font-semibold text-slate-500">KPI trung bình (phiếu đã khoá)</p>
+                <p className="mt-0.5 text-lg font-bold text-slate-800">
+                  {scored.length ? `${average.toFixed(1)}%` : '—'}
+                </p>
+              </div>
+              {notStarted > 0 && (
+                <div className="flex items-center sm:col-span-2">
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void startAllPending()}>
+                    <Plus className="h-3.5 w-3.5" /> Gửi yêu cầu cho {notStarted} người còn lại
+                  </Button>
                 </div>
-              ))}
+              )}
               {byRating.size > 0 && (
                 <div className="sm:col-span-4 flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2.5">
                   <span className="text-[11px] font-semibold text-slate-500">Xếp loại:</span>
@@ -438,8 +542,22 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
           </p>
         )}
 
+        {stageFilter !== 'tat_ca' && (
+          <p className="text-[11px] font-semibold text-slate-500">
+            Đang lọc: {STAGE_LABEL[stageFilter]} · {visibleProfiles.length} người.{' '}
+            <button type="button" onClick={() => setStageFilter('tat_ca')} className="text-indigo-600 underline">
+              Bỏ lọc
+            </button>
+          </p>
+        )}
+
         <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-          {profiles.map((profile) => {
+          {visibleProfiles.length === 0 && (
+            <p className="px-4 py-6 text-center text-xs text-slate-400">
+              Không ai ở chặng này.
+            </p>
+          )}
+          {visibleProfiles.map((profile) => {
             const review = reviewByUser.get(profile.id);
             const template = review?.template_id ? templateById.get(review.template_id) : null;
             const isOpen = openUserId === profile.id;
