@@ -412,6 +412,14 @@ export function KpiTemplateEditor({
   };
 
   const levelIssues = describeLevelIssues(criteriaForm.levels);
+  /**
+   * Don vi do hien ngay sau moi o so trong bang muc tieu.
+   *
+   * De doc thanh cau: "4 diem khi dat tu 98 % den ...". Khong doan la "%":
+   * tieu chi dem so lan sai thi don vi la "lan", va ghi nham % lam nguoi cham
+   * nhap sai hang don vi.
+   */
+  const unitSuffix = criteriaForm.measure_unit.trim();
   const autoScorable = isAutoScorable(criteriaForm.levels);
   const tryScore = tryValue === '' ? null : scoreFromLevels(criteriaForm.levels, Number(tryValue));
 
@@ -759,8 +767,8 @@ export function KpiTemplateEditor({
             />
           </div>
           <Input
-            label="Hướng dẫn cho người nhập số đo"
-            placeholder="VD: Nhập số đơn hàng bị sai trong kỳ."
+            label="Ghi chú"
+            placeholder="VD: Đếm đơn hàng bị sai trong kỳ, không tính đơn khách tự huỷ."
             value={criteriaForm.measure_hint}
             onChange={(e) => setCriteriaForm({ ...criteriaForm, measure_hint: e.target.value })}
           />
@@ -783,10 +791,9 @@ export function KpiTemplateEditor({
 
             <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
               <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              Mỗi dòng là một mục tiêu: đạt <strong>Từ</strong> đến <strong>Đến</strong> (tính cả
-              hai đầu) thì được số điểm đã khai. Trống <strong>Từ</strong> là không có cận dưới,
-              trống <strong>Đến</strong> là không có cận trên. Mục tiêu không khai ngưỡng thì phải
-              chấm tay.
+              Đọc theo dòng: được mấy điểm khi đạt từ bao nhiêu đến bao nhiêu — tính cả
+              hai đầu. Bỏ trống một đầu là đầu đó không chặn. Dòng không điền số nào thì
+              phải chấm tay.
             </p>
 
             <div className="mt-3 space-y-2">
@@ -802,7 +809,7 @@ export function KpiTemplateEditor({
                   <span className="text-[11px] text-slate-400">điểm khi đạt</span>
                   <input
                     inputMode="decimal" aria-label={`Từ, mục tiêu ${index + 1}`}
-                    placeholder="từ"
+                    placeholder="—"
                     value={level.min == null ? '' : String(level.min)}
                     onChange={(e) => {
                       const clean = e.target.value.replace(/[^\d.-]/g, '');
@@ -810,10 +817,13 @@ export function KpiTemplateEditor({
                     }}
                     className="h-8 w-20 rounded-lg border border-slate-200 px-2 text-right text-xs tabular-nums outline-none focus:border-indigo-500"
                   />
+                  {/* Don vi lay tu chinh o "Don vi do" ben tren, khong doan
+                      la %: tieu chi dem so lan sai thi "%" la sai han. */}
+                  {unitSuffix && <span className="text-[11px] text-slate-500">{unitSuffix}</span>}
                   <span className="text-[11px] text-slate-400">đến</span>
                   <input
                     inputMode="decimal" aria-label={`Đến, mục tiêu ${index + 1}`}
-                    placeholder="đến"
+                    placeholder="—"
                     value={level.max == null ? '' : String(level.max)}
                     onChange={(e) => {
                       const clean = e.target.value.replace(/[^\d.-]/g, '');
@@ -821,9 +831,10 @@ export function KpiTemplateEditor({
                     }}
                     className="h-8 w-20 rounded-lg border border-slate-200 px-2 text-right text-xs tabular-nums outline-none focus:border-indigo-500"
                   />
+                  {unitSuffix && <span className="text-[11px] text-slate-500">{unitSuffix}</span>}
                   <input
                     aria-label={`Mô tả mục tiêu ${index + 1}`}
-                    placeholder="Mô tả mục tiêu, hiện cho người chấm"
+                    placeholder="Mô tả, hiện cho người chấm"
                     value={level.label ?? ''}
                     onChange={(e) => updateLevel(index, { label: e.target.value })}
                     className="h-8 min-w-[160px] flex-1 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-indigo-500"
