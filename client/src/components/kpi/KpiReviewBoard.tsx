@@ -99,6 +99,8 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   // phai mot thuc the tao truoc.
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [templates, setTemplates] = useState<Template[]>([]);
+  /** Bộ KPI gán riêng cho từng người — đường chính từ khi KPI thuộc về người. */
+  const [schemes, setSchemes] = useState<{ user_id: string; template_id: string }[]>([]);
   const [criteria, setCriteria] = useState<Criteria[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
@@ -111,10 +113,14 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     if (!supabase) return;
     setLoading(true);
 
-    const [templateRes, criteriaRes] = await Promise.all([
+    const [templateRes, criteriaRes, schemeRes] = await Promise.all([
       supabase.from('kpi_position_templates').select('*').order('name'),
       supabase.from('kpi_template_criteria').select('*').order('sort_order'),
+      supabase.from('employee_kpi_schemes').select('user_id, template_id')
+        .order('effective_from', { ascending: false }),
     ]);
+    // Thiếu bảng gán riêng thì vẫn chấm được bằng mẫu theo vị trí như cũ.
+    setSchemes((schemeRes.data || []) as { user_id: string; template_id: string }[]);
 
     // Chưa chạy migration KPI: báo đúng lý do thay vì hiện một bảng trống
     // trông như "công ty chưa có mẫu nào".
@@ -158,11 +164,38 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     return map;
   }, [criteria]);
 
-  /** Mẫu gợi ý theo vị trí của nhân sự; không khớp thì để người chấm tự chọn. */
-  const suggestTemplate = (profile: Profile) =>
-    templates.find((item) => item.is_active && item.position_id && item.position_id === profile.position_id);
+  /**
+   * Bộ KPI gợi ý cho một người, đi đúng thứ tự `kpi_scheme_for()` dưới
+   * database: bộ RIÊNG của họ trước, hết mới rơi về mẫu khớp vị trí.
+   *
+   * Trước đây chỉ dò theo vị trí. Từ khi KPI thuộc về từng người, bộ riêng là
+   * đường chính — không đọc nó thì người chấm mở phiếu ra thấy "chưa khớp mẫu
+   * nào" rồi phải tự tìm trong một danh sách đầy những bộ mang tên người
+   * khác, và chọn nhầm là chấm một người bằng tiêu chí của người bên cạnh.
+   */
+  const suggestTemplate = (profile: Profile) => {
+    const own = schemes.find((row) => row.user_id === profile.id);
+    const ownTemplate = own ? templates.find((item) => item.id === own.template_id) : undefined;
+    if (ownTemplate?.is_active) return ownTemplate;
+    return templates.find((item) => item.is_active && item.position_id && item.position_id === profile.position_id);
+  };
 
   const activeTemplates = templates.filter((item) => item.is_active);
+
+  /**
+   * Danh sách bộ cho một người chọn tay.
+   *
+   * Lọc bỏ bộ RIÊNG của người khác: "KPI Ánh Dương" nằm trong ô chọn của
+   * Trương Thị Hà là mời chọn nhầm. Bộ riêng của chính họ, và những bộ không
+   * thuộc về riêng ai, thì vẫn giữ.
+   */
+  const templatesFor = (profile: Profile) => {
+    const ownedByOthers = new Set(
+      schemes.filter((row) => row.user_id !== profile.id).map((row) => row.template_id),
+    );
+    const mine = new Set(schemes.filter((row) => row.user_id === profile.id).map((row) => row.template_id));
+    return activeTemplates.filter((item) => mine.has(item.id) || !ownedByOthers.has(item.id));
+  };
 
   const startReview = async (profile: Profile, templateId: string) => {
     if (!supabase) return;
@@ -327,6 +360,53 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
           </p>
         </div>
 
+        {/* ---- Bảng tổng hợp đánh giá của kỳ ----
+             Danh sách bên dưới trả lời "người này bao nhiêu điểm". Khối này
+             trả lời câu người phụ trách hỏi trước tiên: cả kỳ đang đứng ở
+             đâu, còn bao nhiêu phiếu chưa xong, và điểm rơi vào đâu.
+             Không có nó thì muốn biết phải tự cộng tay cả danh sách. */}
+        {(() => {
+          const scored = reviews.filter((item) => item.final_pct != null);
+          const average = scored.length
+            ? scored.reduce((sum, item) => sum + Number(item.final_pct), 0) / scored.length
+            : 0;
+          const notStarted = profiles.filter((person) => !reviewByUser.get(person.id)).length;
+
+          // Gom theo xếp loại do database tính, không tự xếp lại ở client —
+          // hai nguồn xếp loại lệch nhau là thứ không ai gỡ được.
+          const byRating = new Map<string, number>();
+          for (const item of scored) {
+            const key = item.rating || 'Chưa xếp loại';
+            byRating.set(key, (byRating.get(key) || 0) + 1);
+          }
+
+          return (
+            <div className="grid gap-2 sm:grid-cols-4">
+              {[
+                { label: 'Chưa mở phiếu', value: String(notStarted), tone: notStarted > 0 ? 'warn' : 'ok' },
+                { label: 'Đang chấm', value: String(reviews.length - lockedCount), tone: reviews.length - lockedCount > 0 ? 'warn' : 'ok' },
+                { label: 'Đã khoá', value: `${lockedCount}/${profiles.length}`, tone: 'ok' },
+                { label: 'KPI trung bình', value: scored.length ? `${average.toFixed(1)}%` : '—', tone: 'ok' },
+              ].map((item) => (
+                <div key={item.label} className="rounded-xl border border-slate-200 px-3.5 py-2.5">
+                  <p className="text-[11px] font-semibold text-slate-500">{item.label}</p>
+                  <p className={`mt-0.5 text-lg font-bold ${item.tone === 'warn' ? 'text-amber-600' : 'text-slate-800'}`}>
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+              {byRating.size > 0 && (
+                <div className="sm:col-span-4 flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2.5">
+                  <span className="text-[11px] font-semibold text-slate-500">Xếp loại:</span>
+                  {[...byRating.entries()].map(([rating, count]) => (
+                    <Badge key={rating} className="bg-slate-100 text-slate-700">{rating}: {count}</Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         <div className="flex items-start gap-2.5 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-xs leading-relaxed text-blue-900">
           <LockKeyhole className="mt-0.5 h-4 w-4 flex-shrink-0" />
           <p>
@@ -408,7 +488,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                   {!review ? (
                     <TemplateStarter
                       profile={profile}
-                      templates={activeTemplates}
+                      templates={templatesFor(profile)}
                       suggested={suggestTemplate(profile)}
                       disabled={busy || activeTemplates.length === 0}
                       onStart={(templateId) => void startReview(profile, templateId)}

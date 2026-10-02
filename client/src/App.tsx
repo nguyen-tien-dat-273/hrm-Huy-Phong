@@ -192,7 +192,6 @@ function AppRoutes() {
       <Route path="/admin/payroll/inputs" element={admin('attendance', <AdminPayroll section="inputs" />, { functionCode: 'admin.payroll_inputs' })} />
       <Route path="/admin/payroll/adjustments" element={admin('attendance', <AdminPayroll section="adjustments" />, { functionCode: 'admin.payroll_adjustments' })} />
       <Route path="/admin/payroll/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
-      <Route path="/admin/payroll/kpi" element={admin('attendance', <AdminPayroll section="kpiPay" />, { functionCode: 'admin.payroll_components' })} />
       <Route path="/admin/payroll/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
       <Route path="/admin/leave" element={admin('leave', <AdminLeave />)} />
       <Route path="/admin/training" element={admin('training', <AdminTraining />)} />
@@ -202,11 +201,9 @@ function AppRoutes() {
       <Route path="/admin/worker-documents" element={admin('users', <AdminWorkforceCenter section="documents" />, { functionCode: 'admin.worker_documents' })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/performance" element={admin('reports', <AdminNexusCenter section="performance" />, { functionCode: 'admin.performance_manage' })} />
-      {/* Hai dia chi cu cua "Gan KPI" va "Cham diem": gio la hai buoc
-          trong cung mot man. Giu lai duong dan de link da gui di, bookmark va
-          lich su trinh duyet khong rot vao trang trong. */}
-      <Route path="/admin/performance/schemes" element={<Navigate to="/admin/performance?buoc=nhan-su" replace />} />
-      <Route path="/admin/performance/review" element={<Navigate to="/admin/performance?buoc=cham-diem" replace />} />
+      {/* Dia chi cu cua "Gan KPI": gio nam ngay trong man bo KPI nhan su. */}
+      <Route path="/admin/performance/schemes" element={<Navigate to="/admin/performance" replace />} />
+      <Route path="/admin/performance/review" element={admin('reports', <AdminNexusCenter section="kpiReview" />, { functionCode: 'admin.performance_manage' })} />
       {/* Trang cờ tính năng đã gỡ: không mã nào đọc `feature_flags` để
           bật/tắt chức năng, nên nó chỉ là công tắc không nối vào đâu. */}
       <Route path="/admin/feature-flags" element={<Navigate to="/admin/settings" replace />} />
