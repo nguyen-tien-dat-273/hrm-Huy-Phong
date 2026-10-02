@@ -82,8 +82,8 @@ export function SetupPage() {
                 <span className="mt-2 block font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A9AA5]">Project Settings / API / Project URL</span>
               </label>
               <label className="block">
-                <span className="mb-2 flex items-center gap-2 font-[Space_Grotesk] text-sm font-semibold"><KeyRound className="h-4 w-4 text-[#C8754A]" /> Anon / Public Key</span>
-                <input type="password" value={anonKey} onChange={(e) => setAnonKey(e.target.value)} placeholder="eyJhbGciOiJIUzI1NiIs..." className="h-12 w-full border-b border-[#B9C5CC] bg-transparent px-0 text-sm text-[#102A43] outline-none transition-colors placeholder:text-[#9AA9B3] focus:border-[#C8754A]" />
+                <span className="mb-2 flex items-center gap-2 font-[Space_Grotesk] text-sm font-semibold"><KeyRound className="h-4 w-4 text-[#C8754A]" /> Publishable / Anon Key</span>
+                <input type="password" value={anonKey} onChange={(e) => setAnonKey(e.target.value)} placeholder="sb_publishable_... (hoac eyJhbGci... neu con dung key cu)" className="h-12 w-full border-b border-[#B9C5CC] bg-transparent px-0 text-sm text-[#102A43] outline-none transition-colors placeholder:text-[#9AA9B3] focus:border-[#C8754A]" />
                 <span className="mt-2 block font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A9AA5]">Project Settings / API / Publishable key</span>
               </label>
             </div>
