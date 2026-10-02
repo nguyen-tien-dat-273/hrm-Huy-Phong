@@ -381,7 +381,7 @@ export function KpiTemplateEditor({
     const maxScore = Number(criteriaForm.max_score || '0');
     const overflow = criteriaForm.levels.find((level) => Number(level.score) > maxScore);
     if (overflow) {
-      return toast(`Mức ${overflow.score} điểm vượt thang ${maxScore} của tiêu chí này.`, 'warning');
+      return toast(`Mục tiêu ${overflow.score} điểm vượt thang ${maxScore} của tiêu chí này.`, 'warning');
     }
 
     setSaving(true);
@@ -615,7 +615,7 @@ export function KpiTemplateEditor({
                                   <p className="text-[11px] text-slate-400">
                                     Trọng số {Number(item.weight_percent)}% · thang {Number(item.max_score)} ·{' '}
                                     {auto
-                                      ? `tự chấm theo ${(item.score_levels || []).length} mức`
+                                      ? `${(item.score_levels || []).length} mục tiêu, tự chấm`
                                       : 'chấm tay'}
                                     {!item.is_active && ' · đã tắt'}
                                   </p>
@@ -890,41 +890,6 @@ export function KpiTemplateEditor({
             onChange={(e) => setCriteriaForm({ ...criteriaForm, description: e.target.value })}
           />
 
-          {/* ---- Cách tính riêng cho tiêu chí này ----
-               Một bộ KPI thường trộn nhiều loại tiêu chí khác hẳn nhau:
-               doanh số quy về %, số lần sai thì đếm, tuân thủ thì chấm mức.
-               Ép chung một cách tính thì hoặc phải tách làm ba bộ KPI, hoặc
-               phải bóp tiêu chí cho vừa cách tính. */}
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-bold text-slate-700">Cách tính điểm của tiêu chí này</p>
-              {methodsSupported && (
-                <Button type="button" size="sm" variant="secondary" onClick={openNewMethod}>
-                  <Plus className="h-3.5 w-3.5" />Thêm cách tính
-                </Button>
-              )}
-            </div>
-
-            <Select
-              className="mt-2"
-              value={criteriaForm.score_method}
-              onChange={(e) => setCriteriaForm({ ...criteriaForm, score_method: e.target.value })}
-              aria-label="Cách tính điểm của tiêu chí"
-            >
-              <option value="">Theo cách tính của cả bộ KPI</option>
-              {methods.map((method) => (
-                <option key={method.code} value={method.code}>{method.name}</option>
-              ))}
-            </Select>
-
-            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
-              {criteriaForm.score_method
-                ? (methods.find((m) => m.code === criteriaForm.score_method)?.description
-                   || describeMethod(methods.find((m) => m.code === criteriaForm.score_method)!))
-                : 'Để trống thì tiêu chí này dùng chung cách tính đã khai cho cả bộ KPI.'}
-            </p>
-          </div>
-
           <div className="grid gap-3 sm:grid-cols-3">
             <Input
               label="Trọng số (%)" required inputMode="decimal"
@@ -965,38 +930,43 @@ export function KpiTemplateEditor({
             onChange={(e) => setCriteriaForm({ ...criteriaForm, measure_hint: e.target.value })}
           />
 
-          {/* ---- Thang điểm ---- */}
+          {/* ---- Mục tiêu ----
+               Mỗi dòng là một mục tiêu: đạt tới ngưỡng này thì được chừng này
+               điểm. Khai ngưỡng số thì lúc chấm chỉ cần nhập kết quả thực tế,
+               hệ thống tự ra điểm — không ai phải tự quy đổi trong đầu rồi
+               cãi nhau xem quy đúng chưa. */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs font-bold text-slate-700">Thang điểm</p>
+              <p className="text-xs font-bold text-slate-700">Mục tiêu của tiêu chí này</p>
               <Button
                 type="button" size="sm" variant="outline"
                 onClick={() => setCriteriaForm((prev) => ({ ...prev, levels: [...prev.levels, { score: 0, label: '' }] }))}
               >
-                <Plus className="h-3.5 w-3.5" /> Thêm mức
+                <Plus className="h-3.5 w-3.5" /> Thêm mục tiêu
               </Button>
             </div>
 
             <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
               <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              Khai <strong>Từ</strong> và <strong>Đến</strong> (bao gồm cả hai đầu) thì hệ thống tự
-              chấm. Để trống <strong>Từ</strong> là không có cận dưới, trống <strong>Đến</strong> là
-              không có cận trên. Mức không khai ngưỡng nào sẽ phải chấm tay.
+              Mỗi dòng là một mục tiêu: đạt <strong>Từ</strong> đến <strong>Đến</strong> (tính cả
+              hai đầu) thì được số điểm đã khai. Trống <strong>Từ</strong> là không có cận dưới,
+              trống <strong>Đến</strong> là không có cận trên. Mục tiêu không khai ngưỡng thì phải
+              chấm tay.
             </p>
 
             <div className="mt-3 space-y-2">
               {criteriaForm.levels.map((level, index) => (
                 <div key={index} className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-2.5 py-2">
                   <input
-                    inputMode="decimal" aria-label={`Điểm mức ${index + 1}`}
+                    inputMode="decimal" aria-label={`Điểm của mục tiêu ${index + 1}`}
                     placeholder="Điểm"
                     value={level.score == null ? '' : String(level.score)}
                     onChange={(e) => updateLevel(index, { score: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 })}
                     className="h-8 w-16 rounded-lg border border-slate-200 px-2 text-right text-xs tabular-nums outline-none focus:border-indigo-500"
                   />
-                  <span className="text-[11px] text-slate-400">điểm khi số đo</span>
+                  <span className="text-[11px] text-slate-400">điểm khi đạt</span>
                   <input
-                    inputMode="decimal" aria-label={`Từ, mức ${index + 1}`}
+                    inputMode="decimal" aria-label={`Từ, mục tiêu ${index + 1}`}
                     placeholder="từ"
                     value={level.min == null ? '' : String(level.min)}
                     onChange={(e) => {
@@ -1007,7 +977,7 @@ export function KpiTemplateEditor({
                   />
                   <span className="text-[11px] text-slate-400">đến</span>
                   <input
-                    inputMode="decimal" aria-label={`Đến, mức ${index + 1}`}
+                    inputMode="decimal" aria-label={`Đến, mục tiêu ${index + 1}`}
                     placeholder="đến"
                     value={level.max == null ? '' : String(level.max)}
                     onChange={(e) => {
@@ -1017,8 +987,8 @@ export function KpiTemplateEditor({
                     className="h-8 w-20 rounded-lg border border-slate-200 px-2 text-right text-xs tabular-nums outline-none focus:border-indigo-500"
                   />
                   <input
-                    aria-label={`Mô tả mức ${index + 1}`}
-                    placeholder="Mô tả hiện cho người chấm"
+                    aria-label={`Mô tả mục tiêu ${index + 1}`}
+                    placeholder="Mô tả mục tiêu, hiện cho người chấm"
                     value={level.label ?? ''}
                     onChange={(e) => updateLevel(index, { label: e.target.value })}
                     className="h-8 min-w-[160px] flex-1 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-indigo-500"
@@ -1026,7 +996,7 @@ export function KpiTemplateEditor({
                   <button
                     type="button"
                     onClick={() => setCriteriaForm((prev) => ({ ...prev, levels: prev.levels.filter((_, i) => i !== index) }))}
-                    aria-label={`Bỏ mức ${index + 1}`}
+                    aria-label={`Bỏ mục tiêu ${index + 1}`}
                     className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -1069,7 +1039,7 @@ export function KpiTemplateEditor({
 
             {!autoScorable && (
               <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
-                Chưa mức nào có ngưỡng số, nên tiêu chí này vẫn phải chấm tay.
+                Chưa mục tiêu nào khai ngưỡng số, nên tiêu chí này vẫn phải chấm tay.
               </p>
             )}
           </div>
