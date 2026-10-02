@@ -23,6 +23,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { KpiEvidenceBox } from '@/components/kpi/KpiEvidenceBox';
+import { isAutoScorable, scoreFromLevels, type ScoreLevel } from '@/lib/kpiScoring';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { describeDbError } from '@/lib/dbError';
@@ -46,6 +47,8 @@ interface Score {
   review_id: string;
   criteria_id: string;
   self_score: number | null;
+  /** Ket qua thuc te do chinh nhan vien nhap; database suy ra self_score. */
+  self_actual_value: number | null;
   manager_score: number | null;
   not_applicable: boolean;
   not_applicable_reason: string | null;
@@ -58,6 +61,8 @@ interface Criteria {
   weight_percent: number;
   max_score: number;
   is_active: boolean;
+  score_levels: ScoreLevel[];
+  measure_unit: string | null;
 }
 
 export function StaffKpi() {
@@ -78,6 +83,32 @@ export function StaffKpi() {
    * Chi ghi `self_score` - trigger duoi database chan san neu co ai co ghi
    * `manager_score`, nen day khong phai lop bao ve duy nhat.
    */
+  /**
+   * Ghi KET QUA THUC TE, de database suy ra diem.
+   *
+   * Nhan vien khong phai tu quy doi "98% doanh so" thanh "3 diem" trong dau -
+   * do la viec cua bo muc tieu da khai. Ghi vao `self_actual_value`, KHONG
+   * phai `actual_value`: cot kia co trigger suy ra diem chinh thuc, nhan vien
+   * ghi duoc vao do la tu cham diem that cho minh.
+   */
+  const setSelfMeasure = async (score: Score, raw: string, criterion: Criteria) => {
+    if (!supabase) return;
+    const value = raw.trim() === '' ? null : Number(raw);
+    if (value !== null && !Number.isFinite(value)) return;
+
+    // Xem truoc ngay tai cho; con so THAT van do trigger ghi, tai lai sau.
+    const preview = scoreFromLevels(criterion.score_levels, value);
+    setScores((prev) => prev.map((item) => (
+      item.id === score.id ? { ...item, self_actual_value: value, self_score: preview } : item
+    )));
+
+    const { error } = await supabase
+      .from('performance_review_scores')
+      .update({ self_actual_value: value })
+      .eq('id', score.id);
+    if (error) toast('Khong luu duoc ket qua: ' + describeDbError(error), 'error');
+  };
+
   const setSelfScore = async (score: Score, raw: string) => {
     if (!supabase) return;
     const value = raw.trim() === '' ? null : Number(raw);
@@ -128,7 +159,7 @@ export function StaffKpi() {
       if (rows.length > 0) {
         const [scoreRes, criteriaRes, templateRes] = await Promise.all([
           supabase.from('performance_review_scores').select('*').in('review_id', rows.map((r) => r.id)),
-          supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, max_score, is_active'),
+          supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, max_score, is_active, score_levels, measure_unit'),
           supabase.from('kpi_position_templates').select('id, name'),
         ]);
         setScores((scoreRes.data || []) as Score[]);
@@ -189,6 +220,11 @@ export function StaffKpi() {
         // ban khac voi ban ho da doc.
         const canSelfScore = !review.locked_at && !review.self_submitted_at;
         const missingSelf = rows.filter(({ score }) => score && score.self_score == null).length;
+        // Da nhap ket qua ma van khong ra diem = so do roi ngoai moi muc tieu.
+        // Noi dung ly do, khong de nguoi ta tuong minh quen cham.
+        const outOfRange = rows.filter(({ score }) => (
+          score && score.self_score == null && score.self_actual_value != null
+        )).length;
 
         return (
           <Card key={review.id}>
@@ -230,7 +266,9 @@ export function StaffKpi() {
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3.5 py-2.5">
                   <p className="min-w-0 text-xs leading-relaxed text-indigo-900">
                     {missingSelf > 0
-                      ? <>Còn <strong>{missingSelf} tiêu chí</strong> bạn chưa tự chấm. Chấm đủ rồi hãy gửi.</>
+                      ? outOfRange > 0
+                        ? <><strong>{outOfRange} tiêu chí</strong> có kết quả rơi ngoài mọi mục tiêu đã khai nên chưa ra điểm. Kiểm lại con số, hoặc báo quản lý khai thiếu mục tiêu.</>
+                        : <>Còn <strong>{missingSelf} tiêu chí</strong> bạn chưa tự chấm. Chấm đủ rồi hãy gửi.</>
                       : review.return_reason
                         ? <>Sửa theo yêu cầu ở trên rồi gửi lại — <strong>gửi rồi không sửa được nữa</strong>.</>
                         : <>Đã chấm đủ. Gửi đi để quản lý chấm lại — <strong>gửi rồi không sửa được nữa</strong>.</>}
@@ -254,7 +292,9 @@ export function StaffKpi() {
 
               {isOpen && rows.length > 0 && (
                 <ul className="divide-y divide-slate-50 border-t border-slate-100 pt-1">
-                  {rows.map(({ item, score }) => (
+                  {rows.map(({ item, score }) => {
+                    const autoScore = isAutoScorable(item.score_levels);
+                    return (
                     <li key={item.id} className="py-2.5">
                       <div className="flex flex-wrap items-center gap-3">
                       <span className="min-w-0 flex-1">
@@ -275,11 +315,50 @@ export function StaffKpi() {
                       {/* Hai cot canh nhau: tu cham va quan ly cham. Nguoi
                           dung thay chenh lech ngay, khong phai nho so cu. */}
                       <span className="flex items-center gap-3">
+                        {/* Tieu chi co muc tieu dang SO thi nhap ket qua that,
+                            he thong suy ra diem. Bat nhan vien tu quy doi
+                            "98% doanh so" thanh "3 diem" la bat ho lam viec ma
+                            bo muc tieu da khai de lam ho. */}
+                        {autoScore && (
+                          <span className="text-center">
+                            <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                              Kết quả
+                            </span>
+                            {canSelfScore && score && !score.not_applicable ? (
+                              <span className="mt-0.5 flex items-center gap-1">
+                                <input
+                                  inputMode="decimal"
+                                  value={score.self_actual_value == null ? '' : String(score.self_actual_value)}
+                                  onChange={(event) => void setSelfMeasure(score, event.target.value.replace(/[^\d.-]/g, ''), item)}
+                                  placeholder="—"
+                                  aria-label={`Kết quả thực tế của ${item.name}`}
+                                  className="h-9 w-20 rounded-lg border border-slate-200 text-center text-sm outline-none focus:border-indigo-500"
+                                />
+                                {item.measure_unit && (
+                                  <span className="text-[11px] text-slate-400">{item.measure_unit}</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="mt-0.5 block text-sm font-bold text-slate-600">
+                                {score?.self_actual_value == null ? '—'
+                                  : `${Number(score.self_actual_value)}${item.measure_unit ? ' ' + item.measure_unit : ''}`}
+                              </span>
+                            )}
+                          </span>
+                        )}
                         <span className="text-center">
                           <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                             Bạn chấm
                           </span>
-                          {canSelfScore && score && !score.not_applicable ? (
+                          {/* Co muc tieu so thi diem la KET QUA suy ra, khong
+                              cho go de len - go de len la ban tu cham va bo
+                              muc tieu noi hai dieu khac nhau. */}
+                          {autoScore ? (
+                            <span className="mt-0.5 block text-sm font-bold text-indigo-700">
+                              {score?.not_applicable ? '—'
+                                : score?.self_score == null ? '—' : Number(score.self_score)}
+                            </span>
+                          ) : canSelfScore && score && !score.not_applicable ? (
                             <input
                               inputMode="decimal"
                               value={score.self_score == null ? '' : String(score.self_score)}
@@ -330,7 +409,8 @@ export function StaffKpi() {
                         </div>
                       )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
 

@@ -791,9 +791,10 @@ export function KpiTemplateEditor({
 
             <p className="mt-1.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
               <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              Đọc theo dòng: được mấy điểm khi đạt từ bao nhiêu đến bao nhiêu — tính cả
-              hai đầu. Bỏ trống một đầu là đầu đó không chặn. Dòng không điền số nào thì
-              phải chấm tay.
+              Đọc theo dòng: được mấy điểm khi đạt từ bao nhiêu đến bao nhiêu. Bấm{' '}
+              <strong>từ</strong> để đổi thành <strong>trên</strong> nếu không lấy chính số đó —
+              giống <strong>đến</strong> và <strong>dưới</strong>. Bỏ trống một đầu là đầu đó không
+              chặn. Dòng không điền số nào thì phải chấm tay.
             </p>
 
             <div className="mt-3 space-y-2">
@@ -807,6 +808,17 @@ export function KpiTemplateEditor({
                     className="h-8 w-16 rounded-lg border border-slate-200 px-2 text-right text-xs tabular-nums outline-none focus:border-indigo-500"
                   />
                   <span className="text-[11px] text-slate-400">điểm khi đạt</span>
+                  {/* "Từ" lấy cả số đó, "trên" thì không — đúng hai chữ bảng
+                      KPI thật đang dùng. Không phân biệt thì số ở biên rơi
+                      vào hai dòng và hệ thống phải đoán. */}
+                  <button
+                    type="button"
+                    onClick={() => updateLevel(index, { min_exclusive: !level.min_exclusive })}
+                    title={level.min_exclusive ? 'Không lấy chính số này' : 'Lấy cả số này'}
+                    className="h-8 w-12 flex-shrink-0 rounded-lg bg-slate-100 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
+                  >
+                    {level.min_exclusive ? 'trên' : 'từ'}
+                  </button>
                   <input
                     inputMode="decimal" aria-label={`Từ, mục tiêu ${index + 1}`}
                     placeholder="—"
@@ -820,7 +832,14 @@ export function KpiTemplateEditor({
                   {/* Don vi lay tu chinh o "Don vi do" ben tren, khong doan
                       la %: tieu chi dem so lan sai thi "%" la sai han. */}
                   {unitSuffix && <span className="text-[11px] text-slate-500">{unitSuffix}</span>}
-                  <span className="text-[11px] text-slate-400">đến</span>
+                  <button
+                    type="button"
+                    onClick={() => updateLevel(index, { max_exclusive: !level.max_exclusive })}
+                    title={level.max_exclusive ? 'Không lấy chính số này' : 'Lấy cả số này'}
+                    className="h-8 w-12 flex-shrink-0 rounded-lg bg-slate-100 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200"
+                  >
+                    {level.max_exclusive ? 'dưới' : 'đến'}
+                  </button>
                   <input
                     inputMode="decimal" aria-label={`Đến, mục tiêu ${index + 1}`}
                     placeholder="—"

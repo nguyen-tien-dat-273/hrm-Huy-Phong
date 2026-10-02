@@ -243,7 +243,29 @@ with probe as (
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'performance_reviews'
                and column_name = 'return_reason'),
-     'Tra phieu KPI ve cho nhan vien kem ly do, dong vong lap bo sung')
+     'Tra phieu KPI ve cho nhan vien kem ly do, dong vong lap bo sung'),
+
+    ('20261002130000_kpi_bounds_and_self_measure',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'performance_review_scores'
+               and column_name = 'self_actual_value'),
+     'Bien tren/duoi cua muc tieu, va o nhap ket qua that cua nhan vien'),
+
+    ('20261002140000_phone_push_notifications',
+     to_regclass('public.push_subscriptions') is not null
+       and exists (select 1 from information_schema.columns
+                   where table_schema = 'public' and table_name = 'notifications'
+                     and column_name = 'push_sent_at'),
+     'Dang ky thiet bi va gui Web Push dung nguoi nhan')
+
+    ,('20261002143000_lifecycle_checklist_owner_access',
+     to_regprocedure('public.owns_lifecycle_checklist(uuid)') is not null
+       and exists (select 1 from pg_policies
+                   where schemaname = 'public'
+                     and tablename = 'employee_lifecycle_processes'
+                     and policyname = 'lifecycle_read'
+                     and qual like '%owns_lifecycle_checklist%'),
+     'Nguoi phu trach checklist mo duoc quy trinh tu thong bao')
 
   ) as t(migration, applied, mo_ta)
 )

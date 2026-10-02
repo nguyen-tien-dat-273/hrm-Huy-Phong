@@ -8,7 +8,8 @@
 //
 // Hai bản phải cùng quy tắc, nếu không màn hình sẽ hứa một đằng và phiếu chấm
 // ra một nẻo. Quy tắc, lặp lại nguyên văn từ migration:
-//   - `min`/`max` bao gồm hai đầu, đều tuỳ chọn.
+//   - `min`/`max` tùy chọn; mặc định bao gồm hai đầu, cờ `min_exclusive` /
+//     `max_exclusive` đổi đầu đó thành "trên" / "dưới".
 //   - Mức khớp ĐẦU TIÊN thắng, theo đúng thứ tự khai.
 //   - Mức không có cả min lẫn max là mức mô tả thuần, bỏ qua khi tự chấm.
 //   - Không mức nào khớp thì trả null, KHÔNG trả 0 — số đo rơi ngoài mọi
@@ -18,10 +19,23 @@
 
 export interface ScoreLevel {
   score: number;
-  /** Cận dưới, bao gồm. Thiếu = không có cận dưới. */
+  /** Cận dưới. Thiếu = không có cận dưới. */
   min?: number | null;
-  /** Cận trên, bao gồm. Thiếu = không có cận trên. */
+  /** Cận trên. Thiếu = không có cận trên. */
   max?: number | null;
+  /**
+   * `true` = "trên min" (không lấy chính min); mặc định là "từ min" (lấy cả min).
+   *
+   * Bảng KPI thật viết "Trên 105%" ngay cạnh "Từ 90 - 105%" — không phân
+   * biệt được hai kiểu này thì số 105 rơi vào cả hai dòng. Với tiêu chí
+   * Công nợ ("nhỏ hơn 2 lần" / "từ 2 đến 3 lần") thì số đúng bằng 2 xảy ra
+   * thật, và nó quyết định 4 điểm hay 3.
+   *
+   * Thiếu cờ = giữ nguyên như cũ, nên mọi thang điểm đã khai vẫn chạy y hệt.
+   */
+  min_exclusive?: boolean;
+  /** `true` = "dưới max" (không lấy chính max); mặc định lấy cả max. */
+  max_exclusive?: boolean;
   label?: string;
 }
 
@@ -52,9 +66,9 @@ export function scoreFromLevels(
     const min = toNumber(level.min);
     const max = toNumber(level.max);
     if (min == null && max == null) continue;
-    if ((min == null || value >= min) && (max == null || value <= max)) {
-      return toNumber(level.score);
-    }
+    const overMin = min == null || (level.min_exclusive ? value > min : value >= min);
+    const underMax = max == null || (level.max_exclusive ? value < max : value <= max);
+    if (overMin && underMax) return toNumber(level.score);
   }
   return null;
 }
@@ -81,7 +95,12 @@ export function describeLevelIssues(levels: ScoreLevel[]): string[] {
     const currentMin = toNumber(sorted[index].min);
     if (previousMax == null || currentMin == null) continue;
 
-    if (currentMin <= previousMax) {
+    // Hai đầu đều mở thì chính số đó không thuộc mức nào — chạm nhau ở một
+    // điểm là liền mạch, không phải chồng lấn.
+    const touchOnly = currentMin === previousMax
+      && (sorted[index].min_exclusive || sorted[index - 1].max_exclusive);
+
+    if (currentMin <= previousMax && !touchOnly) {
       issues.push(
         `Hai mức cùng phủ giá trị ${currentMin}–${previousMax}. Mức khai trước sẽ thắng.`,
       );
