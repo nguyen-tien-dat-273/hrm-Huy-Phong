@@ -237,7 +237,13 @@ with probe as (
 
     ('20261002110000_kpi_evidence',
      to_regclass('public.kpi_evidence') is not null,
-     'Minh chung KPI: admin dinh vao tieu chi, nhan vien dinh vao diem tu cham')
+     'Minh chung KPI: admin dinh vao tieu chi, nhan vien dinh vao diem tu cham'),
+
+    ('20261002120000_kpi_return_with_reason',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'performance_reviews'
+               and column_name = 'return_reason'),
+     'Tra phieu KPI ve cho nhan vien kem ly do, dong vong lap bo sung')
 
   ) as t(migration, applied, mo_ta)
 )

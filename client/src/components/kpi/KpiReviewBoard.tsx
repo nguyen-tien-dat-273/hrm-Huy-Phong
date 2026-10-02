@@ -65,6 +65,8 @@ interface Review {
   rating: string | null;
   locked_at: string | null;
   self_submitted_at: string | null;
+  returned_at: string | null;
+  return_reason: string | null;
   status: string;
 }
 
@@ -327,17 +329,28 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
    * khong sua duoc se di nho quan tri sua thang duoi database, dung thu can
    * tranh nhat voi du lieu cham diem.
    */
-  const reopenSelf = async (review: Review) => {
+  /**
+   * Trả phiếu về cho nhân viên, kèm lý do.
+   *
+   * Nhánh "Không đạt" trong luồng nghiệp vụ. Lý do là BẮT BUỘC — trả về mà
+   * không nói vì sao thì nhân viên mở phiếu ra vẫn không biết sửa gì, đúng
+   * bằng lúc chưa có nút này.
+   */
+  const returnSelf = async (review: Review, person: Profile) => {
     if (!supabase) return;
-    const ok = await confirm({
-      title: 'Mở lại bản tự chấm?',
-      message: 'Nhân viên sẽ sửa được điểm tự chấm của họ. Điểm bạn đã chấm giữ nguyên.',
-      confirmLabel: 'Mở lại',
+    const reason = window.prompt(
+      `Trả phiếu của ${person.name} về để bổ sung. Nhân viên sẽ đọc được lý do này:`,
+      review.return_reason ?? '',
+    );
+    // Bấm Hủy thì thôi; gõ rỗng thì nhắc, vì đó là nhầm chứ không phải ý muốn.
+    if (reason === null) return;
+    if (!reason.trim()) return toast('Phải nhập lý do trả về.', 'error');
+
+    const { error } = await supabase.rpc('return_kpi_self_scores', {
+      p_review: review.id, p_reason: reason,
     });
-    if (!ok) return;
-    const { error } = await supabase.rpc('reopen_kpi_self_scores', { p_review: review.id });
     if (error) return toast(describeDbError(error), 'error');
-    toast('Đã mở lại bản tự chấm.', 'success');
+    toast(`Đã trả phiếu về cho ${person.name}.`, 'success');
     await loadReviews(month);
   };
 
@@ -472,12 +485,17 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                         review.self_submitted_at ? (
                           <button
                             type="button"
-                            onClick={() => void reopenSelf(review)}
-                            title="Mở lại cho nhân viên sửa điểm tự chấm"
+                            onClick={() => void returnSelf(review, profile)}
+                            title="Trả về cho nhân viên bổ sung, kèm lý do"
                             className="rounded-lg bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 transition hover:bg-emerald-100"
                           >
-                            Đã tự chấm
+                            Đã tự chấm · trả về
                           </button>
+                        ) : review.returned_at ? (
+                          /* Đã trả về rồi: nói rõ đang chờ NHÂN VIÊN, không
+                             phải chờ người duyệt — hai trạng thái này nhìn
+                             giống nhau nếu chỉ ghi "chờ tự chấm". */
+                          <Badge className="bg-rose-50 text-rose-700">Đã trả về, chờ bổ sung</Badge>
                         ) : (
                           <Badge className="bg-amber-50 text-amber-700">Chờ tự chấm</Badge>
                         )
@@ -503,6 +521,11 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 
                 {isOpen && review && (
                   <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-3">
+                    {review.return_reason && (
+                      <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-900">
+                        <strong>Đã trả về bổ sung:</strong> {review.return_reason}
+                      </p>
+                    )}
                     {rows.length === 0 ? (
                       <p className="py-3 text-center text-xs text-slate-500">
                         Mẫu này chưa có tiêu chí nào đang bật.

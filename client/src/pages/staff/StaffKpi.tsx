@@ -37,6 +37,8 @@ interface Review {
   rating: string | null;
   locked_at: string | null;
   self_submitted_at: string | null;
+  returned_at: string | null;
+  return_reason: string | null;
 }
 
 interface Score {
@@ -110,7 +112,7 @@ export function StaffKpi() {
       setLoading(true);
       const reviewRes = await supabase
         .from('performance_reviews')
-        .select('id, period_month, template_id, final_pct, rating, locked_at, self_submitted_at')
+        .select('id, period_month, template_id, final_pct, rating, locked_at, self_submitted_at, returned_at, return_reason')
         .eq('user_id', profile.id)
         .order('period_month', { ascending: false });
 
@@ -215,12 +217,23 @@ export function StaffKpi() {
                 </span>
               </button>
 
+              {/* Quan ly tra phieu ve kem ly do. Dat NGAY TREN nut gui, truoc
+                  khi ho bam gui lan nua - de duoi cung thi ho gui lai ma chua
+                  doc, va vong lap nay lap them mot luot nua. */}
+              {isOpen && review.return_reason && !review.locked_at && (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs leading-relaxed text-rose-900">
+                  <strong>Quản lý trả về để bổ sung:</strong> {review.return_reason}
+                </p>
+              )}
+
               {isOpen && rows.length > 0 && canSelfScore && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3.5 py-2.5">
                   <p className="min-w-0 text-xs leading-relaxed text-indigo-900">
                     {missingSelf > 0
                       ? <>Còn <strong>{missingSelf} tiêu chí</strong> bạn chưa tự chấm. Chấm đủ rồi hãy gửi.</>
-                      : <>Đã chấm đủ. Gửi đi để quản lý chấm lại — <strong>gửi rồi không sửa được nữa</strong>.</>}
+                      : review.return_reason
+                        ? <>Sửa theo yêu cầu ở trên rồi gửi lại — <strong>gửi rồi không sửa được nữa</strong>.</>
+                        : <>Đã chấm đủ. Gửi đi để quản lý chấm lại — <strong>gửi rồi không sửa được nữa</strong>.</>}
                   </p>
                   <Button
                     size="sm"
@@ -235,7 +248,7 @@ export function StaffKpi() {
 
               {isOpen && rows.length > 0 && review.self_submitted_at && (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
-                  Đã gửi bản tự chấm. Muốn sửa thì nhờ quản lý mở lại.
+                  Đã gửi bản tự chấm. Muốn sửa thì nhờ quản lý trả về.
                 </p>
               )}
 
