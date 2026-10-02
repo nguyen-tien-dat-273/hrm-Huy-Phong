@@ -45,12 +45,6 @@ interface Template {
   note: string | null;
 }
 
-interface Block {
-  code: string;
-  name: string;
-  sort_order: number;
-  is_active: boolean;
-}
 
 interface RatingBand {
   id: string;
@@ -120,12 +114,8 @@ export function KpiTemplateEditor({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [criteria, setCriteria] = useState<Criteria[]>([]);
   const [bands, setBands] = useState<RatingBand[]>([]);
-  const [blocks, setBlocks] = useState<Block[]>([]);
   const [units, setUnits] = useState<{ id: string; name: string; parent_id: string | null }[]>([]);
   const [people, setPeople] = useState<{ id: string; name: string; avatar_url: string | null; unit_id: string | null; position_id: string | null }[]>([]);
-  const [blockSupported, setBlockSupported] = useState(true);
-  const [blockModal, setBlockModal] = useState(false);
-  const [blockForm, setBlockForm] = useState({ code: '', name: '' });
   const [bandDraft, setBandDraft] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [supported, setSupported] = useState(true);
@@ -148,11 +138,10 @@ export function KpiTemplateEditor({
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
-    const [templateRes, criteriaRes, bandRes, blockRes, unitRes, peopleRes, methodRes] = await Promise.all([
+    const [templateRes, criteriaRes, bandRes, unitRes, peopleRes, methodRes] = await Promise.all([
       supabase.from('kpi_position_templates').select('*').order('name'),
       supabase.from('kpi_template_criteria').select('*').order('sort_order'),
       supabase.from('kpi_rating_bands').select('*').order('sort_order'),
-      supabase.from('kpi_blocks').select('*').order('sort_order'),
       supabase.from('organization_units').select('id, name, parent_id').eq('is_active', true).order('name'),
       supabase.from('profiles').select('id, name, avatar_url, unit_id, position_id').eq('is_active', true).order('name'),
       supabase.from('kpi_score_methods').select('*').order('sort_order').order('name'),
@@ -167,15 +156,6 @@ export function KpiTemplateEditor({
     // Bảng ngưỡng có thể chưa có cột template_id (chưa chạy migration
     // 20260929110000). Khi đó bỏ qua phần ngưỡng riêng, phần còn lại vẫn chạy.
     setBands(bandRes.error ? [] : ((bandRes.data || []) as RatingBand[]));
-    // Chưa chạy migration 20260929120000 thì lùi về hai khối khai cứng trước
-    // đây, để form vẫn chọn được thay vì chỉ còn một ô rỗng.
-    setBlocks(blockRes.error || (blockRes.data || []).length === 0
-      ? [
-        { code: 'VAN_PHONG', name: 'Văn phòng', sort_order: 10, is_active: true },
-        { code: 'KINH_DOANH', name: 'Kinh doanh', sort_order: 20, is_active: true },
-      ]
-      : ((blockRes.data || []) as Block[]));
-    setBlockSupported(!blockRes.error);
     setUnits((unitRes.data || []) as typeof units);
     setPeople((peopleRes.data || []) as typeof people);
     // Chua chay migration 20260930190000 thi lui ve hai cach khai cung, va an
@@ -441,29 +421,6 @@ export function KpiTemplateEditor({
     if (!ok || !supabase) return;
     const { error } = await supabase.from('kpi_template_criteria').delete().eq('id', item.id);
     if (error) return toast('Không xoá được: ' + describeDbError(error), 'error');
-    await load();
-  };
-
-  const saveBlock = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!supabase) return;
-    const code = blockForm.code.trim().toUpperCase();
-    if (!/^[A-Z][A-Z0-9_]*$/.test(code)) {
-      return toast('Mã khối chỉ gồm chữ hoa không dấu, số và gạch dưới.', 'warning');
-    }
-    setSaving(true);
-    const { error } = await supabase.from('kpi_blocks').insert({
-      code,
-      name: blockForm.name.trim(),
-      sort_order: (blocks.at(-1)?.sort_order ?? 0) + 10,
-    });
-    setSaving(false);
-    if (error) return toast('Không tạo được khối: ' + describeDbError(error), 'error');
-    toast('Đã thêm khối.', 'success');
-    setBlockModal(false);
-    setBlockForm({ code: '', name: '' });
-    // Chọn luôn khối vừa tạo: người dùng thêm khối chính vì đang cần nó.
-    setTemplateForm((prev) => ({ ...prev, block_code: code }));
     await load();
   };
 
@@ -782,57 +739,30 @@ export function KpiTemplateEditor({
               onChange={(e) => setTemplateForm({ ...templateForm, code: e.target.value.toUpperCase() })}
             />
           </div>
-          {/* ---- Phong ban ap bo KPI nay ----
-               Khai phong la moi nguoi trong phong do dung chung bo nay.
-               GIAU khi dang sua bo cua RIENG mot nguoi: chon nham mot phong o
-               day la bo ca phong bong dung chuyen sang dung bo cua ca nhan
-               do, khong ai bao gi het. */}
-          {!scopeTemplateId && (
-            <div>
-              <Select
-                label="Phòng ban áp dụng"
-                value={templateForm.unit_id}
-                onChange={(e) => setTemplateForm({ ...templateForm, unit_id: e.target.value })}
-              >
-                <option value="">Chưa gán phòng ban</option>
-                {unitOptions.map((row) => (
-                  <option key={row.unit.id} value={row.unit.id}>{row.label}</option>
-                ))}
-              </Select>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
-                {templateForm.unit_id
-                  ? `${peopleInUnit(templateForm.unit_id).length} nhân sự trong phòng này sẽ dùng chung bộ KPI này.`
-                  : 'Để trống thì bộ KPI này chỉ áp cho ai được gán riêng.'}
-              </p>
-            </div>
-          )}
+          {/* ---- Phòng ban / bộ phận áp bộ KPI này ----
+               Thay cho ô "Khối" cũ. Khối chỉ là hai cái tên chung chung do
+               bộ KPI gốc để lại; cơ cấu thật của công ty nằm ở Cơ cấu tổ
+               chức, và đó mới là thứ người dùng nghĩ tới khi hỏi "bộ này của
+               phòng nào". Danh sách thụt đầu dòng đúng theo cây. */}
+          <div>
+            <Select
+              label="Phòng ban / bộ phận áp dụng"
+              value={templateForm.unit_id}
+              onChange={(e) => setTemplateForm({ ...templateForm, unit_id: e.target.value })}
+            >
+              <option value="">Không gán phòng ban (chỉ ai được gán riêng)</option>
+              {unitOptions.map((row) => (
+                <option key={row.unit.id} value={row.unit.id}>{row.label}</option>
+              ))}
+            </Select>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+              {templateForm.unit_id
+                ? `Mọi người trong phòng này dùng bộ KPI đó — hiện ${peopleInUnit(templateForm.unit_id).length} nhân sự. Ai đã được gán bộ riêng thì vẫn giữ bộ của họ.`
+                : 'Để trống thì bộ này chỉ áp cho người được gán riêng — đúng cho bộ KPI của một cá nhân.'}
+            </p>
+          </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div>
-              <Select
-                label="Khối"
-                value={templateForm.block_code}
-                onChange={(e) => setTemplateForm({ ...templateForm, block_code: e.target.value })}
-              >
-                {blocks.filter((block) => block.is_active || block.code === templateForm.block_code)
-                  .map((block) => (
-                    <option key={block.code} value={block.code}>{block.name}</option>
-                  ))}
-              </Select>
-              {blockSupported ? (
-                <button
-                  type="button"
-                  onClick={() => setBlockModal(true)}
-                  className="mt-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                >
-                  + Thêm khối mới
-                </button>
-              ) : (
-                <p className="mt-1.5 text-xs text-slate-400">
-                  Chạy migration 20260929120000 để tự thêm khối.
-                </p>
-              )}
-            </div>
+          <div>
             <div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5">
                 <p className="text-xs font-semibold text-slate-700">Mức lương KPI khai ở đâu?</p>
@@ -942,33 +872,6 @@ export function KpiTemplateEditor({
       </Modal>
 
       {/* ---- Modal thêm khối ---- */}
-      <Modal open={blockModal} onClose={() => setBlockModal(false)} title="Thêm khối nghiệp vụ">
-        <form onSubmit={saveBlock} className="space-y-4">
-          <p className="text-xs leading-relaxed text-slate-500">
-            Khối dùng để nhóm các bộ KPI theo mảng nghiệp vụ — Văn phòng, Kinh doanh, Kho, Sản xuất…
-            Trước đây danh sách này nằm cứng trong code, giờ tự khai được.
-          </p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              label="Tên khối" required
-              placeholder="VD: Kho vận"
-              value={blockForm.name}
-              onChange={(e) => setBlockForm({ ...blockForm, name: e.target.value })}
-            />
-            <Input
-              label="Mã (viết hoa, không dấu)" required
-              placeholder="VD: KHO_VAN"
-              value={blockForm.code}
-              onChange={(e) => setBlockForm({ ...blockForm, code: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') })}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setBlockModal(false)}>Hủy</Button>
-            <Button type="submit" disabled={saving}>{saving ? 'Đang lưu…' : 'Thêm khối'}</Button>
-          </div>
-        </form>
-      </Modal>
-
       {/* ---- Modal tiêu chí + thang điểm ---- */}
       <Modal open={criteriaModal !== null} onClose={() => setCriteriaModal(null)} title={editingCriteria ? 'Sửa tiêu chí' : 'Thêm tiêu chí'} size="lg">
         <form onSubmit={saveCriteria} className="space-y-4">
