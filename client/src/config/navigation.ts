@@ -113,6 +113,27 @@ export interface AdminNavGroup {
  * xuat hien trong `ADMIN_NAV_ITEMS`, vi them mot muc moi vao giua mang do se
  * am tham dao lon ca sidebar.
  */
+/**
+ * Moi quyen mo duoc nhung module nao - suy thang tu `ADMIN_NAV_ITEMS`.
+ *
+ * Nhan quyen truoc day viet tay ("Quan ly User", "Cham cong") va lech han voi
+ * ten module nguoi dung nhin thay ngoai man chon ("To chuc & Nhan su", "Thoi
+ * gian & Nghi phep"). Nguoi cap quyen phai tu doan tich cai nao thi mo ra cai
+ * gi - doan sai thi hoac khoa mat viec cua nguoi ta, hoac mo rong hon minh
+ * tuong.
+ *
+ * Tinh tu menu chu khong chep tay lan nua: them mot muc moi vao menu la bang
+ * nay tu dung theo, khong co duong cho hai noi noi hai dieu khac nhau.
+ */
+export const MODULES_BY_PERMISSION: Partial<Record<AdminPermission, string[]>> = (() => {
+  const map: Partial<Record<AdminPermission, string[]>> = {};
+  for (const item of ADMIN_NAV_ITEMS) {
+    const list = map[item.permission] ?? (map[item.permission] = []);
+    if (!list.includes(item.group)) list.push(item.group);
+  }
+  return map;
+})();
+
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     name: 'Tổng quan', icon: LayoutDashboard, hint: 'Dashboard và báo cáo toàn công ty',

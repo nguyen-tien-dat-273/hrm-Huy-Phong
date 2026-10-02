@@ -25,6 +25,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { ADMIN_FUNCTION_CODES, ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
+import { MODULES_BY_PERMISSION } from '@/config/navigation';
 import type {
   EmploymentStatus, JobPosition, OrganizationUnit, OrganizationUnitType, Profile,
 } from '@/types';
@@ -2253,8 +2254,11 @@ export function AdminOrganization() {
                   {/* Quyen khai ngay tai day: vi tri la NOI DUY NHAT cap quyen
                       quan tri, tao xong ma khong cap thi phai nho quay lai. */}
                   <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="mt-2">
-                    <p className="text-[11px] font-semibold text-slate-500">Quyền vào khu quản trị</p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
+                    <p className="text-[11px] font-semibold text-slate-500">Mở được module nào trong khu quản trị</p>
+                    {/* Mot hang mot quyen, khong con chip nam ngang: mot
+                        quyen mo toi ba module, nhet het vao mot chip thi chip
+                        dai hon ca o nhap ten vi tri. */}
+                    <div className="mt-1 space-y-1">
                       {ADMIN_PERMISSIONS.map((permission) => {
                         const on = item.permissions.includes(permission);
                         return (
@@ -2276,18 +2280,37 @@ export function AdminOrganization() {
                             })}
                             aria-pressed={on}
                             title={PERMISSION_LABELS[permission].desc}
-                            className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${
-                              on ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition ${
+                              on ? 'bg-indigo-50 ring-1 ring-indigo-300' : 'bg-slate-50 hover:bg-slate-100'
                             }`}
                           >
-                            {PERMISSION_LABELS[permission].label}
+                            <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${
+                              on ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white'
+                            }`}
+                            >
+                              {on && <Check className="h-3 w-3" />}
+                            </span>
+                            <span className="min-w-0">
+                              {/* Ten module dung nhu ngoai man chon dung
+                                  truoc; ten quyen chi la ma ky thuat nen de
+                                  xuong duoi. Mot quyen mo nhieu module thi
+                                  liet ke het - giau bot la nguoi cap tuong
+                                  minh mo it hon thuc te. */}
+                              <span className={`block text-[11px] font-semibold leading-snug ${on ? 'text-indigo-900' : 'text-slate-700'}`}>
+                                {(MODULES_BY_PERMISSION[permission] ?? [PERMISSION_LABELS[permission].label]).join(' · ')}
+                              </span>
+                              <span className="block text-[10px] leading-snug text-slate-400">
+                                {PERMISSION_LABELS[permission].desc}
+                              </span>
+                            </span>
                           </button>
                         );
                       })}
                     </div>
                     {item.permissions.length === 0 && (
                       <p className="mt-1 text-[11px] text-slate-400">
-                        Không tích gì thì vị trí này chỉ dùng khu nhân viên.
+                        Không tích gì thì vị trí này chỉ dùng khu nhân viên. Tên ở đây
+                        đúng bằng tên module ngoài màn chọn.
                       </p>
                     )}
                   </fieldset>
@@ -2323,7 +2346,7 @@ export function AdminOrganization() {
           <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Quyền module mặc định</legend>
             <StaffFunctionSummary />
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">{ADMIN_PERMISSIONS.map((permission) => <label key={permission} className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-white/70"><input type="checkbox" checked={positionForm.permissions.includes(permission)} onChange={(event) => setPositionForm({ ...positionForm, permissions: event.target.checked ? [...positionForm.permissions, permission] : positionForm.permissions.filter((item) => item !== permission) })} className="mt-0.5 h-4 w-4 accent-indigo-600" /><span className="min-w-0"><span className="font-medium">{PERMISSION_LABELS[permission].label}</span><span className="block text-xs text-slate-500">{PERMISSION_LABELS[permission].desc}</span><PermissionFunctionList permission={permission} compact /></span></label>)}</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">{ADMIN_PERMISSIONS.map((permission) => <label key={permission} className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-white/70"><input type="checkbox" checked={positionForm.permissions.includes(permission)} onChange={(event) => setPositionForm({ ...positionForm, permissions: event.target.checked ? [...positionForm.permissions, permission] : positionForm.permissions.filter((item) => item !== permission) })} className="mt-0.5 h-4 w-4 accent-indigo-600" /><span className="min-w-0"><span className="font-medium">{(MODULES_BY_PERMISSION[permission] ?? [PERMISSION_LABELS[permission].label]).join(' · ')}</span><span className="block text-xs text-slate-500">{PERMISSION_LABELS[permission].desc}</span><PermissionFunctionList permission={permission} compact /></span></label>)}</div>
             <FunctionPermissionPicker selected={positionForm.function_permissions} onChange={(function_permissions) => setPositionForm({ ...positionForm, function_permissions, permissions: Array.from(new Set([...positionForm.permissions, ...function_permissions.map((code) => ADMIN_FUNCTIONS[code].module)])) })} disabled={!canManagePositionPermissions || !positionFunctionPermissionsSupported} />
             {!canManagePositionPermissions && <p className="mt-2 text-xs text-amber-700">Chỉ Admin/CEO mới được thay đổi mẫu quyền theo vị trí.</p>}
             {!positionPermissionsSupported && <p className="mt-2 text-xs text-amber-700">Hãy chạy migration mẫu quyền theo vị trí trên Supabase để bật chức năng này.</p>}
@@ -2420,7 +2443,9 @@ export function AdminOrganization() {
                       className="mt-0.5 h-4 w-4 accent-indigo-600"
                     />
                     <span className="min-w-0">
-                      <span className="font-medium">{PERMISSION_LABELS[permission].label}</span>
+                      <span className="font-medium">
+                        {(MODULES_BY_PERMISSION[permission] ?? [PERMISSION_LABELS[permission].label]).join(' · ')}
+                      </span>
                       <span className="block text-xs text-slate-500">
                         {inherited ? 'Đã có sẵn từ vị trí' : PERMISSION_LABELS[permission].desc}
                       </span>
