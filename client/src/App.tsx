@@ -9,6 +9,7 @@ import { SettingsProvider } from '@/contexts/SettingsContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { CommandPalette } from '@/components/CommandPalette';
 import { InstallPrompt } from '@/components/InstallPrompt';
+import { PhoneNotificationPrompt } from '@/components/PhoneNotificationPrompt';
 import { hasAdminFunction, hasAnyAdminPermission, hasPermission, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import { AdminLayout } from '@/components/layouts/AdminLayout';
 import { StaffLayout } from '@/components/layouts/StaffLayout';
@@ -108,6 +109,10 @@ function PublicRoute({ children }: { children: ReactNode }) {
     if (profile.must_change_password) return <Navigate to="/change-password" replace />;
     if (profile.role === 'staff' && !hasAnyAdminPermission(profile)) return <Navigate to="/staff/dashboard" replace />;
     if (profile.role === 'teamlead') return <Navigate to="/admin/assignments" replace />;
+    // Vai trò tùy chỉnh có thể chỉ được cấp một module quản trị và không có
+    // quyền xem Tổng quan. Đi qua /admin để chọn đúng trang đầu tiên họ được
+    // phép mở, tránh vòng chuyển hướng thừa qua một trang bị chặn.
+    if (profile.role !== 'admin' && profile.role !== 'ceo') return <Navigate to="/admin" replace />;
     return <Navigate to="/admin/overview" replace />;
   }
 
@@ -150,8 +155,12 @@ function AdminHomeRedirect() {
   if (profile?.role === 'admin' || profile?.role === 'ceo') return <Navigate to="/admin/overview" replace />;
   // Trưởng nhóm: mục chính là Giao việc.
   if (profile?.role === 'teamlead') return <Navigate to="/admin/assignments" replace />;
-  const target = ADMIN_NAV_ITEMS.find(({ permission, fullAdminOnly, functionCode }) =>
-    !fullAdminOnly && hasPermission(profile, permission) && (!functionCode || hasAdminFunction(profile, functionCode)),
+  const target = ADMIN_NAV_ITEMS.find(({ permission, anyPermissions, fullAdminOnly, functionCode }) =>
+    !fullAdminOnly
+    && (anyPermissions
+      ? anyPermissions.some((item) => hasPermission(profile, item))
+      : hasPermission(profile, permission))
+    && (!functionCode || hasAdminFunction(profile, functionCode)),
   );
   return <Navigate to={target ? target.to : '/staff/dashboard'} replace />;
 }
@@ -181,9 +190,11 @@ function AppRoutes() {
       <Route path="/admin/projects/:id" element={admin('projects', <AdminProjectDetail />)} />
       <Route path="/admin/reports" element={admin('reports', <AdminReports />)} />
       <Route path="/admin/assignments" element={admin('attendance', <AdminAssignments />)} />
+      <Route path="/admin/attendance" element={admin('attendance', <AdminAttendance />)} />
       <Route path="/admin/attendance-devices" element={admin('attendance', <AdminAttendanceDevices />, { fullAdminOnly: true })} />
       <Route path="/admin/timesheet" element={admin('attendance', <AdminTimesheet />, { denyTeamlead: true })} />
       <Route path="/admin/attendance-settings" element={admin('attendance', <AdminAttendanceSettings />, { denyTeamlead: true })} />
+      <Route path="/admin/work-locations" element={admin('settings', <AdminNexusCenter section="locations" />, { functionCode: 'admin.work_locations' })} />
       {/* Lương gắn route theo quyền attendance nhưng TRANG tự chặn thêm bằng
           isFullAdmin — lead có quyền chấm công vào chỉ thấy thông báo khóa.
           RLS phía database mới là hàng rào thật. */}
@@ -204,9 +215,10 @@ function AppRoutes() {
       {/* Dia chi cu cua "Gan KPI": gio nam ngay trong man bo KPI nhan su. */}
       <Route path="/admin/performance/schemes" element={<Navigate to="/admin/performance" replace />} />
       <Route path="/admin/performance/review" element={admin('reports', <AdminNexusCenter section="kpiReview" />, { functionCode: 'admin.performance_manage' })} />
-      {/* Trang cờ tính năng đã gỡ: không mã nào đọc `feature_flags` để
-          bật/tắt chức năng, nên nó chỉ là công tắc không nối vào đâu. */}
-      <Route path="/admin/feature-flags" element={<Navigate to="/admin/settings" replace />} />
+      <Route path="/admin/performance/report" element={admin('reports', <AdminNexusCenter section="kpiReport" />, { functionCode: 'admin.performance_manage' })} />
+      {/* Cờ GPS được quản lý ngay trong Địa điểm chấm công. Các cờ kỹ thuật
+          cũ không còn là module người dùng độc lập. */}
+      <Route path="/admin/feature-flags" element={<Navigate to="/admin/work-locations" replace />} />
       <Route path="/admin/worklog" element={admin('reports', <AdminWorklog />)} />
       <Route path="/admin/settings" element={admin('settings', <AdminSettings />)} />
       {/* Nhật ký hệ thống — quyền module + chức năng nâng cao; RLS là hàng rào cuối. */}
@@ -257,6 +269,9 @@ export default function App() {
                 <CommandPalette />
                 {/* Dải mời cài app — chỉ hiện khi trình duyệt thực sự cài được. */}
                 <InstallPrompt />
+                {/* Xin quyền bằng thao tác rõ ràng của người dùng; trình duyệt
+                    không cho phép hệ thống tự bật thông báo. */}
+                <PhoneNotificationPrompt />
               </ViewModeProvider>
             </SettingsProvider>
           </AuthProvider>

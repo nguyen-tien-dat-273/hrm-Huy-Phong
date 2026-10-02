@@ -3,7 +3,7 @@ import {
   BarChart3, BookOpen, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, MapPinned, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
-  ArrowLeftRight, Receipt, Scale, Target, ToggleLeft, UserSearch, Users, Wallet, Cpu,
+  ArrowLeftRight, Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
 
@@ -41,10 +41,12 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Công việc & Dự án', keywords: 'giao viec phan cong xac nhan' },
   { to: '/admin/worklog', label: 'Nhật ký giờ', description: 'Đối chiếu thời gian thực tế theo người và tác vụ', icon: NotebookPen, permission: 'reports', group: 'Công việc & Dự án', keywords: 'gio cong worklog timesheet' },
 
+  { to: '/admin/attendance', label: 'Duyệt chấm công', description: 'Kiểm tra check-in, check-out và xác nhận ngày công', icon: ClipboardCheck, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'duyet cham cong check in check out ngay cong' },
   { to: '/admin/attendance-devices', label: 'Máy chấm công', description: 'Kết nối Ronald Jack, ánh xạ nhân viên và theo dõi đồng bộ', icon: Cpu, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'ronald jack zkteco van tay thiet bi', fullAdminOnly: true },
   { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
   { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
   { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
+  { to: '/admin/work-locations', label: 'Địa điểm chấm công', description: 'Điểm GPS, bán kính, Wi-Fi và đơn vị được phép chấm công', icon: MapPinned, permission: 'settings', group: 'Thời gian & Đơn từ', keywords: 'dia diem gps geofence wifi bssid cham cong', functionCode: 'admin.work_locations', hideForTeamlead: true },
 
   // Module lương tách thành các mục con để đặt dấu trang được, tìm nhanh thấy
   // được, và cấp quyền riêng từng phần. Thứ tự theo trình tự chốt kỳ trong
@@ -53,7 +55,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/payroll/inputs', label: 'Số liệu lương tháng', description: 'Giờ tăng ca, sản lượng và doanh số của kỳ lương', icon: SlidersHorizontal, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tang ca san luong doanh so so lieu thang', functionCode: 'admin.payroll_inputs' },
   { to: '/admin/payroll', label: 'Bảng lương', description: 'Tính, duyệt, chi trả và xem phiếu lương từng người', icon: Wallet, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong', functionCode: 'admin.payroll' },
   { to: '/admin/payroll/adjustments', label: 'Điều chỉnh lương', description: 'Truy lĩnh, truy thu cho sai sót của kỳ đã khóa', icon: ArrowLeftRight, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'truy linh truy thu dieu chinh sai sot ky truoc', functionCode: 'admin.payroll_adjustments' },
-  { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: 'Khoản cộng, khoản trừ và công thức tính', icon: Receipt, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'khoan luong phu cap thuong phat tam ung cong thuc', functionCode: 'admin.payroll_components' },
+  { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: 'Danh sách khoản cộng, khoản trừ và mô tả sử dụng', icon: Receipt, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'khoan luong phu cap thuong phat tam ung mo ta', functionCode: 'admin.payroll_components' },
   { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Ngày công chuẩn, bảo hiểm và giảm trừ thuế', icon: Scale, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'ngay cong chuan bao hiem thue tncn giam tru tham so', functionCode: 'admin.payroll_settings' },
 
   { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
@@ -64,6 +66,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   // tu va tu nho minh dang do o dau, trong khi he thong biet thua.
   { to: '/admin/performance', label: 'Bộ KPI nhân sự', description: 'Xuống phòng ban, mở một người, khai bộ KPI riêng của họ', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi bo tieu chi cach tinh diem phong ban nhan su rieng', functionCode: 'admin.performance_manage' },
   { to: '/admin/performance/review', label: 'Chấm điểm theo tháng', description: 'Bảng tổng hợp đánh giá KPI của kỳ, nhập điểm và khoá kỳ', icon: ClipboardCheck, permission: 'reports', group: 'KPI', keywords: 'cham diem ky thang bang tong hop danh gia kpi khoa phieu', functionCode: 'admin.performance_manage' },
+  { to: '/admin/performance/report', label: 'Báo cáo KPI tháng', description: 'Nhiều kỳ cạnh nhau: xu hướng từng người và xuất Excel', icon: BarChart3, permission: 'reports', group: 'KPI', keywords: 'bao cao kpi thang thong ke xu huong xuat excel', functionCode: 'admin.performance_manage' },
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },
