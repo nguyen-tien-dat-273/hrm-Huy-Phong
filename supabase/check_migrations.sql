@@ -269,6 +269,8 @@ with probe as (
 
   ) as t(migration, applied, mo_ta)
 )
+select * from (
+
 select
   case when applied then 'DA CHAY' else '>>> CHUA CHAY' end as trang_thai,
   migration,
@@ -312,5 +314,14 @@ select
                   where code in ('QUY_CONG_DOAN', 'PHI_CONG_DOAN', 'UNION_FEE') and is_active)
     || ' khoan cong doan. Nen chi bat mot - gan hai khoan cho cung mot nguoi la tru hai lan.'
 
--- Chua chay len dau: doc tu tren xuong la ra viec phai lam.
-order by 1 desc, 2;
+-- Chua chay LEN DAU: doc tu tren xuong la ra viec phai lam.
+--
+-- Ban cu `order by 1 desc` sap theo chuoi trang thai, ma '>>> CHUA CHAY' bat
+-- dau bang '>' (62) con 'DA CHAY' bat dau bang 'D' (68) - `desc` day DA CHAY
+-- len tren, dung nguoc y dinh, va viec phai lam nam tan cuoi phai cuon moi
+-- thay.
+--
+-- Boc ca UNION vao mot subquery de sap bang BIEU THUC: order by cua UNION chi
+-- nhan ten cot hoac so thu tu, khong nhan bieu thuc.
+) as ket_qua
+order by (case when trang_thai = 'DA CHAY' then 1 else 0 end), migration;
