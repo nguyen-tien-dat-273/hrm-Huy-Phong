@@ -23,6 +23,21 @@
 with probe as (
   select * from (values
 
+    -- --- Luong van hanh loi (thang 9, dot dau) -----------------------------
+    -- Hai file nay truoc day khong duoc do, nen production co the dut giua
+    -- file ma bang kiem tra van im lang. Do TAT CA object quan trong o cuoi
+    -- moi file de phat hien dung truong hop da gap tren production.
+    ('20260909090000_core_flow_integration',
+     to_regclass('public.timesheet_periods') is not null
+       and to_regclass('public.project_role_definitions') is not null,
+     'Ky bang cong va dinh nghia vai tro/quyen trong du an'),
+
+    ('20260909110000_attendance_sessions_leave_ledger',
+     to_regclass('public.attendance_sessions') is not null
+       and to_regclass('public.leave_ledger') is not null
+       and to_regclass('public.leave_cancellation_requests') is not null,
+     'Phien vao/ra, so phep va yeu cau huy don da duyet'),
+
     -- --- Nen tang luong (thang 9, dot dau) ---------------------------------
     ('20260921110000_merge_hours_setting',
      not exists (select 1 from information_schema.columns

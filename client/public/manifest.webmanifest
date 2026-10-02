@@ -48,10 +48,10 @@
       "description": "Xem phiếu lương tháng này."
     },
     {
-      "name": "Nghỉ phép",
-      "short_name": "Nghỉ phép",
+      "name": "Đơn từ của tôi",
+      "short_name": "Đơn từ",
       "url": "/staff/leave",
-      "description": "Gửi đơn nghỉ phép."
+      "description": "Gửi và theo dõi nghỉ phép, đi muộn, về sớm và làm thêm."
     }
   ]
 }

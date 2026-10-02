@@ -25,6 +25,7 @@ import { ProjectDocuments } from '@/components/ProjectDocuments';
 import { ProjectEventsPanel } from '@/components/ProjectEventsPanel';
 import { GanttChart } from '@/components/GanttChart';
 import { estimateRatio, fetchTaskTotals, formatHours as formatWorkHours } from '@/lib/worklog';
+import { notifyUser } from '@/lib/assignments';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { KANBAN_COLUMNS, PRIORITY_CONFIG, TASK_STATUSES, PROJECT_STATUS_CONFIG, MEMBER_ROLE_CONFIG, formatDate, isOverdue, getTodayString } from '@/lib/utils';
@@ -159,6 +160,14 @@ export function AdminProjectDetail() {
       if (error) {
         toast('Cập nhật tác vụ thất bại', 'error');
       } else {
+        if (taskForm.assignee_id && taskForm.assignee_id !== editingTask.assignee_id && taskForm.assignee_id !== profile?.id) {
+          await notifyUser(
+            taskForm.assignee_id,
+            'Bạn được giao một tác vụ dự án',
+            `${taskForm.title}${project?.name ? ` · ${project.name}` : ''}`,
+            'project_task_assigned',
+          );
+        }
         toast('Cập nhật tác vụ thành công!', 'success');
         setTaskModalOpen(false);
         loadData(id!);
@@ -173,6 +182,14 @@ export function AdminProjectDetail() {
       if (error) {
         toast('Tạo tác vụ thất bại', 'error');
       } else {
+        if (taskForm.assignee_id && taskForm.assignee_id !== profile?.id) {
+          await notifyUser(
+            taskForm.assignee_id,
+            'Bạn có tác vụ dự án mới',
+            `${taskForm.title}${project?.name ? ` · ${project.name}` : ''}`,
+            'project_task_assigned',
+          );
+        }
         toast('Tạo tác vụ thành công!', 'success');
         setTaskModalOpen(false);
         loadData(id!);

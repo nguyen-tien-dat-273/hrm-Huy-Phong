@@ -30,6 +30,7 @@ import { formatDate } from '@/lib/utils';
 import { fetchOwnWorkerProfile, type OwnWorkerProfile } from '@/lib/workerProfile';
 import { WorkerProfileCards } from '@/components/profile/WorkerProfileCards';
 import { OrgContact } from '@/components/OrgContact';
+import { PhoneNotificationCard } from '@/components/PhoneNotificationCard';
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Quản trị viên',
@@ -220,6 +221,8 @@ export function ProfilePage() {
           </div>
         </CardContent>
       </Card>
+
+      <PhoneNotificationCard />
 
       {/* ---- Chỉ đọc ---- */}
       <Card>

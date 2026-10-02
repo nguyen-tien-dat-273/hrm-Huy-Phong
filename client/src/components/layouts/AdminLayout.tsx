@@ -13,6 +13,7 @@ import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead, type AdminPer
 import { useAppSettings } from '@/contexts/SettingsContext';
 import type { Notification } from '@/types';
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
+import { notificationRoute } from '@/lib/notificationRoutes';
 
 /**
  * Menu đã vượt 12 mục — chia 3 cụm theo mạch công việc để quét mắt nhanh:
@@ -57,17 +58,24 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   const canReviewAssignments = hasPermission(profile, 'attendance');
 
-  useEffect(() => {
-    if (profile) {
-      supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(10)
-        .then(({ data }) => { if (data) setNotifications(data); });
-    }
-  }, [profile, location.pathname]);
+  const loadNotifications = async () => {
+    if (!profile) return;
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (data) setNotifications(data);
+  };
+
+  useEffect(() => { void loadNotifications(); }, [profile, location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useRealtimeSync(
+    profile ? [{ table: 'notifications', filter: `user_id=eq.${profile.id}` }] : [],
+    loadNotifications,
+    { enabled: !!profile, channelKey: `admin-notifications-${profile?.id ?? 'anonymous'}` },
+  );
 
   const loadPendingAssignments = async () => {
     const { count } = await supabase
@@ -194,6 +202,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     if (!profile) return;
     await supabase.from('notifications').update({ is_read: true }).eq('id', id).eq('user_id', profile.id);
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
+  };
+
+  const openNotification = async (notification: Notification) => {
+    await markNotificationRead(notification.id);
+    setNotifOpen(false);
+    navigate(notificationRoute(notification.type));
   };
 
   const currentPage = navItems
@@ -468,7 +482,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                       <p className="text-sm text-slate-400 text-center py-10">Không có thông báo mới</p>
                     ) : (
                       unreadNotifications.map((n) => (
-                        <button type="button" key={n.id} onClick={() => void markNotificationRead(n.id)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-blue-50/40">
+                        <button type="button" key={n.id} onClick={() => void openNotification(n)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-blue-50/40">
                           <div className="flex items-center gap-2">
                             {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
                             <p className="text-sm font-medium text-slate-800">{n.title}</p>

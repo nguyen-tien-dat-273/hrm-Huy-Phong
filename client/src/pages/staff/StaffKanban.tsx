@@ -21,6 +21,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { notifyUser } from '@/lib/assignments';
 import { KANBAN_COLUMNS, PRIORITY_CONFIG, formatDate, isOverdue } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, Project, Profile, ProjectMember, MemberRole, ProjectRoleDefinition } from '@/types';
 
@@ -215,6 +216,16 @@ export function StaffKanban() {
       if (error) {
         toast('Cập nhật tác vụ thất bại', 'error');
       } else {
+        const newAssigneeId = createForm.assignee_id || profile?.id;
+        if (newAssigneeId && newAssigneeId !== editingTask.assignee_id && newAssigneeId !== profile?.id) {
+          const taskProject = projects.find((project) => project.id === editingTask.project_id);
+          await notifyUser(
+            newAssigneeId,
+            'Bạn được giao một tác vụ dự án',
+            `${createForm.title}${taskProject?.name ? ` · ${taskProject.name}` : ''}`,
+            'project_task_assigned',
+          );
+        }
         toast('Cập nhật tác vụ thành công!', 'success');
         setCreateModalOpen(false);
         setEditingTask(null);
@@ -246,6 +257,16 @@ export function StaffKanban() {
     if (error) {
       toast('Tạo tác vụ thất bại', 'error');
     } else {
+      const newAssigneeId = createForm.assignee_id || profile?.id;
+      if (newAssigneeId && newAssigneeId !== profile?.id) {
+        const taskProject = projects.find((project) => project.id === createForm.project_id);
+        await notifyUser(
+          newAssigneeId,
+          'Bạn có tác vụ dự án mới',
+          `${createForm.title}${taskProject?.name ? ` · ${taskProject.name}` : ''}`,
+          'project_task_assigned',
+        );
+      }
       toast('Tạo tác vụ thành công!', 'success');
       setCreateModalOpen(false);
       setCreateForm({ title: '', description: '', project_id: '', assignee_id: '', start_date: '', due_date: '', priority: 'medium' });

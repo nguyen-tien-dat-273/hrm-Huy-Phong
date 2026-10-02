@@ -27,6 +27,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatDate, getTodayString } from '@/lib/utils';
+import { fetchApproverIds, notifyUser, notifyUsers } from '@/lib/assignments';
 
 type RequestType = 'LATE_ARRIVAL' | 'EARLY_LEAVE' | 'OVERTIME';
 type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
@@ -142,6 +143,13 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
     setBusy(false);
 
     if (error) return toast(describeDbError(error), 'error');
+    const approverIds = await fetchApproverIds('attendance');
+    await notifyUsers(
+      approverIds.filter((id) => id !== profile.id),
+      `Có đơn ${TYPE_LABEL[draft.request_type].toLowerCase()} mới`,
+      `${profile.name} gửi đơn cho ngày ${formatDate(draft.work_date)}.`,
+      'attendance_request_created',
+    );
     toast('Đã gửi đơn.', 'success');
     setFormOpen(false);
     setDraft({ ...draft, reason: '' });
@@ -157,6 +165,12 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
       .eq('id', row.id);
     setBusy(false);
     if (error) return toast(describeDbError(error), 'error');
+    await notifyUser(
+      row.user_id,
+      status === 'APPROVED' ? `Đơn ${TYPE_LABEL[row.request_type].toLowerCase()} đã được duyệt` : `Đơn ${TYPE_LABEL[row.request_type].toLowerCase()} bị từ chối`,
+      `${TYPE_LABEL[row.request_type]} ngày ${formatDate(row.work_date)} ${status === 'APPROVED' ? 'đã được chấp thuận.' : 'không được chấp thuận.'}`,
+      status === 'APPROVED' ? 'attendance_request_approved' : 'attendance_request_rejected',
+    );
     toast(status === 'APPROVED' ? 'Đã duyệt đơn.' : 'Đã từ chối đơn.', 'success');
     await load();
   };

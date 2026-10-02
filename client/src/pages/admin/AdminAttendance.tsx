@@ -12,7 +12,7 @@ import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasAdminFunction } from '@/lib/permissions';
+import { isTeamlead } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatTime, formatDateTime, getTodayString } from '@/lib/utils';
@@ -29,10 +29,9 @@ export function AdminAttendance() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
-  // Màn "Thiết lập công & chấm công" đã bị bỏ khỏi menu/route (chỉ còn dùng
-  // dữ liệu từ máy chấm công) — trang này (Duyệt chấm công) cũng không còn
-  // route trỏ tới nữa, giữ lại làm mã orphan phòng khi cần khôi phục sau.
-  const canConfigureAttendance = false;
+  // Trưởng nhóm duyệt được ngày công của phạm vi mình quản lý nhưng không đổi
+  // quy tắc giờ làm dùng chung toàn công ty — khớp với guard của route cài đặt.
+  const canConfigureAttendance = !isTeamlead(profile);
 
   useEffect(() => {
     loadAttendance();
