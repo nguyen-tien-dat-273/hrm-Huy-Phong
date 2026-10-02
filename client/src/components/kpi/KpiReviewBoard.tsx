@@ -15,7 +15,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronRight, Lock, LockKeyhole, Plus, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, Lock, LockKeyhole, Plus, Printer, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -30,6 +30,8 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatVND } from '@/lib/utils';
 import { isAutoScorable, scoreFromLevels, type ScoreLevel } from '@/lib/kpiScoring';
+import { buildSheetRows } from '@/lib/kpiSheet';
+import { KpiSheetTable } from '@/components/kpi/KpiSheetTable';
 import type { Profile } from '@/types';
 
 
@@ -86,6 +88,7 @@ interface Score {
   review_id: string;
   criteria_id: string;
   self_score: number | null;
+  self_actual_value: number | null;
   manager_score: number | null;
   not_applicable: boolean;
   not_applicable_reason: string | null;
@@ -364,6 +367,108 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     if (error) return toast(describeDbError(error), 'error');
     toast(`Đã trả phiếu về cho ${person.name}.`, 'success');
     await loadReviews(month);
+  };
+
+  /**
+   * In phiếu KPI của một người, đúng bộ cột của mẫu giấy công ty đang dùng.
+   *
+   * Mở cửa sổ riêng với một tài liệu HTML tự chứa thay vì dựng @media print
+   * cho cả ứng dụng: phiếu này có bố cục riêng, nhét vào CSS in dùng chung
+   * thì mỗi lần sửa giao diện lại phải nhớ kiểm tra bản in.
+   */
+  const printSheet = (person: Profile, review: Review) => {
+    const template = review.template_id ? templateById.get(review.template_id) : null;
+    const rows = template ? (criteriaByTemplate.get(template.id) || []) : [];
+    const reviewScores = scores.filter((item) => item.review_id === review.id);
+
+    const esc = (value: unknown) => String(value ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // Dung chung ham voi bang tren man: ban in va ban xem lech nhau mot cot
+    // la nguoi ky giay va nguoi xem man hinh doc hai con so khac nhau.
+    const body = buildSheetRows(rows, reviewScores).map((row) => `<tr>
+        <td class="c">${row.index}</td>
+        <td>${esc(row.name)}</td>
+        <td class="c">${row.weight}%</td>
+        <td class="c">${esc(row.plan)}</td>
+        <td class="c">${esc(row.selfActual)}</td>
+        <td class="c">${esc(row.managerActual)}</td>
+        <td class="c">${esc(row.selfScore)}</td>
+        <td class="c b">${esc(row.managerScore)}</td>
+        <td class="c">${esc(row.ratio)}</td>
+        <td>${esc(row.note)}</td>
+      </tr>`).join('');
+
+    const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8">
+<title>Phiếu KPI ${esc(person.name)} - ${esc(month)}</title>
+<style>
+  body { font-family: "Times New Roman", serif; font-size: 12pt; margin: 18mm 12mm; color: #000; }
+  h1 { font-size: 15pt; text-align: center; margin: 0 0 4px; text-transform: uppercase; }
+  .sub { text-align: center; margin: 0 0 14px; font-size: 11pt; }
+  .meta { margin-bottom: 10px; font-size: 11pt; }
+  .meta span { margin-right: 24px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #000; padding: 4px 6px; font-size: 11pt; vertical-align: top; }
+  th { background: #c6dfb4; text-align: center; font-weight: bold; }
+  td.c { text-align: center; }
+  td.b { font-weight: bold; }
+  tfoot td { font-weight: bold; }
+  .sign { margin-top: 28px; display: flex; justify-content: space-around; text-align: center; font-size: 11pt; }
+  .sign div { width: 32%; }
+  .sign .role { font-weight: bold; }
+  .sign .hint { font-style: italic; font-size: 10pt; }
+  @page { size: A4 landscape; margin: 12mm; }
+</style></head><body>
+<h1>Phiếu đánh giá KPI</h1>
+<p class="sub">Kỳ tháng ${esc(month)}</p>
+<p class="meta">
+  <span><b>Nhân sự:</b> ${esc(person.name)}</span>
+  <span><b>Mã NV:</b> ${esc(person.employee_code || '')}</span>
+  <span><b>Bộ KPI:</b> ${esc(template?.name || '')}</span>
+</p>
+<table>
+  <thead>
+    <tr>
+      <th rowspan="2">Stt</th>
+      <th rowspan="2">Mục tiêu BP</th>
+      <th rowspan="2">Trọng số</th>
+      <th rowspan="2">Kế hoạch/<br>cam kết</th>
+      <th colspan="2">Thực hiện</th>
+      <th colspan="2">Chấm điểm</th>
+      <th rowspan="2">Thực hiện/<br>cam kết</th>
+      <th rowspan="2">Ghi chú</th>
+    </tr>
+    <tr>
+      <th>Cá nhân<br>đánh giá</th>
+      <th>QL<br>đánh giá</th>
+      <th>Cá nhân<br>chấm</th>
+      <th>Quản lý<br>chấm</th>
+    </tr>
+  </thead>
+  <tbody>${body}</tbody>
+  <tfoot>
+    <tr>
+      <td colspan="8" style="text-align:right">Kết quả KPI toàn kỳ</td>
+      <td class="c">${review.final_pct == null ? '' : Number(review.final_pct) + '%'}</td>
+      <td>${esc(review.rating || '')}</td>
+    </tr>
+  </tfoot>
+</table>
+<div class="sign">
+  <div><p class="role">Người được đánh giá</p><p class="hint">(Ký, ghi rõ họ tên)</p></div>
+  <div><p class="role">Người đánh giá</p><p class="hint">(Ký, ghi rõ họ tên)</p></div>
+  <div><p class="role">Phê duyệt</p><p class="hint">(Ký, ghi rõ họ tên)</p></div>
+</div>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      return toast('Trình duyệt chặn cửa sổ in. Cho phép pop-up rồi thử lại.', 'error');
+    }
+    win.document.write(html);
+    win.document.close();
+    // Doi tai lieu ve xong roi moi goi in, neu khong Chrome in ra trang trong.
+    win.onload = () => win.print();
   };
 
   const lockedCount = reviews.filter((item) => item.locked_at).length;
@@ -808,6 +913,29 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                         })}
                       </div>
                     )}
+
+                    {/* Bảng đúng mẫu giấy, xem ngay trên HRM. Khối chấm điểm
+                        bên trên là nơi NHẬP; bảng này là nơi ĐỌC lại toàn bộ trước
+                        khi ký — hai việc khác nhau nên bày cạnh nhau. */}
+                    <details className="mt-3 rounded-lg border border-slate-200 bg-white">
+                      <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-slate-700">
+                        Bảng tổng hợp theo mẫu phiếu
+                      </summary>
+                      <div className="border-t border-slate-100 p-2">
+                        <KpiSheetTable
+                          criteria={rows}
+                          scores={reviewScores}
+                          finalPct={review.final_pct}
+                          rating={review.rating}
+                        />
+                      </div>
+                    </details>
+
+                    <div className="mt-3 flex justify-end">
+                      <Button size="sm" variant="outline" onClick={() => printSheet(profile, review)}>
+                        <Printer className="h-3.5 w-3.5" /> In phiếu KPI
+                      </Button>
+                    </div>
 
                     {template && (
                       <p className="mt-3 text-xs leading-relaxed text-slate-500">

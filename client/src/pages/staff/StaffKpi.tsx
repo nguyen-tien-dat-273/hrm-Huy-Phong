@@ -23,6 +23,7 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { KpiEvidenceBox } from '@/components/kpi/KpiEvidenceBox';
+import { KpiSheetTable } from '@/components/kpi/KpiSheetTable';
 import { isAutoScorable, scoreFromLevels, type ScoreLevel } from '@/lib/kpiScoring';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -50,6 +51,7 @@ interface Score {
   /** Ket qua thuc te do chinh nhan vien nhap; database suy ra self_score. */
   self_actual_value: number | null;
   manager_score: number | null;
+  actual_value: number | null;
   not_applicable: boolean;
   not_applicable_reason: string | null;
 }
@@ -63,6 +65,7 @@ interface Criteria {
   is_active: boolean;
   score_levels: ScoreLevel[];
   measure_unit: string | null;
+  measure_hint: string | null;
 }
 
 export function StaffKpi() {
@@ -159,7 +162,7 @@ export function StaffKpi() {
       if (rows.length > 0) {
         const [scoreRes, criteriaRes, templateRes] = await Promise.all([
           supabase.from('performance_review_scores').select('*').in('review_id', rows.map((r) => r.id)),
-          supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, max_score, is_active, score_levels, measure_unit'),
+          supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, max_score, is_active, score_levels, measure_unit, measure_hint'),
           supabase.from('kpi_position_templates').select('id, name'),
         ]);
         setScores((scoreRes.data || []) as Score[]);
@@ -412,6 +415,25 @@ export function StaffKpi() {
                     );
                   })}
                 </ul>
+              )}
+
+              {/* Bang dung mau phieu giay. Danh sach tren la noi NHAP, bang
+                  nay la noi DOC lai toan bo ky - ke ca cot cua quan ly, de
+                  nhan vien thay minh cham gi va quan ly chot gi. */}
+              {isOpen && rows.length > 0 && (
+                <details className="rounded-xl border border-slate-200 bg-white">
+                  <summary className="cursor-pointer px-3.5 py-2.5 text-xs font-bold text-slate-700">
+                    Bảng tổng hợp theo mẫu phiếu
+                  </summary>
+                  <div className="border-t border-slate-100 p-2">
+                    <KpiSheetTable
+                      criteria={rows.map(({ item }) => item)}
+                      scores={rows.map(({ score }) => score).filter((row): row is Score => !!row)}
+                      finalPct={review.final_pct}
+                      rating={review.rating}
+                    />
+                  </div>
+                </details>
               )}
 
               {isOpen && rows.length === 0 && (
