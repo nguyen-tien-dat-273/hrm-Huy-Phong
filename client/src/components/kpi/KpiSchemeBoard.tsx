@@ -1,14 +1,19 @@
 // ============================================================================
-// Cơ chế KPI: đi xuống theo cây tổ chức rồi mới đặt cho từng người.
+// KPI của từng người: đi xuống cây tổ chức tới đúng một nhân sự.
 // ----------------------------------------------------------------------------
-//   Khối / doanh nghiệp  ->  phòng ban  ->  bộ phận  ->  nhân viên  ->  gán bộ KPI
+//   Khối / doanh nghiệp  ->  phòng ban  ->  bộ phận  ->  NHÂN VIÊN  ->  bộ KPI
 //
 // Đơn vị lấy thẳng từ Cơ cấu tổ chức, không khai lại. Phòng ban nào chưa dựng
 // ở đó thì ở đây cũng không có — đúng như vậy: một nơi khai, mọi nơi đọc.
 //
-// Danh sách phẳng của bản trước đổ hết mọi phòng ban ra cùng lúc. Công ty vài
-// chục đơn vị thì màn đó dài vô tận và không cho thấy cái gì thuộc cái gì.
-// Đi xuống từng cấp giữ đúng hình dạng bộ máy mà người dùng đã dựng.
+// KPI thuộc về NGƯỜI, không phải một bộ dùng chung rồi gán xuống. Mỗi người
+// một bộ thì tiêu chí bám đúng việc họ làm, và sửa cho một người không động
+// tới ai khác. Đó là lý do màn này không còn danh sách bộ dùng chung, cũng
+// không còn nút gán cho cả phòng.
+//
+// Những bộ cũ gán theo đơn vị hoặc theo vị trí VẪN có hiệu lực dưới database
+// (`kpi_scheme_for` giữ nguyên thứ tự ưu tiên) — khu riêng của mỗi người nói
+// rõ họ đang thừa hưởng bộ nào, và tạo bộ riêng sẽ thay thế nó.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -16,9 +21,8 @@ import { Building2, ChevronRight, Target, TriangleAlert, Users } from 'lucide-re
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Modal } from '@/components/ui/Modal';
-import { Input, Select } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
+import { KpiTemplateEditor } from '@/components/kpi/KpiTemplateEditor';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,11 +35,9 @@ interface Unit { id: string; name: string; unit_type: string; parent_id: string 
 interface Template { id: string; code: string; name: string; is_active: boolean; position_id: string | null }
 interface Scheme { id: string; user_id: string; template_id: string; effective_from: string }
 interface UnitScheme { id: string; unit_id: string; template_id: string; effective_from: string }
+interface Criterion { id: string; template_id: string; name: string; weight_percent: number; is_active: boolean }
 
-export function KpiSchemeBoard({ onCreateTemplate }: {
-  /** Bam mot nhan su chua co bo KPI -> sang buoc tao bo cho phong cua ho. */
-  onCreateTemplate?: (unitId: string | null) => void;
-} = {}) {
+export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
   const { users } = useAuth();
   const { toast } = useToast();
 
@@ -48,8 +50,14 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
   /** Đường đi hiện tại, từ gốc xuống. Rỗng = đang ở danh sách khối. */
   const [path, setPath] = useState<Unit[]>([]);
 
-  const [target, setTarget] = useState<Profile | null>(null);
-  const [draft, setDraft] = useState({ template_id: '', effective_from: getTodayString() });
+  /**
+   * Nhân sự đang mở — một cấp nữa của đường đi, sau phòng ban.
+   *
+   * Danh sách người trong phòng chỉ nói được "có bộ hay chưa". Mở hẳn một
+   * người ra mới trả lời được câu tiếp theo: bộ nào, tiêu chí gì, đến từ đâu,
+   * và muốn làm riêng cho họ thì bấm vào đâu.
+   */
+  const [focusPerson, setFocusPerson] = useState<Profile | null>(null);
   const [saving, setSaving] = useState(false);
 
   /**
@@ -62,18 +70,22 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
    */
   const [unitSchemes, setUnitSchemes] = useState<UnitScheme[]>([]);
   const [unitSchemesSupported, setUnitSchemesSupported] = useState(true);
-  const [unitTarget, setUnitTarget] = useState<Unit | null>(null);
+  const [criteria, setCriteria] = useState<Criterion[]>([]);
 
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
-    const [unitRes, tplRes, schemeRes, unitSchemeRes] = await Promise.all([
+    const [unitRes, tplRes, schemeRes, unitSchemeRes, criteriaRes] = await Promise.all([
       supabase.from('organization_units').select('id, name, unit_type, parent_id').eq('is_active', true).order('name'),
       supabase.from('kpi_position_templates').select('id, code, name, is_active, position_id').order('name'),
       supabase.from('employee_kpi_schemes').select('*').order('effective_from', { ascending: false }),
       supabase.from('unit_kpi_schemes').select('*').order('effective_from', { ascending: false }),
+      // Tiêu chí chỉ dùng để xem trước trong khu nhân sự: thấy ngay bộ này
+      // chấm những gì, thay vì phải nhớ tên bộ rồi sang bước 1 tra lại.
+      supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, is_active').order('sort_order'),
     ]);
     if (schemeRes.error) { setSupported(false); setLoading(false); return; }
+    setCriteria(((criteriaRes.data || []) as Criterion[]).filter((item) => item.is_active));
     setUnits((unitRes.data || []) as Unit[]);
     setTemplates((tplRes.data || []) as Template[]);
     setSchemes((schemeRes.data || []) as Scheme[]);
@@ -143,41 +155,58 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
     return { tpl: undefined, source: '' };
   };
 
-  const saveUnit = async () => {
-    if (!supabase || !unitTarget || !draft.template_id) return;
-    setSaving(true);
-    const { error } = await supabase.from('unit_kpi_schemes').upsert({
-      unit_id: unitTarget.id,
-      template_id: draft.template_id,
-      effective_from: draft.effective_from,
-    }, { onConflict: 'unit_id,effective_from' });
-    setSaving(false);
-    if (error) return toast(describeDbError(error), 'error');
-    toast(`Đã gán bộ KPI cho ${unitTarget.name}.`, 'success');
-    setUnitTarget(null);
-    await load();
-  };
-
-  const clearUnit = async (unitId: string) => {
+  /**
+   * Tạo bộ KPI của riêng một người rồi gán luôn cho họ.
+   *
+   * Hai bước này phải đi liền: tạo xong mà quên gán thì bộ nằm đó không ai
+   * dùng, còn người kia vẫn "chưa có bộ KPI" — đúng cái màn hình này sinh ra
+   * để tránh.
+   */
+  const createPersonalTemplate = async (person: Profile) => {
     if (!supabase) return;
-    const { error } = await supabase.from('unit_kpi_schemes').delete().eq('unit_id', unitId);
-    if (error) return toast(describeDbError(error), 'error');
-    toast('Đã bỏ bộ KPI của đơn vị.', 'success');
-    await load();
-  };
-
-  const save = async () => {
-    if (!supabase || !target || !draft.template_id) return;
     setSaving(true);
-    const { error } = await supabase.from('employee_kpi_schemes').upsert({
-      user_id: target.id,
-      template_id: draft.template_id,
-      effective_from: draft.effective_from,
+    // Mã phải duy nhất trong toàn bảng. Lấy mã nhân viên nếu có, không thì
+    // bỏ dấu tên rồi gắn đuôi từ id — tên trùng nhau là chuyện thường.
+    const slug = (person.employee_code || person.name)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u0111/g, 'd').replace(/\u0110/g, 'D')
+      .toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'NV';
+    const { data, error } = await supabase.from('kpi_position_templates').insert({
+      code: `KPI-${slug}-${person.id.slice(0, 4).toUpperCase()}`,
+      name: `KPI ${person.name}`,
+      block_code: 'VAN_PHONG',
+      // KHÔNG khai unit_id: khai vào là bộ này tự áp cho cả phòng, trong khi
+      // nó là bộ của riêng một người.
+      unit_id: null,
+      default_kpi_amount: 0,
+      score_method: 'WEIGHTED_PERCENT',
+      result_floor_percent: 0,
+      created_by: actorId,
+    }).select('id').single();
+
+    if (error || !data) {
+      setSaving(false);
+      return toast('Không tạo được bộ KPI: ' + describeDbError(error), 'error');
+    }
+
+    const { error: assignError } = await supabase.from('employee_kpi_schemes').upsert({
+      user_id: person.id,
+      template_id: data.id,
+      effective_from: getTodayString(),
     }, { onConflict: 'user_id,effective_from' });
     setSaving(false);
+    if (assignError) {
+      return toast('Đã tạo bộ nhưng không gán được: ' + describeDbError(assignError), 'error');
+    }
+    toast(`Đã tạo bộ KPI riêng cho ${person.name}. Thêm tiêu chí cho đủ 100% rồi bật lên.`, 'success');
+    await load();
+  };
+
+  const clearPersonal = async (userId: string, name: string) => {
+    if (!supabase) return;
+    const { error } = await supabase.from('employee_kpi_schemes').delete().eq('user_id', userId);
     if (error) return toast(describeDbError(error), 'error');
-    toast(`Đã gán bộ KPI cho ${target.name}.`, 'success');
-    setTarget(null);
+    toast(`Đã bỏ bộ riêng của ${name} — quay về bộ của đơn vị hoặc vị trí.`, 'success');
     await load();
   };
 
@@ -208,8 +237,8 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <button
             type="button"
-            onClick={() => setPath([])}
-            className={`font-semibold transition ${path.length === 0 ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
+            onClick={() => { setPath([]); setFocusPerson(null); }}
+            className={`font-semibold transition ${path.length === 0 && !focusPerson ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
           >
             Toàn công ty
           </button>
@@ -218,13 +247,21 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
               <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
               <button
                 type="button"
-                onClick={() => setPath(path.slice(0, index + 1))}
-                className={`font-semibold transition ${index === path.length - 1 ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
+                onClick={() => { setPath(path.slice(0, index + 1)); setFocusPerson(null); }}
+                className={`font-semibold transition ${index === path.length - 1 && !focusPerson ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
               >
                 {unit.name}
               </button>
             </span>
           ))}
+          {/* Nhân sự là một cấp của đường đi, không phải một modal bật lên:
+              đứng trong đó vẫn phải biết mình đang ở phòng nào. */}
+          {focusPerson && (
+            <span className="flex items-center gap-1.5">
+              <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+              <span className="font-semibold text-slate-800">{focusPerson.name}</span>
+            </span>
+          )}
         </div>
 
         {path.length === 0 && (
@@ -235,41 +272,67 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
           </p>
         )}
 
-        {/* ---- Bộ KPI của chính đơn vị đang đứng ---- */}
-        {unitSchemesSupported && current && (() => {
-          const own = ownUnitScheme(current.id);
-          const inherited = own ? null : inheritedUnitScheme(current.parent_id);
-          const tpl = own ? tplById.get(own.template_id) : (inherited ? tplById.get(inherited.scheme.template_id) : undefined);
+        {/* ---- Khu riêng của một nhân sự ----
+             KPI ở đây là của RIÊNG người này, không phải một bộ dùng chung
+             rồi gán xuống. Mỗi người một bộ thì tiêu chí bám đúng việc họ
+             làm — đó là lý do màn này không còn danh sách bộ dùng chung nữa. */}
+        {focusPerson && (() => {
+          const own = ownScheme(focusPerson.id);
+          const tpl = own ? tplById.get(own.template_id) : undefined;
+          const rows = tpl ? criteria.filter((item) => item.template_id === tpl.id) : [];
+          const total = rows.reduce((sum, item) => sum + Number(item.weight_percent || 0), 0);
+          const inheritedOnly = !own ? effectiveFor(focusPerson) : null;
+
           return (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600">
-                <Target className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-slate-800">Bộ KPI của {current.name}</p>
-                <p className="mt-0.5 truncate text-[11px] text-slate-600">
-                  {tpl
-                    ? <>{tpl.name}{own ? ` · từ ${formatDate(own.effective_from)}` : ` · thừa hưởng từ ${inherited?.from.name}`}</>
-                    : 'Chưa gán — mỗi người trong phòng sẽ tự rơi về mẫu theo vị trí của họ.'}
-                </p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
+                <Avatar name={focusPerson.name} url={focusPerson.avatar_url} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-800">{focusPerson.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-slate-600">
+                    {tpl
+                      ? <>{tpl.name} · {rows.length} tiêu chí · tổng {total.toFixed(0)}%</>
+                      : inheritedOnly?.tpl
+                        ? <>Đang dùng <strong>{inheritedOnly.tpl.name}</strong> ({inheritedOnly.source}) — tạo bộ riêng sẽ thay thế</>
+                        : 'Chưa có bộ KPI nào'}
+                  </p>
+                </div>
+                {own ? (
+                  <Button size="sm" variant="ghost" onClick={() => void clearPersonal(focusPerson.id, focusPerson.name)}>
+                    Xoá bộ riêng
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => void createPersonalTemplate(focusPerson)} disabled={saving}>
+                    <Target className="h-3.5 w-3.5" /> {saving ? 'Đang tạo…' : 'Tạo bộ KPI riêng'}
+                  </Button>
+                )}
               </div>
-              {own && (
-                <Button size="sm" variant="ghost" onClick={() => void clearUnit(current.id)}>
-                  Bỏ gán
-                </Button>
+
+              {/* Khai tiêu chí ngay tại đây, khoanh vào đúng bộ của người này.
+                  Bật sang màn khác để khai rồi quay lại là làm đứt mạch giữa
+                  "ai" và "chấm cái gì". */}
+              {tpl ? (
+                <KpiTemplateEditor actorId={actorId} scopeTemplateId={tpl.id} />
+              ) : (
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-10 text-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+                    <Target className="h-5 w-5" />
+                  </span>
+                  <p className="text-sm font-semibold text-slate-600">
+                    {focusPerson.name} chưa có bộ KPI riêng
+                  </p>
+                  <p className="max-w-sm text-xs leading-relaxed text-slate-400">
+                    Bấm <strong>Tạo bộ KPI riêng</strong> để mở một bộ của riêng họ, rồi khai tiêu
+                    chí cho đủ 100% trọng số là chấm được.
+                  </p>
+                </div>
               )}
-              <Button size="sm" variant={own ? 'outline' : 'primary'} onClick={() => {
-                setUnitTarget(current);
-                setDraft({ template_id: own?.template_id ?? '', effective_from: getTodayString() });
-              }}>
-                {own ? 'Đổi bộ cho cả phòng' : 'Gán cho cả phòng'}
-              </Button>
             </div>
           );
         })()}
 
         {/* ---- Đơn vị con ---- */}
-        {subUnits.length > 0 && (
+        {!focusPerson && subUnits.length > 0 && (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {subUnits.map((unit) => {
               const inside = headcount(unit.id);
@@ -310,7 +373,7 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
         )}
 
         {/* ---- Nhân sự tại cấp này ---- */}
-        {people.length > 0 && (
+        {!focusPerson && people.length > 0 && (
           <div className="rounded-xl border border-slate-200">
             <p className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-bold text-slate-700">
               <Users className="h-3.5 w-3.5" />
@@ -320,45 +383,29 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
             <ul className="divide-y divide-slate-50">
               {people.map((person) => {
                 const own = ownScheme(person.id);
-                const fallback = byPosition(person);
                 const { tpl, source } = effectiveFor(person);
                 return (
                   <li key={person.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <Avatar name={person.name} url={person.avatar_url} size="sm" />
-                    {/* Bam vao nguoi -> tao bo KPI cho phong cua ho, voi phong
-                        dien san. Thuong gap nhat o day la nhin thay "Chua co
-                        bo KPI" roi muon lam mot bo ngay. */}
+                    {/* Bấm vào người → mở khu riêng của họ, thêm một cấp nữa
+                        trong đường đi. */}
                     <button
                       type="button"
-                      onClick={() => onCreateTemplate?.(person.unit_id ?? null)}
-                      disabled={!onCreateTemplate}
-                      className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition enabled:hover:bg-slate-50 disabled:cursor-default"
+                      onClick={() => setFocusPerson(person)}
+                      className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition hover:bg-slate-50"
                     >
                       <p className="truncate text-sm font-bold text-slate-800">{person.name}</p>
                       <p className="truncate text-xs text-slate-500">
                         {tpl ? tpl.name : <span className="font-bold text-amber-600">Chưa có bộ KPI</span>}
                         {own && ` · từ ${formatDate(own.effective_from)}`}
                       </p>
-                      {onCreateTemplate && !tpl && (
-                        <p className="truncate text-[11px] font-semibold text-indigo-600">
-                          Bấm để tạo bộ KPI cho {current?.name ?? 'phòng ban của họ'}
-                        </p>
-                      )}
                     </button>
                     {tpl && (
                       <Badge className={own ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}>
                         {source}
                       </Badge>
                     )}
-                    <Button size="sm" variant="outline" onClick={() => {
-                      setTarget(person);
-                      setDraft({
-                        template_id: own?.template_id ?? fallback?.id ?? '',
-                        effective_from: getTodayString(),
-                      });
-                    }}>
-                      <Target className="h-3.5 w-3.5" /> {own ? 'Đổi bộ' : 'Gán riêng'}
-                    </Button>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
                   </li>
                 );
               })}
@@ -366,7 +413,7 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
           </div>
         )}
 
-        {subUnits.length === 0 && people.length === 0 && (
+        {!focusPerson && subUnits.length === 0 && people.length === 0 && (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
               <Building2 className="h-5 w-5" />
@@ -381,62 +428,6 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
         )}
       </CardContent>
 
-      <Modal open={!!target} onClose={() => setTarget(null)} title={`Bộ KPI cho ${target?.name ?? ''}`} size="md">
-        <div className="space-y-4">
-          <Select label="Bộ KPI" value={draft.template_id}
-            onChange={(e) => setDraft({ ...draft, template_id: e.target.value })}>
-            <option value="">Chọn bộ KPI…</option>
-            {activeTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-
-          <Input label="Áp dụng từ ngày" type="date" value={draft.effective_from}
-            onChange={(e) => setDraft({ ...draft, effective_from: e.target.value })} />
-
-          <p className="rounded-lg bg-blue-50 px-3.5 py-2.5 text-xs leading-relaxed text-blue-800">
-            Đây là tạo bản ghi mới theo ngày hiệu lực, không sửa đè. Các kỳ đã chấm trước ngày này
-            giữ nguyên bộ cũ.
-          </p>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setTarget(null)} disabled={saving}>Hủy</Button>
-            <Button theme="admin" onClick={() => void save()} disabled={saving || !draft.template_id}>
-              {saving ? 'Đang lưu…' : 'Gán bộ KPI'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ---- Gán cho cả đơn vị ---- */}
-      <Modal
-        open={!!unitTarget}
-        onClose={() => setUnitTarget(null)}
-        title={`Bộ KPI cho cả ${unitTarget?.name ?? ''}`}
-        size="md"
-      >
-        <div className="space-y-4">
-          <Select label="Bộ KPI" value={draft.template_id}
-            onChange={(e) => setDraft({ ...draft, template_id: e.target.value })}>
-            <option value="">Chọn bộ KPI…</option>
-            {activeTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-
-          <Input label="Áp dụng từ ngày" type="date" value={draft.effective_from}
-            onChange={(e) => setDraft({ ...draft, effective_from: e.target.value })} />
-
-          <p className="rounded-lg bg-blue-50 px-3.5 py-2.5 text-xs leading-relaxed text-blue-800">
-            Áp cho <strong>{unitTarget ? headcount(unitTarget.id) : 0} người</strong> trong
-            {' '}{unitTarget?.name} và các đơn vị con chưa gán bộ riêng. Người đã được
-            {' '}<strong>gán riêng</strong> vẫn giữ bộ của họ — gán riêng luôn thắng gán theo đơn vị.
-          </p>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setUnitTarget(null)} disabled={saving}>Hủy</Button>
-            <Button theme="admin" onClick={() => void saveUnit()} disabled={saving || !draft.template_id}>
-              {saving ? 'Đang lưu…' : 'Gán cho cả phòng'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </Card>
   );
 }

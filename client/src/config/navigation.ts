@@ -63,7 +63,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   // Ba muc cu — Bo KPI, Gan KPI cho nhan su, Cham diem theo thang — gio la
   // ba BUOC trong mot man. Tach ra lam ba muc menu bat nguoi dung tu biet thu
   // tu va tu nho minh dang do o dau, trong khi he thong biet thua.
-  { to: '/admin/performance', label: 'KPI & Đánh giá', description: 'Khai bộ KPI, gán cho phòng ban rồi chấm điểm tháng', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi bo tieu chi cach tinh diem gan phong ban cham diem ky thang khoa phieu danh gia', functionCode: 'admin.performance_manage' },
+  { to: '/admin/performance', label: 'KPI & Đánh giá', description: 'Bộ KPI riêng của từng nhân sự và chấm điểm tháng', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi bo tieu chi cach tinh diem gan phong ban cham diem ky thang khoa phieu danh gia', functionCode: 'admin.performance_manage' },
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },

@@ -741,6 +741,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
             defaultEffectiveFrom={monthStartStr}
             actorId={profile?.id ?? null}
             onChanged={() => loadData(true)}
+            onEditEmployee={setSchemeTarget}
           />
           <SchemesTab
             rows={rows}

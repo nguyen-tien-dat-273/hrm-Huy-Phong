@@ -10,9 +10,10 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Plus, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, Building2, ChevronRight, Plus, Trash2, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
@@ -31,6 +32,7 @@ interface UnitPayItemsCardProps {
   defaultEffectiveFrom: string;
   actorId: string | null;
   onChanged: () => void;
+  onEditEmployee: (profile: Profile) => void;
 }
 
 interface Draft {
@@ -44,7 +46,7 @@ interface Draft {
 }
 
 export function UnitPayItemsCard({
-  components, unitItems, profiles, defaultEffectiveFrom, actorId, onChanged,
+  components, unitItems, profiles, defaultEffectiveFrom, actorId, onChanged, onEditEmployee,
 }: UnitPayItemsCardProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -53,6 +55,7 @@ export function UnitPayItemsCard({
   const [unitsSupported, setUnitsSupported] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -94,6 +97,12 @@ export function UnitPayItemsCard({
   }, [unitItems]);
 
   const unassignedCount = profiles.filter((person) => !person.unit_id).length;
+
+  const openAssign = (unitId: string) => setDraft({
+    unit_id: unitId,
+    component_id: components.find((component) => component.is_active)?.id ?? '',
+    amount: '', formula: '', effective_from: defaultEffectiveFrom, note: '',
+  });
 
   const save = async () => {
     if (!draft) return;
@@ -159,24 +168,14 @@ export function UnitPayItemsCard({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
         <div>
-          <h3 className="text-base font-bold text-slate-800">Khoản lương theo đơn vị</h3>
+          <h3 className="text-base font-bold text-slate-800">Phòng ban và nhân viên</h3>
           <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
-            Chọn khoản từ danh mục cho cả đơn vị — mọi người trong đơn vị thừa hưởng, kể cả
-            người mới vào sau. Ai cần mức khác thì gán riêng ở Cơ chế lương, bản riêng sẽ thắng.
+            Chọn một phòng ban để đi vào danh sách nhân viên và thiết lập cơ chế lương cho từng người.
+            Khoản áp dụng chung của phòng được quản lý trong cùng màn chi tiết.
           </p>
         </div>
-        <Button
-          onClick={() => setDraft({
-            unit_id: units[0]?.id ?? '',
-            component_id: components.find((component) => component.is_active)?.id ?? '',
-            amount: '', formula: '', effective_from: defaultEffectiveFrom, note: '',
-          })}
-          disabled={units.length === 0 || components.length === 0}
-        >
-          <Plus className="h-4 w-4" /> Gán khoản cho đơn vị
-        </Button>
       </div>
 
       {unassignedCount > 0 && (
@@ -194,63 +193,169 @@ export function UnitPayItemsCard({
           </CardContent>
         </Card>
       ) : (
-        units.map((unit) => {
+        (selectedUnitId ? units.filter((unit) => unit.id === selectedUnitId) : units).map((unit) => {
           const items = itemsByUnit.get(unit.id) ?? [];
           const people = headcount.get(unit.id) ?? 0;
+          const peopleInUnit = profiles
+            .filter((person) => person.unit_id === unit.id)
+            .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+          const isSelected = selectedUnitId === unit.id;
           return (
-            <Card key={unit.id}>
+            <Card key={unit.id} className={`overflow-hidden transition-colors ${isSelected ? 'border-indigo-200' : ''}`}>
               <CardContent className="p-0">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <Building2 className="h-4 w-4 text-slate-400" />
-                    <span className="text-sm font-bold text-slate-800">{unit.name}</span>
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
-                      <Users className="h-3.5 w-3.5" /> {people} người
-                    </span>
+                {isSelected ? (
+                  <div className="border-b border-indigo-100 bg-indigo-50/60 px-5 py-4">
+                    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUnitId(null)}
+                        className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 transition hover:text-indigo-800"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Tất cả phòng ban
+                      </button>
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+                      <span className="font-semibold text-slate-600">{unit.name}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                          <Building2 className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-base font-bold text-slate-900">{unit.name}</span>
+                          <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                            <Users className="h-3.5 w-3.5" /> {people} nhân viên · {items.length} khoản chung
+                          </span>
+                        </span>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => openAssign(unit.id)}>
+                        <Plus className="h-3.5 w-3.5" /> Gán khoản chung
+                      </Button>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-400">{items.length} khoản</span>
-                </div>
-
-                {items.length === 0 ? (
-                  <p className="px-5 py-5 text-sm text-slate-400">
-                    Chưa gán khoản nào. Người trong đơn vị chỉ nhận lương gốc và khoản gán riêng.
-                  </p>
                 ) : (
-                  <ul className="divide-y divide-slate-50">
-                    {items.map((item) => {
-                      const component = componentById.get(item.component_id);
-                      const amount = item.amount ?? component?.default_amount ?? 0;
-                      return (
-                        <li key={item.id} className="flex items-start justify-between gap-3 px-5 py-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-800">
-                              {component?.name ?? 'Khoản đã bị xóa'}
-                            </p>
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              {component?.calc_type === 'PERCENT'
-                                ? `${Number(amount)}% của ${component.base_code}`
-                                : formatVND(Number(amount))}
-                              {item.amount == null && ' (theo mức mặc định của danh mục)'}
-                              {' · từ '}{item.effective_from}
-                            </p>
-                            {item.formula && (
-                              <p className="mt-0.5 font-mono text-xs text-slate-400">{item.formula}</p>
-                            )}
-                            {item.note && (
-                              <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{item.note}</p>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => remove(item)}
-                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                            aria-label="Bỏ khoản khỏi đơn vị"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUnitId(unit.id)}
+                    className="group flex w-full flex-wrap items-center justify-between gap-2 bg-slate-50 px-5 py-4 text-left transition-colors hover:bg-indigo-50/60"
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm">
+                        <Building2 className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-slate-800">{unit.name}</span>
+                        <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                          <Users className="h-3.5 w-3.5" /> {people} người
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="text-xs text-slate-400">{items.length} khoản</span>
+                      <ChevronRight className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600" />
+                    </span>
+                  </button>
+                )}
+
+                {isSelected && (
+                  <div id={`unit-pay-items-${unit.id}`}>
+                    <div className="border-b border-slate-100">
+                      <div className="flex items-center justify-between bg-white px-5 py-2.5">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Nhân viên trong phòng
+                        </p>
+                        <span className="text-xs text-slate-400">{peopleInUnit.length} người</span>
+                      </div>
+                      {peopleInUnit.length === 0 ? (
+                        <p className="px-5 py-5 text-sm italic text-slate-400">
+                          Phòng ban này chưa có nhân viên.
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-slate-50">
+                          {peopleInUnit.map((person) => (
+                            <li key={person.id}>
+                              <button
+                                type="button"
+                                onClick={() => onEditEmployee(person)}
+                                className="group flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-indigo-50/50"
+                                aria-label={`Mở cơ chế lương của ${person.name}`}
+                              >
+                                <Avatar name={person.name} url={person.avatar_url} size="sm" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-semibold text-slate-800">{person.name}</span>
+                                  <span className="mt-0.5 block truncate text-xs text-slate-400">
+                                    {person.employee_code || person.email}
+                                  </span>
+                                </span>
+                                <span className="hidden text-xs font-semibold text-indigo-600 sm:block">Cơ chế lương</span>
+                                <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50/60 px-5 py-2.5">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        Khoản áp dụng chung
+                      </p>
+                      <span className="text-xs text-slate-400">{items.length} khoản</span>
+                    </div>
+                    {items.length === 0 ? (
+                      <div className="flex flex-col items-start gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm text-slate-400">
+                          Chưa gán khoản nào. Người trong đơn vị chỉ nhận lương gốc và khoản gán riêng.
+                        </p>
+                        <Button size="sm" variant="outline" onClick={() => openAssign(unit.id)}>
+                          <Plus className="h-3.5 w-3.5" /> Gán khoản
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <ul className="divide-y divide-slate-50">
+                          {items.map((item) => {
+                            const component = componentById.get(item.component_id);
+                            const amount = item.amount ?? component?.default_amount ?? 0;
+                            return (
+                              <li key={item.id} className="flex items-start justify-between gap-3 px-5 py-3">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-slate-800">
+                                    {component?.name ?? 'Khoản đã bị xóa'}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {component?.calc_type === 'PERCENT'
+                                      ? `${Number(amount)}% của ${component.base_code}`
+                                      : formatVND(Number(amount))}
+                                    {item.amount == null && ' (theo mức mặc định của danh mục)'}
+                                    {' · từ '}{item.effective_from}
+                                  </p>
+                                  {item.formula && (
+                                    <p className="mt-0.5 font-mono text-xs text-slate-400">{item.formula}</p>
+                                  )}
+                                  {item.note && (
+                                    <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{item.note}</p>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => remove(item)}
+                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                  aria-label="Bỏ khoản khỏi đơn vị"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <div className="border-t border-slate-100 px-5 py-3">
+                          <Button size="sm" variant="outline" onClick={() => openAssign(unit.id)}>
+                            <Plus className="h-3.5 w-3.5" /> Gán thêm khoản
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -101,21 +101,17 @@ const BLANK_CRITERIA = {
 
 export function KpiTemplateEditor({
   actorId,
-  createRequested = false,
-  createForUnitId,
-  onCreateHandled,
+  scopeTemplateId,
 }: {
   actorId: string | null;
   /**
-   * Mo san form tao bo KPI, dien truoc phong ban neu biet.
+   * Chỉ biên tập ĐÚNG một bộ KPI, bỏ hết phần danh sách và nút tạo.
    *
-   * Dung khi nguoi dung bam mot nhan su "Chua co bo KPI" o buoc 2: ho dang
-   * dung truoc dung van de can giai quyet, bat ho sang buoc 1 roi tu tim lai
-   * phong ban do trong o chon la lam mat ngu canh vua co.
+   * Dùng khi màn này nhúng trong khu riêng của một nhân sự: ở đó bộ KPI là
+   * của chính người đang mở, bày thêm danh sách mọi bộ trong công ty chỉ làm
+   * người dùng tưởng mình đang sửa cái dùng chung.
    */
-  createRequested?: boolean;
-  createForUnitId?: string | null;
-  onCreateHandled?: () => void;
+  scopeTemplateId?: string | null;
 }) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -219,6 +215,10 @@ export function KpiTemplateEditor({
       .filter((item) => item.is_active)
       .reduce((sum, item) => sum + Number(item.weight_percent), 0);
 
+  const visibleTemplates = scopeTemplateId
+    ? templates.filter((item) => item.id === scopeTemplateId)
+    : templates;
+
   // ---- Mẫu ----------------------------------------------------------------
   const openNewTemplate = (unitId?: string | null) => {
     setEditingTemplate(null);
@@ -226,14 +226,7 @@ export function KpiTemplateEditor({
     setTemplateModal(true);
   };
 
-  // Lenh tu buoc 2 chi dung MOT lan: khong xoa khoi URL thi dong modal xong
-  // no bat lai ngay, va F5 cung bat lai.
-  useEffect(() => {
-    if (!createRequested) return;
-    openNewTemplate(createForUnitId);
-    onCreateHandled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createRequested]);
+
 
   const openEditTemplate = (template: Template) => {
     setEditingTemplate(template);
@@ -540,30 +533,34 @@ export function KpiTemplateEditor({
     <>
       <Card>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Bộ tiêu chí KPI</h3>
-              <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
-                Tự khai tiêu chí và thang điểm. Mức nào có ngưỡng số thì lúc chấm chỉ cần nhập số đo
-                thực tế — hệ thống tự ra điểm.
-              </p>
+          {!scopeTemplateId && (
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800">Bộ tiêu chí KPI</h3>
+                <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+                  Tự khai tiêu chí và thang điểm. Mức nào có ngưỡng số thì lúc chấm chỉ cần nhập số đo
+                  thực tế — hệ thống tự ra điểm.
+                </p>
+              </div>
+              <Button size="sm" onClick={() => openNewTemplate()}>
+                <Plus className="h-4 w-4" /> Tạo bộ KPI
+              </Button>
             </div>
-            <Button size="sm" onClick={() => openNewTemplate()}>
-              <Plus className="h-4 w-4" /> Tạo bộ KPI
-            </Button>
-          </div>
+          )}
 
-          {templates.length === 0 ? (
+          {visibleTemplates.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
               Chưa có bộ KPI nào. Tạo một bộ, thêm tiêu chí cho đủ 100% trọng số rồi bật lên là chấm được.
             </p>
           ) : (
             <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-              {templates.map((template) => {
+              {visibleTemplates.map((template) => {
                 const rows = criteriaByTemplate.get(template.id) || [];
                 const total = weightOf(template.id);
                 const balanced = Math.abs(total - 100) < 0.01;
-                const isOpen = openId === template.id;
+                // Đã khoanh vào đúng một bộ thì mở sẵn: bắt bấm thêm một nhát
+                // để xem thứ duy nhất trên màn là thừa.
+                const isOpen = scopeTemplateId ? true : openId === template.id;
 
                 return (
                   <div key={template.id}>
