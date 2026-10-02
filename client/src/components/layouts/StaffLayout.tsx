@@ -1,7 +1,7 @@
 import { type ReactNode, useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Briefcase, KanbanSquare, Fingerprint, CalendarOff,
+  LayoutDashboard, Briefcase, KanbanSquare, Fingerprint,
   FileBarChart, NotebookPen, Bell, ChevronDown, Building2, Menu, X, ArrowLeft, Eye, KeyRound, LogOut, ShieldCheck,
   UserCircle, BookOpen, Target, WalletCards, Clock, LayoutGrid, ClipboardList,
 } from 'lucide-react';
@@ -42,7 +42,7 @@ const navGroups: {
     chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
   },
   {
-    name: 'Thời gian & Lịch', icon: Clock, hint: 'Chấm công và nghỉ phép',
+    name: 'Thời gian & Lịch', icon: Clock, hint: 'Chấm công và các loại đơn từ',
     iconIdle: 'bg-amber-50 text-amber-600', iconOn: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
     tileOn: 'bg-amber-50', textOn: 'text-amber-700',
     chip: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 hover:bg-amber-600',
@@ -80,7 +80,7 @@ const navItems = [
   { to: '/staff/worklog', label: 'Nhật ký giờ', description: 'Ghi nhận thời gian thực tế cho từng công việc', icon: NotebookPen, group: 'Công việc' },
 
   { to: '/staff/attendance', label: 'Chấm công', description: 'Xem dữ liệu từ máy chấm công và hoàn tất check-out', icon: Fingerprint, group: 'Thời gian & Lịch' },
-  { to: '/staff/leave', label: 'Nghỉ phép', description: 'Theo dõi quỹ phép và gửi yêu cầu nghỉ', icon: CalendarOff, group: 'Thời gian & Lịch' },
+  { to: '/staff/leave', label: 'Đơn từ của tôi', description: 'Nghỉ phép, đi muộn, về sớm và làm thêm giờ', icon: ClipboardList, group: 'Thời gian & Lịch' },
 
   { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ' },
 

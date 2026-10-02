@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  BarChart3, BookOpen, Calculator, CalendarOff, ClipboardCheck,
+  BarChart3, BookOpen, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, MapPinned, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
   ArrowLeftRight, Receipt, Scale, Target, ToggleLeft, UserSearch, Users, Wallet, Cpu,
@@ -41,10 +41,10 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Công việc & Dự án', keywords: 'giao viec phan cong xac nhan' },
   { to: '/admin/worklog', label: 'Nhật ký giờ', description: 'Đối chiếu thời gian thực tế theo người và tác vụ', icon: NotebookPen, permission: 'reports', group: 'Công việc & Dự án', keywords: 'gio cong worklog timesheet' },
 
-  { to: '/admin/attendance-devices', label: 'Máy chấm công', description: 'Kết nối Ronald Jack, ánh xạ nhân viên và theo dõi đồng bộ', icon: Cpu, permission: 'attendance', group: 'Thời gian & Nghỉ phép', keywords: 'ronald jack zkteco van tay thiet bi', fullAdminOnly: true },
-  { to: '/admin/leave', label: 'Nghỉ phép', description: 'Duyệt đơn và quản lý hạn mức phép năm', icon: CalendarOff, permission: 'leave', group: 'Thời gian & Nghỉ phép', keywords: 'don xin nghi quy phep' },
-  { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Thời gian & Nghỉ phép', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
-  { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Nghỉ phép', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
+  { to: '/admin/attendance-devices', label: 'Máy chấm công', description: 'Kết nối Ronald Jack, ánh xạ nhân viên và theo dõi đồng bộ', icon: Cpu, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'ronald jack zkteco van tay thiet bi', fullAdminOnly: true },
+  { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
+  { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
+  { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
 
   // Module lương tách thành các mục con để đặt dấu trang được, tìm nhanh thấy
   // được, và cấp quyền riêng từng phần. Thứ tự theo trình tự chốt kỳ trong
@@ -161,7 +161,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
   },
   {
-    name: 'Thời gian & Nghỉ phép', icon: Clock, hint: 'Chấm công, bảng công và đơn nghỉ',
+    name: 'Thời gian & Đơn từ', icon: Clock, hint: 'Chấm công, bảng công và mọi loại đơn',
     iconIdle: 'bg-amber-50 text-amber-600', iconOn: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
     tileOn: 'bg-amber-50', textOn: 'text-amber-700',
     chip: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 hover:bg-amber-600',

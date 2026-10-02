@@ -46,7 +46,7 @@ export const PERMISSION_LABELS: Record<AdminPermission, { label: string; desc: s
   projects:   { label: 'Quản lý Dự án',   desc: 'Tạo/sửa/xóa dự án, tác vụ và thành viên' },
   reports:    { label: 'Báo cáo',         desc: 'Xem báo cáo tổng hợp toàn công ty' },
   attendance: { label: 'Chấm công',       desc: 'Quản lý máy chấm công, bảng công và giờ làm chuẩn' },
-  leave:      { label: 'Nghỉ phép',       desc: 'Xem và duyệt đơn nghỉ phép, đặt hạn mức phép năm' },
+  leave:      { label: 'Nghỉ phép',         desc: 'Xem và duyệt nghỉ phép, hủy phép và quản lý quỹ phép năm' },
   training:   { label: 'Đào tạo',         desc: 'Quản lý khóa học và tiến độ đào tạo nhân viên' },
   settings:   { label: 'Cấu hình',        desc: 'Thay đổi cấu hình hệ thống' },
 };
@@ -87,7 +87,7 @@ export const PERMISSION_FUNCTIONS: Record<AdminPermission, { label: string; admi
     { label: 'Khóa/mở kỳ bảng công', functionCode: 'admin.timesheet_lock' },
     { label: 'Bảng lương', functionCode: 'admin.payroll' },
   ],
-  leave: [{ label: 'Nghỉ phép và hạn mức phép năm' }],
+  leave: [{ label: 'Duyệt nghỉ phép, hủy phép và quản lý quỹ phép' }],
   training: [{ label: 'Đào tạo, khóa học và tiến độ' }],
   settings: [
     { label: 'Cấu hình hệ thống và vai trò', adminOnly: true },
@@ -108,7 +108,7 @@ export const STAFF_FUNCTIONS = [
   'Dự án của tôi và tác vụ Kanban',
   'Nhật ký giờ cá nhân',
   'Chấm công từ máy và lịch sử vào/ra',
-  'Nghỉ phép và quỹ phép cá nhân',
+  'Đơn từ cá nhân: nghỉ phép, đi muộn, về sớm và làm thêm',
   'Lương của tôi và phiếu lương',
   'Đào tạo của tôi',
   'Lộ trình, KPI và mục tiêu cá nhân',

@@ -78,7 +78,7 @@ export function CommandPalette() {
       { id: 'staff-kanban', label: 'Tác vụ Kanban', group: 'Cổng nhân viên', icon: KanbanSquare, keywords: 'task cong viec', run: go('/staff/kanban') },
       { id: 'staff-attendance', label: 'Chấm công', group: 'Cổng nhân viên', icon: Fingerprint, keywords: 'check in out', run: go('/staff/attendance') },
       { id: 'staff-worklog', label: 'Nhật ký giờ của tôi', group: 'Cổng nhân viên', icon: NotebookPen, keywords: 'ghi gio worklog', run: go('/staff/worklog') },
-      { id: 'staff-leave', label: 'Nghỉ phép', group: 'Cổng nhân viên', icon: CalendarOff, keywords: 'xin nghi quy phep', run: go('/staff/leave') },
+      { id: 'staff-leave', label: 'Đơn từ của tôi', group: 'Cổng nhân viên', icon: CalendarOff, keywords: 'don tu xin nghi quy phep di muon ve som lam them tang ca', run: go('/staff/leave') },
       { id: 'staff-reports', label: 'Báo cáo cá nhân', group: 'Cổng nhân viên', icon: FileBarChart, run: go('/staff/reports') },
       { id: 'staff-payroll', label: 'Lương của tôi', group: 'Cổng nhân viên', icon: WalletCards, keywords: 'luong phieu luong thu nhap payslip', run: go('/staff/payroll') },
       { id: 'staff-training', label: 'Đào tạo của tôi', group: 'Cổng nhân viên', icon: BookOpen, keywords: 'dao tao khoa hoc hoc tap', run: go('/staff/training') },

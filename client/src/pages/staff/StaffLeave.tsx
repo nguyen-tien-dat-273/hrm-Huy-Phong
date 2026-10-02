@@ -26,6 +26,7 @@ export function StaffLeave() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
+  const [section, setSection] = useState<'attendance' | 'leave'>('attendance');
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [ledger, setLedger] = useState<LeaveLedgerEntry[]>([]);
@@ -273,7 +274,34 @@ export function StaffLeave() {
 
   return (
     <div className="space-y-5">
-      <AttendanceRequestPanel mode="mine" />
+      <div>
+        <h1 className="font-display text-2xl font-extrabold text-slate-900">Đơn từ của tôi</h1>
+        <p className="mt-1 text-sm text-slate-500">Gửi và theo dõi tất cả yêu cầu cá nhân tại một nơi.</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setSection('attendance')}
+          className={`rounded-2xl border p-4 text-left transition-all ${section === 'attendance' ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+        >
+          <span className="text-sm font-bold text-slate-900">Đi muộn · Về sớm · Làm thêm</span>
+          <span className="mt-1 block text-xs text-slate-500">Báo thời gian phát sinh và theo dõi kết quả duyệt.</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSection('leave')}
+          className={`rounded-2xl border p-4 text-left transition-all ${section === 'leave' ? 'border-emerald-300 bg-emerald-50 ring-2 ring-emerald-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+        >
+          <span className="text-sm font-bold text-slate-900">Nghỉ phép · Hủy phép</span>
+          <span className="mt-1 block text-xs text-slate-500">Xem quỹ phép, gửi đơn nghỉ hoặc xin hủy lịch đã duyệt.</span>
+        </button>
+      </div>
+
+      {section === 'attendance' ? (
+        <AttendanceRequestPanel mode="mine" />
+      ) : (
+      <>
 
       {/* ---- Quỹ phép năm ------------------------------------------------- */}
       <Card className="overflow-hidden">
@@ -506,6 +534,8 @@ export function StaffLeave() {
           </div>
         </form>
       </Modal>
+      </>
+      )}
     </div>
   );
 }
