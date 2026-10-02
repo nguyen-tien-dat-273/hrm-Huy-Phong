@@ -565,14 +565,16 @@ export function KpiTemplateEditor({
                 return (
                   <div key={template.id}>
                     <div className="flex flex-wrap items-center gap-3 px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setOpenId(isOpen ? null : template.id)}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600"
-                        aria-label={isOpen ? `Thu gọn ${template.name}` : `Mở ${template.name}`}
-                      >
-                        {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </button>
+                      {!scopeTemplateId && (
+                        <button
+                          type="button"
+                          onClick={() => setOpenId(isOpen ? null : template.id)}
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-indigo-600"
+                          aria-label={isOpen ? `Thu gọn ${template.name}` : `Mở ${template.name}`}
+                        >
+                          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </button>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-bold text-slate-800">{template.name}</p>
                         <p className="truncate text-xs text-slate-500">
@@ -595,9 +597,11 @@ export function KpiTemplateEditor({
                         <Button size="sm" variant="secondary" onClick={() => openEditTemplate(template)} aria-label={`Sửa ${template.name}`}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="danger" onClick={() => void removeTemplate(template)} aria-label={`Xoá ${template.name}`}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {!scopeTemplateId && (
+                          <Button size="sm" variant="danger" onClick={() => void removeTemplate(template)} aria-label={`Xoá ${template.name}`}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
 
@@ -764,26 +768,29 @@ export function KpiTemplateEditor({
             />
           </div>
           {/* ---- Phong ban ap bo KPI nay ----
-               Khai phong la xong: moi nguoi trong phong do dung bo nay. Khong
-               khai thi bo KPI chi la mot mau nam do, phai di gan tung nguoi o
-               man khac - dung thu vua bo di. */}
-          <div>
-            <Select
-              label="Phòng ban áp dụng"
-              value={templateForm.unit_id}
-              onChange={(e) => setTemplateForm({ ...templateForm, unit_id: e.target.value })}
-            >
-              <option value="">Chưa gán phòng ban</option>
-              {unitOptions.map((row) => (
-                <option key={row.unit.id} value={row.unit.id}>{row.label}</option>
-              ))}
-            </Select>
-            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
-              {templateForm.unit_id
-                ? `${peopleInUnit(templateForm.unit_id).length} nhân sự trong phòng này sẽ dùng bộ KPI vừa tạo.`
-                : 'Để trống thì bộ KPI chưa áp cho ai — phải gán riêng từng người ở màn Gán KPI.'}
-            </p>
-          </div>
+               Khai phong la moi nguoi trong phong do dung chung bo nay.
+               GIAU khi dang sua bo cua RIENG mot nguoi: chon nham mot phong o
+               day la bo ca phong bong dung chuyen sang dung bo cua ca nhan
+               do, khong ai bao gi het. */}
+          {!scopeTemplateId && (
+            <div>
+              <Select
+                label="Phòng ban áp dụng"
+                value={templateForm.unit_id}
+                onChange={(e) => setTemplateForm({ ...templateForm, unit_id: e.target.value })}
+              >
+                <option value="">Chưa gán phòng ban</option>
+                {unitOptions.map((row) => (
+                  <option key={row.unit.id} value={row.unit.id}>{row.label}</option>
+                ))}
+              </Select>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+                {templateForm.unit_id
+                  ? `${peopleInUnit(templateForm.unit_id).length} nhân sự trong phòng này sẽ dùng chung bộ KPI này.`
+                  : 'Để trống thì bộ KPI này chỉ áp cho ai được gán riêng.'}
+              </p>
+            </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div>

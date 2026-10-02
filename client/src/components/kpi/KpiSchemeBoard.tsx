@@ -25,6 +25,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { KpiTemplateEditor } from '@/components/kpi/KpiTemplateEditor';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
@@ -40,6 +41,7 @@ interface Criterion { id: string; template_id: string; name: string; weight_perc
 export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
   const { users } = useAuth();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [units, setUnits] = useState<Unit[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -202,11 +204,54 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
     await load();
   };
 
-  const clearPersonal = async (userId: string, name: string) => {
+  /**
+   * Bỏ bộ KPI riêng của một người, rồi dọn luôn cái bộ nếu nó chỉ của họ.
+   *
+   * Không dọn thì mỗi lần bỏ lại để lại một bộ mồ côi kèm nguyên đám tiêu
+   * chí — vài tháng là bảng đầy những bộ không ai dùng mà không ai dám xoá
+   * vì không biết nó của ai.
+   *
+   * Bộ đã từng dùng để chấm thì KHÔNG xoá, chỉ tắt: phiếu chấm cũ trỏ vào
+   * nó, xoá đi là lịch sử mất chỗ dựa.
+   */
+  const clearPersonal = async (person: Profile, templateId: string) => {
     if (!supabase) return;
-    const { error } = await supabase.from('employee_kpi_schemes').delete().eq('user_id', userId);
-    if (error) return toast(describeDbError(error), 'error');
-    toast(`Đã bỏ bộ riêng của ${name} — quay về bộ của đơn vị hoặc vị trí.`, 'success');
+    const accepted = await confirm({
+      title: `Bỏ bộ KPI riêng của ${person.name}?`,
+      message: 'Tiêu chí đã khai sẽ mất theo. Nếu họ còn thuộc đơn vị hay vị trí có bộ KPI thì '
+        + 'sẽ quay về dùng bộ đó.',
+      confirmLabel: 'Bỏ bộ riêng',
+      danger: true,
+    });
+    if (!accepted) return;
+
+    setSaving(true);
+    const { error } = await supabase.from('employee_kpi_schemes')
+      .delete().eq('user_id', person.id).eq('template_id', templateId);
+    if (error) {
+      setSaving(false);
+      return toast(describeDbError(error), 'error');
+    }
+
+    // Chỉ dọn bộ KHÔNG gắn phòng ban hay vị trí và không còn ai dùng — bộ
+    // dùng chung thì để nguyên, người này chỉ thôi dùng nó.
+    const template = tplById.get(templateId);
+    const shared = !!template?.position_id
+      || schemes.some((row) => row.template_id === templateId && row.user_id !== person.id)
+      || unitSchemes.some((row) => row.template_id === templateId);
+
+    if (!shared) {
+      const { count } = await supabase.from('performance_reviews')
+        .select('id', { count: 'exact', head: true }).eq('template_id', templateId);
+      if ((count || 0) > 0) {
+        await supabase.from('kpi_position_templates').update({ is_active: false }).eq('id', templateId);
+      } else {
+        await supabase.from('kpi_position_templates').delete().eq('id', templateId);
+      }
+    }
+
+    setSaving(false);
+    toast(`Đã bỏ bộ KPI riêng của ${person.name}.`, 'success');
     await load();
   };
 
@@ -298,7 +343,8 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
                   </p>
                 </div>
                 {own ? (
-                  <Button size="sm" variant="ghost" onClick={() => void clearPersonal(focusPerson.id, focusPerson.name)}>
+                  <Button size="sm" variant="ghost" disabled={saving}
+                    onClick={() => void clearPersonal(focusPerson, own.template_id)}>
                     Xoá bộ riêng
                   </Button>
                 ) : (
