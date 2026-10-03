@@ -56,6 +56,20 @@ const STAGE_LABEL: Record<Stage | 'tat_ca', string> = {
   da_duyet: 'Đã duyệt',
 };
 
+/**
+ * Đến lượt ai ở mỗi chặng.
+ *
+ * Bốn cái tên chặng nói được TRẠNG THÁI nhưng không nói được VIỆC PHẢI
+ * LÀM. "Chờ duyệt" nhìn như đang chờ ai đó khác, trong khi đó chính là lúc
+ * người đang mở màn này phải chấm lại từng tiêu chí rồi khoá.
+ */
+const STAGE_TURN: Record<Stage, string> = {
+  chua_gui: 'Bạn gửi yêu cầu',
+  cho_nhan_vien: 'Đang chờ họ',
+  cho_duyet: 'Bạn chấm lại & khoá',
+  da_duyet: 'Xong',
+};
+
 interface Criteria {
   id: string;
   template_id: string;
@@ -635,6 +649,9 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                       {count}
                       <span className="ml-1 text-[11px] font-semibold text-slate-400">/{profiles.length}</span>
                     </p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      {STAGE_TURN[stage]}
+                    </p>
                   </button>
                 );
               })}
@@ -673,11 +690,16 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
         </div>
 
         {activeTemplates.length === 0 && (
-          <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
-            <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            Chưa có bộ KPI nào đang bật nên không gửi yêu cầu chấm cho ai được. Sang{' '}
-            <strong>Bộ KPI nhân sự</strong> khai tiêu chí cho đủ 100% trọng số rồi bật bộ lên.
-          </p>
+          /* Icon va chu phai nam trong hai the rieng. De ca hai lam con
+             truc tiep cua mot the flex thi MOI tu in dam thanh mot flex item
+             va xuong dong rieng - cau canh bao vo thanh cot. */
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
+            <p className="text-xs leading-relaxed text-amber-800">
+              Chưa có bộ KPI nào đang bật nên không gửi yêu cầu chấm cho ai được. Sang{' '}
+              <strong>Bộ KPI nhân sự</strong> khai tiêu chí cho đủ 100% trọng số rồi bật bộ lên.
+            </p>
+          </div>
         )}
 
         {stageFilter !== 'tat_ca' && (
