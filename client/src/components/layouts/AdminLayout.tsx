@@ -25,15 +25,20 @@ import { notificationRoute } from '@/lib/notificationRoutes';
  * trang chủ nhân viên thay vì đoán một đích không liên quan.
  */
 const staffPreviewRoutes: Array<[adminPath: string, staffPath: string]> = [
+  ['/admin/assignments', '/staff/assignments'],
   ['/admin/projects', '/staff/projects'],
   ['/admin/worklog', '/staff/worklog'],
   ['/admin/attendance', '/staff/attendance'],
   ['/admin/timesheet', '/staff/attendance'],
   ['/admin/leave', '/staff/leave'],
-  ['/admin/training', '/staff/training'],
-  ['/admin/performance', '/staff/growth'],
-  ['/admin/reports', '/staff/reports'],
   ['/admin/payroll', '/staff/payroll'],
+  ['/admin/performance', '/staff/kpi'],
+  ['/admin/training', '/staff/training'],
+  ['/admin/process-library', '/staff/processes'],
+  ['/admin/employee-lifecycle', '/staff/growth'],
+  ['/admin/workforce', '/profile'],
+  ['/admin/worker-documents', '/profile'],
+  ['/admin/reports', '/staff/reports'],
 ];
 
 const getStaffPreviewPath = (adminPath: string) =>

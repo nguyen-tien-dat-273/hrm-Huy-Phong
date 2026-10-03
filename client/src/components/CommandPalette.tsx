@@ -4,7 +4,7 @@ import {
   Search, KeyRound, LogOut, CornerDownLeft, ArrowUp, ArrowDown, UserCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasAdminFunction, hasPermission, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
+import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import { ADMIN_NAV_ITEMS, STAFF_NAV_ITEMS } from '@/config/navigation';
 
 // ============================================================================
@@ -28,6 +28,7 @@ interface Command {
   /** Trang nhạy cảm không mở theo quyền lẻ (vd: Tính lương) — chỉ admin/CEO. */
   fullAdminOnly?: boolean;
   functionCode?: AdminFunctionCode;
+  hideForTeamlead?: boolean;
   run: () => void;
 }
 
@@ -68,6 +69,7 @@ export function CommandPalette() {
         anyPermissions: item.anyPermissions,
         fullAdminOnly: item.fullAdminOnly,
         functionCode: item.functionCode,
+        hideForTeamlead: item.hideForTeamlead,
         run: go(item.to),
       })),
 
@@ -99,7 +101,10 @@ export function CommandPalette() {
         const allowed = c.anyPermissions?.length
           ? c.anyPermissions.some((permission) => hasPermission(profile, permission))
           : (c.permission ? hasPermission(profile, c.permission) : true);
-        return allowed && (!c.fullAdminOnly || isFullAdmin(profile)) && (!c.functionCode || hasAdminFunction(profile, c.functionCode));
+        return allowed
+          && (!c.fullAdminOnly || isFullAdmin(profile))
+          && (!c.functionCode || hasAdminFunction(profile, c.functionCode))
+          && (!c.hideForTeamlead || !isTeamlead(profile));
       },
     );
     if (!query.trim()) return allowed;
