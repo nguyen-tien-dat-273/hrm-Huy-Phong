@@ -65,10 +65,21 @@ export interface SheetRow {
 
 const show = (value: number | null | undefined) => (value == null ? '' : String(Number(value)));
 
-/** Điểm quy đổi: thực hiện / cam kết x trọng số. Rỗng khi chưa chấm. */
-function weighted(score: number | null | undefined, max: number, weight: number): string {
+/**
+ * Điểm quy đổi: thực hiện / cam kết x trọng số x hệ số chia lại.
+ *
+ * `factor` là tổng trọng số / trọng số còn sống. Tiêu chí "không phát sinh" bị
+ * loại khỏi mẫu số nên trọng số của các tiêu chí còn lại được nâng lên cho đủ
+ * 100% — đúng y cách `recalc_kpi_review` dưới database tính `final_pct`.
+ *
+ * Không nhân hệ số này thì cột "Chấm điểm" trên phiếu KHÔNG cộng ra đúng
+ * kết quả kỳ in ở dòng cuối — ngay trên tờ giấy người ta ký.
+ */
+function weighted(
+  score: number | null | undefined, max: number, weight: number, factor: number,
+): string {
   if (score == null || !max) return '';
-  return `${((Number(score) / max) * weight).toFixed(2).replace(/\.00$/, '')}%`;
+  return `${((Number(score) / max) * weight * factor).toFixed(2).replace(/\.00$/, '')}%`;
 }
 
 /**
@@ -117,6 +128,14 @@ export function buildSheetRows(
   criteria: SheetCriteria[],
   scores: SheetScore[],
 ): SheetRow[] {
+  // Trọng số còn sống sau khi bỏ tiêu chí "không phát sinh".
+  const totalWeight = criteria.reduce((sum, item) => sum + Number(item.weight_percent || 0), 0);
+  const liveWeight = criteria.reduce((sum, item) => {
+    const score = scores.find((row) => row.criteria_id === item.id);
+    return score?.not_applicable ? sum : sum + Number(item.weight_percent || 0);
+  }, 0);
+  const factor = liveWeight > 0 ? totalWeight / liveWeight : 1;
+
   const rows = criteria.map((item, index) => {
     const score = scores.find((row) => row.criteria_id === item.id);
     const max = Number(item.max_score) || 0;
@@ -146,8 +165,8 @@ export function buildSheetRows(
       plan: show(max),
       selfActual: show(score?.self_score),
       managerActual: show(score?.manager_score),
-      selfWeighted: weighted(score?.self_score, max, weight),
-      managerWeighted: weighted(score?.manager_score, max, weight),
+      selfWeighted: weighted(score?.self_score, max, weight, factor),
+      managerWeighted: weighted(score?.manager_score, max, weight, factor),
       ratio: score?.manager_score != null && max
         ? `${((Number(score.manager_score) / max) * 100).toFixed(0)}%`
         : '',

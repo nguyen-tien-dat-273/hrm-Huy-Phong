@@ -41,6 +41,7 @@ interface Template {
   name: string;
   block_code: string;
   position_id: string | null;
+  unit_id: string | null;
   default_kpi_amount: number;
   is_active: boolean;
 }
@@ -221,6 +222,14 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     const own = schemes.find((row) => row.user_id === profile.id);
     const ownTemplate = own ? templates.find((item) => item.id === own.template_id) : undefined;
     if (ownTemplate?.is_active) return ownTemplate;
+    // Bộ khai THẮNG cho phòng ban. Thiếu nhánh này thì người được gán KPI qua
+    // phòng hiện "Chưa có bộ KPI" và không gửi yêu cầu được, trong khi
+    // `kpi_scheme_for` dưới database vẫn tìm ra bộ cho họ — hai nơi trả lời khác
+    // nhau về cùng một người.
+    const byUnit = profile.unit_id
+      ? templates.find((item) => item.is_active && item.unit_id && item.unit_id === profile.unit_id)
+      : undefined;
+    if (byUnit) return byUnit;
     return templates.find((item) => item.is_active && item.position_id && item.position_id === profile.position_id);
   };
 
