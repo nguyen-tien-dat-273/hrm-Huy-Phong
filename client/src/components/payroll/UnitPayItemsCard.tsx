@@ -210,13 +210,19 @@ export function UnitPayItemsCard({
       <div>
         <div>
           <h3 className="text-base font-bold text-slate-800">Phòng ban và nhân viên</h3>
-          <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
-            Chọn một phòng ban để đi vào danh sách nhân viên và thiết lập cơ chế lương cho từng người.
-          </p>
+          {!selectedUnitId && (
+            <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
+              Chọn một phòng ban để đi vào danh sách nhân viên và thiết lập cơ chế lương cho từng người.
+            </p>
+          )}
         </div>
       </div>
 
-      {unassignedCount > 0 && (
+      {/* Canh bao nay noi ve nhung nguoi KHONG thuoc don vi nao - tuc khong
+          thuoc phong dang mo. Dang dung trong mot phong ma van bay con so cua
+          ca cong ty la bat nguoi dung doc mot viec khong lien quan toi thu
+          truoc mat, va de tuong 29 nguoi do nam trong phong nay. */}
+      {!selectedUnitId && unassignedCount > 0 && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
           {unassignedCount} nhân sự chưa thuộc đơn vị nào nên <strong>không thừa hưởng</strong> khoản
           nào theo phòng ban. Gán đơn vị cho họ ở trang Cơ cấu tổ chức, hoặc gán khoản riêng
