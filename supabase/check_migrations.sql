@@ -266,6 +266,12 @@ with probe as (
                and column_name = 'self_actual_value'),
      'Bien tren/duoi cua muc tieu, va o nhap ket qua that cua nhan vien'),
 
+    ('20261002150000_kpi_criteria_section',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'kpi_template_criteria'
+               and column_name = 'section'),
+     'Chia tieu chi thanh phan dinh luong / dinh tinh, co tieu tong rieng'),
+
     ('20261002140000_phone_push_notifications',
      to_regclass('public.push_subscriptions') is not null
        and exists (select 1 from information_schema.columns

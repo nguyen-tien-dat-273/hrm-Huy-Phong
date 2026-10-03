@@ -48,7 +48,21 @@ export function KpiSheetTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {rows.map((row, position) => (row.kind === 'section' ? (
+            /* Dong nhom: in dam, nen xam, mang tieu tong cua phan. */
+            <tr key={`s-${position}`} className="bg-slate-100 font-bold text-slate-800">
+              <td className="border border-slate-200 px-2 py-1.5" />
+              <td className="border border-slate-200 px-2 py-1.5">{row.name}</td>
+              <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.weight}%</td>
+              <td className="border border-slate-200 px-2 py-1.5" />
+              <td className="border border-slate-200 px-2 py-1.5" />
+              <td className="border border-slate-200 px-2 py-1.5" />
+              <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.selfWeighted}</td>
+              <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.managerWeighted}</td>
+              <td className="border border-slate-200 px-2 py-1.5" />
+              <td className="border border-slate-200 px-2 py-1.5" />
+            </tr>
+          ) : (
             <tr key={row.index} className="text-slate-700">
               <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.index}</td>
               <td className="border border-slate-200 px-2 py-1.5">{row.name}</td>
@@ -64,7 +78,7 @@ export function KpiSheetTable({
               <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.ratio || '—'}</td>
               <td className="border border-slate-200 px-2 py-1.5 text-slate-500">{row.note || ''}</td>
             </tr>
-          ))}
+          )))}
         </tbody>
         {finalPct != null && (
           <tfoot>

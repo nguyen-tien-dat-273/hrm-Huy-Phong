@@ -408,7 +408,16 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 
     // Dung chung ham voi bang tren man: ban in va ban xem lech nhau mot cot
     // la nguoi ky giay va nguoi xem man hinh doc hai con so khac nhau.
-    const body = buildSheetRows(rows, reviewScores).map((row) => `<tr>
+    const body = buildSheetRows(rows, reviewScores).map((row) => (
+      row.kind === 'section'
+        ? `<tr class="sec">
+        <td></td><td>${esc(row.name)}</td><td class="c">${row.weight}%</td>
+        <td></td><td></td><td></td>
+        <td class="c">${esc(row.selfWeighted)}</td>
+        <td class="c">${esc(row.managerWeighted)}</td>
+        <td></td><td></td>
+      </tr>`
+        : `<tr>
         <td class="c">${row.index}</td>
         <td>${esc(row.name)}</td>
         <td class="c">${row.weight}%</td>
@@ -419,7 +428,8 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
         <td class="c b">${esc(row.managerWeighted)}</td>
         <td class="c">${esc(row.ratio)}</td>
         <td>${esc(row.note)}</td>
-      </tr>`).join('');
+      </tr>`
+    )).join('');
 
     const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8">
 <title>Phiếu KPI ${esc(person.name)} - ${esc(month)}</title>
@@ -435,6 +445,7 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   td.c { text-align: center; }
   td.b { font-weight: bold; }
   tfoot td { font-weight: bold; }
+  tr.sec td { background: #eef3e8; font-weight: bold; }
   .sign { margin-top: 28px; display: flex; justify-content: space-around; text-align: center; font-size: 11pt; }
   .sign div { width: 32%; }
   .sign .role { font-weight: bold; }
@@ -755,21 +766,16 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                       ben module "Bo KPI nhan su" roi. Hoi lai lan nua la mo
                       duong cho mot nguoi duoc cham bang bo cua nguoi khac, va
                       hai noi noi hai dieu khac nhau ve cung mot nguoi. */}
-                  {!review ? (() => {
-                    const own = suggestTemplate(profile);
-                    if (!own) {
-                      return (
-                        <span className="text-[11px] font-semibold text-amber-600">
-                          Chưa có bộ KPI
-                        </span>
-                      );
-                    }
-                    return (
-                      <Button size="sm" disabled={busy} onClick={() => void startReview(profile, own.id)}>
-                        <Plus className="h-3.5 w-3.5" /> Gửi yêu cầu chấm
-                      </Button>
-                    );
-                  })() : !locked ? (
+                  {/* Khong co nut gui yeu cau tren tung dong.
+                      Gui yeu cau la thao tac CA LO - bam "Gui yeu cau cho N
+                      nguoi con lai" o dau man. Bay them mot nut lam dung viec
+                      do tren moi dong la ba chuc nut giong het nhau, va nguoi
+                      dung phai doan hai cai khac nhau cho nao. */}
+                  {!review ? (
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {suggestTemplate(profile) ? 'Chưa gửi yêu cầu' : 'Chưa có bộ KPI'}
+                    </span>
+                  ) : !locked ? (
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => void lockReview(review, profile)}>
                       <Lock className="h-3.5 w-3.5" /> Khoá kết quả
                     </Button>

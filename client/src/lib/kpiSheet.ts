@@ -28,6 +28,8 @@
 export interface SheetCriteria {
   id: string;
   name: string;
+  /** Tên phần, ví dụ "Đánh giá định lượng". Rỗng = không chia phần. */
+  section?: string | null;
   weight_percent: number;
   /** Điểm chuẩn của tiêu chí — cột "Kế hoạch/cam kết" trong file Excel. */
   max_score: number;
@@ -45,6 +47,8 @@ export interface SheetScore {
 }
 
 export interface SheetRow {
+  /** Dòng tiêu đề của một phần, mang tiểu tổng. */
+  kind: 'section' | 'criteria';
   index: number;
   name: string;
   /** Trọng số, %. File Excel ghi 0,2; ở đây hiện 20 cho thống nhất với hệ thống. */
@@ -67,11 +71,53 @@ function weighted(score: number | null | undefined, max: number, weight: number)
   return `${((Number(score) / max) * weight).toFixed(2).replace(/\.00$/, '')}%`;
 }
 
+/**
+ * Chen dòng tiêu đề phần và tiểu tổng, giữ nguyên thứ tự tiêu chí.
+ *
+ * Thứ tự phần lấy theo lần xuất hiện đầu tiên trong danh sách đã sắp, không
+ * theo bảng chữ cái: "Định lượng" phải đứng trước "Định tính" như bản giấy,
+ * mà xếp theo chữ thì ngược lại.
+ */
+function withSections(rows: SheetRow[], criteria: SheetCriteria[]): SheetRow[] {
+  const sections = [...new Set(criteria.map((item) => (item.section || '').trim()).filter(Boolean))];
+  if (sections.length === 0) return rows;
+
+  const out: SheetRow[] = [];
+  for (const section of sections) {
+    const indexes = criteria
+      .map((item, i) => ((item.section || '').trim() === section ? i : -1))
+      .filter((i) => i >= 0);
+    const members = indexes.map((i) => rows[i]);
+
+    const sum = (pick: (row: SheetRow) => string) => members
+      .reduce((total, row) => total + (parseFloat(pick(row)) || 0), 0);
+    const totalWeight = indexes.reduce((total, i) => total + Number(criteria[i].weight_percent || 0), 0);
+
+    out.push({
+      kind: 'section',
+      index: 0,
+      name: section,
+      weight: totalWeight,
+      plan: '',
+      selfActual: '', managerActual: '',
+      selfWeighted: `${sum((row) => row.selfWeighted).toFixed(2).replace(/\.00$/, '')}%`,
+      managerWeighted: `${sum((row) => row.managerWeighted).toFixed(2).replace(/\.00$/, '')}%`,
+      ratio: '', note: '',
+    });
+    out.push(...members);
+  }
+
+  // Tieu chi khong khai phan van phai hien, khong duoc nuot mat.
+  const grouped = new Set(out.filter((row) => row.kind === 'criteria'));
+  out.push(...rows.filter((row) => !grouped.has(row)));
+  return out;
+}
+
 export function buildSheetRows(
   criteria: SheetCriteria[],
   scores: SheetScore[],
 ): SheetRow[] {
-  return criteria.map((item, index) => {
+  const rows = criteria.map((item, index) => {
     const score = scores.find((row) => row.criteria_id === item.id);
     const max = Number(item.max_score) || 0;
     const weight = Number(item.weight_percent) || 0;
@@ -80,6 +126,7 @@ export function buildSheetRows(
     // thay vì cho 0, vì 0 đọc ra là "làm mà không đạt gì".
     if (score?.not_applicable) {
       return {
+        kind: 'criteria' as const,
         index: index + 1,
         name: item.name,
         weight,
@@ -92,6 +139,7 @@ export function buildSheetRows(
     }
 
     return {
+      kind: 'criteria' as const,
       index: index + 1,
       name: item.name,
       weight,
@@ -106,4 +154,6 @@ export function buildSheetRows(
       note: score?.manager_comment || item.measure_hint || '',
     };
   });
+
+  return withSections(rows, criteria);
 }
