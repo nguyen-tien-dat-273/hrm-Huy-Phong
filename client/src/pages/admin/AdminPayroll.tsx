@@ -737,16 +737,20 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
             schemedUserIds={new Set(rows.filter((row) => row.hasScheme).map((row) => row.profile.id))}
             onSelectUnit={setFocusedUnitId}
           />
-          {/* Vao mot phong roi thi danh sach duoi chi con phong do. Van de
-              ca cong ty la nua tren man dang xem mot phong, nua duoi dang xem
-              tat ca - hai nua noi hai chuyen khac nhau. */}
-          <SchemesTab
-            rows={focusedUnitId ? rows.filter((row) => row.profile.unit_id === focusedUnitId) : rows}
-            focusedUnitName={focusedUnitId ? unitNames.get(focusedUnitId) ?? null : null}
-            unitNameById={unitNames}
-            onEdit={setSchemeTarget}
-            onBulk={setBulkTargets}
-          />
+          {/* Dang dung trong mot phong thi KHOI TREN da liet ke dung nhung
+              nguoi do, kem trang thai va nut Thiet lap. Bay them danh sach
+              nay nua la cung mot nhom nguoi hien hai lan, cung mot thao tac
+              hai cho.
+              Danh sach toan cong ty chi co nghia khi chua chon phong nao -
+              luc do no la danh sach viec con ton. */}
+          {!focusedUnitId && (
+            <SchemesTab
+              rows={rows}
+              unitNameById={unitNames}
+              onEdit={setSchemeTarget}
+              onBulk={setBulkTargets}
+            />
+          )}
         </div>
       )}
 
@@ -959,14 +963,12 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
  * người rồi đặt một lần, sau đó ai cần khác thì sửa riêng.
  */
 function SchemesTab({
-  rows, unitNameById, onEdit, onBulk, focusedUnitName,
+  rows, unitNameById, onEdit, onBulk,
 }: {
   rows: PayrollRow[];
   unitNameById: Map<string, string>;
   onEdit: (profile: Profile) => void;
   onBulk: (profiles: Profile[]) => void;
-  /** Tên phòng đang lọc, để nói rõ danh sách này không phải cả công ty. */
-  focusedUnitName?: string | null;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -1011,9 +1013,9 @@ function SchemesTab({
     <div className="space-y-4">
       {withoutScheme.length > 0 && (
         <Banner tone="amber" icon={<TriangleAlert className="mt-0.5 h-4.5 w-4.5 flex-shrink-0" />}>
-          {withoutScheme.length} nhân sự{focusedUnitName ? ` trong ${focusedUnitName}` : ''} chưa có cơ
-          chế lương. Họ sẽ không xuất hiện trong bảng lương đã chốt cho tới khi được thiết lập.
-          Tích chọn nhiều người rồi bấm <strong>Thiết lập hàng loạt</strong> nếu họ cùng một mức.
+          {withoutScheme.length} nhân sự chưa có cơ chế lương. Họ sẽ không xuất hiện trong bảng
+          lương đã chốt cho tới khi được thiết lập. Tích chọn nhiều người rồi bấm{' '}
+          <strong>Thiết lập hàng loạt</strong> nếu họ cùng một mức.
         </Banner>
       )}
 
