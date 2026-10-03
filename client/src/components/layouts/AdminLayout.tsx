@@ -246,7 +246,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <p className="mt-0.5 text-[11px] text-slate-500">Hệ thống quản lý nhân sự</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-slate-400 hover:text-slate-600">
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Đóng menu điều hướng" className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -349,7 +349,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               cha khong co thi phep co khong bao gio truyen xuong - header
               phinh ra 751px trong khung 553px va day ca trang tran ngang. */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden text-slate-600 p-2 rounded-lg hover:bg-slate-100">
+            <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở menu điều hướng" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex min-w-0 flex-col">
@@ -379,7 +379,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   nguyen mau cua module dang mo. */}
               <button
                 onClick={() => { setLauncherOpen(!launcherOpen); setNotifOpen(false); setAvatarOpen(false); }}
-                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
+                className={`flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
                   activeGroup
                     ? activeGroup.chip
                     : 'bg-slate-800 text-white hover:bg-slate-900'
@@ -445,8 +445,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             {/* Gợi ý command palette — người dùng không tự đoán ra phím tắt nếu
                 không được nhắc ở đâu đó. */}
             <button
+              type="button"
               onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-              className="hidden md:flex items-center gap-2 h-9 pl-3 pr-2 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300 transition-colors"
+              className="hidden h-11 items-center gap-2 rounded-xl border border-slate-200 pl-3 pr-2 text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-600 md:flex"
               aria-label="Mở tìm nhanh"
             >
               <Search className="w-4 h-4" />

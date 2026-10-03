@@ -1,9 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  BarChart3, BookOpen, Calculator, ClipboardCheck,
+  BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, MapPinned, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
   ArrowLeftRight, Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
+  FileBarChart, Fingerprint, KanbanSquare, WalletCards,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
 
@@ -70,6 +71,39 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },
+];
+
+export interface StaffNavItem {
+  to: string;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+  group: string;
+  keywords?: string;
+}
+
+/**
+ * Một nguồn điều hướng duy nhất cho sidebar nhân viên và tìm kiếm nhanh.
+ * Khi bổ sung chức năng mới, hai lối vào sẽ luôn xuất hiện đồng thời.
+ */
+export const STAFF_NAV_ITEMS: StaffNavItem[] = [
+  { to: '/staff/dashboard', label: 'Trang chủ', description: 'Tổng quan công việc và lịch cá nhân hôm nay', icon: LayoutDashboard, group: 'Tổng quan', keywords: 'trang chu tong quan hom nay' },
+  { to: '/staff/reports', label: 'Báo cáo cá nhân', description: 'Ngày công, thời gian và kết quả của bạn', icon: FileBarChart, group: 'Tổng quan', keywords: 'bao cao ngay cong thoi gian ket qua' },
+
+  { to: '/staff/assignments', label: 'Việc được giao', description: 'Việc quản lý giao theo ngày, gửi lại khi xong', icon: ClipboardList, group: 'Công việc', keywords: 'giao viec phan cong nhiem vu' },
+  { to: '/staff/projects', label: 'Dự án của tôi', description: 'Các dự án và thành viên đang cộng tác', icon: Briefcase, group: 'Công việc', keywords: 'du an project cong tac' },
+  { to: '/staff/kanban', label: 'Tác vụ Kanban', description: 'Theo dõi và cập nhật trạng thái tác vụ', icon: KanbanSquare, group: 'Công việc', keywords: 'task cong viec tac vu' },
+  { to: '/staff/worklog', label: 'Nhật ký giờ', description: 'Ghi nhận thời gian thực tế cho từng công việc', icon: NotebookPen, group: 'Công việc', keywords: 'ghi gio worklog timesheet' },
+
+  { to: '/staff/attendance', label: 'Chấm công', description: 'Xem dữ liệu từ máy chấm công và hoàn tất check-out', icon: Fingerprint, group: 'Thời gian & Lịch', keywords: 'check in check out cham cong' },
+  { to: '/staff/leave', label: 'Đơn từ của tôi', description: 'Nghỉ phép, đi muộn, về sớm và làm thêm giờ', icon: ClipboardList, group: 'Thời gian & Lịch', keywords: 'don tu xin nghi quy phep di muon ve som lam them tang ca' },
+
+  { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ', keywords: 'luong phieu luong thu nhap payslip khau tru' },
+
+  { to: '/staff/kpi', label: 'KPI của tôi', description: 'Kết quả chấm điểm và điểm từng tiêu chí', icon: Target, group: 'KPI', keywords: 'kpi danh gia cham diem tieu chi' },
+  { to: '/staff/training', label: 'Đào tạo của tôi', description: 'Khóa học được giao và tiến độ hoàn thành', icon: BookOpen, group: 'Phát triển', keywords: 'dao tao khoa hoc hoc tap' },
+  { to: '/staff/processes', label: 'Quy trình & biểu mẫu', description: 'Tài liệu đang hiệu lực của công ty', icon: BookOpen, group: 'Phát triển', keywords: 'quy trinh bieu mau tai lieu quy che' },
+  { to: '/staff/growth', label: 'Lộ trình phát triển', description: 'Checklist hội nhập và bàn giao của tôi', icon: Target, group: 'Phát triển', keywords: 'lo trinh phat trien onboarding offboarding checklist' },
 ];
 
 /**

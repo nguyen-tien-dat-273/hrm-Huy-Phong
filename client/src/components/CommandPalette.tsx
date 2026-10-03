@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, LayoutDashboard, CalendarOff,
-  Briefcase, KanbanSquare, Fingerprint, FileBarChart, NotebookPen, KeyRound, LogOut, CornerDownLeft, ArrowUp, ArrowDown,
-  UserCircle, BookOpen, WalletCards,
+  Search, KeyRound, LogOut, CornerDownLeft, ArrowUp, ArrowDown, UserCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAdminFunction, hasPermission, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
-import { ADMIN_NAV_ITEMS } from '@/config/navigation';
+import { ADMIN_NAV_ITEMS, STAFF_NAV_ITEMS } from '@/config/navigation';
 
 // ============================================================================
 // Command palette (Ctrl/⌘ + K)
@@ -73,15 +71,14 @@ export function CommandPalette() {
         run: go(item.to),
       })),
 
-      { id: 'staff-dashboard', label: 'Trang chủ cá nhân', group: 'Cổng nhân viên', icon: LayoutDashboard, run: go('/staff/dashboard') },
-      { id: 'staff-projects', label: 'Dự án của tôi', group: 'Cổng nhân viên', icon: Briefcase, run: go('/staff/projects') },
-      { id: 'staff-kanban', label: 'Tác vụ Kanban', group: 'Cổng nhân viên', icon: KanbanSquare, keywords: 'task cong viec', run: go('/staff/kanban') },
-      { id: 'staff-attendance', label: 'Chấm công', group: 'Cổng nhân viên', icon: Fingerprint, keywords: 'check in out', run: go('/staff/attendance') },
-      { id: 'staff-worklog', label: 'Nhật ký giờ của tôi', group: 'Cổng nhân viên', icon: NotebookPen, keywords: 'ghi gio worklog', run: go('/staff/worklog') },
-      { id: 'staff-leave', label: 'Đơn từ của tôi', group: 'Cổng nhân viên', icon: CalendarOff, keywords: 'don tu xin nghi quy phep di muon ve som lam them tang ca', run: go('/staff/leave') },
-      { id: 'staff-reports', label: 'Báo cáo cá nhân', group: 'Cổng nhân viên', icon: FileBarChart, run: go('/staff/reports') },
-      { id: 'staff-payroll', label: 'Lương của tôi', group: 'Cổng nhân viên', icon: WalletCards, keywords: 'luong phieu luong thu nhap payslip', run: go('/staff/payroll') },
-      { id: 'staff-training', label: 'Đào tạo của tôi', group: 'Cổng nhân viên', icon: BookOpen, keywords: 'dao tao khoa hoc hoc tap', run: go('/staff/training') },
+      ...STAFF_NAV_ITEMS.map((item) => ({
+        id: `staff-${item.to.split('/').pop()}`,
+        label: item.label,
+        group: `Cổng nhân viên · ${item.group}`,
+        icon: item.icon,
+        keywords: item.keywords,
+        run: go(item.to),
+      })),
 
       { id: 'profile', label: 'Hồ sơ cá nhân', group: 'Tài khoản', icon: UserCircle, keywords: 'thong tin ca nhan anh dai dien so dien thoai avatar', run: go('/profile') },
       { id: 'change-password', label: 'Đổi mật khẩu', group: 'Tài khoản', icon: KeyRound, run: go('/change-password') },
@@ -187,7 +184,7 @@ export function CommandPalette() {
           </kbd>
         </div>
 
-        <div ref={listRef} role="listbox" aria-label="Kết quả" className="max-h-[52vh] overflow-y-auto py-2">
+        <div ref={listRef} role="list" aria-label="Kết quả" className="max-h-[52vh] overflow-y-auto py-2">
           {visible.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-10">
               Không có kết quả cho “{query}”
@@ -206,8 +203,8 @@ export function CommandPalette() {
                     </p>
                   )}
                   <button
-                    role="option"
-                    aria-selected={active}
+                    type="button"
+                    aria-current={active ? 'true' : undefined}
                     data-active={active}
                     onMouseEnter={() => setActiveIndex(i)}
                     onClick={cmd.run}

@@ -60,15 +60,14 @@ export function PhoneNotificationPrompt() {
           type="button"
           onClick={() => void enable()}
           disabled={busy}
-          className="shrink-0 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+          className="min-h-11 shrink-0 rounded-lg bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50"
         >
           {busy ? 'Đang bật…' : 'Bật'}
         </button>
-        <button type="button" onClick={dismiss} aria-label="Để sau" className="shrink-0 p-1 text-slate-400 hover:text-slate-600">
+        <button type="button" onClick={dismiss} aria-label="Để sau" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
           <X className="h-4 w-4" />
         </button>
       </div>
     </div>
   );
 }
-
