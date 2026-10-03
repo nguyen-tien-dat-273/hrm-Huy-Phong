@@ -371,6 +371,70 @@ export interface AssignedPayItem {
   component: PayComponent;
 }
 
+/**
+ * Mã khoản mà một công thức đọc tới.
+ *
+ * Quét thô bằng regex chữ hoa: biến trong công thức luôn là MÃ VIẾT HOA, và
+ * chỉ những mã trùng với khoản đang gán mới được coi là phụ thuộc — tên hàm
+ * hay biến hệ thống như `NGAY_CONG` không nằm trong tập đó nên tự bị loại.
+ */
+function codesReferencedBy(formula: string): string[] {
+  return [...new Set(formula.toUpperCase().match(/[A-Z][A-Z0-9_]*/g) ?? [])];
+}
+
+/**
+ * Sắp các khoản sao cho khoản bị tham chiếu được tính trước.
+ *
+ * Giữ `sort_order` làm thứ tự nền: hai khoản không liên quan nhau thì vẫn ra
+ * đúng thứ tự người dùng đã xếp trong danh mục, bảng lương không tự nhiên đảo
+ * dòng sau khi nâng cấp.
+ *
+ * Vòng tròn phụ thuộc (A đọc B, B đọc A) thì KHÔNG thể sắp được — trả về theo
+ * thứ tự cũ và cảnh báo, chứ không im lặng chọn bừa một bên để tính trước.
+ */
+function orderByDependency<T extends { component: PayComponent; formula?: string | null }>(
+  items: T[],
+  warnings: string[],
+): T[] {
+  const base = [...items].sort((a, b) => a.component.sort_order - b.component.sort_order);
+  const byCode = new Map<string, T>();
+  for (const item of base) {
+    const code = item.component.code?.toUpperCase();
+    if (code) byCode.set(code, item);
+  }
+
+  const out: T[] = [];
+  const done = new Set<T>();
+  const inProgress = new Set<T>();
+
+  const visit = (item: T) => {
+    if (done.has(item)) return;
+    if (inProgress.has(item)) {
+      warnings.push(
+        `Khoản “${item.component.name}” nằm trong một vòng công thức tham chiếu lẫn nhau. `
+        + 'Kết quả tính theo thứ tự trong danh mục — hãy bỏ bớt một tham chiếu.',
+      );
+      return;
+    }
+    inProgress.add(item);
+    const formula = (item.formula?.trim() || item.component.formula?.trim() || '');
+    if (formula) {
+      for (const code of codesReferencedBy(formula)) {
+        const dependency = byCode.get(code);
+        // Chỉ đi theo mã của khoản KHÁC đang gán. Tự tham chiếu chính mình thì
+        // bỏ qua, nếu không mọi khoản đều báo vòng tròn.
+        if (dependency && dependency !== item) visit(dependency);
+      }
+    }
+    inProgress.delete(item);
+    done.add(item);
+    out.push(item);
+  };
+
+  for (const item of base) visit(item);
+  return out;
+}
+
 export interface ComputePayslipArgs {
   profile: Profile;
   payProfile: EmployeePayProfile | null;
@@ -833,7 +897,15 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   scope.INSURANCE_BASE = rawInsuranceBase;
 
   // --- Các khoản cộng -------------------------------------------------------
-  const sorted = [...items].sort((a, b) => a.component.sort_order - b.component.sort_order);
+  //
+  // Sắp theo PHỤ THUỘC chứ không chỉ theo `sort_order`.
+  //
+  // Tổng lương là phép cộng trừ nhân chia giữa các khoản, nên một khoản được
+  // phép tham chiếu mã của khoản khác. Nhưng khoản được tham chiếu phải tính
+  // XONG trước, không thì lúc đọc nó vẫn đang là 0 — và công thức nhìn đúng
+  // vẫn ra số sai, lặng lẽ, không cảnh báo gì. Xếp theo `sort_order` là phó
+  // mặc chuyện đó cho người khai nhớ đánh số đúng thứ tự.
+  const sorted = orderByDependency(items, warnings);
 
   const earningItems = sorted.filter((entry) => entry.component.kind === 'EARNING');
   for (const assigned of earningItems) {

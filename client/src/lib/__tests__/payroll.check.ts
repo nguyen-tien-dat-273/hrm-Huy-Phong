@@ -809,5 +809,39 @@ const flexibleResult = computePayslip({
 check('công thức riêng ghi đè cách tính FIXED',
   flexibleResult.lines.find((l) => l.code === 'THUONG_LINH_HOAT')?.amount, 4_000_000);
 
+// ---------------------------------------------------------------------------
+// Tổng lương ghép từ nhiều khoản: khoản này đọc được mã của khoản kia.
+// ---------------------------------------------------------------------------
+// Đây là cách người dùng mô tả cơ chế lương: khai sẵn các khoản trong danh
+// mục, rồi tổng là phép cộng trừ nhân chia giữa chúng.
+//
+// Phần dễ sai: khoản bị tham chiếu phải tính XONG trước. Cố ý cho khoản phụ
+// thuộc một `sort_order` NHỎ HƠN khoản nó đọc tới — sắp theo sort_order thì
+// nó chạy trước và đọc ra 0, ra 0đ thay vì 1.650.000đ.
+const phuCapXang = component({
+  id: 'cXang', code: 'PC_XANG', name: 'Phụ cấp xăng xe',
+  calc_type: 'FIXED', default_amount: 500_000, sort_order: 900,
+});
+const phuCapAn = component({
+  id: 'cAn', code: 'PC_AN', name: 'Phụ cấp ăn ca',
+  calc_type: 'FIXED', default_amount: 1_000_000, sort_order: 910,
+});
+// Thưởng = 10% của (xăng + ăn ca). Khai sort_order 100 để nó đứng TRƯỚC.
+const thuongGhep = component({
+  id: 'cGhep', code: 'THUONG_GHEP', name: 'Thưởng ghép',
+  calc_type: 'FORMULA', formula: '(PC_XANG + PC_AN) * 0.1', sort_order: 100,
+});
+const ghepResult = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [
+    { item: item('cGhep'), component: thuongGhep },
+    { item: item('cXang'), component: phuCapXang },
+    { item: item('cAn'), component: phuCapAn },
+  ],
+  inputs: {}, stats, settings,
+});
+check('khoản ghép đọc được mã của khoản xếp sau nó',
+  ghepResult.lines.find((l) => l.code === 'THUONG_GHEP')?.amount, 150_000);
+
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
