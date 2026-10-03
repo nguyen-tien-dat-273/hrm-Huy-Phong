@@ -79,6 +79,7 @@ interface Criteria {
   score_levels: ScoreLevel[];
   measure_unit: string | null;
   measure_hint: string | null;
+  section: string | null;
   sort_order: number;
   is_active: boolean;
 }

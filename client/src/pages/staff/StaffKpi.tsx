@@ -66,6 +66,7 @@ interface Criteria {
   score_levels: ScoreLevel[];
   measure_unit: string | null;
   measure_hint: string | null;
+  section: string | null;
 }
 
 export function StaffKpi() {
@@ -162,7 +163,7 @@ export function StaffKpi() {
       if (rows.length > 0) {
         const [scoreRes, criteriaRes, templateRes] = await Promise.all([
           supabase.from('performance_review_scores').select('*').in('review_id', rows.map((r) => r.id)),
-          supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, max_score, is_active, score_levels, measure_unit, measure_hint'),
+          supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, max_score, is_active, score_levels, measure_unit, measure_hint, section'),
           supabase.from('kpi_position_templates').select('id, name'),
         ]);
         setScores((scoreRes.data || []) as Score[]);

@@ -64,6 +64,7 @@ interface Criteria {
   measure_hint: string | null;
   description: string | null;
   score_method: string | null;
+  section: string | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -83,7 +84,7 @@ const DEFAULT_LEVELS: ScoreLevel[] = [
 
 const BLANK_CRITERIA = {
   name: '', weight_percent: '', max_score: '4', allow_over_standard: false,
-  measure_unit: '', measure_hint: '',
+  measure_unit: '', measure_hint: '', section: '',
   description: '',
   /** Rỗng = theo cách tính của cả bộ KPI. */
   score_method: '',
@@ -295,6 +296,7 @@ export function KpiTemplateEditor({
       allow_over_standard: item.allow_over_standard ?? false,
       measure_unit: item.measure_unit ?? '',
       measure_hint: item.measure_hint ?? '',
+      section: item.section ?? '',
       description: item.description ?? '',
       score_method: item.score_method ?? '',
       levels: Array.isArray(item.score_levels) && item.score_levels.length > 0
@@ -327,6 +329,7 @@ export function KpiTemplateEditor({
       score_method: criteriaForm.score_method || null,
       measure_unit: criteriaForm.measure_unit.trim() || null,
       measure_hint: criteriaForm.measure_hint.trim() || null,
+      section: criteriaForm.section.trim() || null,
       // Bỏ mức rỗng do người dùng thêm rồi để trống — lưu vào chỉ làm thang
       // điểm có một dòng vô nghĩa mà lúc chấm không ai hiểu.
       score_levels: criteriaForm.levels.filter((level) => level.label || level.min != null || level.max != null),
@@ -760,6 +763,40 @@ export function KpiTemplateEditor({
               </span>
             </label>
           </div>
+          {/* Phan cua tieu chi. Bay file KPI that cua cong ty deu chia hai
+              phan co trong so rieng, va phieu in ra phai co dong nhom + tieu
+              tong dung nhu ban giay cu. */}
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-600">Thuộc phần:</span>
+              <input
+                value={criteriaForm.section}
+                onChange={(e) => setCriteriaForm({ ...criteriaForm, section: e.target.value })}
+                placeholder="để trống nếu không chia phần"
+                aria-label="Phần của tiêu chí"
+                className="h-8 min-w-[180px] flex-1 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-indigo-500"
+              />
+              {['Đánh giá định lượng', 'Đánh giá định tính'].map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setCriteriaForm({ ...criteriaForm, section: name })}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition ${
+                    criteriaForm.section === name
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+              Các tiêu chí cùng phần được gom lại trên phiếu, có dòng tiểu tổng trọng số và
+              điểm riêng — đúng như bản Excel đang dùng.
+            </p>
+          </div>
+
           <Input
             label="Ghi chú"
             placeholder="VD: Đếm đơn hàng bị sai trong kỳ, không tính đơn khách tự huỷ."
