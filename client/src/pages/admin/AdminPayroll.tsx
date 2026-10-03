@@ -732,6 +732,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
             actorId={profile?.id ?? null}
             onChanged={() => loadData(true)}
             onEditEmployee={setSchemeTarget}
+            schemedUserIds={new Set(rows.filter((row) => row.hasScheme).map((row) => row.profile.id))}
           />
           <SchemesTab
             rows={rows}

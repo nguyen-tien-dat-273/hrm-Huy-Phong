@@ -38,6 +38,14 @@ interface UnitPayItemsCardProps {
   actorId: string | null;
   onChanged: () => void;
   onEditEmployee: (profile: Profile) => void;
+  /**
+   * Id của những người ĐÃ có cơ chế lương.
+   *
+   * Không có tập này thì hai danh sách trên cùng màn nói hai điều khác nhau
+   * về cùng một người: danh sách dưới ghi đỏ "Chưa thiết lập cơ chế lương",
+   * danh sách trên không ghi gì — người dùng không biết tin cái nào.
+   */
+  schemedUserIds: ReadonlySet<string>;
 }
 
 interface Draft {
@@ -51,7 +59,7 @@ interface Draft {
 }
 
 export function UnitPayItemsCard({
-  components, unitItems, profiles, params, defaultEffectiveFrom, actorId, onChanged, onEditEmployee,
+  components, unitItems, profiles, params, defaultEffectiveFrom, actorId, onChanged, onEditEmployee, schemedUserIds,
 }: UnitPayItemsCardProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -298,16 +306,24 @@ export function UnitPayItemsCard({
                                 type="button"
                                 onClick={() => onEditEmployee(person)}
                                 className="group flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-indigo-50/50"
-                                aria-label={`Mở cơ chế lương của ${person.name}`}
+                                aria-label={`Thiết lập cơ chế lương của ${person.name}`}
                               >
                                 <Avatar name={person.name} url={person.avatar_url} size="sm" />
                                 <span className="min-w-0 flex-1">
                                   <span className="block truncate text-sm font-semibold text-slate-800">{person.name}</span>
-                                  <span className="mt-0.5 block truncate text-xs text-slate-400">
-                                    {person.employee_code || person.email}
+                                  <span className="mt-0.5 block truncate text-xs">
+                                    {schemedUserIds.has(person.id)
+                                      ? <span className="text-slate-400">{person.employee_code || person.email}</span>
+                                      : <span className="font-bold text-red-500">Chưa thiết lập cơ chế lương</span>}
                                   </span>
                                 </span>
-                                <span className="hidden text-xs font-semibold text-indigo-600 sm:block">Cơ chế lương riêng</span>
+                                {/* Cùng một nhãn với danh sách dưới: hai nút
+                                    này mở ĐÚNG một thứ, đặt hai tên khác nhau
+                                    là mời người dùng đi tìm sự khác biệt không
+                                    tồn tại. */}
+                                <span className="hidden text-xs font-semibold text-indigo-600 sm:block">
+                                  {schemedUserIds.has(person.id) ? 'Sửa' : 'Thiết lập'}
+                                </span>
                                 <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600" />
                               </button>
                             </li>
