@@ -201,6 +201,9 @@ export function ProfilePage() {
           <Input label="Họ và tên" value={name} onChange={(e) => setName(e.target.value)} />
           <Input
             label="Số điện thoại"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
             placeholder="0912 345 678"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}

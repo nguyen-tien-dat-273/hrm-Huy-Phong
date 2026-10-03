@@ -272,6 +272,12 @@ with probe as (
                and column_name = 'section'),
      'Chia tieu chi thanh phan dinh luong / dinh tinh, co tieu tong rieng'),
 
+    ('20261003100000_profiles_phone',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'profiles'
+               and column_name = 'phone'),
+     'So dien thoai trong ho so ca nhan; cho phep nguoi dung tu cap nhat'),
+
     ('20261002140000_phone_push_notifications',
      to_regclass('public.push_subscriptions') is not null
        and exists (select 1 from information_schema.columns
