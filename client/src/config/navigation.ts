@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
-  LayoutGrid, MapPinned, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
+  LayoutGrid, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
   ArrowLeftRight, Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
   FileBarChart, Fingerprint, KanbanSquare, WalletCards,
 } from 'lucide-react';
@@ -47,7 +47,6 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
   { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
   { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
-  { to: '/admin/work-locations', label: 'Địa điểm chấm công', description: 'Điểm GPS, bán kính, Wi-Fi và đơn vị được phép chấm công', icon: MapPinned, permission: 'settings', group: 'Thời gian & Đơn từ', keywords: 'dia diem gps geofence wifi bssid cham cong', functionCode: 'admin.work_locations', hideForTeamlead: true },
 
   // Module lương tách thành các mục con để đặt dấu trang được, tìm nhanh thấy
   // được, và cấp quyền riêng từng phần. Thứ tự theo trình tự chốt kỳ trong
@@ -95,7 +94,7 @@ export const STAFF_NAV_ITEMS: StaffNavItem[] = [
   { to: '/staff/kanban', label: 'Tác vụ Kanban', description: 'Theo dõi và cập nhật trạng thái tác vụ', icon: KanbanSquare, group: 'Công việc', keywords: 'task cong viec tac vu' },
   { to: '/staff/worklog', label: 'Nhật ký giờ', description: 'Ghi nhận thời gian thực tế cho từng công việc', icon: NotebookPen, group: 'Công việc', keywords: 'ghi gio worklog timesheet' },
 
-  { to: '/staff/attendance', label: 'Chấm công', description: 'Xem dữ liệu từ máy chấm công và hoàn tất check-out', icon: Fingerprint, group: 'Thời gian & Lịch', keywords: 'check in check out cham cong' },
+  { to: '/staff/attendance', label: 'Chấm công', description: 'Xem giờ vào từ máy và checkout cuối ngày', icon: Fingerprint, group: 'Thời gian & Lịch', keywords: 'gio vao may cham cong checkout van tay khuon mat' },
   { to: '/staff/leave', label: 'Đơn từ của tôi', description: 'Nghỉ phép, đi muộn, về sớm và làm thêm giờ', icon: ClipboardList, group: 'Thời gian & Lịch', keywords: 'don tu xin nghi quy phep di muon ve som lam them tang ca' },
 
   { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ', keywords: 'luong phieu luong thu nhap payslip khau tru' },

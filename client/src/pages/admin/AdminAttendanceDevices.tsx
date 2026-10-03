@@ -13,6 +13,7 @@ import { describeDbError } from '@/lib/dbError';
 import { supabase } from '@/lib/supabase';
 import { formatDateTime } from '@/lib/utils';
 import type { AttendanceDevice, AttendanceDeviceEvent, AttendanceDeviceMapping, Profile } from '@/types';
+import { AttendanceFileImport } from '@/components/attendance/AttendanceFileImport';
 
 type WorkLocation = { id: string; name: string; address: string | null };
 
@@ -158,6 +159,7 @@ export function AdminAttendanceDevices() {
           <p className="mt-1 text-sm text-slate-500">Ronald Jack/ZKTeco · bridge nội bộ · đồng bộ an toàn qua HTTPS</p>
         </div>
         <div className="flex gap-2">
+          <AttendanceFileImport deviceId={selected?.id || ''} profiles={profiles} mappings={mappings} onImported={loadData} />
           <Button variant="outline" onClick={loadData}><RefreshCw className="h-4 w-4" />Làm mới</Button>
           <Button onClick={() => setDeviceModal(true)}><Plus className="h-4 w-4" />Thêm máy</Button>
         </div>

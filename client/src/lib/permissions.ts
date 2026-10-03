@@ -93,7 +93,6 @@ export const PERMISSION_FUNCTIONS: Record<AdminPermission, { label: string; admi
   training: [{ label: 'Đào tạo, khóa học và tiến độ' }],
   settings: [
     { label: 'Cấu hình hệ thống và vai trò', adminOnly: true },
-    { label: 'Địa điểm chấm công GPS/Wi-Fi', functionCode: 'admin.work_locations' },
     { label: 'Tính năng thử nghiệm', functionCode: 'admin.feature_flags' },
     { label: 'Nhật ký hệ thống', functionCode: 'admin.audit' },
   ],

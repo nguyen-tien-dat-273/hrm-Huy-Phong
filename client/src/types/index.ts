@@ -573,7 +573,7 @@ export interface Attendance {
   approved_at: string | null;
   approved_by_user_id: string | null;
   location_id?: string | null;
-  check_in_method?: 'GPS' | 'WIFI' | 'MANUAL' | null;
+  check_in_method?: 'DEVICE' | 'GPS' | 'WIFI' | 'MANUAL' | null;
   check_in_latitude?: number | null;
   check_in_longitude?: number | null;
   gps_accuracy_meters?: number | null;

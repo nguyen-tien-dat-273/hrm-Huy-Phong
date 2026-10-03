@@ -48,7 +48,7 @@ const ProfilePage = lazyRoute('ProfilePage', () => import('@/pages/ProfilePage')
 const StaffDashboard = lazyRoute('StaffDashboard', () => import('@/pages/staff/StaffDashboard').then((m) => ({ default: m.StaffDashboard })));
 const StaffProjects = lazyRoute('StaffProjects', () => import('@/pages/staff/StaffProjects').then((m) => ({ default: m.StaffProjects })));
 const StaffKanban = lazyRoute('StaffKanban', () => import('@/pages/staff/StaffKanban').then((m) => ({ default: m.StaffKanban })));
-const StaffAttendance = lazyRoute('StaffAttendance', () => import('@/pages/staff/StaffAttendance').then((m) => ({ default: m.StaffAttendance })));
+const StaffAttendance = lazyRoute('StaffDeviceAttendance', () => import('@/pages/staff/StaffDeviceAttendance').then((m) => ({ default: m.StaffDeviceAttendance })));
 const StaffWorklog = lazyRoute('StaffWorklog', () => import('@/pages/staff/StaffWorklog').then((m) => ({ default: m.StaffWorklog })));
 const StaffLeave = lazyRoute('StaffLeave', () => import('@/pages/staff/StaffLeave').then((m) => ({ default: m.StaffLeave })));
 const StaffReports = lazyRoute('StaffReports', () => import('@/pages/staff/StaffReports').then((m) => ({ default: m.StaffReports })));
@@ -198,7 +198,7 @@ function AppRoutes() {
       <Route path="/admin/attendance-devices" element={admin('attendance', <AdminAttendanceDevices />, { fullAdminOnly: true })} />
       <Route path="/admin/timesheet" element={admin('attendance', <AdminTimesheet />, { denyTeamlead: true })} />
       <Route path="/admin/attendance-settings" element={admin('attendance', <AdminAttendanceSettings />, { denyTeamlead: true })} />
-      <Route path="/admin/work-locations" element={admin('settings', <AdminNexusCenter section="locations" />, { functionCode: 'admin.work_locations' })} />
+      <Route path="/admin/work-locations" element={<Navigate to="/admin/attendance-devices" replace />} />
       {/* Lương gắn route theo quyền attendance nhưng TRANG tự chặn thêm bằng
           isFullAdmin — lead có quyền chấm công vào chỉ thấy thông báo khóa.
           RLS phía database mới là hàng rào thật. */}
@@ -222,7 +222,7 @@ function AppRoutes() {
       <Route path="/admin/performance/report" element={admin('reports', <AdminNexusCenter section="kpiReport" />, { functionCode: 'admin.performance_manage' })} />
       {/* Cờ GPS được quản lý ngay trong Địa điểm chấm công. Các cờ kỹ thuật
           cũ không còn là module người dùng độc lập. */}
-      <Route path="/admin/feature-flags" element={<Navigate to="/admin/work-locations" replace />} />
+      <Route path="/admin/feature-flags" element={<Navigate to="/admin/settings" replace />} />
       <Route path="/admin/worklog" element={admin('reports', <AdminWorklog />)} />
       <Route path="/admin/settings" element={admin('settings', <AdminSettings />)} />
       {/* Nhật ký hệ thống — quyền module + chức năng nâng cao; RLS là hàng rào cuối. */}
