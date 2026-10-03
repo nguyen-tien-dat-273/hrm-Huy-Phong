@@ -141,6 +141,79 @@ export async function signOut(): Promise<void> {
 }
 
 // ----------------------------------------------------------------------------
+// Quên mật khẩu / khôi phục bằng email
+// ----------------------------------------------------------------------------
+
+export type RecoveryChannel = 'email' | 'phone';
+
+export function normalizeRecoveryPhone(value: string): string | null {
+  const digits = value.replace(/\D/g, '');
+  if (/^0\d{9}$/.test(digits)) return `+84${digits.slice(1)}`;
+  if (/^84\d{9}$/.test(digits)) return `+${digits}`;
+  if (/^\d{10,15}$/.test(digits) && value.trim().startsWith('+')) return `+${digits}`;
+  return null;
+}
+
+export async function requestPasswordReset(channel: RecoveryChannel, recipient: string): Promise<{ error?: string }> {
+  let response: Response;
+  try {
+    response = await fetch(`${ADMIN_API_BASE}/api/password-recovery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel, recipient }),
+    });
+  } catch {
+    return { error: 'Không kết nối được tới dịch vụ khôi phục mật khẩu.' };
+  }
+  const body = await response.json().catch(() => null) as { error?: string } | null;
+  if (!response.ok) return { error: body?.error ?? `Lỗi máy chủ (${response.status}).` };
+  return {};
+}
+
+export async function verifyPasswordResetCode(channel: RecoveryChannel, recipient: string, token: string): Promise<{ error?: string }> {
+  const destination = channel === 'phone' ? normalizeRecoveryPhone(recipient) : recipient.trim().toLowerCase();
+  if (!destination) return { error: 'Số điện thoại không hợp lệ.' };
+  const { error } = await supabase.auth.verifyOtp({
+    ...(channel === 'email'
+      ? { email: destination, token: token.trim(), type: 'email' as const }
+      : { phone: destination, token: token.trim(), type: 'sms' as const }),
+  });
+  if (error) {
+    return { error: /expired|invalid|token/i.test(error.message) ? 'Mã không đúng hoặc đã hết hạn. Vui lòng kiểm tra và thử lại.' : describeDbError(error) };
+  }
+  sessionStorage.setItem('hrm:password-recovery', '1');
+  return {};
+}
+
+export async function completePasswordRecovery(newPassword: string): Promise<{ error?: string }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return { error: 'Liên kết khôi phục không hợp lệ hoặc đã hết hạn.' };
+
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) {
+    return {
+      error: /expired|invalid|session/i.test(error.message)
+        ? 'Liên kết khôi phục không hợp lệ hoặc đã hết hạn. Hãy yêu cầu một liên kết mới.'
+        : describeDbError(error),
+    };
+  }
+
+  if (data.user?.id) {
+    const { error: flagError } = await supabase
+      .from('profiles')
+      .update({ must_change_password: false })
+      .eq('id', data.user.id);
+    if (flagError) {
+      return { error: `Mật khẩu đã được đổi nhưng chưa cập nhật được trạng thái tài khoản: ${describeDbError(flagError)}` };
+    }
+  }
+
+  sessionStorage.removeItem('hrm:password-recovery');
+  await supabase.auth.signOut();
+  return {};
+}
+
+// ----------------------------------------------------------------------------
 // Đổi mật khẩu (bắt buộc nhập mật khẩu cũ)
 // ----------------------------------------------------------------------------
 

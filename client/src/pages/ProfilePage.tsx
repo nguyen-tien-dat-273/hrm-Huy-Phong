@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BadgeCheck, Building2, CalendarDays, KeyRound, Loader2, Mail, Phone,
-  ShieldCheck, Trash2, Upload, User as UserIcon,
+  ShieldCheck, Trash2, Upload, User as UserIcon, CircleCheck, CircleAlert,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -24,7 +24,11 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { PERMISSION_LABELS, isFullAdmin, isValidPermission } from '@/lib/permissions';
-import { AVATAR_MAX_BYTES, AVATAR_MIME_TYPES, removeAvatar, updateOwnProfile, uploadAvatar } from '@/lib/profileSelf';
+import {
+  AVATAR_MAX_BYTES, AVATAR_MIME_TYPES, confirmOwnPhoneVerification,
+  isOwnPhoneVerified, removeAvatar, requestOwnPhoneVerification,
+  updateOwnProfile, uploadAvatar,
+} from '@/lib/profileSelf';
 import { displayIdentifier } from '@/lib/identity';
 import { formatDate } from '@/lib/utils';
 import { fetchOwnWorkerProfile, type OwnWorkerProfile } from '@/lib/workerProfile';
@@ -68,11 +72,25 @@ export function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [worker, setWorker] = useState<OwnWorkerProfile | null>(null);
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false);
+  const [phoneCode, setPhoneCode] = useState('');
+  const [phoneVerifying, setPhoneVerifying] = useState(false);
 
   useEffect(() => {
     setName(profile?.name ?? '');
     setPhone(profile?.phone ?? '');
   }, [profile?.name, profile?.phone]);
+
+  useEffect(() => {
+    let active = true;
+    if (!profile?.phone) {
+      setPhoneVerified(false);
+      return;
+    }
+    void isOwnPhoneVerified(profile.phone).then((verified) => { if (active) setPhoneVerified(verified); });
+    return () => { active = false; };
+  }, [profile?.phone]);
 
   // Hồ sơ người lao động và giấy tờ của chính mình. Nạp rời khỏi `profile` vì
   // không phải ai cũng có — người làm văn phòng thì truy vấn này trả về rỗng
@@ -117,6 +135,30 @@ export function ProfilePage() {
     }
     await refreshProfile();
     toast('Đã cập nhật ảnh đại diện', 'success');
+  };
+
+  const sendPhoneCode = async () => {
+    setPhoneVerifying(true);
+    const result = await requestOwnPhoneVerification(phone);
+    setPhoneVerifying(false);
+    if (result.error) { toast(result.error, 'error'); return; }
+    setPhoneCodeSent(true);
+    toast('Đã gửi mã xác minh qua SMS.', 'success');
+  };
+
+  const confirmPhoneCode = async () => {
+    if (!/^\d{6}$/.test(phoneCode)) {
+      toast('Mã xác minh gồm 6 chữ số.', 'error');
+      return;
+    }
+    setPhoneVerifying(true);
+    const result = await confirmOwnPhoneVerification(phone, phoneCode);
+    setPhoneVerifying(false);
+    if (result.error) { toast(result.error, 'error'); return; }
+    setPhoneVerified(true);
+    setPhoneCodeSent(false);
+    setPhoneCode('');
+    toast('Số điện thoại đã được xác minh.', 'success');
   };
 
   const dropAvatar = async () => {
@@ -208,6 +250,26 @@ export function ProfilePage() {
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
           />
+          {phone.trim() && phone === (profile.phone ?? '') && (
+            <div className={`rounded-xl border p-3.5 ${phoneVerified ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
+              <div className="flex items-start gap-3">
+                {phoneVerified ? <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /> : <CircleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />}
+                <div className="min-w-0 flex-1">
+                  <p className={`text-sm font-semibold ${phoneVerified ? 'text-emerald-800' : 'text-amber-800'}`}>{phoneVerified ? 'Số điện thoại đã xác minh' : 'Số điện thoại chưa xác minh'}</p>
+                  <p className={`mt-0.5 text-xs leading-5 ${phoneVerified ? 'text-emerald-700' : 'text-amber-700'}`}>{phoneVerified ? 'Bạn có thể dùng số này để nhận mã khôi phục mật khẩu.' : 'Xác minh để có thể nhận mã khôi phục mật khẩu qua SMS.'}</p>
+                  {!phoneVerified && !phoneCodeSent && (
+                    <button type="button" onClick={() => void sendPhoneCode()} disabled={phoneVerifying} className="mt-2 min-h-11 rounded-lg bg-amber-600 px-3 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60">{phoneVerifying ? 'Đang gửi…' : 'Gửi mã xác minh'}</button>
+                  )}
+                  {!phoneVerified && phoneCodeSent && (
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <input aria-label="Mã xác minh số điện thoại" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={phoneCode} onChange={(event) => setPhoneCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="h-11 min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 text-center font-mono text-lg font-bold tracking-[0.25em] focus:border-amber-500 focus:outline-none focus:ring-4 focus:ring-amber-100" />
+                      <button type="button" onClick={() => void confirmPhoneCode()} disabled={phoneVerifying} className="min-h-11 rounded-lg bg-amber-600 px-4 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-60">{phoneVerifying ? 'Đang kiểm tra…' : 'Xác minh'}</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="flex gap-2 pt-1">
             <Button theme={isFullAdmin(profile) ? 'admin' : 'staff'} onClick={save} disabled={!dirty || saving}>
               {saving ? 'Đang lưu…' : 'Lưu thay đổi'}

@@ -67,6 +67,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfile(null);
         setUsers([]);
       }
+      if (event === 'PASSWORD_RECOVERY') {
+        sessionStorage.setItem('hrm:password-recovery', '1');
+      }
     });
 
     return () => {
