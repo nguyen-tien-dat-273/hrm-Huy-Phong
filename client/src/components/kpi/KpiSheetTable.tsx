@@ -56,10 +56,10 @@ export function KpiSheetTable({
               <td className="border border-slate-200 px-2 py-1.5 text-center">{row.plan || '—'}</td>
               <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.selfActual || '—'}</td>
               <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.managerActual || '—'}</td>
-              <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.selfScore || '—'}</td>
-              {/* Diem quan ly la con so di vao luong, nen in dam. */}
+              <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.selfWeighted || '—'}</td>
+              {/* Diem quy doi cua quan ly la con so di vao luong, nen in dam. */}
               <td className="border border-slate-200 px-2 py-1.5 text-center font-bold tabular-nums text-slate-900">
-                {row.managerScore || '—'}
+                {row.managerWeighted || '—'}
               </td>
               <td className="border border-slate-200 px-2 py-1.5 text-center tabular-nums">{row.ratio || '—'}</td>
               <td className="border border-slate-200 px-2 py-1.5 text-slate-500">{row.note || ''}</td>

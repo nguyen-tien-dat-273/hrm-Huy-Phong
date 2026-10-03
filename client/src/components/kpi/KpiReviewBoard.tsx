@@ -211,21 +211,6 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 
   const activeTemplates = templates.filter((item) => item.is_active);
 
-  /**
-   * Danh sách bộ cho một người chọn tay.
-   *
-   * Lọc bỏ bộ RIÊNG của người khác: "KPI Ánh Dương" nằm trong ô chọn của
-   * Trương Thị Hà là mời chọn nhầm. Bộ riêng của chính họ, và những bộ không
-   * thuộc về riêng ai, thì vẫn giữ.
-   */
-  const templatesFor = (profile: Profile) => {
-    const ownedByOthers = new Set(
-      schemes.filter((row) => row.user_id !== profile.id).map((row) => row.template_id),
-    );
-    const mine = new Set(schemes.filter((row) => row.user_id === profile.id).map((row) => row.template_id));
-    return activeTemplates.filter((item) => mine.has(item.id) || !ownedByOthers.has(item.id));
-  };
-
   const startReview = async (profile: Profile, templateId: string) => {
     if (!supabase) return;
     setBusy(true);
@@ -430,8 +415,8 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
         <td class="c">${esc(row.plan)}</td>
         <td class="c">${esc(row.selfActual)}</td>
         <td class="c">${esc(row.managerActual)}</td>
-        <td class="c">${esc(row.selfScore)}</td>
-        <td class="c b">${esc(row.managerScore)}</td>
+        <td class="c">${esc(row.selfWeighted)}</td>
+        <td class="c b">${esc(row.managerWeighted)}</td>
         <td class="c">${esc(row.ratio)}</td>
         <td>${esc(row.note)}</td>
       </tr>`).join('');
@@ -679,8 +664,8 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
         {activeTemplates.length === 0 && (
           <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
             <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            Chưa có mẫu KPI nào đang bật. Mẫu phải đủ 100% trọng số mới bật được — kiểm tra lại bộ
-            tiêu chí của mẫu.
+            Chưa có bộ KPI nào đang bật nên không gửi yêu cầu chấm cho ai được. Sang{' '}
+            <strong>Bộ KPI nhân sự</strong> khai tiêu chí cho đủ 100% trọng số rồi bật bộ lên.
           </p>
         )}
 
@@ -724,7 +709,9 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-slate-800">{profile.name}</p>
                     <p className="truncate text-xs text-slate-500">
-                      {template ? template.name : 'Chưa chấm KPI kỳ này'}
+                      {template ? template.name
+                        : suggestTemplate(profile)?.name
+                        ?? 'Chưa gán bộ KPI — khai ở Bộ KPI nhân sự'}
                     </p>
                   </div>
 
@@ -764,15 +751,25 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                     </div>
                   )}
 
-                  {!review ? (
-                    <TemplateStarter
-                      profile={profile}
-                      templates={templatesFor(profile)}
-                      suggested={suggestTemplate(profile)}
-                      disabled={busy || activeTemplates.length === 0}
-                      onStart={(templateId) => void startReview(profile, templateId)}
-                    />
-                  ) : !locked ? (
+                  {/* Khong hoi mau KPI o day nua: bo cua tung nguoi da gan
+                      ben module "Bo KPI nhan su" roi. Hoi lai lan nua la mo
+                      duong cho mot nguoi duoc cham bang bo cua nguoi khac, va
+                      hai noi noi hai dieu khac nhau ve cung mot nguoi. */}
+                  {!review ? (() => {
+                    const own = suggestTemplate(profile);
+                    if (!own) {
+                      return (
+                        <span className="text-[11px] font-semibold text-amber-600">
+                          Chưa có bộ KPI
+                        </span>
+                      );
+                    }
+                    return (
+                      <Button size="sm" disabled={busy} onClick={() => void startReview(profile, own.id)}>
+                        <Plus className="h-3.5 w-3.5" /> Gửi yêu cầu chấm
+                      </Button>
+                    );
+                  })() : !locked ? (
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => void lockReview(review, profile)}>
                       <Lock className="h-3.5 w-3.5" /> Khoá kết quả
                     </Button>
@@ -1019,35 +1016,3 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
 }
 
 /** Chọn mẫu rồi mở phiếu chấm. Gợi ý sẵn mẫu khớp vị trí của người đó. */
-function TemplateStarter({
-  profile, templates, suggested, disabled, onStart,
-}: {
-  profile: Profile;
-  templates: Template[];
-  suggested?: Template;
-  disabled: boolean;
-  onStart: (templateId: string) => void;
-}) {
-  const [templateId, setTemplateId] = useState(suggested?.id ?? '');
-
-  useEffect(() => { if (suggested?.id) setTemplateId(suggested.id); }, [suggested?.id]);
-
-  return (
-    <div className="flex items-center gap-2">
-      <select
-        value={templateId}
-        onChange={(e) => setTemplateId(e.target.value)}
-        aria-label={`Mẫu KPI cho ${profile.name}`}
-        className="h-9 min-w-[180px] rounded-lg border border-slate-200 bg-white px-2 text-xs outline-none focus:border-indigo-500"
-      >
-        <option value="">Chọn mẫu KPI…</option>
-        {templates.map((item) => (
-          <option key={item.id} value={item.id}>{item.name}</option>
-        ))}
-      </select>
-      <Button size="sm" disabled={disabled || !templateId} onClick={() => onStart(templateId)}>
-        <Plus className="h-3.5 w-3.5" /> Chấm
-      </Button>
-    </div>
-  );
-}
