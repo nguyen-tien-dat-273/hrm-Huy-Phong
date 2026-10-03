@@ -39,6 +39,7 @@ interface Draft {
   formula: string;
   taxable: boolean;
   insurable: boolean;
+  is_base: boolean;
   prorate: boolean;
   sort_order: string;
   group_name: string;
@@ -88,7 +89,7 @@ function groupRows(items: PayComponent[]): { group: string | null; items: PayCom
 
 const BLANK: Draft = {
   code: '', name: '', kind: 'EARNING', calc_type: 'FIXED', default_amount: '0',
-  input_code: '', base_code: '', formula: '', taxable: true, insurable: false,
+  input_code: '', base_code: '', formula: '', taxable: true, insurable: false, is_base: false,
   prorate: false, sort_order: '500', group_name: '', ot_multiplier: '',
   tax_exempt_cap: '', max_amount: '', is_active: true, note: '',
 };
@@ -130,6 +131,7 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
     formula: component.formula ?? '',
     taxable: component.taxable,
     insurable: component.insurable,
+    is_base: component.is_base,
     prorate: component.prorate,
     sort_order: String(component.sort_order),
     group_name: component.group_name ?? '',
@@ -164,6 +166,7 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
       formula: draft.formula.trim() || null,
       taxable: draft.taxable,
       insurable: draft.insurable,
+      is_base: draft.is_base,
       prorate: draft.prorate,
       sort_order: Number(draft.sort_order) || 500,
       group_name: draft.group_name.trim() || null,
@@ -209,6 +212,7 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
       formula: null,
       taxable: quickAdd.kind === 'EARNING',
       insurable: false,
+      is_base: false,
       prorate: false,
       sort_order: nextOrder,
       group_name: quickAdd.group_name.trim() || null,
@@ -309,6 +313,14 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
                         {!component.is_active && (
                           <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
                             TẮT
+                          </span>
+                        )}
+                        {/* Khoan luong goc phai nhan ra duoc ngay trong danh
+                            sach: no quyet dinh don gia tang ca va muc dong bao
+                            hiem, khong phai mot khoan nhu moi khoan. */}
+                        {component.is_base && (
+                          <span className="rounded bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            LƯƠNG GỐC
                           </span>
                         )}
                         {!component.taxable && kind === 'EARNING' && (
@@ -470,12 +482,21 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
               />
             </div>
 
-            <div className="rounded-xl border border-slate-200 p-3.5">
+            <div className="space-y-3 rounded-xl border border-slate-200 p-3.5">
               <Toggle
                 checked={draft.is_active}
                 onChange={(is_active) => setDraft({ ...draft, is_active })}
                 label="Đang sử dụng"
                 hint="Tắt để ẩn khỏi lựa chọn mới nhưng vẫn giữ lịch sử đã sử dụng."
+              />
+              {/* Chi MOT khoan trong ca danh muc duoc lam luong goc - database
+                  co unique index chan. Noi ro hai thu phu thuoc vao no, vi do
+                  moi la cho sai ma khong ai nhin thay. */}
+              <Toggle
+                checked={draft.is_base}
+                onChange={(is_base) => setDraft({ ...draft, is_base })}
+                label="Đây là khoản LƯƠNG GỐC"
+                hint="Hệ thống lấy mức của khoản này làm căn cứ tính đơn giá giờ tăng ca và mức đóng bảo hiểm. Cả danh mục chỉ một khoản được bật."
               />
             </div>
 
