@@ -46,6 +46,14 @@ interface UnitPayItemsCardProps {
    * danh sách trên không ghi gì — người dùng không biết tin cái nào.
    */
   schemedUserIds: ReadonlySet<string>;
+  /**
+   * Báo ra ngoài đang đứng ở phòng nào.
+   *
+   * Danh sách "chưa thiết lập" nằm BÊN NGOÀI card này. Không báo ra thì vào
+   * một phòng xong, danh sách dưới vẫn liệt kê cả công ty — màn nói nửa trên
+   * đang xem một phòng, nửa dưới đang xem tất cả.
+   */
+  onSelectUnit?: (unitId: string | null) => void;
 }
 
 interface Draft {
@@ -59,7 +67,7 @@ interface Draft {
 }
 
 export function UnitPayItemsCard({
-  components, unitItems, profiles, params, defaultEffectiveFrom, actorId, onChanged, onEditEmployee, schemedUserIds,
+  components, unitItems, profiles, params, defaultEffectiveFrom, actorId, onChanged, onEditEmployee, schemedUserIds, onSelectUnit,
 }: UnitPayItemsCardProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -69,6 +77,11 @@ export function UnitPayItemsCard({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+
+  // Báo ra ngoài mỗi lần đổi phòng. Dùng effect chứ không gọi trong onClick:
+  // chỗ đặt `setSelectedUnitId` có vài nơi, gọi tay từng chỗ thì sớm muộn có
+  // một nhánh quên gọi và hai nửa màn lại lệch nhau.
+  useEffect(() => { onSelectUnit?.(selectedUnitId); }, [selectedUnitId]);
 
   useEffect(() => {
     if (!supabase) return;
