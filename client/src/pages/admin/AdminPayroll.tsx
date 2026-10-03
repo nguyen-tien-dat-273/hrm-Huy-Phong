@@ -18,8 +18,14 @@ import { useSearchParams } from 'react-router-dom';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import {
   BookOpenCheck, Calculator, CheckCircle2, FileSpreadsheet, LockKeyhole, Pencil,
-  RotateCcw, ShieldAlert, TriangleAlert, Users, Wallet,
+  RotateCcw, Search, ShieldAlert, TriangleAlert, Users, Wallet,
 } from 'lucide-react';
+
+/** Bo dau tieng Viet de o tim go "ha" van ra "Ha". */
+const stripTone = (text: string) => text
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+  .toLowerCase().trim();
 import { Card, CardContent } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -146,6 +152,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [schemeTarget, setSchemeTarget] = useState<Profile | null>(null);
+  const [rowQuery, setRowQuery] = useState('');
   /** Phòng đang mở ở khối trên — danh sách "chưa thiết lập" bám theo. */
   const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
@@ -320,9 +327,20 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   }, [data, monthStartStr, monthEndStr, settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedUserId = searchParams.get('user');
+  /**
+   * Lọc bảng lương theo tên hoặc mã nhân viên.
+   *
+   * Công ty ba chục người là đã phải cuộn cả trang để tìm một dòng, mà việc
+   * hay làm nhất ở màn này lại là mở đúng phiếu của một người để đối chiếu.
+   * Bỏ dấu luôn: gõ "ha" phải ra "Hà".
+   */
+  const keyword = stripTone(rowQuery);
   const visibleRows = selectedUserId
     ? rows.filter((row) => row.profile.id === selectedUserId)
-    : rows;
+    : keyword
+      ? rows.filter((row) => stripTone(row.profile.name).includes(keyword)
+        || stripTone(row.profile.employee_code || '').includes(keyword))
+      : rows;
 
   const totals = useMemo(() => ({
     gross: visibleRows.reduce((sum, row) => sum + row.computed.gross, 0),
@@ -632,7 +650,12 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       {/* --- Thanh hành động theo trạng thái kỳ, chỉ ở trang Bảng lương --- */}
       {tab === 'register' && (
         <>
-          <div className="flex flex-wrap items-center gap-2 no-print">
+          {/* Buoc tiep theo ben TRAI, xuat file ben PHAI.
+              Sau nut cung mot trong luong thi khong nhin ra viec phai lam
+              tiep la gi - "Xuat Excel" va "Duyet bang luong" khong phai hai
+              lua chon ngang hang. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 no-print">
+            <div className="flex flex-wrap items-center gap-2">
             {!isFrozen && (
               <Button onClick={handleCalculate} disabled={busy || rows.length === 0}>
                 <Calculator className="h-4 w-4" />
@@ -654,6 +677,9 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
                 <RotateCcw className="h-4 w-4" /> Mở lại kỳ
               </Button>
             )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={handleExport} disabled={exporting || visibleRows.length === 0}>
               <FileSpreadsheet className="h-4 w-4" />
               {exporting ? 'Đang xuất…' : 'Xuất Excel'}
@@ -668,6 +694,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
             >
               <BookOpenCheck className="h-4 w-4" /> Bút toán kết chuyển
             </Button>
+            </div>
           </div>
 
           {runStatus === 'CALCULATED' && !data?.timesheetLocked && (
@@ -800,6 +827,22 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
 
           <Card>
             <CardContent className="p-0">
+              {!selectedUserId && (
+                <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-6 py-3 no-print">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={rowQuery}
+                      onChange={(event) => setRowQuery(event.target.value)}
+                      placeholder="Tìm theo tên hoặc mã nhân viên…"
+                      className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-500">
+                    {visibleRows.length}/{rows.length} nhân sự
+                  </span>
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[920px]">
                   <thead>
@@ -1108,17 +1151,38 @@ function SchemesTab({
 // ---------------------------------------------------------------------------
 // Mảnh giao diện nhỏ
 // ---------------------------------------------------------------------------
+/**
+ * Vòng đời của một kỳ lương, vẽ thành bốn chặng thay vì một cái nhãn.
+ *
+ * Nhãn "Đã tính" nói kỳ đang ở đâu nhưng không nói đã qua những gì và còn
+ * phải làm gì — mà đây là quy trình bốn bước một chiều, duyệt xong là đóng
+ * băng số liệu. Người làm lương cần thấy cả đường đi, không chỉ một điểm.
+ */
 function RunStatusBadge({ status }: { status: keyof typeof RUN_STATUS_LABEL }) {
-  const tones = {
-    DRAFT: 'bg-slate-100 text-slate-600',
-    CALCULATED: 'bg-blue-50 text-blue-700',
-    APPROVED: 'bg-emerald-50 text-emerald-700',
-    PAID: 'bg-indigo-50 text-indigo-700',
-  };
+  const order: (keyof typeof RUN_STATUS_LABEL)[] = ['DRAFT', 'CALCULATED', 'APPROVED', 'PAID'];
+  const current = order.indexOf(status);
+
   return (
-    <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${tones[status]}`}>
-      {RUN_STATUS_LABEL[status]}
-    </span>
+    <div className="flex items-center gap-1" role="status" aria-label={`Trạng thái kỳ: ${RUN_STATUS_LABEL[status]}`}>
+      {order.map((step, index) => {
+        const done = index < current;
+        const here = index === current;
+        return (
+          <span key={step} className="flex items-center gap-1">
+            {index > 0 && (
+              <span className={`h-px w-3 ${index <= current ? 'bg-indigo-300' : 'bg-slate-200'}`} />
+            )}
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${here
+                ? 'bg-indigo-600 text-white'
+                : done ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}
+            >
+              {RUN_STATUS_LABEL[step]}
+            </span>
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
