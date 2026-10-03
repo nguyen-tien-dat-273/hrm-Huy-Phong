@@ -537,14 +537,35 @@ function computeComponentLine(
   const { component, item } = assigned;
   // Giá trị riêng của người này thắng giá trị mặc định của công ty.
   const amount = item.amount ?? component.default_amount;
-  const formula = item.formula?.trim() || component.formula?.trim() || '';
+  const overrideFormula = item.formula?.trim() || '';
+  const formula = overrideFormula || component.formula?.trim() || '';
 
   let value = 0;
   let quantity: number | null = null;
   let rate: number | null = null;
   let detail = '';
 
-  switch (component.calc_type) {
+  // Công thức khai lúc GÁN khoản luôn thắng cách tính mặc định trong danh mục.
+  // Trước đây UI cho phòng ban/nhân viên nhập công thức riêng cho cả khoản
+  // FIXED, PER_DAY..., nhưng engine chỉ đọc nó nếu bản thân khoản có
+  // `calc_type = FORMULA`. Dữ liệu được lưu thành công rồi âm thầm không có
+  // tác dụng. Quy tắc ưu tiên này vừa sửa lỗi đó, vừa cho HR biến một khoản
+  // thông thường thành khoản linh hoạt theo Công/KPI mà không phải biến màn
+  // Danh mục thành nơi cấu hình kỹ thuật.
+  switch (overrideFormula ? 'OVERRIDE' : component.calc_type) {
+    case 'OVERRIDE': {
+      try {
+        const result = evaluateFormula(overrideFormula, { ...scope, MUC_RIENG: amount });
+        value = result.value;
+        detail = overrideFormula;
+      } catch (error) {
+        const reason = error instanceof FormulaError ? error.message : String(error);
+        warnings.push(`${employeeName}: công thức khoản "${component.name}" lỗi — ${reason}`);
+        return null;
+      }
+      break;
+    }
+
     case 'FIXED': {
       value = amount;
       rate = amount;
@@ -618,7 +639,7 @@ function computeComponentLine(
   // Chia theo ngày công. Chỉ áp cho khoản trả trọn tháng: khoản đã nhân theo
   // giờ/ngày/sản lượng thì bản thân nó đã phản ánh khối lượng làm việc rồi,
   // chia thêm lần nữa là trừ hai lần.
-  if (component.prorate && component.calc_type === 'FIXED' && standardDays > 0) {
+  if (!overrideFormula && component.prorate && component.calc_type === 'FIXED' && standardDays > 0) {
     value = (value / standardDays) * stats.paidDays;
   }
 
@@ -1156,6 +1177,9 @@ export function sampleFormulaScope(
 
   const scope: Record<string, number> = {
     BASE: monthly,
+    BASE_WORK: monthly,
+    BASE_LEAVE: 0,
+    BASE_HOLIDAY: 0,
     GROSS: monthly,
     HOURLY_RATE: monthly / standardDays / hoursPerDay,
     DAILY_RATE: monthly / standardDays,
@@ -1166,7 +1190,15 @@ export function sampleFormulaScope(
     STANDARD_DAYS: standardDays,
     WORK_HOURS: standardDays * hoursPerDay,
     HOURS_PER_DAY: hoursPerDay,
+    HOLIDAY_DAYS: 0,
     DEPENDENTS: 1,
+    LATE_MINUTES: 0,
+    LATE_COUNT: 0,
+    LATE_AFTER_CUTOFF: 0,
+    EARLY_MINUTES: 0,
+    EARLY_COUNT: 0,
+    KPI_PCT: 100,
+    MUC_RIENG: 1_000_000,
     INSURANCE_BASE: monthly,
     INSURANCE_EMPLOYEE: monthly * 0.105,
     PIT: 0,
@@ -1174,7 +1206,8 @@ export function sampleFormulaScope(
   };
 
   for (const code of extraCodes) {
-    if (scope[code] === undefined) scope[code] = 1;
+    const normalized = code.toUpperCase();
+    if (scope[normalized] === undefined) scope[normalized] = 1;
   }
   return scope;
 }

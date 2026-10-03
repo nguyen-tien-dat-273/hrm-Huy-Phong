@@ -709,6 +709,8 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         <MonthlyInputsTab
           profiles={data.profiles}
           components={data.components}
+          employeeItems={data.items}
+          unitItems={data.unitItems}
           inputs={data.inputs}
           monthStart={monthStartStr}
           actorId={profile?.id ?? null}
@@ -725,6 +727,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
             components={data.components}
             unitItems={data.unitItems}
             profiles={data.profiles}
+            params={params}
             defaultEffectiveFrom={monthStartStr}
             actorId={profile?.id ?? null}
             onChanged={() => loadData(true)}

@@ -13,6 +13,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
+import { PayrollFormulaBuilder } from '@/components/payroll/PayrollFormulaBuilder';
 import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
 import { payBasisLabel, progressiveIncomeTax, sampleFormulaScope, toTaxBrackets } from '@/lib/payroll';
@@ -520,10 +521,6 @@ export function PaySchemeModal({
               <div className="space-y-3">
                 {drafts.map((draft, index) => {
                   const component = componentById.get(draft.componentId);
-                  const error = formulaErrors[index];
-                  // Engine chỉ đánh giá `formula` ở nhánh FORMULA, và chỉ đọc
-                  // `amount` ở các nhánh còn lại. Hiện đúng ô được dùng.
-                  const usesOwnFormula = component?.calc_type === 'FORMULA';
                   return (
                     <div key={draft.id ?? `new-${index}`} className="rounded-xl border border-slate-200 p-3">
                       <div className="flex items-start gap-2">
@@ -559,38 +556,22 @@ export function PaySchemeModal({
                         </p>
                       )}
 
-                      {/* Chọn khoản là ĐỦ — hai ô dưới chỉ dành cho người có
-                          mức khác mặt bằng chung, và engine chỉ đọc đúng một
-                          trong hai tuỳ cách tính của khoản. Bày cả hai ra cho
-                          mọi khoản khiến người dùng tưởng bắt buộc phải điền,
-                          và ô không được đọc tới thì nhập vào cũng vô ích. */}
                       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        {usesOwnFormula ? (
-                          <Input
-                            label="Công thức riêng cho người này"
-                            placeholder={component?.formula || 'Trống = dùng công thức chung'}
-                            value={draft.formula}
-                            onChange={(e) => updateDraft(index, { formula: e.target.value })}
-                            error={error ?? undefined}
-                            className="font-mono text-xs"
-                          />
-                        ) : (
-                          <Input
-                            label={component?.calc_type === 'PERCENT'
-                              ? 'Tỷ lệ riêng cho người này (%)'
-                              : 'Mức riêng cho người này (VND)'}
-                            inputMode="decimal"
-                            placeholder={
-                              component ? `Trống = ${formatComponentDefault(component)} theo danh mục` : 'Theo danh mục'
-                            }
-                            value={draft.amount}
-                            onChange={(e) => updateDraft(index, {
-                              amount: component?.calc_type === 'PERCENT'
-                                ? e.target.value.replace(/[^\d.]/g, '')
-                                : digitsOnly(e.target.value),
-                            })}
-                          />
-                        )}
+                        <Input
+                          label={component?.calc_type === 'PERCENT'
+                            ? 'Tỷ lệ / mức riêng (%)'
+                            : 'Mức riêng (MUC_RIENG)'}
+                          inputMode="decimal"
+                          placeholder={
+                            component ? `Trống = ${formatComponentDefault(component)} theo danh mục` : 'Theo danh mục'
+                          }
+                          value={draft.amount}
+                          onChange={(e) => updateDraft(index, {
+                            amount: component?.calc_type === 'PERCENT'
+                              ? e.target.value.replace(/[^\d.]/g, '')
+                              : digitsOnly(e.target.value),
+                          })}
+                        />
                         <Input
                           label="Áp dụng từ"
                           type="date"
@@ -599,10 +580,21 @@ export function PaySchemeModal({
                         />
                       </div>
 
+                      <div className="mt-3">
+                        <PayrollFormulaBuilder
+                          label="Công thức riêng (không bắt buộc)"
+                          value={draft.formula}
+                          onChange={(formula) => updateDraft(index, { formula })}
+                          sampleScope={formulaScope}
+                          components={components}
+                          defaultFormula={component?.formula}
+                        />
+                      </div>
+
                       {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
                           xong vẫn ra 0đ — trông như đã làm xong nhưng thực tế
                           không cộng gì vào lương. */}
-                      {component && !usesOwnFormula && !draft.amount
+                      {component && !draft.formula.trim() && !draft.amount
                         && Number(component.default_amount) === 0 && (
                         <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-amber-700">
                           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
@@ -617,36 +609,6 @@ export function PaySchemeModal({
               </div>
             )}
 
-            <details className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <summary className="cursor-pointer text-xs font-bold text-slate-600">
-                Biến dùng được trong công thức
-              </summary>
-              <div className="mt-2.5 grid gap-x-4 gap-y-1 text-xs text-slate-600 sm:grid-cols-2">
-                <VariableHint name="BASE" desc="Lương gốc đã tính theo ngày công" />
-                <VariableHint name="GROSS" desc="Tổng thu nhập tới khoản đang tính" />
-                <VariableHint name="HOURLY_RATE" desc="Đơn giá một giờ" />
-                <VariableHint name="DAILY_RATE" desc="Đơn giá một ngày" />
-                <VariableHint name="PAID_DAYS" desc="Ngày công + ngày phép hưởng lương" />
-                <VariableHint name="WORK_HOURS" desc="Giờ làm thực tế trong tháng" />
-                <VariableHint name="STANDARD_DAYS" desc="Ngày công chuẩn" />
-                <VariableHint name="INSURANCE_BASE" desc="Mức lương đóng bảo hiểm" />
-                <VariableHint name="DEPENDENTS" desc="Số người phụ thuộc" />
-                {components
-                  .filter((component) => component.input_code)
-                  .map((component) => (
-                    <VariableHint
-                      key={component.id}
-                      name={component.input_code as string}
-                      desc={`Số liệu tháng cho "${component.name}"`}
-                    />
-                  ))}
-              </div>
-              <p className="mt-2.5 text-xs leading-relaxed text-slate-500">
-                Hàm dùng được: <code className="font-mono">MIN, MAX, ROUND, FLOOR, CEIL, ABS, IF</code>.
-                Ví dụ hoa hồng bậc thang:{' '}
-                <code className="font-mono text-slate-700">IF(REVENUE &gt; 500000000, REVENUE * 0.05, REVENUE * 0.03)</code>
-              </p>
-            </details>
           </section>
 
           <Textarea
@@ -674,15 +636,6 @@ export function PaySchemeModal({
         </div>
       )}
     </Modal>
-  );
-}
-
-function VariableHint({ name, desc }: { name: string; desc: string }) {
-  return (
-    <p>
-      <code className="font-mono font-bold text-slate-700">{name}</code>
-      <span className="text-slate-400"> — {desc}</span>
-    </p>
   );
 }
 

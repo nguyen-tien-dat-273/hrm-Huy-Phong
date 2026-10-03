@@ -14,6 +14,7 @@ import { ArrowLeft, Building2, ChevronRight, Plus, Trash2, Users } from 'lucide-
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
+import { PayrollFormulaBuilder } from '@/components/payroll/PayrollFormulaBuilder';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
@@ -21,13 +22,17 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatVND } from '@/lib/utils';
+import { sampleFormulaScope } from '@/lib/payroll';
+import { validateFormula } from '@/lib/payrollFormula';
 import { deleteUnitPayItem, saveUnitPayItem } from '@/lib/payrollData';
+import type { PayrollParams } from '@/lib/payrollSettings';
 import type { OrganizationUnit, PayComponent, Profile, UnitPayItem } from '@/types';
 
 interface UnitPayItemsCardProps {
   components: PayComponent[];
   unitItems: UnitPayItem[];
   profiles: Profile[];
+  params: PayrollParams;
   /** Ngày đầu tháng đang xem — mặc định cho ngày hiệu lực. */
   defaultEffectiveFrom: string;
   actorId: string | null;
@@ -46,7 +51,7 @@ interface Draft {
 }
 
 export function UnitPayItemsCard({
-  components, unitItems, profiles, defaultEffectiveFrom, actorId, onChanged, onEditEmployee,
+  components, unitItems, profiles, params, defaultEffectiveFrom, actorId, onChanged, onEditEmployee,
 }: UnitPayItemsCardProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -74,6 +79,15 @@ export function UnitPayItemsCard({
     () => new Map(components.map((component) => [component.id, component])),
     [components],
   );
+
+  const formulaScope = useMemo(() => sampleFormulaScope(
+    params,
+    components.flatMap((component) => [component.code, component.input_code ?? '']).filter(Boolean),
+  ), [components, params]);
+
+  const formulaError = draft?.formula.trim()
+    ? validateFormula(draft.formula, formulaScope)
+    : null;
 
   // Đếm người mỗi đơn vị: con số này cho thấy ngay một lần gán ảnh hưởng bao
   // nhiêu người, thứ mà gán từng người không bao giờ nói được.
@@ -108,6 +122,10 @@ export function UnitPayItemsCard({
     if (!draft) return;
     if (!draft.unit_id || !draft.component_id) {
       toast('Chọn đơn vị và khoản lương.', 'warning');
+      return;
+    }
+    if (formulaError) {
+      toast('Công thức chưa hợp lệ — sửa trước khi lưu.', 'warning');
       return;
     }
 
@@ -416,12 +434,13 @@ export function UnitPayItemsCard({
               />
             </div>
 
-            <Input
-              label="Công thức riêng của đơn vị (không bắt buộc)"
-              placeholder={componentById.get(draft.component_id)?.formula ?? 'Để trống nếu dùng công thức chung'}
+            <PayrollFormulaBuilder
+              label="Công thức chung của phòng ban (không bắt buộc)"
               value={draft.formula}
-              onChange={(e) => setDraft({ ...draft, formula: e.target.value })}
-              className="font-mono text-xs"
+              onChange={(formula) => setDraft({ ...draft, formula })}
+              sampleScope={formulaScope}
+              components={components}
+              defaultFormula={componentById.get(draft.component_id)?.formula}
             />
 
             <Textarea
@@ -435,7 +454,7 @@ export function UnitPayItemsCard({
               <Button variant="outline" onClick={() => setDraft(null)} className="flex-1" disabled={saving}>
                 Hủy
               </Button>
-              <Button onClick={save} className="flex-1" disabled={saving}>
+              <Button onClick={save} className="flex-1" disabled={saving || !!formulaError}>
                 {saving ? 'Đang lưu…' : 'Lưu'}
               </Button>
             </div>

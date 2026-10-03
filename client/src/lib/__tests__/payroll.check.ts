@@ -791,5 +791,23 @@ const kpiOverride = computePayslip({
 check('MUC_RIENG lấy mức gán riêng của từng người',
   kpiOverride.lines.find((l) => l.code === 'LUONG_KPI')?.amount, 6_400_000);
 
+// Công thức khai lúc gán phải ghi đè được cả khoản FIXED. UI trước đây cho
+// nhập trường này nhưng engine bỏ qua, khiến người dùng lưu thành công mà số
+// tiền vẫn giữ nguyên mức cố định.
+const flexibleBonus = component({
+  id: 'cFlexible', code: 'THUONG_LINH_HOAT', name: 'Thưởng linh hoạt',
+  calc_type: 'FIXED', default_amount: 2_000_000, sort_order: 350,
+});
+const flexibleResult = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [{
+    item: item('cFlexible', { amount: 5_000_000, formula: 'MUC_RIENG * KPI_PCT / 100' }),
+    component: flexibleBonus,
+  }],
+  inputs: { KPI_PCT: 80 }, stats, settings,
+});
+check('công thức riêng ghi đè cách tính FIXED',
+  flexibleResult.lines.find((l) => l.code === 'THUONG_LINH_HOAT')?.amount, 4_000_000);
+
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

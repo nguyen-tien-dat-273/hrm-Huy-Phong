@@ -16,11 +16,13 @@ import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { useToast } from '@/contexts/ToastContext';
 import { savePayrollInput } from '@/lib/payrollData';
-import type { PayComponent, PayrollInput, Profile } from '@/types';
+import type { EmployeePayItem, PayComponent, PayrollInput, Profile, UnitPayItem } from '@/types';
 
 interface MonthlyInputsTabProps {
   profiles: Profile[];
   components: PayComponent[];
+  employeeItems: EmployeePayItem[];
+  unitItems: UnitPayItem[];
   inputs: PayrollInput[];
   monthStart: string;
   actorId: string | null;
@@ -30,7 +32,7 @@ interface MonthlyInputsTabProps {
 }
 
 export function MonthlyInputsTab({
-  profiles, components, inputs, monthStart, actorId, readOnly, onChanged,
+  profiles, components, employeeItems, unitItems, inputs, monthStart, actorId, readOnly, onChanged,
 }: MonthlyInputsTabProps) {
   const { toast } = useToast();
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -55,8 +57,22 @@ export function MonthlyInputsTab({
         if (!seen.has(token)) seen.set(token, component.name);
       }
     }
+    // Công thức gán riêng ở nhân viên/phòng ban có thể biến một khoản cố định
+    // thành khoản theo KPI, doanh số... Các biến đó cũng phải tự tạo cột nhập
+    // liệu; nếu chỉ quét công thức chung trong danh mục thì công thức riêng lưu
+    // được nhưng không có nơi nhập số liệu để chạy.
+    const assigned = [...employeeItems, ...unitItems];
+    for (const item of assigned) {
+      const source = item.formula ?? '';
+      const component = components.find((entry) => entry.id === item.component_id);
+      for (const token of source.match(/[A-Z][A-Z0-9_]*/g) ?? []) {
+        if (RESERVED.has(token)) continue;
+        if (components.some((entry) => entry.code === token)) continue;
+        if (!seen.has(token)) seen.set(token, component?.name ?? 'Công thức riêng');
+      }
+    }
     return [...seen.entries()].map(([code, usedBy]) => ({ code, usedBy }));
-  }, [components]);
+  }, [components, employeeItems, unitItems]);
 
   const valueOf = (userId: string, code: string): string => {
     const key = `${userId}|${code}`;
@@ -189,8 +205,10 @@ export function MonthlyInputsTab({
 
 /** Biến do engine cung cấp — không phải số liệu người dùng nhập. */
 const RESERVED = new Set([
-  'BASE', 'GROSS', 'HOURLY_RATE', 'DAILY_RATE', 'MONTHLY_RATE', 'WORK_DAYS', 'LEAVE_DAYS',
+  'BASE', 'BASE_WORK', 'BASE_LEAVE', 'BASE_HOLIDAY', 'GROSS', 'MUC_RIENG',
+  'HOURLY_RATE', 'DAILY_RATE', 'MONTHLY_RATE', 'WORK_DAYS', 'LEAVE_DAYS', 'HOLIDAY_DAYS',
   'PAID_DAYS', 'STANDARD_DAYS', 'WORK_HOURS', 'HOURS_PER_DAY', 'DEPENDENTS', 'INSURANCE_BASE',
+  'LATE_MINUTES', 'LATE_COUNT', 'LATE_AFTER_CUTOFF', 'EARLY_MINUTES', 'EARLY_COUNT',
   'INSURANCE_EMPLOYEE', 'PIT', 'TAXABLE_INCOME',
   'MIN', 'MAX', 'ROUND', 'FLOOR', 'CEIL', 'ABS', 'IF',
 ]);
