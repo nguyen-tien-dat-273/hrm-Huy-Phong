@@ -18,7 +18,7 @@ import { ADMIN_NAV_ITEMS } from '@/config/navigation';
 // Mỗi module được tải khi người dùng thực sự mở tới. Việc này giữ lần tải đầu
 // nhẹ dù hệ thống tiếp tục mở rộng thêm nghiệp vụ và vai trò.
 const LoginPage = lazyRoute('LoginPage', () => import('@/pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
-const ForgotPasswordPage = lazyRoute('ForgotPasswordPage', () => import('@/pages/auth/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
+const ForgotPasswordPage = lazyRoute('ForgotPasswordPage', () => import('@/pages/auth/ForgotPasswordFlow').then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazyRoute('ResetPasswordPage', () => import('@/pages/auth/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const ChangePasswordPage = lazyRoute('ChangePasswordPage', () => import('@/pages/auth/ChangePasswordPage').then((m) => ({ default: m.ChangePasswordPage })));
 const SetupPage = lazyRoute('SetupPage', () => import('@/pages/auth/SetupPage').then((m) => ({ default: m.SetupPage })));

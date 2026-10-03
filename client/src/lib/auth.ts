@@ -144,14 +144,14 @@ export async function signOut(): Promise<void> {
 // Quên mật khẩu / khôi phục bằng email
 // ----------------------------------------------------------------------------
 
-/**
- * Cách tự nhận mình là ai khi quên mật khẩu.
- *
- * `username` là đường chính: đó là thứ người ta thực sự nhớ. Nhiều tài khoản
- * còn KHÔNG có email thật — tài khoản tạo bằng tên đăng nhập mang địa chỉ nội
- * bộ `@ppms.local`, gõ vào ô email thì không bao giờ ra kết quả.
- */
+/** Giữ `username` trong type để tương thích màn cũ; luồng mới chỉ dùng hai kênh giao nhận. */
 export type RecoveryChannel = 'email' | 'phone' | 'username';
+export type RecoveryDeliveryChannel = Exclude<RecoveryChannel, 'username'>;
+export interface RecoveryMethod {
+  channel: RecoveryDeliveryChannel;
+  /** Email/số điện thoại đã che; địa chỉ đầy đủ không bao giờ về client. */
+  hint: string;
+}
 
 export function normalizeRecoveryPhone(value: string): string | null {
   const digits = value.replace(/\D/g, '');
@@ -161,64 +161,69 @@ export function normalizeRecoveryPhone(value: string): string | null {
   return null;
 }
 
-export async function requestPasswordReset(
-  channel: RecoveryChannel, recipient: string,
-): Promise<{ error?: string; hint?: string; via?: 'email' | 'phone' }> {
+async function recoveryRequest(payload: Record<string, string>): Promise<{
+  error?: string;
+  hint?: string;
+  via?: RecoveryDeliveryChannel;
+  methods?: RecoveryMethod[];
+  access_token?: string;
+  refresh_token?: string;
+}> {
   let response: Response;
   try {
-    response = await fetch(`${ADMIN_API_BASE}/api/password-recovery`, {
+    response = await fetch(`${ADMIN_API_BASE}/api/password-recovery-v2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel, recipient }),
+      body: JSON.stringify(payload),
     });
   } catch {
     return { error: 'Không kết nối được tới dịch vụ khôi phục mật khẩu.' };
   }
-  const body = await response.json().catch(() => null) as
-    { error?: string; hint?: string; via?: 'email' | 'phone' } | null;
-  if (!response.ok) return { error: body?.error ?? `Lỗi máy chủ (${response.status}).` };
-  // Server trả `error` kèm HTTP 200 khi tài khoản có thật nhưng không có kênh
-  // nào gửi mã được — đó là lời giải thích, không phải sự cố máy chủ.
-  if (body?.error) return { error: body.error };
-  return { hint: body?.hint, via: body?.via };
+  const result = await response.json().catch(() => null) as
+    {
+      error?: string; hint?: string; via?: RecoveryDeliveryChannel; methods?: RecoveryMethod[];
+      access_token?: string; refresh_token?: string;
+    } | null;
+  if (!response.ok) return { error: result?.error ?? `Lỗi máy chủ (${response.status}).` };
+  if (result?.error) return { error: result.error };
+  return result ?? {};
 }
 
-export async function verifyPasswordResetCode(channel: RecoveryChannel, recipient: string, token: string): Promise<{ error?: string }> {
-  // Nhập bằng tên đăng nhập thì client KHÔNG biết mã gửi đi đâu — và cố tình
-  // không cho biết. Server tra cứu lại rồi trả phiên đăng nhập về đây.
-  if (channel === 'username') {
-    let response: Response;
-    try {
-      response = await fetch(`${ADMIN_API_BASE}/api/password-recovery`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'verify', channel, recipient, code: token.trim() }),
-      });
-    } catch {
-      return { error: 'Không kết nối được tới dịch vụ khôi phục mật khẩu.' };
-    }
-    const body = await response.json().catch(() => null) as
-      { error?: string; access_token?: string; refresh_token?: string } | null;
-    if (!response.ok || !body?.access_token || !body?.refresh_token) {
-      return { error: body?.error ?? 'Mã không đúng hoặc đã hết hạn.' };
-    }
-    const { error } = await supabase.auth.setSession({
-      access_token: body.access_token, refresh_token: body.refresh_token,
-    });
-    if (error) return { error: describeDbError(error) };
-    sessionStorage.setItem('hrm:password-recovery', '1');
-    return {};
-  }
+/** Bước 1: username chỉ để xác định tài khoản và đọc các kênh đã che. */
+export async function identifyPasswordRecovery(
+  username: string,
+): Promise<{ error?: string; methods: RecoveryMethod[] }> {
+  const result = await recoveryRequest({ action: 'identify', username: username.trim() });
+  return { error: result.error, methods: result.methods ?? [] };
+}
 
-  const destination = channel === 'phone' ? normalizeRecoveryPhone(recipient) : recipient.trim().toLowerCase();
-  if (!destination) return { error: 'Số điện thoại không hợp lệ.' };
-  const { error } = await supabase.auth.verifyOtp({
-    ...(channel === 'email'
-      ? { email: destination, token: token.trim(), type: 'email' as const }
-      : { phone: destination, token: token.trim(), type: 'sms' as const }),
+/** Bước 2: server gửi mã tới kênh đã xác minh; client không truyền địa chỉ. */
+export async function requestPasswordReset(
+  username: string,
+  channel: RecoveryDeliveryChannel | string,
+): Promise<{ error?: string; hint?: string; via?: RecoveryDeliveryChannel }> {
+  const result = await recoveryRequest({ action: 'send', username: username.trim(), channel });
+  return { error: result.error, hint: result.hint, via: result.via };
+}
+
+/** Bước 3: server tự tra lại đích nhận và đổi OTP thành phiên recovery. */
+export async function verifyPasswordResetCode(
+  username: string,
+  channel: RecoveryDeliveryChannel | string,
+  token: string,
+): Promise<{ error?: string }> {
+  const result = await recoveryRequest({
+    action: 'verify', username: username.trim(), channel, code: token.trim(),
+  });
+  if (result.error || !result.access_token || !result.refresh_token) {
+    return { error: result.error ?? 'Mã không đúng hoặc đã hết hạn.' };
+  }
+  const { error } = await supabase.auth.setSession({
+    access_token: result.access_token,
+    refresh_token: result.refresh_token,
   });
   if (error) {
-    return { error: /expired|invalid|token/i.test(error.message) ? 'Mã không đúng hoặc đã hết hạn. Vui lòng kiểm tra và thử lại.' : describeDbError(error) };
+    return { error: describeDbError(error) };
   }
   sessionStorage.setItem('hrm:password-recovery', '1');
   return {};
