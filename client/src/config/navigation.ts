@@ -34,9 +34,9 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/organization', label: 'Cơ cấu tổ chức', description: 'Đơn vị, vị trí và tuyến quản lý', icon: Network, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'co cau don vi phong ban chi nhanh vi tri tuyen quan ly' },
   { to: '/admin/users', label: 'Hồ sơ & tài khoản', description: 'Danh bạ nhân viên, vai trò và quyền truy cập', icon: Users, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'danh ba nhan vien tai khoan phan quyen user' },
 
-  { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tổ chức & Nhân sự', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
-  { to: '/admin/workforce', label: 'Hồ sơ người lao động', description: 'Thông tin và tiến trình tuyển chọn của người lao động', icon: ContactRound, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ung vien nguoi lao dong xuat khau', functionCode: 'admin.workforce' },
-  { to: '/admin/worker-documents', label: 'Hồ sơ giấy tờ', description: 'Theo dõi hợp đồng, visa và tài liệu lao động', icon: FileWarning, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents' },
+  { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tuyển dụng', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
+  { to: '/admin/workforce', label: 'Hồ sơ người lao động', description: 'Thông tin và tiến trình tuyển chọn của người lao động', icon: ContactRound, permission: 'users', group: 'Tuyển dụng', keywords: 'ung vien nguoi lao dong xuat khau', functionCode: 'admin.workforce' },
+  { to: '/admin/worker-documents', label: 'Hồ sơ giấy tờ', description: 'Theo dõi hợp đồng, visa và tài liệu lao động', icon: FileWarning, permission: 'users', group: 'Tuyển dụng', keywords: 'hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents' },
 
   { to: '/admin/projects', label: 'Dự án', description: 'Dự án, thành viên, mốc và tác vụ', icon: FolderKanban, permission: 'projects', group: 'Công việc & Dự án', keywords: 'project tac vu' },
   { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Công việc & Dự án', keywords: 'giao viec phan cong xac nhan' },
@@ -179,13 +179,19 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     chip: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-700',
   },
   {
-    name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ, tuyển dụng và giấy tờ',
+    name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ và tài khoản nhân sự',
     // Cyan chu khong phai sky: mau chinh cua he thong da la blue, ma o
     // "Tong quan" nam ngay ben trai o nay trong bang luoi - hai sac xanh
     // duong canh nhau thi phai doc ten moi phan biet.
     iconIdle: 'bg-cyan-50 text-cyan-600', iconOn: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30',
     tileOn: 'bg-cyan-50', textOn: 'text-cyan-700',
     chip: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30 hover:bg-cyan-700',
+  },
+  {
+    name: 'Tuyển dụng', icon: UserSearch, hint: 'Đề xuất tuyển, ứng viên, hồ sơ và giấy tờ',
+    iconIdle: 'bg-violet-50 text-violet-600', iconOn: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30',
+    tileOn: 'bg-violet-50', textOn: 'text-violet-700',
+    chip: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30 hover:bg-violet-700',
   },
   {
     name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ',
