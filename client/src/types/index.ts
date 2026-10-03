@@ -401,6 +401,14 @@ export interface PayComponent {
   ot_multiplier: number | null;
   /** Ngưỡng miễn thuế. Phần vượt vẫn chịu thuế dù `taxable` = false. */
   tax_exempt_cap: number | null;
+  /**
+   * Khoản này là LƯƠNG GỐC.
+   *
+   * Engine lấy nó làm căn cứ suy đơn giá giờ tăng ca và mức đóng bảo hiểm —
+   * nên chỉ một khoản trong danh mục được bật cờ này (database có unique
+   * index chặn).
+   */
+  is_base: boolean;
   /** Trần số tiền của khoản, áp sau khi tính xong. */
   max_amount: number | null;
   sort_order: number;

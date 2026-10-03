@@ -843,5 +843,26 @@ const ghepResult = computePayslip({
 check('khoản ghép đọc được mã của khoản xếp sau nó',
   ghepResult.lines.find((l) => l.code === 'THUONG_GHEP')?.amount, 150_000);
 
+// ---------------------------------------------------------------------------
+// Lương gốc khai bằng một KHOẢN trong danh mục, thay cho pay_basis/base_amount.
+// ---------------------------------------------------------------------------
+// Cố ý để `base_amount` của hồ sơ là một số KHÁC (5 triệu). Engine còn đọc
+// trường cũ thì đơn giá giờ ra 5tr/26/8 chứ không phải 26tr/26/8 — bài kiểm
+// bắt được ngay, chứ không chỉ chạy cho có.
+const luongGoc = component({
+  id: 'cBase', code: 'LUONG_CO_BAN', name: 'Lương cơ bản',
+  calc_type: 'FIXED', is_base: true, default_amount: 0, sort_order: 10,
+});
+const baseByComponent = computePayslip({
+  profile,
+  payProfile: payProfile({ pay_basis: 'MONTHLY', base_amount: 5_000_000 }),
+  items: [{ item: item('cBase', { amount: 26_000_000 }), component: luongGoc }],
+  inputs: {}, stats, settings,
+});
+check('đơn giá giờ suy từ khoản được đánh dấu lương gốc',
+  baseByComponent.hourlyRate, 26_000_000 / 26 / 8);
+check('mức đóng bảo hiểm cũng theo khoản lương gốc',
+  baseByComponent.insuranceBase, 26_000_000);
+
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

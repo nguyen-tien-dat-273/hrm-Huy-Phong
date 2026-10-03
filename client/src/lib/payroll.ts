@@ -743,8 +743,23 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   const warnings: string[] = [];
   const lines: ComputedLine[] = [];
 
+  /**
+   * Khoản được đánh dấu LƯƠNG GỐC trong danh mục, nếu người này có gán.
+   *
+   * Khai lương gốc như mọi khoản khác — chọn trong danh mục rồi điền công
+   * thức — thay vì học một mô hình riêng chỉ để khai một con số.
+   *
+   * Không gán khoản nào có cờ đó thì chạy y như cũ theo `pay_basis`. Nhờ vậy
+   * cờ này bật lên không làm đổi lương của bất kỳ ai cho tới khi chính người
+   * dùng gán khoản đó cho một người.
+   */
+  const baseItem = items.find((entry) => entry.component.is_base);
+
   const basis: PayBasis = payProfile?.pay_basis ?? 'MONTHLY';
-  const baseAmount = Number(payProfile?.base_amount ?? 0);
+  const baseAmount = baseItem
+    // Mức riêng của người này, không có thì lấy mức chung của danh mục.
+    ? Number(baseItem.item.amount ?? baseItem.component.default_amount ?? 0)
+    : Number(payProfile?.base_amount ?? 0);
   const hoursPerDay = Math.max(settings.hoursPerDay || 8, 1);
   const standardDays = Math.max(
     Number(payProfile?.standard_days_override ?? settings.standardWorkDays) || 26,
@@ -754,7 +769,9 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   if (!payProfile) {
     warnings.push(`${profile.name}: chưa thiết lập cơ chế lương — phiếu đang là 0đ.`);
   } else if (baseAmount <= 0 && basis !== 'PIECE') {
-    warnings.push(`${profile.name}: cơ chế "${payBasisLabel(basis)}" nhưng đơn giá đang là 0.`);
+    warnings.push(baseItem
+      ? `${profile.name}: khoản lương gốc "${baseItem.component.name}" đang là 0đ.`
+      : `${profile.name}: cơ chế "${payBasisLabel(basis)}" nhưng đơn giá đang là 0.`);
   }
 
   // --- Lương gốc ------------------------------------------------------------
