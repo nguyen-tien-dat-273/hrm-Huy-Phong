@@ -1,12 +1,16 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, AtSign, Building2, KeyRound, Mail, MessageSquareText, Phone } from 'lucide-react';
+import { ArrowLeft, AtSign, Building2, KeyRound, Mail, MessageSquareText, Phone, UserRound } from 'lucide-react';
 import { APP_NAME } from '@/lib/branding';
 import { normalizeRecoveryPhone, requestPasswordReset, verifyPasswordResetCode, type RecoveryChannel } from '@/lib/auth';
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
-  const [channel, setChannel] = useState<RecoveryChannel>('email');
+  // Mặc định là TÊN ĐĂNG NHẬP: đó là thứ người ta vừa gõ ở màn đăng nhập và
+  // thực sự nhớ. Email đăng ký thì nhiều người không nhớ, mà tài khoản tạo
+  // bằng tên đăng nhập còn không có email thật để mà nhớ.
+  const [channel, setChannel] = useState<RecoveryChannel>('username');
+  const [sentHint, setSentHint] = useState<{ hint?: string; via?: 'email' | 'phone' }>({});
   const [recipient, setRecipient] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'request' | 'verify'>('request');
@@ -17,6 +21,10 @@ export function ForgotPasswordPage() {
     event.preventDefault();
     setError('');
     const value = recipient.trim();
+    if (channel === 'username' && value.length < 3) {
+      setError('Nhập tên đăng nhập bạn vẫn dùng để vào hệ thống.');
+      return;
+    }
     if (channel === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
       setError('Nhập đúng email đã đăng ký trong hồ sơ cá nhân.');
       return;
@@ -29,6 +37,7 @@ export function ForgotPasswordPage() {
     const response = await requestPasswordReset(channel, value);
     setLoading(false);
     if (response.error) { setError(response.error); return; }
+    setSentHint({ hint: response.hint, via: response.via });
     setStep('verify');
   };
 
@@ -52,6 +61,7 @@ export function ForgotPasswordPage() {
     setCode('');
     setStep('request');
     setError('');
+    setSentHint({});
   };
 
   return (
@@ -72,9 +82,12 @@ export function ForgotPasswordPage() {
             <KeyRound className="h-6 w-6" />
           </div>
           <h1 id="forgot-title" className="font-display text-2xl font-bold tracking-tight text-slate-950">Quên mật khẩu</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-500">Nhận mã 6 chữ số qua thông tin đã đăng ký và xác minh trong hồ sơ cá nhân.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">Nhập tên đăng nhập, hệ thống gửi mã 6 chữ số tới email hoặc số điện thoại đã xác minh trong hồ sơ của bạn.</p>
 
           <div className="mt-5 grid grid-cols-2 gap-2" role="group" aria-label="Chọn cách nhận mã">
+            <button type="button" onClick={() => selectChannel('username')} aria-pressed={channel === 'username'} className={`col-span-2 min-h-12 rounded-xl border px-3 text-sm font-semibold ${channel === 'username' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+              <UserRound className="mr-2 inline h-4 w-4" />Bằng tên đăng nhập
+            </button>
             <button type="button" onClick={() => selectChannel('email')} aria-pressed={channel === 'email'} className={`min-h-12 rounded-xl border px-3 text-sm font-semibold ${channel === 'email' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
               <Mail className="mr-2 inline h-4 w-4" />Qua email
             </button>
@@ -86,18 +99,18 @@ export function ForgotPasswordPage() {
           {step === 'request' ? (
             <form onSubmit={sendCode} className="mt-5 space-y-4">
               <div>
-                <label htmlFor="recovery-recipient" className="mb-1.5 block text-sm font-semibold text-slate-700">{channel === 'email' ? 'Email đã đăng ký' : 'Số điện thoại đã đăng ký'}</label>
+                <label htmlFor="recovery-recipient" className="mb-1.5 block text-sm font-semibold text-slate-700">{channel === 'username' ? 'Tên đăng nhập' : channel === 'email' ? 'Email đã đăng ký' : 'Số điện thoại đã đăng ký'}</label>
                 <div className="relative">
-                  {channel === 'email' ? <AtSign className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /> : <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />}
+                  {channel === 'username' ? <UserRound className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /> : channel === 'email' ? <AtSign className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /> : <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />}
                   <input
                     id="recovery-recipient"
                     autoFocus
-                    type={channel === 'email' ? 'email' : 'tel'}
-                    inputMode={channel === 'email' ? 'email' : 'tel'}
-                    autoComplete={channel === 'email' ? 'email' : 'tel'}
+                    type={channel === 'phone' ? 'tel' : 'text'}
+                    inputMode={channel === 'phone' ? 'tel' : 'text'}
+                    autoComplete={channel === 'username' ? 'username' : channel === 'email' ? 'email' : 'tel'}
                     value={recipient}
                     onChange={(event) => setRecipient(event.target.value)}
-                    placeholder={channel === 'email' ? 'email@congty.vn' : '0862 577 958'}
+                    placeholder={channel === 'username' ? 'nguyenvana' : channel === 'email' ? 'email@congty.vn' : '0862 577 958'}
                     aria-invalid={!!error}
                     aria-describedby={error ? 'recovery-error' : undefined}
                     className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 hover:border-slate-300 focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
@@ -112,7 +125,14 @@ export function ForgotPasswordPage() {
           ) : (
             <form onSubmit={verifyCode} className="mt-5 space-y-4">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm leading-5 text-emerald-700" role="status">
-                <MessageSquareText className="mr-2 inline h-4 w-4" />Nếu thông tin đã được xác minh, mã sẽ được gửi tới <strong>{recipient}</strong>.
+                <MessageSquareText className="mr-2 inline h-4 w-4" />
+                {/* Nhập bằng tên đăng nhập thì phải nói mã đi đâu, nếu không
+                    người ta không biết mở hộp thư nào ra tìm. Che bớt địa chỉ
+                    vì gõ bừa một tên đăng nhập không được phép đọc ra email
+                    riêng của đồng nghiệp. */}
+                {sentHint.hint
+                  ? <>Mã đã gửi tới {sentHint.via === 'phone' ? 'số' : 'email'} <strong>{sentHint.hint}</strong>.</>
+                  : <>Nếu thông tin đã được xác minh, mã sẽ được gửi tới <strong>{recipient}</strong>.</>}
               </div>
               <div>
                 <label htmlFor="recovery-code" className="mb-1.5 block text-sm font-semibold text-slate-700">Mã xác minh</label>
