@@ -4,6 +4,7 @@
 
 import type { LeaveLedgerEntry, LeaveRequest, LeaveStatus, LeaveType } from '@/types';
 import { toDateString } from './utils';
+import { dayWeight, type ScheduleSet } from './workSchedule';
 
 export const LEAVE_TYPE_CONFIG: Record<LeaveType, { label: string; color: string; dot: string; paid: boolean }> = {
   annual: { label: 'Phép năm', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-400', paid: true },
@@ -37,13 +38,25 @@ export function leaveStatusLabel(request: Pick<LeaveRequest, 'status' | 'approva
 }
 
 /**
- * Đếm số ngày làm việc trong khoảng, BỎ thứ Bảy và Chủ nhật.
+ * Số ngày công thật sự nghỉ trong khoảng — thứ bị TRỪ VÀO QUỸ PHÉP.
  *
- * Chưa trừ ngày lễ — hệ thống chưa có bảng ngày lễ. Nghĩa là đơn nghỉ vắt qua
- * dịp lễ sẽ bị tính dư ngày; người duyệt cần tự điều chỉnh. Đây là giới hạn đã
- * biết, không phải lỗi.
+ * Truyền `calendar` thì đếm theo đúng lịch làm việc của công ty: trừ ngày lễ,
+ * và thứ Bảy tính 0 / 0,5 / 1 ngày theo `saturday_mode` của ca.
+ *
+ * Trước đây hàm này chỉ bỏ thứ Bảy và Chủ nhật, kèm comment nói "hệ thống chưa
+ * có bảng ngày lễ". Câu đó đã lỗi thời từ migration 20260927120000 — bảng
+ * `company_holidays` có rồi, và `dayWeight` dùng nó để tính công chuẩn cho cả
+ * bảng lương. Nghĩa là đơn nghỉ vắt qua Tết đang bị TRỪ OAN mấy ngày phép cho
+ * những hôm vốn đã nghỉ; còn công ty làm cả thứ Bảy thì ngược lại, đếm thiếu.
+ *
+ * Không truyền `calendar` thì giữ nguyên cách cũ (thứ Hai–Sáu, không trừ lễ),
+ * để nơi gọi chưa kịp nạp lịch vẫn chạy như trước chứ không đổi số âm thầm.
  */
-export function countWorkingDays(startDate: string, endDate: string): number {
+export function countWorkingDays(
+  startDate: string,
+  endDate: string,
+  calendar?: { schedules: ScheduleSet; holidays: ReadonlySet<string> },
+): number {
   const start = new Date(`${startDate}T00:00:00`);
   const end = new Date(`${endDate}T00:00:00`);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
@@ -51,11 +64,16 @@ export function countWorkingDays(startDate: string, endDate: string): number {
   let days = 0;
   const cursor = new Date(start);
   while (cursor <= end) {
-    const weekday = cursor.getDay(); // 0 = CN, 6 = T7
-    if (weekday !== 0 && weekday !== 6) days++;
+    if (calendar) {
+      days += dayWeight(calendar.schedules, toDateString(cursor), calendar.holidays);
+    } else {
+      const weekday = cursor.getDay(); // 0 = CN, 6 = T7
+      if (weekday !== 0 && weekday !== 6) days += 1;
+    }
     cursor.setDate(cursor.getDate() + 1);
   }
-  return days;
+  // Thứ Bảy nửa ngày sinh ra số lẻ .5; làm tròn 2 chữ số để không ra 2.7999…
+  return Math.round(days * 100) / 100;
 }
 
 export interface LeaveBalance {
