@@ -621,7 +621,16 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
                       >
                         <Avatar name={person.name} url={person.avatar_url} size="sm" />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-bold text-slate-800">{person.name}</span>
+                          <span className="flex items-baseline gap-2">
+                            <span className="truncate text-sm font-bold text-slate-800">{person.name}</span>
+                            {/* Ô tìm khớp cả theo mã nhân viên. Không hiện mã
+                                ra thì gõ một mã sẽ cho ra những dòng trông
+                                như chẳng liên quan gì tới từ vừa gõ — người
+                                dùng thôi tin vào ô tìm từ lúc đó. */}
+                            {person.employee_code && (
+                              <span className="shrink-0 font-mono text-[11px] text-slate-400">{person.employee_code}</span>
+                            )}
+                          </span>
                           <span className="block truncate text-xs text-slate-500">
                             {/* Phòng ban đứng cạnh tên: cùng tên thì đây là
                                 thứ phân biệt được hai người. */}
