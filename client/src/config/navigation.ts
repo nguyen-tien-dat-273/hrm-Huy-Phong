@@ -164,8 +164,16 @@ export interface AdminNavGroup {
 export const MODULES_BY_PERMISSION: Partial<Record<AdminPermission, string[]>> = (() => {
   const map: Partial<Record<AdminPermission, string[]>> = {};
   for (const item of ADMIN_NAV_ITEMS) {
-    const list = map[item.permission] ?? (map[item.permission] = []);
-    if (!list.includes(item.group)) list.push(item.group);
+    // Mot muc menu co the mo duoc bang NHIEU quyen (`anyPermissions`): ví dụ
+    // "Trung tâm đơn từ" mở được bằng `leave` HOẶC `attendance`. Chỉ quy nó
+    // về `item.permission` thì bảng này báo THIẾU — admin cấp quyền
+    // `attendance` cho ai đó mà không hề biết mình vừa mở luôn cả màn duyệt
+    // đơn từ. Đây là màn dùng để quyết định cấp quyền, báo thiếu ở đây là
+    // chỗ quyết định sai.
+    for (const permission of item.anyPermissions ?? [item.permission]) {
+      const list = map[permission] ?? (map[permission] = []);
+      if (!list.includes(item.group)) list.push(item.group);
+    }
   }
   return map;
 })();
