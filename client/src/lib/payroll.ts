@@ -164,21 +164,6 @@ export interface PeriodStats {
 }
 
 /**
- * Gộp chấm công, nghỉ phép và ngày lễ của MỘT người trong MỘT tháng.
- *
- * Ngày phép đếm theo khoảng ngày chứ không lấy thẳng cột `days`: một đơn nghỉ
- * có thể vắt qua hai tháng, phải tách đúng phần rơi vào tháng đang tính.
- *
- * `holidays`: danh sách ngày lễ (chuỗi ISO "YYYY-MM-DD") lấy từ bảng
- * `company_holidays`. Một ngày chỉ được tính là NGÀY LỄ nếu: rơi vào tháng
- * đang tính, là ngày thường (không phải cuối tuần — cuối tuần vốn đã không
- * phải ngày công), người này KHÔNG có chấm công thực tế ngày đó (đi làm thật
- * thì tính là ngày công, không phải ngày lễ nghỉ), và KHÔNG đã nằm trong một
- * đơn nghỉ phép đã duyệt ngày đó (tránh trả lương hai lần cho cùng một ngày —
- * đơn giản hoá: coi ngày dính nghỉ nửa buổi cũng là "đã có đơn", không tách
- * nửa ngày lễ + nửa ngày phép).
- */
-/**
  * Chia giờ tăng ca đã duyệt thành ba rổ theo Điều 98 BLLĐ 2019:
  * ngày thường 150%, ngày NGHỈ HẰNG TUẦN 200%, ngày lễ 300%.
  *
@@ -220,6 +205,21 @@ export function splitOvertimeHours(
   };
 }
 
+/**
+ * Gộp chấm công, nghỉ phép và ngày lễ của MỘT người trong MỘT tháng.
+ *
+ * Ngày phép đếm theo khoảng ngày chứ không lấy thẳng cột `days`: một đơn nghỉ
+ * có thể vắt qua hai tháng, phải tách đúng phần rơi vào tháng đang tính.
+ *
+ * `holidays`: danh sách ngày lễ (chuỗi ISO "YYYY-MM-DD") lấy từ bảng
+ * `company_holidays`. Một ngày chỉ được tính là NGÀY LỄ nếu: rơi vào tháng
+ * đang tính, là ngày thường (không phải cuối tuần — cuối tuần vốn đã không
+ * phải ngày công), người này KHÔNG có chấm công thực tế ngày đó (đi làm thật
+ * thì tính là ngày công, không phải ngày lễ nghỉ), và KHÔNG đã nằm trong một
+ * đơn nghỉ phép đã duyệt ngày đó (tránh trả lương hai lần cho cùng một ngày —
+ * đơn giản hoá: coi ngày dính nghỉ nửa buổi cũng là "đã có đơn", không tách
+ * nửa ngày lễ + nửa ngày phép).
+ */
 export function summarisePeriod(
   attendance: Attendance[],
   leaves: LeaveRequest[],
@@ -259,17 +259,27 @@ export function summarisePeriod(
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   let leaveDays = 0;
   const leaveCoveredDates = new Set<string>();
+  const holidaySet = new Set(holidays);
+  // Không có ngày lễ nào: dùng để hỏi "hôm đó ĐÁNG LẼ là ngày làm mấy công",
+  // vì `dayWeight` trả 0 cho mọi ngày lễ — mà ngày lễ vẫn được HƯỞNG lương.
+  const noHolidays: ReadonlySet<string> = new Set<string>();
 
   for (const leave of leaves) {
     for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = new Date(year, month, day);
-      // Nghỉ phép chỉ tính ngày thường; cuối tuần vốn đã không phải ngày công.
-      if (date.getDay() === 0 || date.getDay() === 6) continue;
       const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      if (iso >= leave.start_date && iso <= leave.end_date) {
-        leaveDays += leave.half_day ? 0.5 : 1;
-        leaveCoveredDates.add(iso);
-      }
+      if (iso < leave.start_date || iso > leave.end_date) continue;
+      // Nghỉ phép ăn theo đúng trọng số ngày làm của lịch công ty, KHÔNG phải
+      // "cứ thứ Hai–Sáu là 1". Công ty này khai `saturday_mode`, nên mẫu số
+      // `standardDays` đếm thứ Bảy 0,5 hoặc 1 — tử số bỏ hẳn thứ Bảy thì
+      // người nghỉ phép trọn tháng chỉ được trả 21/23,5 lương.
+      //
+      // Ngày lễ rơi trong kỳ nghỉ trả về 0 ở đây và được `holidayDays` bên
+      // dưới nhặt lại, nên tổng vẫn đúng một lần — và con số "nghỉ phép"
+      // trên phiếu khớp với số ngày thật sự bị trừ quỹ phép.
+      const weight = dayWeight(schedules, iso, holidaySet);
+      if (weight === 0) continue;
+      leaveDays += leave.half_day ? weight / 2 : weight;
+      leaveCoveredDates.add(iso);
     }
   }
 
@@ -281,13 +291,15 @@ export function summarisePeriod(
 
   const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
   let holidayDays = 0;
-  for (const iso of holidays) {
+  for (const iso of holidaySet) {
     if (!iso.startsWith(monthPrefix)) continue;
-    const weekday = new Date(`${iso}T00:00:00`).getDay();
-    if (weekday === 0 || weekday === 6) continue;
     if (workedDates.has(iso) || leaveCoveredDates.has(iso)) continue;
-    holidayDays += 1;
+    // Hỏi trọng số của ngày đó khi CHƯA tính nó là ngày lễ: lễ rơi vào thứ
+    // Bảy làm nửa ngày thì hưởng 0,5 công, rơi vào Chủ nhật thì 0.
+    holidayDays += dayWeight(schedules, iso, noHolidays);
   }
+  holidayDays = Math.round(holidayDays * 100) / 100;
+  leaveDays = Math.round(leaveDays * 100) / 100;
 
   return {
     workDays,

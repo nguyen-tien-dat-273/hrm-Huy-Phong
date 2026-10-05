@@ -327,13 +327,21 @@ check('chưa truyền ngày lễ thì holidayDays = 0', summary.holidayDays, 0);
 
 // --- Ngày nghỉ lễ (L03) -------------------------------------------------------
 // 2026-09-01 (Thứ 3): đã đi làm thật -> KHÔNG tính là ngày lễ (tránh trả 2 lần).
-// 2026-09-03 (Thứ 5): không đi làm, không nghỉ phép -> ĐÚNG 1 ngày lễ.
+// 2026-09-03 (Thứ 5): không đi làm, không nghỉ phép -> ngày lễ.
 // 2026-09-06 (Chủ nhật): cuối tuần vốn không phải ngày công -> không tính.
-// 2026-09-07 (Thứ 2): đã nằm trong đơn nghỉ phép đã duyệt -> không đếm 2 lần.
+// 2026-09-07 (Thứ 2): rơi trong đơn nghỉ phép -> tính là NGÀY LỄ, không phải
+//   ngày phép. Người lao động không bị trừ quỹ phép cho một ngày vốn đã nghỉ,
+//   đúng như `countWorkingDays` bên `leave.ts` đang tính quỹ.
 const holidays = ['2026-09-01', '2026-09-03', '2026-09-06', '2026-09-07'];
 const withHolidays = summarisePeriod(att, leaveReqs, new Date(2026, 8, 1), 8, holidays);
-check('ngày lễ không đè lên ngày đã đi làm/đã nghỉ phép', withHolidays.holidayDays, 1);
-check('paidDays cộng cả ngày lễ', withHolidays.paidDays, withHolidays.workDays + withHolidays.leaveDays + 1);
+check('ngày lễ không đè lên ngày đã đi làm', withHolidays.holidayDays, 2);
+check('ngày lễ trong kỳ nghỉ không bị tính là ngày phép', withHolidays.leaveDays, 1);
+// Điều PHẢI giữ nguyên là TỔNG — đổi cách quy kết giữa phép và lễ không được
+// làm đổi số tiền. Trước khi sửa: 2 công + 2 phép + 1 lễ. Sau: 2 + 1 + 2.
+check('đổi cách quy kết không làm đổi tổng ngày hưởng lương', withHolidays.paidDays, 5);
+check('tổng luôn bằng ba thành phần cộng lại',
+  withHolidays.paidDays,
+  withHolidays.workDays + withHolidays.leaveDays + withHolidays.holidayDays);
 
 // Tách 3 dòng lương gốc (L01/L02/L03) — tổng 3 dòng phải bằng ĐÚNG số tiền
 // của một dòng gộp cũ (base.rate không đổi, chỉ đổi cách chia hiển thị).
@@ -915,6 +923,41 @@ check('giờ âm hoặc rỗng không được cộng vào',
     { request_type: 'OVERTIME', work_date: '2026-08-07', hours: -3 },
     { request_type: 'OVERTIME', work_date: '2026-08-07', hours: null },
   ], caThuBayLam, new Set()), { weekday: 0, weekend: 0, holiday: 0 });
+
+// --- Ngày hưởng lương phải đếm cùng quyển lịch với công chuẩn ---------------
+//
+// `standardDays` lấy từ `monthStandardDays`, đếm thứ Bảy 0,5 hoặc 1 theo
+// `saturday_mode`. Nếu `paidDays` lại bỏ hẳn thứ Bảy thì hai vế của phép chia
+// `base / standardDays * paidDays` dùng hai quyển lịch khác nhau, và người
+// nghỉ phép trọn tháng bị trả thiếu — không có gì báo ra.
+const lichT7Nua: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'HALF' }],
+};
+// 2026-08-08 là thứ Bảy. Đơn nghỉ phủ đúng thứ Sáu 07 và thứ Bảy 08.
+const nghiQuaThuBay = [{
+  user_id: 'u1', start_date: '2026-08-07', end_date: '2026-08-08',
+  half_day: false, status: 'approved', leave_type: 'annual', days: 2,
+} as unknown as LeaveRequest];
+
+check('thứ Bảy nửa ngày: nghỉ phép hưởng 1,5 công chứ không phải 1',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8, [], lichT7Nua).leaveDays, 1.5);
+const lichT7Nghi: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'OFF' }],
+};
+check('công ty nghỉ hẳn thứ Bảy thì chỉ 1 công',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8, [], lichT7Nghi).leaveDays, 1);
+check('công ty làm đủ thứ Bảy thì hưởng 2 công',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8, [], {
+    supported: true, schedules: [{ ...schedules.schedules[0], saturday_mode: 'FULL' }],
+  }).leaveDays, 2);
+check('chưa khai ca nào thì giữ nguyên nếp cũ (T7 không tính)',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8).leaveDays, 1);
+check('lễ rơi vào thứ Bảy nửa ngày vẫn hưởng 0,5 công',
+  summarisePeriod([], [], new Date(2026, 7, 1), 8, ['2026-08-08'], lichT7Nua).holidayDays, 0.5);
+check('lễ rơi vào Chủ nhật không hưởng công nào',
+  summarisePeriod([], [], new Date(2026, 7, 1), 8, ['2026-08-09'], lichT7Nua).holidayDays, 0);
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
