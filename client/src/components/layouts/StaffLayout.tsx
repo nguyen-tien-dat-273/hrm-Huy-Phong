@@ -16,6 +16,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { notificationRoute } from '@/lib/notificationRoutes';
 import type { Notification } from '@/types';
 import { STAFF_NAV_ITEMS } from '@/config/navigation';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
  * Cum chuc nang cua khu nhan vien.
@@ -474,7 +475,10 @@ export function StaffLayout({ children }: { children: ReactNode }) {
 
         {/* Page content — chừa chỗ cho thanh điều hướng đáy trên điện thoại */}
         <main id="main-content" data-bottom-launcher tabIndex={-1} className="page-content flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
-          {children}
+          {/* Lưới an toàn: một trang ném lỗi thì chỉ trang đó hiện báo lỗi,
+              thanh điều hướng và đầu trang vẫn còn để đi chỗ khác. Không có
+              nó thì React gỡ cả cây và màn hình trắng trơn. */}
+          <PageErrorBoundary>{children}</PageErrorBoundary>
         </main>
       </div>
       {/* ================================================================

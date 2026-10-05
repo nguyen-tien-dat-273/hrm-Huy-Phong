@@ -14,6 +14,7 @@ import { useAppSettings } from '@/contexts/SettingsContext';
 import type { Notification } from '@/types';
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
 import { notificationRoute } from '@/lib/notificationRoutes';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
  * Menu đã vượt 12 mục — chia 3 cụm theo mạch công việc để quét mắt nhanh:
@@ -555,7 +556,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
         {/* Page content */}
         <main id="main-content" tabIndex={-1} className="page-content flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
-          {children}
+          {/* Lưới an toàn: một trang ném lỗi thì chỉ trang đó hiện báo lỗi,
+              thanh điều hướng và đầu trang vẫn còn để đi chỗ khác. Không có
+              nó thì React gỡ cả cây và màn hình trắng trơn. */}
+          <PageErrorBoundary>{children}</PageErrorBoundary>
         </main>
       </div>
     </div>
