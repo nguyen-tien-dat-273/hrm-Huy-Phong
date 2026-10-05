@@ -272,6 +272,23 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
   const activeTemplates = templates.filter((item) => item.is_active);
 
   /**
+   * Gửi yêu cầu chấm cho người này được chưa.
+   *
+   * `suggestTemplate` cố ý KHÔNG lọc `is_active` — nó phải khớp
+   * `kpi_scheme_for()` dưới database, và lớp "gán riêng" ở đó không lọc. Nên
+   * câu "có bộ KPI" và câu "dùng được" là hai câu khác nhau, phải hỏi riêng.
+   *
+   * Trước đây ba chỗ trả lời ba kiểu: banner bảo "chưa bộ nào bật nên không
+   * gửi được", từng dòng lại hiện tên bộ kèm "Chưa gửi yêu cầu" như thể sẵn
+   * sàng, còn nút gửi hàng loạt thì không kiểm gì cả — bấm vào vẫn mở phiếu
+   * bằng bộ đang tắt, mà phiếu đó seed theo tiêu chí đang bật nên ra rỗng.
+   */
+  const readyTemplate = (profile: Profile): Template | undefined => {
+    const found = suggestTemplate(profile);
+    return found?.is_active ? found : undefined;
+  };
+
+  /**
    * Ghi SỐ ĐO thực tế. Điểm do trigger của database suy ra rồi tải lại —
    * client cố tình không tự tính để tránh hai nguồn số liệu lệch nhau.
    */
@@ -579,18 +596,28 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     if (!supabase) return;
     const pending = profiles
       .filter((person) => stageOf(person) === 'chua_gui')
-      .map((person) => ({ person, template: suggestTemplate(person) }));
+      .map((person) => ({ person, assigned: suggestTemplate(person), template: readyTemplate(person) }));
     const ready = pending.filter((row) => row.template);
-    const missing = pending.length - ready.length;
+    // Tách hai lý do bị bỏ qua: "chưa khai bộ nào" và "đã khai nhưng bộ chưa
+    // bật". Gộp làm một thì người dùng đi khai lại bộ đã có sẵn, trong khi
+    // việc cần làm chỉ là bật nó lên.
+    const chuaCo = pending.filter((row) => !row.assigned).length;
+    const chuaBat = pending.filter((row) => row.assigned && !row.template).length;
 
     if (ready.length === 0) {
-      return toast('Không ai có bộ KPI để mở phiếu. Khai bộ KPI cho họ trước.', 'error');
+      return toast(
+        chuaBat > 0
+          ? `${chuaBat} người đã có bộ KPI nhưng bộ chưa được bật. Sang Bộ KPI nhân sự bật bộ lên.`
+          : 'Không ai có bộ KPI để mở phiếu. Khai bộ KPI cho họ trước.',
+        'error',
+      );
     }
 
     const ok = await confirm({
       title: `Gửi yêu cầu chấm KPI cho ${ready.length} người?`,
       message: `Phiếu tháng ${month} sẽ mở ra để họ tự chấm.`
-        + (missing > 0 ? ` ${missing} người chưa có bộ KPI nên bỏ qua.` : ''),
+        + (chuaCo > 0 ? ` ${chuaCo} người chưa có bộ KPI nên bỏ qua.` : '')
+        + (chuaBat > 0 ? ` ${chuaBat} người có bộ nhưng bộ chưa bật, cũng bỏ qua.` : ''),
       confirmLabel: 'Gửi yêu cầu',
     });
     if (!ok) return;
@@ -823,7 +850,11 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                       dung phai doan hai cai khac nhau cho nao. */}
                   {!review ? (
                     <span className="text-[11px] font-semibold text-slate-400">
-                      {suggestTemplate(profile) ? 'Chưa gửi yêu cầu' : 'Chưa có bộ KPI'}
+                      {readyTemplate(profile)
+                        ? 'Chưa gửi yêu cầu'
+                        : suggestTemplate(profile)
+                          ? <span className="text-amber-600">Bộ KPI chưa bật</span>
+                          : 'Chưa có bộ KPI'}
                     </span>
                   ) : !locked ? (
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => void lockReview(review, profile)}>
