@@ -88,6 +88,8 @@ export function PaySchemeModal({
   const { toast } = useToast();
 
   const [basis, setBasis] = useState<PayBasis>('MONTHLY');
+  /** Khoản được đánh dấu lương gốc trong danh mục, nếu đã khai. */
+  const baseComponent = components.find((item) => item.is_base && item.is_active);
   const [baseAmount, setBaseAmount] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(defaultEffectiveFrom);
   const [insuranceEnabled, setInsuranceEnabled] = useState(true);
@@ -317,34 +319,57 @@ export function PaySchemeModal({
           {/* --- Lương gốc --- */}
           <section className="space-y-3">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Bước 1 · Người này ăn lương kiểu gì
+              Bước 1 · Lương gốc
             </h3>
-            {/* Đây là quyết định chi phối mọi thứ phía sau, nên bày hết ra cho
-                so sánh được. Trong dropdown thì phải mở ra mới thấy có gì. */}
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {PAY_BASES.map((entry) => (
-                <button
-                  key={entry.value}
-                  type="button"
-                  onClick={() => setBasis(entry.value)}
-                  aria-pressed={basis === entry.value}
-                  className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-                    basis === entry.value
-                      ? 'border-indigo-600 bg-indigo-50'
-                      : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="block text-sm font-bold text-slate-800">{payBasisLabel(entry.value)}</span>
-                  <span className="mt-0.5 block text-[11px] font-semibold text-indigo-600">{entry.who}</span>
-                  <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{entry.hint}</span>
-                </button>
-              ))}
-            </div>
+
+            {/* Khai lương gốc bằng một KHOẢN trong danh mục, như mọi khoản
+                khác — thay vì bắt học một mô hình riêng chỉ để khai một con
+                số. Khoản nào là lương gốc thì bật cờ ở Danh mục khoản lương,
+                cả danh mục chỉ một khoản.
+
+                Chưa bật khoản nào thì vẫn hiện năm thẻ cũ: bỏ chúng đi lúc đó
+                là không còn chỗ nào khai lương gốc, và người đang ăn lương
+                giờ/ngày/khoán mất luôn cơ chế của họ. */}
+            {baseComponent ? (
+              <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-3.5 py-3">
+                <p className="text-sm font-bold text-slate-900">{baseComponent.name}</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                  Khoản được đánh dấu <strong>lương gốc</strong> trong danh mục. Mức khai bên dưới
+                  là căn cứ tính đơn giá giờ tăng ca và mức đóng bảo hiểm.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+                  Chưa đánh dấu khoản nào là <strong>lương gốc</strong> trong Danh mục khoản lương,
+                  nên vẫn khai theo cách cũ. Bật cờ đó rồi thì bước này chỉ còn một ô nhập mức.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {PAY_BASES.map((entry) => (
+                    <button
+                      key={entry.value}
+                      type="button"
+                      onClick={() => setBasis(entry.value)}
+                      aria-pressed={basis === entry.value}
+                      className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
+                        basis === entry.value
+                          ? 'border-indigo-600 bg-indigo-50'
+                          : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="block text-sm font-bold text-slate-800">{payBasisLabel(entry.value)}</span>
+                      <span className="mt-0.5 block text-[11px] font-semibold text-indigo-600">{entry.who}</span>
+                      <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{entry.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <Input
-                  label={BASE_AMOUNT_LABEL[basis]}
+                  label={baseComponent ? `Mức ${baseComponent.name} (VND)` : BASE_AMOUNT_LABEL[basis]}
                   inputMode="numeric"
                   placeholder="VD: 15000000"
                   value={baseAmount}

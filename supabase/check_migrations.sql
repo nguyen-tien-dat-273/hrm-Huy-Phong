@@ -272,6 +272,12 @@ with probe as (
                and column_name = 'section'),
      'Chia tieu chi thanh phan dinh luong / dinh tinh, co tieu tong rieng'),
 
+    ('20261004100000_pay_component_is_base',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'payroll_components'
+               and column_name = 'is_base'),
+     'Khai luong goc bang mot khoan trong danh muc thay cho pay_basis'),
+
     ('20261003100000_profiles_phone',
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'profiles'
