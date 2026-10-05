@@ -17,7 +17,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronRight, Target, TriangleAlert, Users } from 'lucide-react';
+import { Building2, ChevronRight, Search, Target, TriangleAlert, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -38,6 +38,17 @@ interface Scheme { id: string; user_id: string; template_id: string; effective_f
 interface UnitScheme { id: string; unit_id: string; template_id: string; effective_from: string }
 interface Criterion { id: string; template_id: string; name: string; weight_percent: number; is_active: boolean }
 
+/**
+ * Bỏ dấu để gõ "hue" tìm ra "Huệ".
+ *
+ * Người dùng gõ tiếng Việt không dấu khi tìm nhanh, và tên trong hệ thống thì
+ * luôn có dấu. So khớp nguyên văn sẽ không ra gì, trông như người đó không có
+ * trong hệ thống.
+ */
+const stripTone = (text: string) => text
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd')
+  .toLowerCase().trim();
+
 export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
   const { users } = useAuth();
   const { toast } = useToast();
@@ -48,6 +59,25 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
   const [schemes, setSchemes] = useState<Scheme[]>([]);
   const [loading, setLoading] = useState(true);
   const [supported, setSupported] = useState(true);
+
+  /**
+   * Hai cách tìm tới cùng một thứ: KPI của một người.
+   *
+   *   'people' — gõ tên, ra thẳng người đó. Dùng khi đã biết tìm ai.
+   *   'units'  — mở một phòng, thấy cả phòng. Dùng khi soát theo phòng xem
+   *              ai còn thiếu, và khi khai một lượt cho cả phòng.
+   *
+   * Trước đây hai thứ này chồng lên nhau trong một màn: danh sách phòng ban
+   * nằm trên, danh sách người chưa gán đơn vị nằm dưới. Mà phần lớn nhân sự
+   * đang chưa gán đơn vị, nên cái khối "dưới" mới là chỗ hay dùng — phải cuộn
+   * qua hết phòng ban mới tới, và không tìm kiếm được.
+   *
+   * Mặc định mở ở 'people': bộ KPI thuộc về NGƯỜI, phòng ban chỉ là đường đi.
+   */
+  const [tab, setTab] = useState<'people' | 'units'>('people');
+
+  /** Ô tìm của tab nhân sự. */
+  const [query, setQuery] = useState('');
 
   /** Đường đi hiện tại, từ gốc xuống. Rỗng = đang ở danh sách khối. */
   const [path, setPath] = useState<Unit[]>([]);
@@ -370,9 +400,54 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
   const people = current ? peopleIn(current.id) : peopleIn(null);
   const activeTemplates = templates.filter((t) => t.is_active);
 
+  /**
+   * Toàn bộ nhân sự đang làm việc, xếp theo tên — nguồn của tab 'people'.
+   *
+   * Cố ý liệt kê CẢ người đã có bộ KPI chứ không chỉ người còn thiếu: vào đây
+   * còn để sửa bộ của người đã có, không riêng để khai cho người mới.
+   *
+   * Không dùng useMemo: vài chục người, lọc một lượt là xong — và mọi hook ở
+   * file này phải nằm trên các lệnh return sớm phía trên, thêm hook ở đây là
+   * đúng cái bẫy đã làm trắng màn hình một lần rồi.
+   */
+  const everyone = users
+    .filter((person) => person.is_active)
+    .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+
+  const keyword = stripTone(query);
+  const matchedPeople = keyword
+    ? everyone.filter((person) => stripTone(person.name).includes(keyword)
+      || stripTone(person.employee_code || '').includes(keyword))
+    : everyone;
+
+  /** Đếm trên TOÀN BỘ nhân sự, không theo kết quả tìm — gõ tìm một người mà
+      con số tồn đọng đổi theo thì nó không còn là con số tồn đọng nữa. */
+  const missingCount = everyone.filter((person) => !effectiveFor(person).tpl).length;
+
   return (
     <Card>
       <CardContent className="space-y-4">
+        {/* ---- Hai tab ----
+             Chuyển tab là về đầu: giữ lại đường đi hay người đang mở của tab
+             cũ sẽ cho ra màn hình nửa nọ nửa kia, không ai đoán được đang
+             đứng ở đâu. */}
+        <div className="inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Cách tìm tới bộ KPI">
+          {([['people', 'Nhân sự'], ['units', 'Phòng ban']] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              onClick={() => { setTab(value); setPath([]); setFocusPerson(null); setQuery(''); }}
+              className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
+                tab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* ---- Đường đi ---- */}
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
           <button
@@ -380,7 +455,7 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
             onClick={() => { setPath([]); setFocusPerson(null); }}
             className={`font-semibold transition ${path.length === 0 && !focusPerson ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
           >
-            Tất cả phòng ban
+            {tab === 'people' ? 'Tất cả nhân sự' : 'Tất cả phòng ban'}
           </button>
           {path.map((unit, index) => (
             <span key={unit.id} className="flex items-center gap-1.5">
@@ -404,10 +479,12 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
           )}
         </div>
 
-        {path.length === 0 && (
+        {!focusPerson && path.length === 0 && (
           <p className="text-xs leading-relaxed text-slate-500">
-            Danh sách phòng ban lấy từ <strong>Cơ cấu tổ chức</strong>, không khai lại ở đây.
-            Chọn một phòng để xem nhân sự và khai bộ KPI cho họ.
+            {tab === 'people'
+              ? <>Bộ KPI thuộc về <strong>từng người</strong>. Chọn một nhân sự để xem và khai bộ của họ.</>
+              : <>Danh sách phòng ban lấy từ <strong>Cơ cấu tổ chức</strong>, không khai lại ở đây.
+                  Mở một phòng để soát cả phòng và khai một lượt.</>}
           </p>
         )}
 
@@ -497,8 +574,81 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
           );
         })()}
 
+        {/* ================= TAB NHÂN SỰ =================
+             Gõ tên ra thẳng người cần. Danh sách này là toàn bộ nhân sự đang
+             làm việc, kể cả người chưa gán đơn vị — trước đây muốn tới họ
+             phải cuộn qua hết danh sách phòng ban. */}
+        {!focusPerson && tab === 'people' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Tìm theo tên hoặc mã nhân viên..."
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+              {missingCount > 0 && (
+                <Badge className="bg-amber-50 text-amber-700">
+                  {missingCount}/{everyone.length} người chưa có bộ KPI
+                </Badge>
+              )}
+            </div>
+
+            {matchedPeople.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+                  <Users className="h-5 w-5" />
+                </span>
+                <p className="text-sm font-semibold text-slate-600">
+                  {query ? `Không có ai khớp "${query}"` : 'Chưa có nhân sự nào đang làm việc'}
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-50 rounded-xl border border-slate-200">
+                {matchedPeople.map((person) => {
+                  const own = ownScheme(person.id);
+                  const { tpl, source } = effectiveFor(person);
+                  const unit = person.unit_id ? unitById.get(person.unit_id) : null;
+                  return (
+                    <li key={person.id}>
+                      <button
+                        type="button"
+                        onClick={() => setFocusPerson(person)}
+                        className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition hover:bg-indigo-50/60"
+                      >
+                        <Avatar name={person.name} url={person.avatar_url} size="sm" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-bold text-slate-800">{person.name}</span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {/* Phòng ban đứng cạnh tên: cùng tên thì đây là
+                                thứ phân biệt được hai người. */}
+                            {unit ? unit.name : <span className="text-slate-400">Chưa gán đơn vị</span>}
+                            {' · '}
+                            {tpl ? tpl.name : <span className="font-bold text-amber-600">Chưa có bộ KPI</span>}
+                            {own && ` · từ ${formatDate(own.effective_from)}`}
+                          </span>
+                        </span>
+                        {tpl && (
+                          <Badge className={own ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}>
+                            {source}
+                          </Badge>
+                        )}
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {/* ================= TAB PHÒNG BAN ================= */}
         {/* ---- Đơn vị con ---- */}
-        {!focusPerson && !current && allUnits.length > 0 && (
+        {!focusPerson && tab === 'units' && !current && allUnits.length > 0 && (
           <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
             {allUnits.map(({ unit, depth }) => {
               const inside = peopleIn(unit.id).length;
@@ -529,12 +679,12 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
           </div>
         )}
 
-        {/* ---- Nhân sự tại cấp này ---- */}
-        {!focusPerson && people.length > 0 && (
+        {/* ---- Nhân sự trong phòng đang mở ---- */}
+        {!focusPerson && tab === 'units' && current && people.length > 0 && (
           <div className="rounded-xl border border-slate-200">
             <p className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-bold text-slate-700">
               <Users className="h-3.5 w-3.5" />
-              {current ? `Nhân sự thuộc ${current.name}` : 'Chưa gán đơn vị'}
+              Nhân sự thuộc {current.name}
               <span className="font-normal text-slate-400">({people.length})</span>
             </p>
             <ul className="divide-y divide-slate-50">
@@ -570,16 +720,22 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
           </div>
         )}
 
-        {!focusPerson && subUnits.length === 0 && people.length === 0 && (
+        {/* Màn rỗng của tab phòng ban. Tab nhân sự có màn rỗng riêng ở trên
+            vì việc cần làm khác hẳn: ở đây là đi dựng cơ cấu, ở kia là gõ lại
+            từ khoá khác. */}
+        {!focusPerson && tab === 'units' && (current ? people.length === 0 : allUnits.length === 0) && (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
               <Building2 className="h-5 w-5" />
             </span>
             <p className="text-sm font-semibold text-slate-600">
-              {current ? `${current.name} chưa có đơn vị con hay nhân sự nào` : 'Chưa dựng cơ cấu tổ chức'}
+              {current ? `${current.name} chưa có nhân sự nào` : 'Chưa dựng cơ cấu tổ chức'}
             </p>
             <p className="max-w-sm text-xs leading-relaxed text-slate-400">
-              Dựng phòng ban và gán nhân sự ở <strong>Cơ cấu tổ chức</strong>, rồi quay lại đây.
+              {current
+                ? <>Gán nhân sự vào phòng này ở <strong>Cơ cấu tổ chức</strong>, hoặc khai KPI cho
+                    từng người ở tab <strong>Nhân sự</strong>.</>
+                : <>Dựng phòng ban và gán nhân sự ở <strong>Cơ cấu tổ chức</strong>, rồi quay lại đây.</>}
             </p>
           </div>
         )}
