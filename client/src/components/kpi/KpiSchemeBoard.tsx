@@ -282,36 +282,27 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
    * nó, xoá đi là lịch sử mất chỗ dựa.
    */
   /**
-   * Tạo một bộ KPI rồi gán cho TẤT CẢ nhân sự trong phòng.
+   * Tạo một bộ KPI THUỘC VỀ PHÒNG BAN.
    *
-   * Vẫn đúng mô hình "KPI thuộc về người": một bộ, gán riêng cho từng người
-   * trong phòng qua `employee_kpi_schemes`. Khác mỗi chỗ là khai một lần thay
-   * vì lặp lại 20 lần cho phòng 20 người — và sửa tiêu chí thì cả phòng đổi
-   * theo, đúng cái người dùng muốn khi nói "tạo KPI cho cả phòng ban".
+   * Khác hẳn bản trước. Bản trước tạo một bộ rồi ghi N dòng gán riêng cho N
+   * người đang có mặt trong phòng — nên người vào phòng sau đó không có gì
+   * cả, phải nhớ quay lại chạy lại mà không có gì nhắc; còn người chuyển đi
+   * phòng khác thì vẫn ôm theo bộ của phòng cũ.
    *
-   * Người đã có bộ riêng thì GIỮ NGUYÊN: họ được khai riêng là có lý do, đè
-   * lên là xoá mất công khai đó mà không ai hỏi.
+   * Giờ ghi MỘT dòng vào `unit_kpi_schemes`. Ai đang thuộc phòng thì chấm
+   * theo bộ đó, kể cả người vào sau; rời phòng là thôi theo. Không phải chạy
+   * lại lần nào.
+   *
+   * Ai cần tiêu chí khác thì vẫn khai bộ riêng — gán riêng vẫn thắng gán theo
+   * phòng, đúng thứ tự `kpi_scheme_for()` dưới database dùng.
    */
-  const createTemplateForUnit = async (unit: Unit) => {
+  const createUnitTemplate = async (unit: Unit) => {
     if (!supabase) return;
-    const targets = users.filter((person) => person.is_active && person.unit_id === unit.id);
-    if (targets.length === 0) {
-      return toast(`${unit.name} chưa có nhân sự nào.`, 'error');
-    }
-    const keepOwn = targets.filter((person) => ownScheme(person.id));
-    const receivers = targets.filter((person) => !ownScheme(person.id));
-    if (receivers.length === 0) {
-      return toast('Mọi người trong phòng đều đã có bộ KPI riêng.', 'error');
-    }
-
     const accepted = await confirm({
-      title: `Tạo bộ KPI cho cả ${unit.name}?`,
-      message: `Một bộ KPI chung cho ${receivers.length} người trong phòng — sửa tiêu chí thì cả `
-        + 'nhóm đổi theo.'
-        + (keepOwn.length > 0
-          ? ` ${keepOwn.length} người đã có bộ riêng sẽ giữ nguyên bộ của họ.`
-          : ''),
-      confirmLabel: 'Tạo cho cả phòng',
+      title: `Tạo bộ KPI chung cho ${unit.name}?`,
+      message: 'Mọi người trong phòng sẽ chấm theo bộ này, kể cả người vào sau. '
+        + 'Ai cần tiêu chí khác thì vẫn khai được bộ riêng cho họ.',
+      confirmLabel: 'Tạo bộ cho phòng',
     });
     if (!accepted) return;
 
@@ -338,17 +329,70 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
       return toast('Không tạo được bộ KPI: ' + describeDbError(error), 'error');
     }
 
-    const { error: assignError } = await supabase.from('employee_kpi_schemes').upsert(
-      receivers.map((person) => ({
-        user_id: person.id, template_id: data.id, effective_from: getTodayString(),
-      })),
-      { onConflict: 'user_id,effective_from' },
+    const { error: assignError } = await supabase.from('unit_kpi_schemes').upsert(
+      { unit_id: unit.id, template_id: data.id, effective_from: getTodayString(), created_by: actorId },
+      { onConflict: 'unit_id,effective_from' },
     );
     setSaving(false);
     if (assignError) {
-      return toast('Đã tạo bộ nhưng không gán được: ' + describeDbError(assignError), 'error');
+      return toast('Đã tạo bộ nhưng không gán được cho phòng: ' + describeDbError(assignError), 'error');
     }
-    toast(`Đã tạo bộ KPI cho ${receivers.length} người trong ${unit.name}. Thêm tiêu chí cho đủ 100% rồi bật lên.`, 'success');
+    toast(`Đã tạo bộ KPI chung cho ${unit.name}. Thêm tiêu chí cho đủ 100% rồi bật lên.`, 'success');
+    await load();
+  };
+
+  /**
+   * Gỡ bộ KPI chung của một phòng.
+   *
+   * Nói thẳng trong hộp xác nhận phòng sẽ rơi về đâu: bộ của cấp trên, hoặc
+   * không còn bộ nào. Vế thứ hai nghĩa là tới kỳ chấm sẽ không chấm được ai
+   * trong phòng — người bấm cần biết điều đó trước khi bấm, không phải lúc
+   * mở kỳ chấm mới phát hiện.
+   */
+  const clearUnitScheme = async (unit: Unit, templateId: string) => {
+    if (!supabase) return;
+    const upper = unit.parent_id ? inheritedUnitScheme(unit.parent_id) : null;
+    const fallbackName = upper ? tplById.get(upper.scheme.template_id)?.name : undefined;
+
+    const accepted = await confirm({
+      title: `Gỡ bộ KPI chung của ${unit.name}?`,
+      message: fallbackName
+        ? `Phòng sẽ quay về dùng ${fallbackName} (bộ của ${upper?.from.name}). `
+          + 'Tiêu chí đã khai riêng cho phòng này sẽ mất theo.'
+        : 'Phòng sẽ KHÔNG còn bộ KPI nào — tới kỳ chấm sẽ không chấm được ai trong phòng, '
+          + 'trừ người đã có bộ riêng. Tiêu chí đã khai sẽ mất theo.',
+      confirmLabel: 'Gỡ bộ của phòng',
+      danger: true,
+    });
+    if (!accepted) return;
+
+    setSaving(true);
+    const { error } = await supabase.from('unit_kpi_schemes')
+      .delete().eq('unit_id', unit.id).eq('template_id', templateId);
+    if (error) {
+      setSaving(false);
+      return toast(describeDbError(error), 'error');
+    }
+
+    // Chỉ dọn bộ không còn ai dùng — cùng cách xét như khi bỏ bộ riêng của một
+    // người, để không xoá nhầm bộ mà phòng khác hay một cá nhân đang dùng.
+    const template = tplById.get(templateId);
+    const shared = !!template?.position_id
+      || schemes.some((row) => row.template_id === templateId)
+      || unitSchemes.some((row) => row.template_id === templateId && row.unit_id !== unit.id);
+
+    if (!shared) {
+      const { count } = await supabase.from('performance_reviews')
+        .select('id', { count: 'exact', head: true }).eq('template_id', templateId);
+      if ((count || 0) > 0) {
+        await supabase.from('kpi_position_templates').update({ is_active: false }).eq('id', templateId);
+      } else {
+        await supabase.from('kpi_position_templates').delete().eq('id', templateId);
+      }
+    }
+
+    setSaving(false);
+    toast(`Đã gỡ bộ KPI chung của ${unit.name}.`, 'success');
     await load();
   };
 
@@ -516,32 +560,84 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
             {tab === 'people'
               ? <>Bộ KPI thuộc về <strong>từng người</strong>. Chọn một nhân sự để xem và khai bộ của họ.</>
               : <>Danh sách phòng ban lấy từ <strong>Cơ cấu tổ chức</strong>, không khai lại ở đây.
-                  Mở một phòng để soát cả phòng và khai một lượt.</>}
+                  Mở một phòng để khai <strong>một bộ KPI dùng chung</strong> cho cả phòng.</>}
           </p>
         )}
 
-        {/* ---- Bộ KPI cho cả phòng ----
-             Đứng ở một phòng ban, khai một lần cho cả phòng thay vì mở từng
-             người. Vẫn là bộ gán riêng cho từng người, chỉ là gán một lượt. */}
-        {!focusPerson && current && people.length > 0 && (() => {
-          const covered = people.filter((person) => ownScheme(person.id)).length;
+        {/* ---- Bộ KPI CHUNG của phòng ----
+             Cả phòng dùng chung một bộ thì khai một bộ thuộc về phòng, không
+             phải khai cho từng người rồi nhân lên. Người vào phòng sau tự
+             theo bộ này; ai cần tiêu chí khác thì khai bộ riêng đè lên. */}
+        {!focusPerson && current && unitSchemesSupported && (() => {
+          const ownUnit = ownUnitScheme(current.id);
+          const unitTpl = ownUnit ? tplById.get(ownUnit.template_id) : undefined;
+          // Thừa hưởng tính từ CẤP TRÊN trở lên: bộ của chính phòng này đã
+          // xét ở trên rồi, xét lại sẽ luôn tự trỏ về chính nó.
+          const upper = !ownUnit && current.parent_id ? inheritedUnitScheme(current.parent_id) : null;
+          const upperTpl = upper ? tplById.get(upper.scheme.template_id) : undefined;
+          // Người có bộ riêng KHÔNG theo bộ của phòng — nói ra con số này để
+          // không ai sửa tiêu chí của phòng rồi tưởng cả phòng đã đổi theo.
+          const overriding = people.filter((person) => ownScheme(person.id)).length;
+          const rows = unitTpl ? criteria.filter((item) => item.template_id === unitTpl.id) : [];
+          const total = rows.reduce((sum, item) => sum + Number(item.weight_percent || 0), 0);
+
           return (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600">
-                <Target className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-slate-800">Bộ KPI của {current.name}</p>
-                <p className="mt-0.5 text-[11px] text-slate-600">
-                  {covered}/{people.length} người trong phòng đã có bộ KPI riêng.
-                </p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600">
+                  <Target className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  {unitTpl ? (
+                    <>
+                      <p className="text-xs font-bold text-slate-800">
+                        Bộ KPI chung của {current.name}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-600">
+                        {unitTpl.name} · {rows.length} tiêu chí · tổng {total.toFixed(0)}%
+                        {' · '}
+                        {people.length - overriding}/{people.length} người trong phòng chấm theo bộ này
+                        {overriding > 0 && ` (${overriding} người dùng bộ riêng)`}
+                      </p>
+                    </>
+                  ) : upperTpl ? (
+                    <>
+                      <p className="text-xs font-bold text-slate-800">
+                        {current.name} đang dùng bộ của {upper?.from.name}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-600">
+                        {upperTpl.name} — tạo bộ riêng cho phòng này sẽ thay thế nó.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-bold text-slate-800">
+                        {current.name} chưa có bộ KPI chung
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                        Khai một bộ dùng cho cả phòng — người vào sau tự theo bộ này, không phải
+                        khai lại từng người.
+                      </p>
+                    </>
+                  )}
+                </div>
+                {unitTpl && ownUnit ? (
+                  <Button size="sm" variant="ghost" disabled={saving}
+                    onClick={() => void clearUnitScheme(current, ownUnit.template_id)}>
+                    Gỡ bộ của phòng
+                  </Button>
+                ) : (
+                  <Button size="sm" disabled={saving} onClick={() => void createUnitTemplate(current)}>
+                    <Target className="h-3.5 w-3.5" />
+                    {saving ? 'Đang tạo…' : upperTpl ? 'Tạo bộ riêng cho phòng' : 'Tạo bộ KPI cho cả phòng'}
+                  </Button>
+                )}
               </div>
-              {covered < people.length && (
-                <Button size="sm" disabled={saving} onClick={() => void createTemplateForUnit(current)}>
-                  <Target className="h-3.5 w-3.5" />
-                  {saving ? 'Đang tạo…' : `Tạo bộ cho ${people.length - covered} người còn lại`}
-                </Button>
-              )}
+
+              {/* Khai tiêu chí ngay tại đây, giống khu riêng của một người:
+                  bật sang màn khác để khai rồi quay lại là làm đứt mạch giữa
+                  "phòng nào" và "chấm cái gì". */}
+              {unitTpl && <KpiTemplateEditor actorId={actorId} scopeTemplateId={unitTpl.id} />}
             </div>
           );
         })()}
