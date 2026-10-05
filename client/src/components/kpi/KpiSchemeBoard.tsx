@@ -342,6 +342,26 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
 
   if (loading) return <Skeleton className="h-40" />;
 
+  /**
+   * Toàn bộ phòng ban, xếp phẳng theo thứ tự cây, thụt đầu dòng để thấy cấp.
+   *
+   * Bản cũ bắt đi từng cấp: Toàn công ty → Huy Phong Group → Ban Giám đốc →
+   * phòng. Mỗi lần muốn khai KPI cho một phòng là ba bốn lần bấm, và muốn đổi
+   * sang phòng khác phải lùi ra rồi đi lại từ đầu. Cơ cấu của khách chỉ sâu
+   * ba cấp — bày hết ra chọn thẳng nhanh hơn đi từng nấc.
+   */
+  const allUnits = useMemo(() => {
+    const rows: { unit: Unit; depth: number }[] = [];
+    const walk = (parentId: string | null, depth: number) => {
+      for (const unit of units.filter((item) => (item.parent_id ?? null) === parentId)) {
+        rows.push({ unit, depth });
+        walk(unit.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return rows;
+  }, [units]);
+
   const subUnits = childrenOf(current?.id ?? null);
   const people = current ? peopleIn(current.id) : peopleIn(null);
   const activeTemplates = templates.filter((t) => t.is_active);
@@ -356,7 +376,7 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
             onClick={() => { setPath([]); setFocusPerson(null); }}
             className={`font-semibold transition ${path.length === 0 && !focusPerson ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
           >
-            Toàn công ty
+            Tất cả phòng ban
           </button>
           {path.map((unit, index) => (
             <span key={unit.id} className="flex items-center gap-1.5">
@@ -382,9 +402,8 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
 
         {path.length === 0 && (
           <p className="text-xs leading-relaxed text-slate-500">
-            Đơn vị lấy từ <strong>Cơ cấu tổ chức</strong>. Bấm xuống tới phòng ban, gán một bộ KPI
-            cho <strong>cả phòng</strong>, rồi chỉ gán riêng cho ai cần khác. Thứ tự ưu tiên khi
-            chấm: gán riêng → theo đơn vị (cấp gần nhất) → mẫu khớp vị trí.
+            Danh sách phòng ban lấy từ <strong>Cơ cấu tổ chức</strong>, không khai lại ở đây.
+            Chọn một phòng để xem nhân sự và khai bộ KPI cho họ.
           </p>
         )}
 
@@ -475,38 +494,29 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
         })()}
 
         {/* ---- Đơn vị con ---- */}
-        {!focusPerson && subUnits.length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {subUnits.map((unit) => {
-              const inside = headcount(unit.id);
+        {!focusPerson && !current && allUnits.length > 0 && (
+          <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
+            {allUnits.map(({ unit, depth }) => {
+              const inside = peopleIn(unit.id).length;
               return (
                 <button
                   key={unit.id}
                   type="button"
-                  onClick={() => setPath([...path, unit])}
-                  className="flex items-center gap-2.5 rounded-xl border-2 border-slate-200 px-3.5 py-3 text-left transition hover:border-indigo-400 hover:shadow-md"
+                  onClick={() => setPath([unit])}
+                  className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition hover:bg-indigo-50/60"
+                  style={{ paddingLeft: `${14 + depth * 22}px` }}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                     <Building2 className="h-4 w-4" />
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-bold text-slate-800">{unit.name}</span>
                     <span className="block text-[11px] text-slate-500">
-                      {inside} nhân sự
-                      {childrenOf(unit.id).length > 0 && ` · ${childrenOf(unit.id).length} đơn vị con`}
+                      {/* Dem nguoi treo THANG vao don vi nay, khong gom don vi
+                          con: bam vao day la de khai KPI cho dung nhung nguoi
+                          se hien ra ben duoi. */}
+                      {inside > 0 ? `${inside} nhân sự` : 'Chưa có nhân sự'}
                     </span>
-                    {unitSchemesSupported && (() => {
-                      const applied = inheritedUnitScheme(unit.id);
-                      if (!applied) return null;
-                      const tpl = tplById.get(applied.scheme.template_id);
-                      if (!tpl) return null;
-                      return (
-                        <span className="mt-0.5 block truncate text-[11px] font-semibold text-indigo-600">
-                          {tpl.name}
-                          {applied.from.id !== unit.id && ` (từ ${applied.from.name})`}
-                        </span>
-                      );
-                    })()}
                   </span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
                 </button>
