@@ -30,10 +30,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatDate, getTodayString } from '@/lib/utils';
+import { kpiSchemeFor } from '@/lib/kpiSchemeFor';
 import type { Profile } from '@/types';
 
 interface Unit { id: string; code: string | null; name: string; unit_type: string; parent_id: string | null }
-interface Template { id: string; code: string; name: string; is_active: boolean; position_id: string | null }
+interface Template { id: string; code: string; name: string; is_active: boolean; position_id: string | null; unit_id: string | null; created_at: string | null }
 interface Scheme { id: string; user_id: string; template_id: string; effective_from: string }
 interface UnitScheme { id: string; unit_id: string; template_id: string; effective_from: string }
 interface Criterion { id: string; template_id: string; name: string; weight_percent: number; is_active: boolean }
@@ -122,7 +123,7 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
     setLoading(true);
     const [unitRes, tplRes, schemeRes, unitSchemeRes, criteriaRes] = await Promise.all([
       supabase.from('organization_units').select('id, code, name, unit_type, parent_id').eq('is_active', true).order('name'),
-      supabase.from('kpi_position_templates').select('id, code, name, is_active, position_id').order('name'),
+      supabase.from('kpi_position_templates').select('id, code, name, is_active, position_id, unit_id, created_at').order('name'),
       supabase.from('employee_kpi_schemes').select('*').order('effective_from', { ascending: false }),
       supabase.from('unit_kpi_schemes').select('*').order('effective_from', { ascending: false }),
       // Tiêu chí chỉ dùng để xem trước trong khu nhân sự: thấy ngay bộ này
@@ -159,9 +160,6 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
     + childrenOf(unitId).reduce((sum, child) => sum + headcount(child.id), 0);
 
   const ownScheme = (userId: string) => schemes.find((s) => s.user_id === userId);
-  const byPosition = (person: Profile) =>
-    templates.find((t) => t.is_active && t.position_id && t.position_id === person.position_id);
-
   const unitById = useMemo(() => new Map(units.map((u) => [u.id, u])), [units]);
 
   /**
@@ -208,20 +206,18 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
     return null;
   };
 
-  /** Bộ đang áp cho một người, đủ ba lớp — giống hàm dưới database. */
+  /**
+   * Bộ đang áp cho một người — đủ BỐN lớp, gọi chung bộ giải với màn chấm
+   * điểm. Bản cũ ở đây chỉ xét ba lớp, thiếu lớp "bộ khai thẳng cho đơn vị"
+   * (`kpi_position_templates.unit_id`), nên có người màn này báo "chưa có bộ"
+   * mà phiếu chấm vẫn ra bộ. Xem đầu `lib/kpiSchemeFor.ts`.
+   */
   const effectiveFor = (person: Profile) => {
-    const own = ownScheme(person.id);
-    if (own) return { tpl: tplById.get(own.template_id), source: 'Gán riêng' };
-    const inherited = inheritedUnitScheme(person.unit_id ?? null);
-    if (inherited) {
-      return {
-        tpl: tplById.get(inherited.scheme.template_id),
-        source: `Theo đơn vị ${inherited.from.name}`,
-      };
-    }
-    const fallback = byPosition(person);
-    if (fallback) return { tpl: fallback, source: 'Theo vị trí' };
-    return { tpl: undefined, source: '' };
+    const found = kpiSchemeFor(
+      { id: person.id, unit_id: person.unit_id, position_id: person.position_id },
+      { personalSchemes: schemes, unitSchemes, templates, unitById },
+    );
+    return { tpl: found.template ?? undefined, source: found.label };
   };
 
   /**
@@ -455,7 +451,6 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
 
   const subUnits = childrenOf(current?.id ?? null);
   const people = current ? peopleIn(current.id) : peopleIn(null);
-  const activeTemplates = templates.filter((t) => t.is_active);
 
   /**
    * Toàn bộ nhân sự đang làm việc, xếp theo tên — nguồn của tab 'people'.

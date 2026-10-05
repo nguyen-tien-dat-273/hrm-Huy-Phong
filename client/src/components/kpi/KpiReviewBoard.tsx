@@ -15,11 +15,10 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronRight, Lock, LockKeyhole, Plus, Printer, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, LockKeyhole, Plus, Printer, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
 import { KpiEvidenceBox } from '@/components/kpi/KpiEvidenceBox';
@@ -30,6 +29,7 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatVND } from '@/lib/utils';
 import { isAutoScorable, scoreFromLevels, type ScoreLevel } from '@/lib/kpiScoring';
+import { kpiSchemeFor, type SchemeRow, type UnitSchemeRow, type ResolvableUnit } from '@/lib/kpiSchemeFor';
 import { buildSheetRows } from '@/lib/kpiSheet';
 import { KpiSheetTable } from '@/components/kpi/KpiSheetTable';
 import type { Profile } from '@/types';
@@ -145,7 +145,18 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
    */
   const [earlyScoring, setEarlyScoring] = useState<Set<string>>(new Set());
   /** Bộ KPI gán riêng cho từng người — đường chính từ khi KPI thuộc về người. */
-  const [schemes, setSchemes] = useState<{ user_id: string; template_id: string }[]>([]);
+  const [schemes, setSchemes] = useState<SchemeRow[]>([]);
+  /**
+   * Hai nguồn còn thiếu để trả lời đúng "người này dùng bộ KPI nào".
+   *
+   * Thiếu chúng thì màn này chỉ thấy bộ gán riêng và bộ khai thẳng cho ĐÚNG
+   * đơn vị của người đó. Người nhận KPI qua `unit_kpi_schemes`, hoặc qua một
+   * phòng cấp trên, sẽ hiện "Chưa có bộ KPI" và không gửi yêu cầu chấm được —
+   * trong khi `kpi_scheme_for()` dưới database vẫn tìm ra bộ cho họ. Tới kỳ
+   * chấm thì người đó đứng ngoài, và cái lộ ra chỉ là một dòng trống.
+   */
+  const [unitSchemes, setUnitSchemes] = useState<UnitSchemeRow[]>([]);
+  const [units, setUnits] = useState<ResolvableUnit[]>([]);
   const [criteria, setCriteria] = useState<Criteria[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
@@ -158,14 +169,23 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
     if (!supabase) return;
     setLoading(true);
 
-    const [templateRes, criteriaRes, schemeRes] = await Promise.all([
+    const [templateRes, criteriaRes, schemeRes, unitSchemeRes, unitRes] = await Promise.all([
       supabase.from('kpi_position_templates').select('*').order('name'),
       supabase.from('kpi_template_criteria').select('*').order('sort_order'),
-      supabase.from('employee_kpi_schemes').select('user_id, template_id')
+      // `effective_from` phải lấy về: database lọc `effective_from <= hôm nay`,
+      // bỏ vế đó thì một bản gán hẹn tháng sau trông như đã có hiệu lực.
+      supabase.from('employee_kpi_schemes').select('user_id, template_id, effective_from')
         .order('effective_from', { ascending: false }),
+      supabase.from('unit_kpi_schemes').select('unit_id, template_id, effective_from')
+        .order('effective_from', { ascending: false }),
+      supabase.from('organization_units').select('id, name, parent_id').eq('is_active', true),
     ]);
     // Thiếu bảng gán riêng thì vẫn chấm được bằng mẫu theo vị trí như cũ.
-    setSchemes((schemeRes.data || []) as { user_id: string; template_id: string }[]);
+    setSchemes((schemeRes.data || []) as SchemeRow[]);
+    // Chưa chạy migration gán theo đơn vị thì chỉ mất lớp đó, các lớp còn lại
+    // vẫn chạy — không chặn cả màn hình vì một bảng chưa có.
+    setUnitSchemes(unitSchemeRes.error ? [] : ((unitSchemeRes.data || []) as UnitSchemeRow[]));
+    setUnits(unitRes.error ? [] : ((unitRes.data || []) as ResolvableUnit[]));
 
     // Chưa chạy migration KPI: báo đúng lý do thay vì hiện một bảng trống
     // trông như "công ty chưa có mẫu nào".
@@ -174,6 +194,19 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
       setLoading(false);
       return;
     }
+
+    // Hai dòng này TỪNG BỊ THIẾU: dữ liệu tải về rồi vứt đi, `templates` và
+    // `criteria` ở lại rỗng suốt vòng đời màn hình. Hậu quả không hiện ra dưới
+    // dạng lỗi mà dưới dạng ba thứ im lặng sai:
+    //
+    //   - Mọi người đều hiện "Chưa có bộ KPI", không gửi yêu cầu chấm được
+    //     cho ai, vì `suggestTemplate` tìm trong một mảng rỗng.
+    //   - Chốt chặn "còn N tiêu chí chưa chấm" trước khi khoá kỳ đếm trên
+    //     `criteriaByTemplate` rỗng nên LUÔN LUÔN qua — khoá được phiếu chưa
+    //     chấm, và `final_pct` chưa tính đẩy KPI 0% sang bảng lương.
+    //   - Mức lương KPI dự kiến trong hộp xác nhận luôn là 0đ.
+    setTemplates((templateRes.data || []) as Template[]);
+    setCriteria((criteriaRes.data || []) as Criteria[]);
 
     await loadReviews(month);
     setLoading(false);
@@ -218,40 +251,25 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
    * nào" rồi phải tự tìm trong một danh sách đầy những bộ mang tên người
    * khác, và chọn nhầm là chấm một người bằng tiêu chí của người bên cạnh.
    */
-  const suggestTemplate = (profile: Profile) => {
-    const own = schemes.find((row) => row.user_id === profile.id);
-    const ownTemplate = own ? templates.find((item) => item.id === own.template_id) : undefined;
-    if (ownTemplate?.is_active) return ownTemplate;
-    // Bộ khai THẮNG cho phòng ban. Thiếu nhánh này thì người được gán KPI qua
-    // phòng hiện "Chưa có bộ KPI" và không gửi yêu cầu được, trong khi
-    // `kpi_scheme_for` dưới database vẫn tìm ra bộ cho họ — hai nơi trả lời khác
-    // nhau về cùng một người.
-    const byUnit = profile.unit_id
-      ? templates.find((item) => item.is_active && item.unit_id && item.unit_id === profile.unit_id)
-      : undefined;
-    if (byUnit) return byUnit;
-    return templates.find((item) => item.is_active && item.position_id && item.position_id === profile.position_id);
+  const unitById = useMemo(() => new Map(units.map((item) => [item.id, item])), [units]);
+
+  /**
+   * Bộ KPI mà phiếu chấm sẽ dùng cho người này.
+   *
+   * Gọi thẳng bộ giải chung `kpiSchemeFor`, đúng bốn lớp như
+   * `kpi_scheme_for()` dưới database. Trước đây hàm này tự suy một kiểu riêng
+   * và bỏ sót hai lớp — xem đầu `lib/kpiSchemeFor.ts`.
+   */
+  const suggestTemplate = (profile: Profile): Template | undefined => {
+    const found = kpiSchemeFor(
+      { id: profile.id, unit_id: profile.unit_id, position_id: profile.position_id },
+      { personalSchemes: schemes, unitSchemes, templates, unitById },
+    );
+    // `templates` ở màn này là Template đầy đủ, nên ép kiểu về đúng nó được.
+    return (found.template as Template | null) ?? undefined;
   };
 
   const activeTemplates = templates.filter((item) => item.is_active);
-
-  const startReview = async (profile: Profile, templateId: string) => {
-    if (!supabase) return;
-    setBusy(true);
-    // Chỉ chèn bản ghi — trigger seed_kpi_review_scores tự sinh dòng điểm theo
-    // đúng bộ tiêu chí của mẫu, nên client không cần biết mẫu có gì.
-    const { error } = await supabase.from('performance_reviews').insert({
-      period_month: `${month}-01`,
-      user_id: profile.id,
-      template_id: templateId,
-      reviewer_id: actorId,
-      status: 'MANAGER_REVIEW',
-    });
-    setBusy(false);
-    if (error) return toast('Không tạo được phiếu chấm: ' + describeDbError(error), 'error');
-    setOpenUserId(profile.id);
-    await loadReviews(month);
-  };
 
   /**
    * Ghi SỐ ĐO thực tế. Điểm do trigger của database suy ra rồi tải lại —

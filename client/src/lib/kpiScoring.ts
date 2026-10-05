@@ -95,12 +95,23 @@ export function describeLevelIssues(levels: ScoreLevel[]): string[] {
     const currentMin = toNumber(sorted[index].min);
     if (previousMax == null || currentMin == null) continue;
 
-    // Hai đầu đều mở thì chính số đó không thuộc mức nào — chạm nhau ở một
-    // điểm là liền mạch, không phải chồng lấn.
+    const bothOpen = sorted[index].min_exclusive && sorted[index - 1].max_exclusive;
+    // Đúng MỘT đầu mở thì số ở ranh giới thuộc đúng một mức: liền mạch.
     const touchOnly = currentMin === previousMax
-      && (sorted[index].min_exclusive || sorted[index - 1].max_exclusive);
+      && (sorted[index].min_exclusive || sorted[index - 1].max_exclusive)
+      && !bothOpen;
 
-    if (currentMin <= previousMax && !touchOnly) {
+    if (currentMin === previousMax && bothOpen) {
+      // CẢ HAI đầu đều mở: chính con số đó không thuộc mức nào, nên chấm ra
+      // trống. Lỗ hổng rộng đúng một điểm nên nhánh "hở khoảng" bên dưới
+      // không thấy — mà đây lại là con số người ta gõ nhiều nhất, vì nó là
+      // ranh giới hai mức. "Dưới 105%" rồi "Trên 105%" thì đúng 105% rơi vào
+      // hư không.
+      issues.push(
+        `Số đúng bằng ${currentMin} không thuộc mức nào — "dưới ${currentMin}" và `
+        + `"trên ${currentMin}" đều loại nó. Bỏ dấu "trên"/"dưới" ở một trong hai mức.`,
+      );
+    } else if (currentMin <= previousMax && !touchOnly) {
       issues.push(
         `Hai mức cùng phủ giá trị ${currentMin}–${previousMax}. Mức khai trước sẽ thắng.`,
       );

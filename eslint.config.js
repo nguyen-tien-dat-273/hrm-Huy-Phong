@@ -51,10 +51,21 @@ export default tseslint.config(
       // giữ ở mức nhắc vì đôi khi dấu thoát thừa là dấu hiệu viết nhầm regex.
       'no-useless-escape': 'warn',
 
-      // --- Tắt: ồn mà không bắt được lỗi nào ---
-      // `tsc` đã bắt biến không dùng chặt hơn.
+      // Biến/import khai rồi không dùng.
+      //
+      // Trước để 'off' với lý do "tsc đã bắt chặt hơn" — lý do đó SAI:
+      // `tsconfig.app.json` đặt `noUnusedLocals: false`, nên KHÔNG có gì bắt
+      // cả. Bật lên tìm ra 55 chỗ; phần lớn là import thừa vô hại, nhưng ba
+      // chỗ trong KpiReviewBoard là lỗi thật: hai setter state không ai gọi
+      // (dữ liệu tải về rồi vứt đi) và một hàm chết.
+      //
+      // Để mức NHẮC chứ chưa phải lỗi: hơn năm chục import thừa còn lại nằm
+      // rải khắp nơi, dọn hết trong một lần sẽ đụng vào file mà phiên khác
+      // đang sửa dở. Dọn xong thì nâng lên 'error'.
       'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_',
+      }],
       // Đã dùng có chủ ý ở ranh giới dữ liệu Supabase và vài chỗ generic.
       '@typescript-eslint/no-explicit-any': 'off',
       // `tsc` đã kiểm; bản của eslint hay báo nhầm với kiểu từ thư viện.
