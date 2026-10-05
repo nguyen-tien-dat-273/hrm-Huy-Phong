@@ -121,6 +121,30 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
 
   const unitById = useMemo(() => new Map(units.map((u) => [u.id, u])), [units]);
 
+  /**
+   * Toàn bộ phòng ban, xếp phẳng theo thứ tự cây, thụt đầu dòng để thấy cấp.
+   *
+   * Bản cũ bắt đi từng cấp: Toàn công ty → Huy Phong Group → Ban Giám đốc →
+   * phòng. Mỗi lần muốn khai KPI cho một phòng là ba bốn lần bấm, và muốn đổi
+   * sang phòng khác phải lùi ra rồi đi lại từ đầu. Cơ cấu của khách chỉ sâu
+   * ba cấp — bày hết ra chọn thẳng nhanh hơn đi từng nấc.
+   *
+   * PHẢI nằm trên mọi lệnh return sớm bên dưới. Để nó dưới `if (loading)` thì
+   * lần render đầu hook này không chạy, lần sau mới chạy — React đếm được
+   * nhiều hook hơn lần trước và throw, trắng cả app chứ không riêng trang này.
+   */
+  const allUnits = useMemo(() => {
+    const rows: { unit: Unit; depth: number }[] = [];
+    const walk = (parentId: string | null, depth: number) => {
+      for (const unit of units.filter((item) => (item.parent_id ?? null) === parentId)) {
+        rows.push({ unit, depth });
+        walk(unit.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return rows;
+  }, [units]);
+
   /** Bộ gán cho chính đơn vị này, không xét cấp trên. */
   const ownUnitScheme = (unitId: string) => unitSchemes.find((s) => s.unit_id === unitId);
 
@@ -341,26 +365,6 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
   }
 
   if (loading) return <Skeleton className="h-40" />;
-
-  /**
-   * Toàn bộ phòng ban, xếp phẳng theo thứ tự cây, thụt đầu dòng để thấy cấp.
-   *
-   * Bản cũ bắt đi từng cấp: Toàn công ty → Huy Phong Group → Ban Giám đốc →
-   * phòng. Mỗi lần muốn khai KPI cho một phòng là ba bốn lần bấm, và muốn đổi
-   * sang phòng khác phải lùi ra rồi đi lại từ đầu. Cơ cấu của khách chỉ sâu
-   * ba cấp — bày hết ra chọn thẳng nhanh hơn đi từng nấc.
-   */
-  const allUnits = useMemo(() => {
-    const rows: { unit: Unit; depth: number }[] = [];
-    const walk = (parentId: string | null, depth: number) => {
-      for (const unit of units.filter((item) => (item.parent_id ?? null) === parentId)) {
-        rows.push({ unit, depth });
-        walk(unit.id, depth + 1);
-      }
-    };
-    walk(null, 0);
-    return rows;
-  }, [units]);
 
   const subUnits = childrenOf(current?.id ?? null);
   const people = current ? peopleIn(current.id) : peopleIn(null);
