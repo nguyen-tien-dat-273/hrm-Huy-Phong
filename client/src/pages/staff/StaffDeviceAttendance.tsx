@@ -54,6 +54,12 @@ export function StaffDeviceAttendance() {
 
   const today = getTodayString();
   const todayRecord = records.find((record) => record.date === today) || null;
+  const checkoutRecord = records.find((record) => {
+    if (record.check_out_time || !record.check_in_time) return false;
+    const ageHours = (Date.now() - new Date(record.check_in_time).getTime()) / 3_600_000;
+    return ageHours >= 0 && ageHours <= 36;
+  }) || null;
+  const focusRecord = (todayRecord && !todayRecord.check_out_time ? todayRecord : checkoutRecord) || todayRecord;
   const summary = useMemo(() => ({
     present: new Set(records.map((record) => record.date)).size,
     device: new Set(records.filter((record) => String(record.check_in_method).toUpperCase() === 'DEVICE').map((record) => record.date)).size,
@@ -61,12 +67,12 @@ export function StaffDeviceAttendance() {
   }), [records]);
 
   const handleCheckOut = async () => {
-    if (!profile || !todayRecord || todayRecord.check_out_time) return;
+    if (!profile || !checkoutRecord) return;
     setCheckingOut(true);
     const { data, error } = await supabase
       .from('attendance')
       .update({ check_out_time: new Date().toISOString(), status: 'completed' })
-      .eq('id', todayRecord.id)
+      .eq('id', checkoutRecord.id)
       .eq('user_id', profile.id)
       .is('check_out_time', null)
       .select('id')
@@ -106,10 +112,10 @@ export function StaffDeviceAttendance() {
 
       <Card className="overflow-hidden">
         <div className="border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-2 text-sm font-bold text-emerald-800"><CalendarDays className="h-4 w-4" />Hôm nay · {formatDate(today)}</div>
+          <div className="flex items-center gap-2 text-sm font-bold text-emerald-800"><CalendarDays className="h-4 w-4" />{focusRecord?.date === today ? 'Hôm nay' : 'Ca cần checkout'} · {formatDate(focusRecord?.date || today)}</div>
         </div>
         <CardContent className="p-5 sm:p-6">
-          {!todayRecord ? (
+          {!focusRecord ? (
             <div className="py-8 text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Fingerprint className="h-8 w-8" /></div>
               <h2 className="mt-4 font-display text-lg font-bold text-slate-800">Chưa có dữ liệu vào ca hôm nay</h2>
@@ -119,11 +125,11 @@ export function StaffDeviceAttendance() {
             <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div><p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Giờ vào đã ghi nhận</p><p className="mt-2 font-display text-4xl font-extrabold tabular-nums text-slate-900">{formatTime(todayRecord.check_in_time)}</p></div>
-                  <Badge className="bg-white text-emerald-700 ring-1 ring-emerald-200"><Fingerprint className="mr-1 h-3.5 w-3.5" />{sourceLabel(todayRecord)}</Badge>
+                  <div><p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Giờ vào đã ghi nhận</p><p className="mt-2 font-display text-4xl font-extrabold tabular-nums text-slate-900">{formatTime(focusRecord.check_in_time)}</p></div>
+                  <Badge className="bg-white text-emerald-700 ring-1 ring-emerald-200"><Fingerprint className="mr-1 h-3.5 w-3.5" />{sourceLabel(focusRecord)}</Badge>
                 </div>
-                <p className="mt-4 text-sm leading-relaxed text-slate-600">{todayRecord.check_out_time ? `Checkout lúc ${formatTime(todayRecord.check_out_time)}` : 'Máy đã ghi giờ vào; bạn chưa checkout hôm nay.'}</p>
-                {!todayRecord.check_out_time && (
+                <p className="mt-4 text-sm leading-relaxed text-slate-600">{focusRecord.check_out_time ? `Checkout lúc ${formatTime(focusRecord.check_out_time)}` : 'Máy đã ghi giờ vào; bạn chưa checkout ca này.'}</p>
+                {checkoutRecord?.id === focusRecord.id && (
                   <Button theme="staff" onClick={handleCheckOut} disabled={checkingOut} className="mt-5 w-full sm:w-auto">
                     <LogOut className="h-4 w-4" />
                     {checkingOut ? 'Đang checkout…' : 'Checkout cuối ngày'}
@@ -131,8 +137,8 @@ export function StaffDeviceAttendance() {
                 )}
               </div>
               <div className="space-y-3">
-                <InfoRow icon={<CheckCircle2 className="h-4 w-4" />} label="Trạng thái" value={todayRecord.approved_by_lead ? 'Đã xác nhận ngày công' : 'Đang chờ đối soát'} />
-                <InfoRow icon={<Fingerprint className="h-4 w-4" />} label="Nguồn dữ liệu" value={sourceLabel(todayRecord)} />
+                <InfoRow icon={<CheckCircle2 className="h-4 w-4" />} label="Trạng thái" value={!focusRecord.check_out_time ? 'Đã vào ca · chờ checkout' : focusRecord.approved_by_lead ? 'Đã duyệt ngày công' : 'Đã checkout · chờ quản lý duyệt'} />
+                <InfoRow icon={<Fingerprint className="h-4 w-4" />} label="Nguồn dữ liệu" value={sourceLabel(focusRecord)} />
               </div>
             </div>
           )}
@@ -150,7 +156,7 @@ export function StaffDeviceAttendance() {
         {records.length === 0 ? <div className="px-5 py-12 text-center text-sm text-slate-500">Chưa có dữ liệu chấm công.</div> : (
           <div className="divide-y divide-slate-100">{records.map((record) => (
             <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6">
-              <div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Clock className="h-4.5 w-4.5" /></div><div><p className="font-semibold text-slate-800">{formatDate(record.date)}</p><p className="mt-0.5 text-xs text-slate-500">Vào {formatTime(record.check_in_time)}{record.check_out_time ? ` · Giờ ra kế thừa ${formatTime(record.check_out_time)}` : ' · Không ghi nhận giờ ra'}</p></div></div>
+              <div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Clock className="h-4.5 w-4.5" /></div><div><p className="font-semibold text-slate-800">{formatDate(record.date)}</p><p className="mt-0.5 text-xs text-slate-500">Vào {formatTime(record.check_in_time)}{record.check_out_time ? ` · Ra ${formatTime(record.check_out_time)}` : ' · Thiếu checkout'}</p></div></div>
               <div className="flex flex-wrap items-center gap-2"><Badge className="bg-slate-100 text-slate-600">{sourceLabel(record)}</Badge><Badge className={record.approved_by_lead ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>{record.approved_by_lead ? 'Đã xác nhận' : 'Chờ đối soát'}</Badge></div>
             </div>
           ))}</div>

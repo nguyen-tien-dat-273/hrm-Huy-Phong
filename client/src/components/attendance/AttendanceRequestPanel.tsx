@@ -70,6 +70,8 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
   const [supported, setSupported] = useState(true);
   const [busy, setBusy] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [rejectTarget, setRejectTarget] = useState<AttendanceRequest | null>(null);
+  const [rejectNote, setRejectNote] = useState('');
 
   const [draft, setDraft] = useState({
     request_type: 'LATE_ARRIVAL' as RequestType,
@@ -156,22 +158,35 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
     await load();
   };
 
-  const decide = async (row: AttendanceRequest, status: 'APPROVED' | 'REJECTED') => {
+  const decide = async (row: AttendanceRequest, status: 'APPROVED' | 'REJECTED', note = '') => {
     if (!supabase || !profile) return;
+    if (status === 'REJECTED' && note.trim().length < 3) {
+      toast('Nhập lý do từ chối ít nhất 3 ký tự.', 'warning');
+      return;
+    }
     setBusy(true);
     const { error } = await supabase
       .from('attendance_requests')
-      .update({ status, reviewed_by: profile.id, reviewed_at: new Date().toISOString() })
+      .update({
+        status,
+        reviewed_by: profile.id,
+        reviewed_at: new Date().toISOString(),
+        review_note: status === 'REJECTED' ? note.trim() : null,
+      })
       .eq('id', row.id);
     setBusy(false);
     if (error) return toast(describeDbError(error), 'error');
     await notifyUser(
       row.user_id,
       status === 'APPROVED' ? `Đơn ${TYPE_LABEL[row.request_type].toLowerCase()} đã được duyệt` : `Đơn ${TYPE_LABEL[row.request_type].toLowerCase()} bị từ chối`,
-      `${TYPE_LABEL[row.request_type]} ngày ${formatDate(row.work_date)} ${status === 'APPROVED' ? 'đã được chấp thuận.' : 'không được chấp thuận.'}`,
+      status === 'APPROVED'
+        ? `${TYPE_LABEL[row.request_type]} ngày ${formatDate(row.work_date)} đã được chấp thuận.`
+        : `${TYPE_LABEL[row.request_type]} ngày ${formatDate(row.work_date)} không được chấp thuận: ${note.trim()}`,
       status === 'APPROVED' ? 'attendance_request_approved' : 'attendance_request_rejected',
     );
     toast(status === 'APPROVED' ? 'Đã duyệt đơn.' : 'Đã từ chối đơn.', 'success');
+    setRejectTarget(null);
+    setRejectNote('');
     await load();
   };
 
@@ -260,6 +275,9 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
                     <p className="truncate text-xs text-slate-500">
                       {formatDate(row.work_date)} · {row.reason}
                     </p>
+                    {row.review_note && (
+                      <p className="mt-1 text-xs text-red-600">Phản hồi: {row.review_note}</p>
+                    )}
                   </div>
                   <Badge className={status.color}>{status.label}</Badge>
 
@@ -268,7 +286,7 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
                       <Button size="sm" variant="success" disabled={busy} onClick={() => void decide(row, 'APPROVED')}>
                         <Check className="h-3.5 w-3.5" /> Duyệt
                       </Button>
-                      <Button size="sm" variant="danger" disabled={busy} onClick={() => void decide(row, 'REJECTED')}>
+                      <Button size="sm" variant="danger" disabled={busy} onClick={() => { setRejectTarget(row); setRejectNote(''); }}>
                         <X className="h-3.5 w-3.5" /> Từ chối
                       </Button>
                     </div>
@@ -338,6 +356,35 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
             <Button variant="secondary" onClick={() => setFormOpen(false)} disabled={busy}>Hủy</Button>
             <Button theme="staff" onClick={() => void submit()} disabled={busy}>
               {busy ? 'Đang gửi…' : 'Gửi đơn'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!rejectTarget}
+        onClose={() => { if (!busy) setRejectTarget(null); }}
+        title="Từ chối đơn"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm leading-relaxed text-slate-600">
+            Nhân viên sẽ nhận được lý do này để biết cần bổ sung hoặc điều chỉnh gì.
+          </p>
+          <Textarea
+            label="Lý do từ chối"
+            value={rejectNote}
+            onChange={(event) => setRejectNote(event.target.value)}
+            placeholder="VD: Thời gian đề nghị chưa khớp dữ liệu máy chấm công…"
+          />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRejectTarget(null)} disabled={busy}>Hủy</Button>
+            <Button
+              variant="danger"
+              disabled={busy || rejectNote.trim().length < 3}
+              onClick={() => rejectTarget && void decide(rejectTarget, 'REJECTED', rejectNote)}
+            >
+              {busy ? 'Đang xử lý…' : 'Xác nhận từ chối'}
             </Button>
           </div>
         </div>

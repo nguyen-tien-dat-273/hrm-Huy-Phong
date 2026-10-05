@@ -1,7 +1,7 @@
 // Kiểm chứng engine lương. Chạy: npm run check:payroll
 import { evaluateFormula } from '../payrollFormula';
 import {
-  computePayslip, mergeUnitAndEmployeeItems, progressiveIncomeTax, summarisePeriod,
+  computePayslip, mergeUnitAndEmployeeItems, progressiveIncomeTax, splitOvertimeHours, summarisePeriod,
   type PayrollAdjustment,
 } from '../payroll';
 import {
@@ -406,6 +406,23 @@ check('số lần vào sau 9h', punctual.lateAfterCutoffCount, 1);
 check('phút về sớm', punctual.earlyMinutes, 30);
 check('chủ nhật không tính muộn', punctual.lateCount, 2);
 
+const excused = measurePunctuality(
+  schedules,
+  [
+    { date: '2026-08-04', check_in_time: '2026-08-04T08:20:00', check_out_time: '2026-08-04T17:00:00' },
+  ],
+  [],
+  { lateDates: new Set(['2026-08-04']), earlyDates: new Set(['2026-08-04']) },
+);
+check('đơn đi muộn đã duyệt loại ngày khỏi phạt muộn', excused.lateMinutes, 0);
+check('đơn về sớm đã duyệt loại ngày khỏi phạt về sớm', excused.earlyMinutes, 0);
+
+const overnight = measurePunctuality(
+  { supported: true, schedules: [{ ...schedules.schedules[0], start_time: '22:00', end_time: '06:00' }] },
+  [{ date: '2026-08-03', check_in_time: '2026-08-03T22:00:00', check_out_time: '2026-08-04T05:45:00' }],
+);
+check('ca qua đêm checkout 05:45 chỉ về sớm 15 phút', overnight.earlyMinutes, 15);
+
 // Phút ân hạn: muộn 12 phút với ân hạn 15 phút thì không tính là muộn.
 const withGrace = measurePunctuality(
   { supported: true, schedules: [{ ...schedules.schedules[0], grace_minutes: 15 }] },
@@ -704,7 +721,6 @@ check('phát hiện được lỗ hổng giữa hai mức',
 check('thang liền mạch không báo lỗi',
   describeLevelIssues(errorLevels).length, 0);
 
-
 // --- Nghỉ không lương từ 14 ngày: tháng đó không đóng bảo hiểm ------------
 // Điều 85 khoản 3 Luật BHXH 2014. Trước khi có nhánh này, người nghỉ gần hết
 // tháng vẫn bị trừ đủ bảo hiểm trên mức lương đóng BH trong khi lương thực tế
@@ -863,6 +879,42 @@ check('đơn giá giờ suy từ khoản được đánh dấu lương gốc',
   baseByComponent.hourlyRate, 26_000_000 / 26 / 8);
 check('mức đóng bảo hiểm cũng theo khoản lương gốc',
   baseByComponent.insuranceBase, 26_000_000);
+
+// --- Chia giờ tăng ca theo Điều 98 BLLĐ 2019 --------------------------------
+//
+// "Ngày nghỉ" (200%) KHÔNG đồng nghĩa thứ Bảy + Chủ nhật. Công ty khai
+// `saturday_mode` cho từng ca, nên thứ Bảy có thể là ngày làm. Gán cứng thứ
+// Bảy vào rổ 200% là trả dư một phần ba cho mọi giờ tăng ca hôm đó.
+const caThuBayLam: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'FULL' }],
+};
+const caThuBayNghi: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'OFF' }],
+};
+// 2026-08-08 là thứ Bảy, 2026-08-09 là Chủ nhật, 2026-08-07 là thứ Sáu.
+const donOt = [
+  { request_type: 'OVERTIME', work_date: '2026-08-07', hours: 2 },
+  { request_type: 'OVERTIME', work_date: '2026-08-08', hours: 3 },
+  { request_type: 'OVERTIME', work_date: '2026-08-09', hours: 4 },
+];
+check('công ty LÀM thứ Bảy: OT thứ Bảy vào rổ 150%',
+  splitOvertimeHours(donOt, caThuBayLam, new Set()), { weekday: 5, weekend: 4, holiday: 0 });
+check('công ty NGHỈ thứ Bảy: OT thứ Bảy vào rổ 200%',
+  splitOvertimeHours(donOt, caThuBayNghi, new Set()), { weekday: 2, weekend: 7, holiday: 0 });
+check('ngày lễ thắng tất cả, kể cả ngày thường',
+  splitOvertimeHours(donOt, caThuBayLam, new Set(['2026-08-07'])), { weekday: 3, weekend: 4, holiday: 2 });
+check('chưa khai ca nào thì lùi về quy ước T7+CN',
+  splitOvertimeHours(donOt, EMPTY_SCHEDULES, new Set()), { weekday: 2, weekend: 7, holiday: 0 });
+check('đơn không phải tăng ca thì bỏ qua',
+  splitOvertimeHours([{ request_type: 'LATE_ARRIVAL', work_date: '2026-08-07', hours: 9 }], caThuBayLam, new Set()),
+  { weekday: 0, weekend: 0, holiday: 0 });
+check('giờ âm hoặc rỗng không được cộng vào',
+  splitOvertimeHours([
+    { request_type: 'OVERTIME', work_date: '2026-08-07', hours: -3 },
+    { request_type: 'OVERTIME', work_date: '2026-08-07', hours: null },
+  ], caThuBayLam, new Set()), { weekday: 0, weekend: 0, holiday: 0 });
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

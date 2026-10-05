@@ -14,6 +14,7 @@ import { supabase } from '@/lib/supabase';
 import { formatDateTime } from '@/lib/utils';
 import type { AttendanceDevice, AttendanceDeviceEvent, AttendanceDeviceMapping, Profile } from '@/types';
 import { AttendanceFileImport } from '@/components/attendance/AttendanceFileImport';
+import { AttendanceImportHistory } from '@/components/attendance/AttendanceImportHistory';
 
 type WorkLocation = { id: string; name: string; address: string | null };
 
@@ -230,6 +231,12 @@ export function AdminAttendanceDevices() {
           </div>}
         </>
       )}
+
+      {/* Nhập file là thao tác GHI ĐÈ dữ liệu chấm công hàng loạt, mà cái toast
+          báo kết quả biến mất sau vài giây. Tháng sau có người thắc mắc công
+          bị lệch thì phải tra được: file nào, ai nhập, lúc nào, bỏ bao nhiêu
+          dòng. Tự ẩn khi chưa chạy migration hoặc chưa có lô nào. */}
+      <AttendanceImportHistory profiles={profiles} />
 
       <Modal open={deviceModal} onClose={() => setDeviceModal(false)} title="Thêm máy chấm công">
         <div className="space-y-4">

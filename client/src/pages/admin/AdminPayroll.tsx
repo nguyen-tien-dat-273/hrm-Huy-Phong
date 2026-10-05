@@ -46,7 +46,7 @@ import { hasAdminFunction } from '@/lib/permissions';
 import { formatVND, toDateString } from '@/lib/utils';
 import {
   computePayslip, itemsForPeriod, mergeUnitAndEmployeeItems, payBasisLabel,
-  payProfileForPeriod, summarisePeriod,
+  payProfileForPeriod, splitOvertimeHours, summarisePeriod,
   type AssignedPayItem, type ComputedPayslip,
 } from '@/lib/payroll';
 import {
@@ -299,6 +299,21 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         if (input.user_id === person.id) inputs[input.code] = Number(input.quantity);
       }
 
+      const approvedRequests = data.attendanceRequests.filter((request) => request.user_id === person.id);
+      const lateDates = new Set(
+        approvedRequests.filter((request) => request.request_type === 'LATE_ARRIVAL').map((request) => request.work_date),
+      );
+      const earlyDates = new Set(
+        approvedRequests.filter((request) => request.request_type === 'EARLY_LEAVE').map((request) => request.work_date),
+      );
+
+      // Đơn OT đã duyệt tự chảy vào ba biến chuẩn. Số kế toán nhập tay vẫn
+      // được ưu tiên để họ có thể điều chỉnh khi cần đối soát.
+      const ot = splitOvertimeHours(approvedRequests, data.schedules, new Set(data.holidays));
+      if (inputs.OT_WEEKDAY_HOURS == null && ot.weekday > 0) inputs.OT_WEEKDAY_HOURS = ot.weekday;
+      if (inputs.OT_WEEKEND_HOURS == null && ot.weekend > 0) inputs.OT_WEEKEND_HOURS = ot.weekend;
+      if (inputs.OT_HOLIDAY_HOURS == null && ot.holiday > 0) inputs.OT_HOLIDAY_HOURS = ot.holiday;
+
       const stats = summarisePeriod(
         data.attendance.filter((record) => record.user_id === person.id),
         data.leaves.filter((leave) => leave.user_id === person.id),
@@ -306,6 +321,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         params.hoursPerDay,
         data.holidays,
         data.schedules,
+        { lateDates, earlyDates },
       );
 
       return {

@@ -22,7 +22,10 @@
 
 import type { PayrollParams } from './payrollSettings';
 import { evaluateFormula, FormulaError } from './payrollFormula';
-import { EMPTY_PUNCTUALITY, EMPTY_SCHEDULES, measurePunctuality, type ScheduleSet } from './workSchedule';
+import {
+  dayWeight, EMPTY_PUNCTUALITY, EMPTY_SCHEDULES, measurePunctuality,
+  type PunctualityExceptions, type ScheduleSet,
+} from './workSchedule';
 import type {
   Attendance,
   EmployeePayItem,
@@ -175,6 +178,48 @@ export interface PeriodStats {
  * đơn giản hoá: coi ngày dính nghỉ nửa buổi cũng là "đã có đơn", không tách
  * nửa ngày lễ + nửa ngày phép).
  */
+/**
+ * Chia giờ tăng ca đã duyệt thành ba rổ theo Điều 98 BLLĐ 2019:
+ * ngày thường 150%, ngày NGHỈ HẰNG TUẦN 200%, ngày lễ 300%.
+ *
+ * "Ngày nghỉ" KHÔNG đồng nghĩa với thứ Bảy + Chủ nhật. Công ty này khai
+ * `saturday_mode` cho từng ca — thứ Bảy có thể là ngày làm đủ, nửa ngày, hoặc
+ * nghỉ hẳn. Gán cứng thứ Bảy vào rổ 200% thì công ty làm thứ Bảy bị trả dư
+ * một phần ba cho mọi giờ tăng ca hôm đó, và không có gì báo ra.
+ *
+ * Nên hỏi đúng câu mà cả hệ thống đang dùng để trả lời "hôm đó có phải ngày
+ * làm không": `dayWeight` bằng 0 mới là ngày nghỉ.
+ */
+export function splitOvertimeHours(
+  requests: ReadonlyArray<{ request_type: string; work_date: string; hours?: number | string | null }>,
+  schedules: ScheduleSet,
+  holidays: ReadonlySet<string>,
+): { weekday: number; weekend: number; holiday: number } {
+  const out = { weekday: 0, weekend: 0, holiday: 0 };
+  for (const request of requests) {
+    if (request.request_type !== 'OVERTIME') continue;
+    const hours = Number(request.hours || 0);
+    if (!Number.isFinite(hours) || hours <= 0) continue;
+
+    if (holidays.has(request.work_date)) {
+      out.holiday += hours;
+      continue;
+    }
+    // Chưa khai ca nào thì không suy được ngày nghỉ của công ty; lùi về quy
+    // ước thứ Bảy + Chủ nhật thay vì dồn hết vào rổ 150%.
+    const restDay = schedules.supported
+      ? dayWeight(schedules, request.work_date, holidays) === 0
+      : [0, 6].includes(new Date(`${request.work_date}T00:00:00`).getDay());
+    if (restDay) out.weekend += hours;
+    else out.weekday += hours;
+  }
+  return {
+    weekday: Math.round(out.weekday * 100) / 100,
+    weekend: Math.round(out.weekend * 100) / 100,
+    holiday: Math.round(out.holiday * 100) / 100,
+  };
+}
+
 export function summarisePeriod(
   attendance: Attendance[],
   leaves: LeaveRequest[],
@@ -186,6 +231,8 @@ export function summarisePeriod(
    * cần bằng 0 — hệ thống KHÔNG đoán giờ vào chuẩn.
    */
   schedules: ScheduleSet = EMPTY_SCHEDULES,
+  /** Đơn đi muộn/về sớm đã duyệt, dùng loại đúng ngày khỏi thống kê phạt. */
+  punctualityExceptions: PunctualityExceptions = {},
 ): PeriodStats {
   const withCheckIn = attendance.filter((record) => record.check_in_time);
   const workedDates = new Set(withCheckIn.map((record) => record.date));
@@ -229,7 +276,7 @@ export function summarisePeriod(
   // Đo đi muộn / về sớm trên toàn bộ bản ghi chấm công (kể cả ngày thiếu
   // check-out): thiếu giờ RA không làm mất dữ kiện giờ VÀO.
   const punctuality = schedules.supported
-    ? measurePunctuality(schedules, attendance, holidays)
+    ? measurePunctuality(schedules, attendance, holidays, punctualityExceptions)
     : EMPTY_PUNCTUALITY;
 
   const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
@@ -247,8 +294,9 @@ export function summarisePeriod(
     holidayDays,
     leaveDays,
     paidDays: workDays + leaveDays + holidayDays,
-    // Người ăn lương tháng không chấm giờ đủ tin cậy thì vẫn cần một con số
-    // giờ để quy đổi tăng ca — lấy ngày công nhân giờ chuẩn khi chưa có giờ.
+    // Không tự bù giờ cho riêng bản ghi thiếu checkout: bản ghi đó phải được
+    // hoàn thiện và duyệt lại. Chỉ lùi về giờ chuẩn với dữ liệu kế thừa khi
+    // toàn tháng hoàn toàn không có một khoảng giờ hợp lệ nào.
     workHours: workHours > 0 ? Math.round(workHours * 100) / 100 : workDays * hoursPerDay,
     ...punctuality,
     missingCheckout,

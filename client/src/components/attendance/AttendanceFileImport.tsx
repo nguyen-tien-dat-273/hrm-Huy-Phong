@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/contexts/ToastContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { supabase } from '@/lib/supabase';
 import type { AttendanceDeviceMapping, Profile } from '@/types';
 
@@ -43,6 +44,7 @@ const localDateKey = (date: Date) => `${date.getFullYear()}-${String(date.getMon
 
 export function AttendanceFileImport({ deviceId, profiles, mappings, onImported }: Props) {
   const { toast } = useToast();
+  const confirm = useConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
@@ -76,38 +78,76 @@ export function AttendanceFileImport({ deviceId, profiles, mappings, onImported 
 
       const items = [...earliest.values()];
       if (!items.length) throw new Error('Không đọc được mã nhân viên và thời gian. Hãy dùng cột “Mã nhân viên” và “Thời gian”, hoặc “Ngày” + “Giờ”.');
-      const userIds = [...new Set(items.map((item) => item.user_id))];
-      const dates = items.map((item) => item.date).sort();
-      const { data: existing, error: existingError } = await supabase.from('attendance').select('id,user_id,date,check_in_time').in('user_id', userIds).gte('date', dates[0]).lte('date', dates[dates.length - 1]);
-      if (existingError) throw existingError;
-      const existingByKey = new Map<string, { id: string; check_in_time: string | null }>();
-      (existing || []).forEach((item) => {
-        const key = `${item.user_id}|${item.date}`;
-        if (!existingByKey.has(key)) existingByKey.set(key, item);
+      const ok = await confirm({
+        title: `Nhập ${items.length} ngày công?`,
+        message: `${file.name}: đọc ${rows.length} dòng, nhận ${items.length} người-ngày${skipped ? `, bỏ qua ${skipped} dòng thiếu mã/giờ hoặc chưa ánh xạ` : ''}. Dữ liệu chỉ ghi giờ vào và phải checkout trước khi quản lý duyệt.`,
+        confirmLabel: 'Nhập file',
       });
+      if (!ok) return;
 
-      const inserts = items.filter((item) => !existingByKey.has(`${item.user_id}|${item.date}`)).map((item) => ({
-        ...item, check_out_time: null, status: 'completed', approved_by_lead: true, check_in_method: 'DEVICE', anomaly_flags: [],
-      }));
-      if (inserts.length) {
-        const { error } = await supabase.from('attendance').insert(inserts);
-        if (error) throw error;
-      }
-
-      const updates = items.filter((item) => {
-        const current = existingByKey.get(`${item.user_id}|${item.date}`);
-        return current && (!current.check_in_time || item.check_in_time < current.check_in_time);
+      const { data, error } = await supabase.rpc('import_attendance_file', {
+        target_device: deviceId,
+        source_file_name: file.name,
+        source_rows: items.map((item) => ({ user_id: item.user_id, work_date: item.date, check_in_time: item.check_in_time })),
+        received_count: rows.length,
+        skipped_count: skipped,
       });
-      for (const item of updates) {
-        const current = existingByKey.get(`${item.user_id}|${item.date}`)!;
-        const { error } = await supabase.from('attendance').update({ check_in_time: item.check_in_time }).eq('id', current.id);
-        if (error) throw error;
-      }
+      if (error) {
+        const missingRpc = error.code === 'PGRST202' || error.message.includes('import_attendance_file');
+        if (!missingRpc) throw error;
 
-      toast(`Đã ghi nhận ${inserts.length} ngày công mới${updates.length ? `, cập nhật ${updates.length} giờ vào sớm hơn` : ''}${skipped ? `. Bỏ qua ${skipped} dòng thiếu mã/giờ hoặc chưa ánh xạ` : ''}.`, 'success');
+        // Đường lùi cho môi trường đang chờ migration: vẫn nhập được dữ liệu
+        // nhưng tuyệt đối để CHƯA DUYỆT và yêu cầu checkout như luồng mới.
+        const userIds = [...new Set(items.map((item) => item.user_id))];
+        const dates = items.map((item) => item.date).sort();
+        const existingRes = await supabase
+          .from('attendance')
+          .select('id,user_id,date,check_in_time,check_out_time')
+          .in('user_id', userIds)
+          .gte('date', dates[0])
+          .lte('date', dates[dates.length - 1]);
+        if (existingRes.error) throw existingRes.error;
+        const existingByKey = new Map<string, { id: string; check_in_time: string | null; check_out_time: string | null }>();
+        (existingRes.data || []).forEach((item) => {
+          const key = `${item.user_id}|${item.date}`;
+          if (!existingByKey.has(key)) existingByKey.set(key, item);
+        });
+        const inserts = items.filter((item) => !existingByKey.has(`${item.user_id}|${item.date}`)).map((item) => ({
+          ...item,
+          check_out_time: null,
+          status: 'completed',
+          approved_by_lead: false,
+          check_in_method: 'DEVICE',
+          anomaly_flags: [],
+        }));
+        if (inserts.length) {
+          const insertRes = await supabase.from('attendance').insert(inserts);
+          if (insertRes.error) throw insertRes.error;
+        }
+        let updated = 0;
+        for (const item of items) {
+          const current = existingByKey.get(`${item.user_id}|${item.date}`);
+          if (!current || (current.check_in_time && item.check_in_time >= current.check_in_time)) continue;
+          const updateRes = await supabase.from('attendance').update({
+            check_in_time: item.check_in_time,
+            approved_by_lead: false,
+          }).eq('id', current.id);
+          if (updateRes.error) throw updateRes.error;
+          updated += 1;
+        }
+        toast(`Đã thêm ${inserts.length} ngày công, cập nhật ${updated} giờ vào. Hãy chạy migration mới để bật nhật ký lô nhập.`, 'warning');
+      } else {
+        const result = (data || {}) as { inserted?: number; updated?: number; skipped?: number };
+        toast(`Đã thêm ${result.inserted || 0} ngày công, cập nhật ${result.updated || 0} giờ vào${result.skipped ? `, bỏ qua ${result.skipped} dòng` : ''}.`, 'success');
+      }
       await onImported();
     } catch (error) {
-      toast(`Không nhập được file: ${error instanceof Error ? error.message : 'Lỗi dữ liệu không xác định.'}`, 'error');
+      const message = error instanceof Error
+        ? error.message
+        : error && typeof error === 'object' && 'message' in error
+          ? String(error.message)
+          : 'Lỗi dữ liệu không xác định.';
+      toast(`Không nhập được file: ${message}`, 'error');
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = '';

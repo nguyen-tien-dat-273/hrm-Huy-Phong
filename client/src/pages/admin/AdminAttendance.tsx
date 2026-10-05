@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Clock, XCircle, Calendar, Trash2, CheckCheck, ClipboardList, Table, MapPin, ExternalLink } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, Calendar, Trash2, CheckCheck, ClipboardList, Table, Cpu, UserRoundCog } from 'lucide-react';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -51,17 +51,13 @@ export function AdminAttendance() {
     // PGRST201. Phải chỉ rõ khóa.
     let query = supabase
       .from('attendance')
-      .select('*, profile:profiles!user_id(*), location:work_locations(id,name,address,latitude,longitude,radius_meters)')
+      .select('*, profile:profiles!user_id(*)')
       .order('date', { ascending: false });
     if (filter === 'today') {
       query = query.eq('date', getTodayString());
     } else if (filter === 'pending') {
-      // Hàng chờ duyệt chỉ gồm ngày công đã kết thúc. Bản ghi đang làm việc
-      // không được xuất hiện ở đây để tránh quản lý duyệt nhầm trước checkout.
-      query = query
-        .eq('approved_by_lead', false)
-        .eq('status', 'completed')
-        .not('check_out_time', 'is', null);
+      // Gom cả bản ghi thiếu checkout để quản lý thấy nguyên nhân chưa thể duyệt.
+      query = query.eq('approved_by_lead', false);
     }
     const { data, error } = await query;
     setLoadError(error ? describeDbError(error) : null);
@@ -232,7 +228,7 @@ export function AdminAttendance() {
         <div className="flex gap-2">
           {([
             { key: 'today', label: 'Hôm nay' },
-            { key: 'pending', label: 'Chờ duyệt' },
+            { key: 'pending', label: 'Cần xử lý' },
             { key: 'all', label: 'Tất cả' },
 ] as { key: typeof filter; label: string }[]).map((f) => (
             <button
@@ -279,7 +275,7 @@ export function AdminAttendance() {
                   <tr className="border-b border-slate-100 bg-[#FCFAF8]">
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Nhân viên</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thời gian</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Vận hành</th>
+                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Nguồn</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Công việc</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Kiểm soát</th>
                     <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thao tác</th>
@@ -303,44 +299,21 @@ export function AdminAttendance() {
                           <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{formatTime(r.check_in_time)} — {formatTime(r.check_out_time) || '...'}</span>
                         </div>
                       </td>
-                      <td data-label="Vận hành" className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          <span className={`text-[10px] font-bold flex items-center gap-1.5 uppercase tracking-tighter ${r.check_in_latitude != null && r.check_in_longitude != null ? 'text-emerald-600' : 'text-slate-500'}`}>
-                            <MapPin className="h-3 w-3" />
-                            {r.check_in_method || 'Không xác định'}
-                          </span>
-                          <span className="text-[11px] text-slate-600 font-semibold truncate max-w-[180px]" title={r.location?.address || undefined}>
-                            {r.location?.name || 'Ngoài danh sách địa điểm'}
-                          </span>
-                          {r.gps_accuracy_meters != null && (
-                            <span className="text-[10px] text-slate-500">GPS ±{Math.round(r.gps_accuracy_meters)} m</span>
-                          )}
-                          {r.anomaly_flags && r.anomaly_flags.length > 0 && (
-                            <Badge className="w-fit bg-amber-50 text-amber-700 border-amber-200">
-                              Cần đối soát
-                            </Badge>
-                          )}
-                          {r.check_in_latitude != null && r.check_in_longitude != null && (
-                            <a
-                              href={`https://www.google.com/maps?q=${r.check_in_latitude},${r.check_in_longitude}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:text-indigo-800"
-                            >
-                              Xem vị trí <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                        </div>
+                      <td data-label="Nguồn" className="px-6 py-4">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+                          {r.check_in_method === 'DEVICE' ? <Cpu className="h-4 w-4 text-indigo-500" /> : <UserRoundCog className="h-4 w-4 text-slate-400" />}
+                          {r.check_in_method === 'DEVICE' ? 'Máy / file' : r.check_in_method === 'MANUAL' ? 'Quản trị ghi nhận' : 'Dữ liệu kế thừa'}
+                        </span>
                       </td>
                       <td data-label="Công việc" className="px-6 py-4">
                         {(() => {
                           const p = asgProgress[`${r.user_id}|${r.date}`];
-                          if (!p) return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">NO TASKS</span>;
+                          if (!p) return <span className="text-xs font-semibold text-slate-400">Không có việc</span>;
                           const done = p.approved === p.total;
                           return (
                             <div className="flex items-center gap-2">
                               <span className={`text-[10px] font-bold uppercase tracking-widest ${done ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                {p.approved}/{p.total} DONE
+                                {p.approved}/{p.total} hoàn thành
                               </span>
                               <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
                                 <div className={`h-full ${done ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${(p.approved/p.total)*100}%` }} />
@@ -352,11 +325,11 @@ export function AdminAttendance() {
                       <td data-label="Kiểm soát" className="px-6 py-4">
                         <div className="flex flex-wrap gap-2">
                           <Badge className={r.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}>
-                            {r.status === 'completed' ? 'DONE' : 'ACTIVE'}
+                            {r.check_out_time ? 'Đã checkout' : 'Thiếu checkout'}
                           </Badge>
 	                          {r.approved_by_lead && (
 	                            <Badge className="bg-slate-900 text-white border-slate-900">
-	                              VERIFIED
+	                              Đã duyệt
 	                            </Badge>
 	                          )}
                         </div>
@@ -367,11 +340,11 @@ export function AdminAttendance() {
 	                            <button
 	                              onClick={() => handleApprove(r)}
 	                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-	                                r.status === 'completed' 
-	                                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' 
+	                                r.status === 'completed' && r.check_out_time
+	                                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
 	                                  : 'bg-slate-50 text-slate-400 cursor-not-allowed'
 	                              }`}
-	                              title={r.status !== 'completed' ? 'Chờ nhân viên Check-out' : 'Duyệt ngày công'}
+	                              title={!r.check_out_time ? 'Chờ nhân viên checkout' : r.status !== 'completed' ? 'Ngày công chưa kết thúc' : 'Duyệt ngày công'}
 	                            >
 	                              Duyệt
 	                            </button>

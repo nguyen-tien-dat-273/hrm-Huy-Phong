@@ -23,6 +23,8 @@ import type { Attendance, AttendanceSession, DailyAssignment, LeaveRequest, Prof
 interface DayCell {
   /** Giờ công đã chốt; null khi không có mặt. */
   hours: number | null;
+  /** Giờ checkout muộn nhất trong ngày, hiển thị theo mẫu bảng công tháng. */
+  checkoutTime: string | null;
   /** Có check-in nhưng chưa/không check-out — vẫn tính ngày công, giờ = 0. */
   missingCheckout: boolean;
   /** Nằm trong đơn nghỉ phép đã duyệt (chỉ tính ngày thường, trừ T7/CN). */
@@ -94,7 +96,7 @@ export function AdminTimesheet() {
         .gte('work_date', monthStartStr)
         .lte('work_date', monthEndStr),
       supabase.from('timesheet_periods').select('id, month_start, status, locked_at').eq('month_start', monthStartStr).maybeSingle(),
-      supabase.from('attendance').select('id', { count: 'exact', head: true }).gte('date', monthStartStr).lte('date', monthEndStr).or('status.eq.active,approved_by_lead.eq.false'),
+      supabase.from('attendance').select('id', { count: 'exact', head: true }).gte('date', monthStartStr).lte('date', monthEndStr).or('status.eq.active,approved_by_lead.eq.false,check_out_time.is.null'),
     ]);
 
     setLoadError(
@@ -134,6 +136,7 @@ export function AdminTimesheet() {
     return profiles.map((profile) => {
       const days: DayCell[] = Array.from({ length: daysInMonth }, () => ({
         hours: null,
+        checkoutTime: null,
         missingCheckout: false,
         onLeave: false,
         halfLeave: false,
@@ -158,9 +161,12 @@ export function AdminTimesheet() {
         const idx = Number(a.date.slice(8, 10)) - 1;
         if (idx < 0 || idx >= daysInMonth) continue;
         if (a.check_in_time && a.check_out_time) {
-          days[idx].hours = hoursBetween(a, sessions);
+          days[idx].hours = (days[idx].hours ?? 0) + hoursBetween(a, sessions);
+          if (!days[idx].checkoutTime || new Date(a.check_out_time) > new Date(days[idx].checkoutTime!)) {
+            days[idx].checkoutTime = a.check_out_time;
+          }
         } else if (a.check_in_time) {
-          days[idx].hours = 0;
+          days[idx].hours ??= 0;
           days[idx].missingCheckout = true;
         }
       }
@@ -199,7 +205,7 @@ export function AdminTimesheet() {
 
   const setPeriodStatus = async (status: PeriodStatus) => {
     if (status === 'LOCKED' && exceptions > 0) {
-      toast(`Còn ${exceptions} bản ghi đang làm hoặc chưa duyệt. Hãy xử lý trước khi khóa kỳ.`, 'warning');
+      toast(`Còn ${exceptions} bản ghi thiếu checkout, đang làm hoặc chưa duyệt. Hãy xử lý trước khi khóa kỳ.`, 'warning');
       return;
     }
     setChangingPeriod(true);
@@ -228,15 +234,16 @@ export function AdminTimesheet() {
       const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
       const sheet1: (string | number)[][] = [
         [`BẢNG CÔNG THÁNG ${monthLabel}`],
-        [`Ký hiệu: số = giờ công · P = nghỉ phép · P/2 = nghỉ nửa ngày · ! = thiếu check-out · trống = vắng`],
+        [`Ký hiệu: HH:mm = giờ checkout cuối ngày · P = nghỉ phép · P/2 = nghỉ nửa ngày · ! = thiếu checkout · trống = vắng`],
         [],
-        ['STT', 'Họ tên', 'Bộ phận', ...dayHeaders, 'Ngày công', 'Giờ công', 'Nghỉ phép', 'Việc xong/giao'],
+        ['STT', 'Phòng ban', 'Mã nhân viên', 'Tên nhân viên', ...dayHeaders, 'Ngày công', 'Giờ công', 'Nghỉ phép', 'Việc xong/giao'],
         ...rows.map((r, i) => [
           i + 1,
-          r.profile.name,
           r.profile.department ?? '',
+          r.profile.employee_code ?? '',
+          r.profile.name,
           ...r.days.map((d) =>
-            d.missingCheckout ? '!' : d.hours !== null ? d.hours : d.onLeave ? (d.halfLeave ? 'P/2' : 'P') : '',
+            d.missingCheckout ? '!' : d.checkoutTime ? formatTime(d.checkoutTime) : d.onLeave ? (d.halfLeave ? 'P/2' : 'P') : '',
           ),
           r.workDays,
           r.totalHours,
@@ -244,12 +251,12 @@ export function AdminTimesheet() {
           `${r.asgDone}/${r.asgTotal}`,
         ]),
         [],
-        ['', 'TỔNG', '', ...dayHeaders.map(() => ''), totals.workDays, totals.totalHours, totals.leaveDays, `${totals.asgDone}/${totals.asgTotal}`],
+        ['', 'TỔNG', '', '', ...dayHeaders.map(() => ''), totals.workDays, totals.totalHours, totals.leaveDays, `${totals.asgDone}/${totals.asgTotal}`],
       ];
       const ws1 = XLSX.utils.aoa_to_sheet(sheet1);
       ws1['!cols'] = [
-        { wch: 4 }, { wch: 24 }, { wch: 14 },
-        ...dayHeaders.map(() => ({ wch: 4 })),
+        { wch: 4 }, { wch: 18 }, { wch: 14 }, { wch: 24 },
+        ...dayHeaders.map(() => ({ wch: 7 })),
         { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 13 },
       ];
 
@@ -298,7 +305,7 @@ export function AdminTimesheet() {
       ws3['!cols'] = [{ wch: 4 }, { wch: 24 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 15 }];
 
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws1, 'Bảng công');
+      XLSX.utils.book_append_sheet(wb, ws1, 'Bảng công checkout');
       XLSX.utils.book_append_sheet(wb, ws2, 'Chi tiết chấm công');
       XLSX.utils.book_append_sheet(wb, ws3, 'Công việc');
       XLSX.writeFile(wb, `bang-cong-${format(monthStart, 'yyyy-MM')}.xlsx`);
@@ -327,7 +334,7 @@ export function AdminTimesheet() {
             <Badge className={periodMeta[periodStatus].color}>{periodMeta[periodStatus].label}</Badge>
           </div>
           <p className="text-sm text-slate-500 mt-0.5">
-            Chỉ gồm ngày công hoàn tất và đã được quản lý duyệt — cùng nguồn dữ liệu với bảng lương.
+            Mỗi ô ngày hiển thị giờ checkout cuối cùng; chỉ gồm công đã hoàn tất và được quản lý duyệt.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -351,14 +358,15 @@ export function AdminTimesheet() {
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Chưa có quản lý kỳ công. Chạy migration <strong>20260909090000_core_flow_integration.sql</strong> để đối soát và khóa kỳ.</div>
       )}
       {exceptions > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Còn <strong>{exceptions}</strong> bản ghi đang làm hoặc chưa duyệt. Các bản ghi này chưa được tính vào bảng công chính thức.</div>
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Còn <strong>{exceptions}</strong> bản ghi đang làm, thiếu checkout hoặc chưa duyệt. Các bản ghi này chưa được tính vào bảng công chính thức.</div>
       )}
 
       {/* Điều hướng tháng + chú giải */}
       <div className="flex items-center justify-between flex-wrap gap-3 no-print">
         <MonthNav value={monthStart} onChange={setMonthStart} />
         <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500">
-          <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold flex items-center justify-center">{standardHoursPerDay}</span> đủ giờ công</span>
+          <span className="flex items-center gap-1.5"><span className="h-5 rounded bg-emerald-100 px-1 text-emerald-700 text-[10px] font-bold flex items-center justify-center">17:30</span> giờ checkout</span>
+          <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-amber-100 text-amber-700 text-[10px] font-bold flex items-center justify-center">!</span> thiếu checkout</span>
           <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-violet-100 text-violet-700 text-[10px] font-bold flex items-center justify-center">P</span> nghỉ phép</span>
           <span className="flex items-center gap-1.5"><span className="w-4 h-4 rounded bg-slate-100" /> cuối tuần</span>
         </div>
@@ -374,16 +382,17 @@ export function AdminTimesheet() {
             />
           ) : (
             <div className="overflow-x-auto">
-              <table className="border-collapse" style={{ minWidth: `${480 + daysInMonth * 30}px` }}>
+              <table className="border-collapse" style={{ minWidth: `${720 + daysInMonth * 48}px` }}>
                 <thead>
                   <tr className="border-b border-slate-100">
-                    <th className="text-left text-xs font-semibold text-slate-500 uppercase px-4 py-3 sticky left-0 bg-white z-10 min-w-[190px]">
-                      Nhân sự
-                    </th>
+                    <th className="sticky left-0 z-20 w-12 min-w-12 bg-white px-2 py-3 text-center text-xs font-semibold uppercase text-slate-500">STT</th>
+                    <th className="sticky left-12 z-20 min-w-[140px] bg-white px-3 py-3 text-left text-xs font-semibold uppercase text-slate-500">Phòng ban</th>
+                    <th className="sticky left-[188px] z-20 min-w-[100px] bg-white px-3 py-3 text-left text-xs font-semibold uppercase text-slate-500">Mã NV</th>
+                    <th className="sticky left-[288px] z-20 min-w-[190px] bg-white px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Tên nhân viên</th>
                     {Array.from({ length: daysInMonth }, (_, i) => (
                       <th
                         key={i}
-                        className={`text-center text-[11px] font-semibold px-0 py-2 w-[30px] ${
+                        className={`w-12 min-w-12 px-0 py-2 text-center text-[11px] font-semibold ${
                           isWeekend(i) ? 'bg-slate-50 text-slate-400' : 'text-slate-500'
                         }`}
                       >
@@ -397,14 +406,18 @@ export function AdminTimesheet() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {rows.map((r) => (
+                  {rows.map((r, rowIndex) => (
                     <tr key={r.profile.id}>
-                      <td className="px-4 py-2.5 sticky left-0 bg-white z-10">
+                      <td className="sticky left-0 z-10 bg-white px-2 py-2.5 text-center text-xs text-slate-500">{rowIndex + 1}</td>
+                      <td className="sticky left-12 z-10 max-w-[140px] bg-white px-3 py-2.5 text-xs text-slate-600">
+                        <span className="block truncate" title={r.profile.department || 'Chưa phân phòng ban'}>{r.profile.department || '—'}</span>
+                      </td>
+                      <td className="sticky left-[188px] z-10 bg-white px-3 py-2.5 text-xs font-medium text-slate-500">{r.profile.employee_code || '—'}</td>
+                      <td className="sticky left-[288px] z-10 bg-white px-4 py-2.5">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <Avatar name={r.profile.name} url={r.profile.avatar_url} size="sm" />
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-slate-800 truncate">{r.profile.name}</p>
-                            <p className="text-xs text-slate-400 truncate">{r.profile.department || '—'}</p>
                           </div>
                         </div>
                       </td>
@@ -412,14 +425,14 @@ export function AdminTimesheet() {
                         <td key={i} className={`text-center px-0 py-2.5 ${isWeekend(i) ? 'bg-slate-50/70' : ''}`}>
                           {d.missingCheckout ? (
                             <span title="Có check-in nhưng thiếu check-out" className="inline-flex w-6 h-6 rounded bg-amber-100 text-amber-700 text-[11px] font-bold items-center justify-center">!</span>
-                          ) : d.hours !== null ? (
+                          ) : d.checkoutTime ? (
                             <span
-                              title={`${d.hours} giờ`}
-                              className={`inline-flex w-6 h-6 rounded text-[11px] font-bold items-center justify-center ${
-                                d.hours >= standardHoursPerDay ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-50 text-blue-600'
+                              title={`Checkout ${formatTime(d.checkoutTime)} · ${d.hours ?? 0} giờ công`}
+                              className={`inline-flex h-6 min-w-10 rounded px-1 text-[11px] font-bold items-center justify-center ${
+                                (d.hours ?? 0) >= standardHoursPerDay ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-50 text-blue-600'
                               }`}
                             >
-                              {d.hours >= 10 ? Math.round(d.hours) : d.hours}
+                              {formatTime(d.checkoutTime)}
                             </span>
                           ) : d.onLeave ? (
                             <span
@@ -450,7 +463,7 @@ export function AdminTimesheet() {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50/60">
-                    <td className="px-4 py-3 text-sm font-bold text-slate-700 sticky left-0 bg-slate-50 z-10">
+                    <td colSpan={4} className="px-4 py-3 text-sm font-bold text-slate-700 sticky left-0 bg-slate-50 z-10">
                       Tổng ({rows.length} nhân sự)
                     </td>
                     <td colSpan={daysInMonth} />

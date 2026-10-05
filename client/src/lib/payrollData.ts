@@ -29,6 +29,14 @@ import {
 } from './payrollSettings';
 import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from './workSchedule';
 
+export interface AttendanceRequestForPayroll {
+  user_id: string;
+  request_type: 'LATE_ARRIVAL' | 'EARLY_LEAVE' | 'OVERTIME';
+  work_date: string;
+  minutes: number | null;
+  hours: number | null;
+}
+
 /** Dữ liệu cần để dựng bảng lương một tháng. */
 export interface PayrollWorkspace {
   profiles: Profile[];
@@ -40,6 +48,8 @@ export interface PayrollWorkspace {
   inputs: PayrollInput[];
   attendance: Attendance[];
   leaves: LeaveRequest[];
+  /** Đơn đã duyệt dùng miễn phạt chuyên cần và tự lấy giờ tăng ca. */
+  attendanceRequests: AttendanceRequestForPayroll[];
   /** Ngày lễ công ty rơi vào tháng đang tính — dùng tách L03 khỏi L01/L02. */
   holidays: string[];
   /** Ca làm việc — dùng tính công chuẩn theo tháng và đo đi muộn. */
@@ -59,7 +69,7 @@ export interface PayrollWorkspace {
 
 const EMPTY: PayrollWorkspace = {
   profiles: [], components: [], payProfiles: [], items: [], unitItems: [], inputs: [],
-  attendance: [], leaves: [], holidays: [], schedules: EMPTY_SCHEDULES, adjustments: [],
+  attendance: [], leaves: [], attendanceRequests: [], holidays: [], schedules: EMPTY_SCHEDULES, adjustments: [],
   run: null, payslips: [], payslipLines: [],
   payrollSettings: DEFAULT_PAYROLL_SETTINGS,
   pitBrackets: DEFAULT_PIT_BRACKETS,
@@ -84,7 +94,7 @@ export async function loadPayrollWorkspace(
     pitBrackets,
     schedules,
     profilesRes, componentsRes, payProfilesRes, itemsRes, unitItemsRes, inputsRes,
-    attendanceRes, leavesRes, runRes, periodRes,
+    attendanceRes, leavesRes, attendanceRequestsRes, runRes, periodRes,
   ] = await Promise.all([
     // Tham số lương nằm ở bảng riêng `payroll_settings` (chỉ Admin/CEO ghi
     // được), không phải `app_settings` vốn mở cho quyền lẻ `settings`.
@@ -113,6 +123,12 @@ export async function loadPayrollWorkspace(
       .neq('leave_type', 'unpaid')
       .lte('start_date', monthEndStr)
       .gte('end_date', monthStartStr),
+    supabase
+      .from('attendance_requests')
+      .select('user_id, request_type, work_date, minutes, hours')
+      .eq('status', 'APPROVED')
+      .gte('work_date', monthStartStr)
+      .lte('work_date', monthEndStr),
     supabase.from('payroll_runs').select('*').eq('month_start', monthStartStr).maybeSingle(),
     supabase.from('timesheet_periods').select('status').eq('month_start', monthStartStr).maybeSingle(),
   ]);
@@ -172,6 +188,11 @@ export async function loadPayrollWorkspace(
     inputs: (inputsRes.data || []) as PayrollInput[],
     attendance: (attendanceRes.data || []) as Attendance[],
     leaves: ((leavesRes.data || []) as LeaveRequest[]).filter((leave) => !leave.is_cancelled),
+    // Giữ tương thích khi môi trường cũ chưa có bảng đơn chấm công: bảng
+    // lương vẫn mở được, chỉ chưa tự miễn phạt/tự điền OT.
+    attendanceRequests: attendanceRequestsRes.error
+      ? []
+      : (attendanceRequestsRes.data || []) as AttendanceRequestForPayroll[],
     holidays,
     adjustments,
     run,
