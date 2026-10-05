@@ -17,7 +17,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronRight, Search, Target, TriangleAlert, Users } from 'lucide-react';
+import { ArrowLeft, Building2, ChevronRight, Search, Target, TriangleAlert, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -78,6 +78,19 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
 
   /** Ô tìm của tab nhân sự. */
   const [query, setQuery] = useState('');
+
+  /**
+   * Có hiện cả phòng chưa có nhân sự hay không.
+   *
+   * Mặc định ẩn. Phòng rỗng bấm vào chỉ ra một màn hình báo "chưa có ai" —
+   * không khai KPI cho ai được, nên nó chỉ làm danh sách dài ra. Công ty có
+   * hơn chục phòng mà chỉ năm phòng có người: ẩn đi là danh sách ngắn đi một
+   * nửa mà không mất gì dùng được.
+   *
+   * Vẫn mở ra được, vì "phòng này rỗng" cũng là một câu trả lời người dùng
+   * cần — nhất là khi họ đang đi tìm xem đã gán nhân sự vào đâu chưa.
+   */
+  const [showEmpty, setShowEmpty] = useState(false);
 
   /** Đường đi hiện tại, từ gốc xuống. Rỗng = đang ở danh sách khối. */
   const [path, setPath] = useState<Unit[]>([]);
@@ -450,6 +463,25 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
 
         {/* ---- Đường đi ---- */}
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          {/* Nút lùi một cấp.
+              Đường đi bên cạnh cũng bấm được, nhưng nó là chữ — người dùng
+              đọc nó là "đang ở đâu", không phải "bấm vào để ra". Vào sâu rồi
+              mà không thấy nút quay lại thì phản xạ là bấm Back của trình
+              duyệt, và cái đó văng hẳn ra khỏi trang này.
+
+              Lùi ĐÚNG MỘT CẤP chứ không về thẳng đầu: ở tab Phòng ban, mở một
+              người trong phòng rồi quay lại là phải về danh sách phòng đó —
+              về đầu thì muốn xem người kế tiếp phải đi lại từ đầu. */}
+          {(focusPerson || path.length > 0) && (
+            <button
+              type="button"
+              onClick={() => (focusPerson ? setFocusPerson(null) : setPath(path.slice(0, -1)))}
+              className="mr-1 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Quay lại
+            </button>
+          )}
           <button
             type="button"
             onClick={() => { setPath([]); setFocusPerson(null); }}
@@ -656,37 +688,77 @@ export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
         )}
 
         {/* ================= TAB PHÒNG BAN ================= */}
-        {/* ---- Đơn vị con ---- */}
-        {!focusPerson && tab === 'units' && !current && allUnits.length > 0 && (
-          <div className="divide-y divide-slate-100 rounded-xl border border-slate-200">
-            {allUnits.map(({ unit, depth }) => {
-              const inside = peopleIn(unit.id).length;
-              return (
+        {!focusPerson && tab === 'units' && !current && allUnits.length > 0 && (() => {
+          /* Phòng có người — và tổ tiên của chúng, để cây không bị đứt mạch:
+             ẩn "Khối Văn Phòng" đi thì "Bộ phận Dự án" nằm thụt vào mà không
+             rõ thụt vào dưới cái gì. Tổ tiên hiện mờ, vẫn bấm được. */
+          const keep = new Set<string>();
+          for (const { unit } of allUnits) {
+            if (peopleIn(unit.id).length === 0) continue;
+            keep.add(unit.id);
+            let cursor = unit.parent_id ? unitById.get(unit.parent_id) : undefined;
+            // `seen` chặn vòng lặp vô hạn nếu dữ liệu có vòng cha-con.
+            const seen = new Set<string>();
+            while (cursor && !seen.has(cursor.id)) {
+              seen.add(cursor.id);
+              keep.add(cursor.id);
+              cursor = cursor.parent_id ? unitById.get(cursor.parent_id) : undefined;
+            }
+          }
+          const hidden = allUnits.length - keep.size;
+          const rows = showEmpty ? allUnits : allUnits.filter(({ unit }) => keep.has(unit.id));
+
+          return (
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              {/* Chưa gán ai vào phòng nào thì danh sách lọc ra rỗng. Không
+                  nói gì thì nó là một cái khung trống trơn trông như hỏng,
+                  trong khi việc cần làm rất rõ: sang tab Nhân sự mà khai. */}
+              {rows.length === 0 && (
+                <p className="px-4 py-6 text-center text-xs leading-relaxed text-slate-500">
+                  Chưa có phòng nào được gán nhân sự. Khai KPI theo từng người ở tab{' '}
+                  <strong>Nhân sự</strong>, hoặc gán nhân sự vào phòng ở <strong>Cơ cấu tổ chức</strong>.
+                </p>
+              )}
+              <div className="divide-y divide-slate-50">
+                {rows.map(({ unit, depth }) => {
+                  /* Đếm người treo THẲNG vào đơn vị này, không gộp đơn vị con:
+                     bấm vào đây là để khai KPI cho đúng những người sẽ hiện ra
+                     bên dưới, nên con số phải khớp với danh sách đó. */
+                  const inside = peopleIn(unit.id).length;
+                  return (
+                    <button
+                      key={unit.id}
+                      type="button"
+                      onClick={() => setPath([unit])}
+                      className="flex w-full items-center gap-2 py-2 pr-3 text-left transition hover:bg-indigo-50/60"
+                      style={{ paddingLeft: `${12 + depth * 16}px` }}
+                    >
+                      <Building2 className={`h-4 w-4 shrink-0 ${inside > 0 ? 'text-indigo-500' : 'text-slate-300'}`} />
+                      {/* Phòng rỗng để mờ: vẫn thấy cơ cấu, nhưng mắt đi thẳng
+                          tới những phòng thật sự có việc để làm. */}
+                      <span className={`min-w-0 flex-1 truncate text-sm ${inside > 0 ? 'font-bold text-slate-800' : 'font-semibold text-slate-400'}`}>
+                        {unit.name}
+                      </span>
+                      {inside > 0 && (
+                        <span className="shrink-0 text-[11px] font-semibold text-slate-500">{inside} nhân sự</span>
+                      )}
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                    </button>
+                  );
+                })}
+              </div>
+              {hidden > 0 && (
                 <button
-                  key={unit.id}
                   type="button"
-                  onClick={() => setPath([unit])}
-                  className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition hover:bg-indigo-50/60"
-                  style={{ paddingLeft: `${14 + depth * 22}px` }}
+                  onClick={() => setShowEmpty(!showEmpty)}
+                  className="w-full border-t border-slate-100 bg-slate-50/60 py-2 text-[11px] font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                 >
-                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                    <Building2 className="h-4 w-4" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-slate-800">{unit.name}</span>
-                    <span className="block text-[11px] text-slate-500">
-                      {/* Dem nguoi treo THANG vao don vi nay, khong gom don vi
-                          con: bam vao day la de khai KPI cho dung nhung nguoi
-                          se hien ra ben duoi. */}
-                      {inside > 0 ? `${inside} nhân sự` : 'Chưa có nhân sự'}
-                    </span>
-                  </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                  {showEmpty ? 'Ẩn phòng chưa có nhân sự' : `Hiện ${hidden} phòng chưa có nhân sự`}
                 </button>
-              );
-            })}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
 
         {/* ---- Nhân sự trong phòng đang mở ---- */}
         {!focusPerson && tab === 'units' && current && people.length > 0 && (
