@@ -235,6 +235,37 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
     onChanged();
   };
 
+  /**
+   * Mở khoá một khoản hệ thống để xoá được.
+   *
+   * `is_system` chỉ là cờ ở giao diện — database không chặn gì. Khoá cứng thì
+   * danh mục có những dòng công ty không dùng mà không bỏ đi được, trong khi
+   * danh mục chính là thứ công ty tự quản. Nên cho mở, nhưng bắt xác nhận:
+   * vài khoản hệ thống có mã mà luồng khác gọi tên (KPI, công đoàn), xoá xong
+   * là luồng đó im lặng tính 0đ.
+   */
+  const handleUnlock = async (component: PayComponent) => {
+    const ok = await confirm({
+      title: `Mở khoá "${component.name}"?`,
+      message:
+        'Khoản hệ thống do phần mềm tạo sẵn. Một số khoản có mã được luồng khác '
+        + 'gọi tới (KPI, công đoàn) — xoá rồi thì phần đó âm thầm tính 0đ. '
+        + 'Mở khoá xong sẽ hiện nút xoá.',
+      confirmLabel: 'Mở khoá',
+    });
+    if (!ok) return;
+
+    const error = await saveComponent({
+      id: component.id, code: component.code, name: component.name, is_system: false,
+    });
+    if (error) {
+      toast('Mở khoá thất bại: ' + error, 'error');
+      return;
+    }
+    toast('Đã mở khoá — bấm thùng rác để xoá.', 'success');
+    onChanged();
+  };
+
   const handleDelete = async (component: PayComponent) => {
     const ok = await confirm({
       title: `Xóa khoản "${component.name}"?`,
@@ -347,12 +378,14 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       {component.is_system ? (
-                        <span
-                          className="p-1.5 text-slate-200"
-                          title="Khoản hệ thống — sửa được nhưng không xóa được"
+                        <button
+                          onClick={() => void handleUnlock(component)}
+                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-300 transition-colors hover:bg-amber-50 hover:text-amber-600"
+                          aria-label={`Mở khoá ${component.name}`}
+                          title="Khoản hệ thống — bấm để mở khoá rồi xoá"
                         >
                           <Lock className="h-3.5 w-3.5" />
-                        </span>
+                        </button>
                       ) : (
                         <button
                           onClick={() => handleDelete(component)}
