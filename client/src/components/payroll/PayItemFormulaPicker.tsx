@@ -349,6 +349,26 @@ export function PayItemFormulaPicker({
           >
             ÷100
           </button>
+
+          {/* Bấm hiện được thì phải bấm ẩn được.
+              Ẩn là XOÁ LUÔN phần nhân chia, không phải chỉ giấu đi: giấu mà
+              vẫn tính thì khoản trông như một con số cố định trong khi phiếu
+              lương ra số khác. Công thức ở hàng trên đổi ngay nên thấy được
+              mình vừa bỏ gì. Khoản không có vế tiền thì số liệu LÀ cả công
+              thức, ẩn đi là còn lại rỗng — nên không cho ẩn. */}
+          {source.kind !== 'NONE' && (
+            <button
+              type="button"
+              onClick={() => {
+                setMoRong(false);
+                set({ variable: null, coefficient: null, percent: false, prorate: false });
+              }}
+              title="Bỏ phần nhân chia, quay về một con số"
+              className="shrink-0 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-[11px] font-bold text-slate-400 transition hover:border-red-300 hover:text-red-600"
+            >
+              Ẩn
+            </button>
+          )}
           </>
         ) : (
           /* Khoản chỉ nhập một con số thì bốn ô kia là nhiễu: người
