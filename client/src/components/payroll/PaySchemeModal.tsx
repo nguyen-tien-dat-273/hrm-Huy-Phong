@@ -18,7 +18,7 @@ import { PayItemFormulaPicker } from '@/components/payroll/PayItemFormulaPicker'
 import { parsePayFormula } from '@/lib/payItemFormula';
 import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
-import { progressiveIncomeTax, sampleFormulaScope, toTaxBrackets } from '@/lib/payroll';
+import { sampleFormulaScope } from '@/lib/payroll';
 import { validateFormula } from '@/lib/payrollFormula';
 import { deletePayItem, savePayItem, savePayProfile } from '@/lib/payrollData';
 import type {
@@ -73,7 +73,6 @@ interface ItemDraft {
   componentId: string;
   amount: string;
   formula: string;
-  effectiveFrom: string;
   note: string;
   /**
    * Đang khai bằng ô công thức tự do thay vì các ô chọn.
@@ -100,7 +99,6 @@ export function PaySchemeModal({
   const { toast } = useToast();
 
   /** Khoản được đánh dấu lương gốc trong danh mục, nếu đã khai. */
-  const baseComponent = components.find((item) => item.is_base && item.is_active);
   const [effectiveFrom, setEffectiveFrom] = useState(defaultEffectiveFrom);
   const [insuranceEnabled, setInsuranceEnabled] = useState(true);
   const [insuranceBase, setInsuranceBase] = useState('');
@@ -135,7 +133,6 @@ export function PaySchemeModal({
       // hiện ô chọn rồi bấm Lưu là ghi đè mất công thức người ta viết tay.
       handWritten: !!item.formula
         && !parsePayFormula(item.formula, components.map((c) => c.code)),
-      effectiveFrom: item.effective_from,
       note: item.note ?? '',
     })));
     setRemovedIds([]);
@@ -191,7 +188,6 @@ export function PaySchemeModal({
           amount: '',
           formula: '',
           handWritten: false,
-          effectiveFrom,
           note: '',
         }];
       }
@@ -219,22 +215,6 @@ export function PaySchemeModal({
     return validateFormula(source, formulaScope);
   });
   const hasFormulaError = formulaErrors.some(Boolean);
-
-  /**
-   * Mức của khoản được đánh dấu LƯƠNG GỐC, lấy từ chính dòng vừa khai bên
-   * dưới. Đây là căn cứ suy đơn giá giờ tăng ca và mức đóng bảo hiểm, nên
-   * phải đọc từ cùng một chỗ mà engine đọc — không giữ một ô riêng nữa.
-   */
-  const parsedBase = useMemo(() => {
-    if (!baseComponent) return 0;
-    const row = drafts.find((item) => item.componentId === baseComponent.id);
-    return Number(row?.amount || baseComponent.default_amount || 0);
-  }, [baseComponent, drafts]);
-
-  // Mức lương thực dùng để đóng bảo hiểm. Bỏ trống thì engine lấy lương gốc,
-  // nên hiện ra đây luôn — "trống = theo lương hợp đồng" là câu mà người đọc
-  // vẫn phải tự suy ra con số.
-  const effectiveInsuranceBase = Number(insuranceBase || '0') || parsedBase;
 
   const handleSave = async () => {
     if (!target) return;
@@ -295,7 +275,9 @@ export function PaySchemeModal({
         component_id: draft.componentId,
         amount: draft.amount ? Number(draft.amount) : null,
         formula: draft.formula.trim() || null,
-        effective_from: draft.effectiveFrom,
+        // Dùng chung ngày của cả cơ chế: ô "Áp dụng từ" giờ nằm ngoài, mỗi
+        // khoản không còn ngày riêng.
+        effective_from: effectiveFrom,
         note: draft.note.trim() || null,
         created_by: actorId,
       });
@@ -334,6 +316,20 @@ export function PaySchemeModal({
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               Các khoản lương ({drafts.length})
             </h3>
+
+            {/* Một ngày hiệu lực cho CẢ cơ chế, không phải mỗi khoản một ngày.
+                Đổi lương là một quyết định có một mốc; để mỗi khoản một ngày
+                thì sửa vài khoản xong sẽ có người mang ba mốc khác nhau, và
+                đối chiếu bảng lương không ra vì sao. */}
+            <Input
+              label="Áp dụng từ ngày"
+              type="date"
+              value={effectiveFrom}
+              onChange={(event) => setEffectiveFrom(event.target.value)}
+            />
+            <p className="-mt-1 text-[11px] leading-relaxed text-slate-500">
+              Áp cho mọi khoản bên dưới. Các tháng đã chạy lương trước ngày này giữ nguyên mức cũ.
+            </p>
 
             {/* --- Chọn khoản từ danh mục --- */}
             <div className="rounded-xl border border-slate-200 p-3">
@@ -418,18 +414,11 @@ export function PaySchemeModal({
                         </button>
                       </div>
 
-                      {component && (
-                        <p className="mt-2 text-xs text-slate-500">
-                          {describeCalcType(component)}
-                          {component.note ? ` — ${component.note}` : ''}
-                        </p>
-                      )}
-
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        {/* Khoản tính theo % thì "× số công" vô nghĩa — tỷ lệ
-                            nhân vào một khoản khác, không nhân vào ngày công.
-                            Giữ ô nhập tỷ lệ như cũ cho nhóm đó. */}
-                        {component?.calc_type === 'PERCENT' && (
+                      {/* Khoản tính theo % thì "× số công" vô nghĩa — tỷ lệ
+                          nhân vào một khoản khác, không nhân vào ngày công.
+                          Giữ ô nhập tỷ lệ như cũ cho nhóm đó. */}
+                      {component?.calc_type === 'PERCENT' && (
+                        <div className="mt-3">
                           <Input
                             label="Tỷ lệ riêng (%)"
                             inputMode="decimal"
@@ -437,14 +426,8 @@ export function PaySchemeModal({
                             value={draft.amount}
                             onChange={(e) => updateDraft(index, { amount: e.target.value.replace(/[^\d.]/g, '') })}
                           />
-                        )}
-                        <Input
-                          label="Áp dụng từ"
-                          type="date"
-                          value={draft.effectiveFrom}
-                          onChange={(e) => updateDraft(index, { effectiveFrom: e.target.value })}
-                        />
-                      </div>
+                        </div>
+                      )}
 
                       <div className="mt-3">
                         {draft.handWritten || component?.calc_type === 'PERCENT' ? (
@@ -521,19 +504,6 @@ export function PaySchemeModal({
 function formatComponentDefault(component: PayComponent): string {
   const amount = Number(component.default_amount);
   return component.calc_type === 'PERCENT' ? `${amount}%` : formatVND(amount);
-}
-
-function describeCalcType(component: PayComponent): string {
-  switch (component.calc_type) {
-    case 'FIXED':
-      return component.prorate ? 'Số tiền cố định, chia theo ngày công' : 'Số tiền cố định trọn tháng';
-    case 'PER_DAY': return 'Đơn giá × số ngày công';
-    case 'PER_HOUR': return `Đơn giá × số giờ nhập ở mã ${component.input_code}`;
-    case 'PER_UNIT': return `Đơn giá × sản lượng nhập ở mã ${component.input_code}`;
-    case 'PERCENT': return `Phần trăm trên ${component.base_code}`;
-    case 'FORMULA': return `Công thức: ${component.formula}`;
-    default: return '';
-  }
 }
 
 /** Một dòng trong bảng ước tính. `muted` cho dòng chỉ để tham khảo, không cộng trừ. */
