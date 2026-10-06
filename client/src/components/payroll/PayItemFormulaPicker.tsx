@@ -36,7 +36,7 @@
 // thao tác ở cùng một chỗ.
 // ============================================================================
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
 import { evaluateFormula } from '@/lib/payrollFormula';
 import { formatVND } from '@/lib/utils';
@@ -117,6 +117,22 @@ export function PayItemFormulaPicker({
   };
 
   const source = guided.source;
+
+  /**
+   * Có mở phần "nhân thêm" ra không.
+   *
+   * Phần lớn khoản chỉ là một con số cố định. Bày sẵn cả ô số liệu, ô hệ số và
+   * nút ÷100 cho mọi khoản thì người khai phải lướt qua bốn ô không bao giờ
+   * dùng. Giấu đi, chỉ hiện khi công thức THẬT SỰ có nhân chia, hoặc khi người
+   * dùng tự bấm mở.
+   *
+   * `moRong` là trạng thái riêng chứ không suy từ công thức: vừa bấm mở thì
+   * công thức vẫn chưa có gì để suy ra, suy lại là nó đóng sập ngay.
+   */
+  const [moRong, setMoRong] = useState(false);
+  const coNhanChia = !!guided.variable || !!guided.coefficient || guided.percent;
+  // Không có vế tiền thì số liệu là tất cả những gì còn lại — không giấu được.
+  const hienNhan = moRong || coNhanChia || source.kind === 'NONE';
   /** Giá trị đang chọn ở ô vế tiền. */
   const sourceValue = source.kind === 'FIXED' ? NHAP_TAY
     : source.kind === 'NONE' ? KHONG_CO
@@ -170,7 +186,25 @@ export function PayItemFormulaPicker({
     set({ source: { kind: 'SUM', codes: next } });
   };
 
-  const slot = 'min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none transition'
+  /**
+   * Bỏ focus khi lăn chuột trên ô chọn.
+   *
+   * Một `<select>` ĐANG FOCUS mà lăn chuột qua là trình duyệt đổi luôn giá trị
+   * của nó. Modal này dài, cuộn là thao tác bình thường, nên sau khi bấm vào
+   * một ô chọn rồi cuộn tiếp là công thức lương của người ta đổi mà không ai
+   * bấm gì — rồi bấm "Lưu cơ chế lương" là ghi thẳng xuống database. Đã dựng
+   * lại được trên máy: nguồn tự nhảy từ MUC_RIENG sang INSURANCE_BASE.
+   *
+   * Bỏ focus thay vì chặn `wheel`: chặn thì trang không cuộn được nữa.
+   */
+  const boFocusKhiLan = (event: React.WheelEvent<HTMLSelectElement>) => {
+    if (document.activeElement === event.currentTarget) event.currentTarget.blur();
+  };
+
+  // `min-w` chứ KHÔNG phải `min-w-0`: năm ô không vừa một dòng trong modal, và
+  // với `min-w-0` thì flex co chúng lại thay vì xuống dòng — ô chọn teo còn hai
+  // ký tự ("Nh▾"), không đọc được đang chọn gì. Có mức sàn thì nó wrap.
+  const slot = 'min-w-[150px] flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none transition'
     + ' focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20';
   const tone = thieu.length > 0 ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white';
 
@@ -190,6 +224,7 @@ export function PayItemFormulaPicker({
         <select
           value={sourceValue}
           onChange={(event) => onSource(event.target.value)}
+          onWheel={boFocusKhiLan}
           className={`${slot} ${tone}`}
         >
           <option value={NHAP_TAY}>Nhập số cố định…</option>
@@ -227,61 +262,76 @@ export function PayItemFormulaPicker({
           />
         )}
 
-        <span className="shrink-0 text-base text-slate-400">×</span>
+        {hienNhan ? (
+          <>
+          <span className="shrink-0 text-base text-slate-400">×</span>
 
-        <select
-          value={guided.variable ?? ''}
-          onChange={(event) => set({
-            variable: event.target.value || null,
-            // Không nhân thì không có gì để chia; để sót cờ này lại sẽ sinh ra
-            // `(MUC_RIENG / STANDARD_DAYS)` cụt đuôi ở lần bật lại sau.
-            prorate: event.target.value ? guided.prorate : false,
-          })}
-          // Không có vế tiền thì số liệu là tất cả những gì còn lại — bỏ trống
-          // nữa là công thức rỗng.
-          disabled={source.kind === 'NONE'}
-          className={`${slot} border-slate-200 bg-white disabled:opacity-60`}
-        >
-          <option value="">Không nhân</option>
-          <optgroup label="Lấy tự động từ chấm công và KPI">
-            {SYSTEM_VARIABLES.map((item) => (
-              <option key={item.code} value={item.code}>{item.label}</option>
-            ))}
-          </optgroup>
-          {inputCodes.length > 0 && (
-            <optgroup label="Số liệu quản lý nhập hằng tháng">
-              {inputCodes.map((item) => (
+          <select
+            value={guided.variable ?? ''}
+            onChange={(event) => set({
+              variable: event.target.value || null,
+              // Không nhân thì không có gì để chia; để sót cờ này lại sẽ sinh ra
+              // `(MUC_RIENG / STANDARD_DAYS)` cụt đuôi ở lần bật lại sau.
+              prorate: event.target.value ? guided.prorate : false,
+            })}
+            // Không có vế tiền thì số liệu là tất cả những gì còn lại — bỏ trống
+            // nữa là công thức rỗng.
+            onWheel={boFocusKhiLan}
+            disabled={source.kind === 'NONE'}
+            className={`${slot} border-slate-200 bg-white disabled:opacity-60`}
+          >
+            <option value="">Không nhân</option>
+            <optgroup label="Lấy tự động từ chấm công và KPI">
+              {SYSTEM_VARIABLES.map((item) => (
                 <option key={item.code} value={item.code}>{item.label}</option>
               ))}
             </optgroup>
-          )}
-        </select>
+            {inputCodes.length > 0 && (
+              <optgroup label="Số liệu quản lý nhập hằng tháng">
+                {inputCodes.map((item) => (
+                  <option key={item.code} value={item.code}>{item.label}</option>
+                ))}
+              </optgroup>
+            )}
+          </select>
 
-        <span className="shrink-0 text-base text-slate-400">×</span>
+          <span className="shrink-0 text-base text-slate-400">×</span>
 
-        <input
-          inputMode="decimal"
-          placeholder="hệ số"
-          value={guided.coefficient ?? ''}
-          onChange={(event) => set({
-            coefficient: event.target.value.replace(/[^\d.]/g, '') || null,
-          })}
-          className="w-[72px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center font-mono text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
-        />
+          <input
+            inputMode="decimal"
+            placeholder="hệ số"
+            value={guided.coefficient ?? ''}
+            onChange={(event) => set({
+              coefficient: event.target.value.replace(/[^\d.]/g, '') || null,
+            })}
+            className="w-[72px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center font-mono text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+          />
 
-        <button
-          type="button"
-          onClick={() => set({ percent: !guided.percent })}
-          aria-pressed={guided.percent}
-          title="Chia 100 — dùng khi khai theo phần trăm"
-          className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-sm font-bold transition ${
-            guided.percent
-              ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-              : 'border-slate-200 text-slate-400 hover:border-indigo-300'
-          }`}
-        >
-          ÷100
-        </button>
+          <button
+            type="button"
+            onClick={() => set({ percent: !guided.percent })}
+            aria-pressed={guided.percent}
+            title="Chia 100 — dùng khi khai theo phần trăm"
+            className={`shrink-0 rounded-lg border px-2.5 py-1.5 text-sm font-bold transition ${
+              guided.percent
+                ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                : 'border-slate-200 text-slate-400 hover:border-indigo-300'
+            }`}
+          >
+            ÷100
+          </button>
+          </>
+        ) : (
+          /* Khoản chỉ nhập một con số thì bốn ô kia là nhiễu: người
+             khai phải lướt qua chúng mỗi lần mà không bao giờ dùng. */
+          <button
+            type="button"
+            onClick={() => setMoRong(true)}
+            className="shrink-0 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-[11px] font-bold text-slate-400 transition hover:border-indigo-400 hover:text-indigo-600"
+          >
+            × nhân thêm
+          </button>
+        )}
       </div>
 
       {/* --- Chọn các khoản để cộng gộp --- */}
