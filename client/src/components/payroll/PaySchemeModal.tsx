@@ -259,6 +259,10 @@ export function PaySchemeModal({
       // gốc thật nằm ở khoản được đánh dấu trong danh mục.
       pay_basis: LEGACY_PAY_BASIS,
       base_amount: 0,
+      // Bốn trường dưới KHÔNG còn ô nhập trên màn. State của chúng nạp từ bản
+      // ghi hiện có ở `useEffect` khởi tạo, nên lưu lại là ghi đúng giá trị cũ
+      // chứ không phải mặc định — bỏ ô nhập mà ghi mặc định là âm thầm xoá
+      // thiết lập bảo hiểm/thuế của người ta.
       insurance_base: insuranceBase ? Number(insuranceBase) : null,
       insurance_enabled: insuranceEnabled,
       dependents: Number(dependents) || 0,

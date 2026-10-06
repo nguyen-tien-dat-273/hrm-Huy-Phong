@@ -1,29 +1,32 @@
 // ============================================================================
 // Khai cách tính một khoản lương bằng vài ô chọn.
 // ----------------------------------------------------------------------------
-// Trước đây mỗi khoản chỉ có một ô công thức trống và một bảng biến để tra.
-// Người làm nhân sự phải tự nghĩ ra `MUC_RIENG * PAID_DAYS` — mà gần như mọi
-// khoản trong bảng lương thật đều chỉ là một trong ba hình dạng:
+// Hỏi đúng hai câu mà nghiệp vụ thật chỉ có hai câu:
 //
-//     trả nguyên mức  ·  mức × số công  ·  mức ÷ công chuẩn × số công
+//   1. Khoản này CỐ ĐỊNH hay KHÔNG CỐ ĐỊNH?
+//   2. Nếu không cố định: đơn giá là gì, nhân với số liệu nào?
 //
-// Nên hỏi thẳng ba câu đó. Công thức vẫn được sinh ra và vẫn hiện nguyên văn
-// ở dưới, vì cuối cùng engine chạy trên chuỗi đó chứ không chạy trên ô chọn —
-// giấu nó đi thì lúc sai không ai soát được.
+// Số liệu tháng không phải khai thêm ở đâu: màn "Số liệu lương tháng" quét
+// công thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu.
+// Chọn `SO_CHUYEN` ở đây thì tháng sau quản lý đã có ô để điền — nên màn này
+// nói rõ điều đó thay vì để người khai tự hỏi "rồi ai nhập con số kia".
 //
-// Công thức viết tay không khớp ba hình dạng trên thì màn này tự nhường chỗ
+// Công thức sinh ra vẫn hiện NGUYÊN VĂN ở dưới, vì cuối cùng engine chạy trên
+// chuỗi đó chứ không chạy trên ô chọn — giấu đi thì lúc sai không ai soát được.
+//
+// Công thức viết tay không khớp hai hình dạng trên thì màn này tự nhường chỗ
 // cho ô tự do, không đoán bừa rồi ghi đè. Xem `lib/payItemFormula.ts`.
 // ============================================================================
 
 import { useMemo } from 'react';
-import { Calculator, PenLine } from 'lucide-react';
+import { Calculator, PenLine, TriangleAlert } from 'lucide-react';
 import { Input, Select } from '@/components/ui/Input';
 import { evaluateFormula } from '@/lib/payrollFormula';
 import { formatVND } from '@/lib/utils';
 import {
   buildPayFormula, describePayFormula, parsePayFormula,
-  DAYS_LABEL, DEFAULT_GUIDED, SCALE_LABEL,
-  type GuidedPayFormula, type PayItemDays, type PayItemScale,
+  DEFAULT_GUIDED, SYSTEM_VARIABLES,
+  type GuidedPayFormula,
 } from '@/lib/payItemFormula';
 import type { PayComponent } from '@/types';
 
@@ -31,15 +34,13 @@ interface Props {
   /** Công thức hiện tại, dạng chuỗi — thứ thật sự được lưu và chạy. */
   formula: string;
   onFormulaChange: (next: string) => void;
-  /** Mức tiền khai riêng cho người này (biến `MUC_RIENG`). */
+  /** Đơn giá khai riêng cho người này (biến `MUC_RIENG`). */
   amount: string;
   onAmountChange: (next: string) => void;
-  /** Danh mục khoản, để chọn "lấy mức từ khoản khác". */
   components: PayComponent[];
   /** Khoản đang khai — tự loại khỏi danh sách để không tự tham chiếu chính nó. */
   selfCode?: string | null;
   sampleScope: Readonly<Record<string, number>>;
-  /** Chuyển sang ô công thức tự do. */
   onWriteByHand: () => void;
 }
 
@@ -47,13 +48,29 @@ export function PayItemFormulaPicker({
   formula, onFormulaChange, amount, onAmountChange,
   components, selfCode, sampleScope, onWriteByHand,
 }: Props) {
-  // Chỉ nhận mã của khoản ĐANG BẬT, và bỏ chính nó ra: một khoản tham chiếu
-  // chính mình sẽ thành vòng lặp, engine bắt được nhưng báo lỗi khó hiểu.
+  // Chỉ nhận khoản ĐANG BẬT, và bỏ chính nó ra: một khoản tham chiếu chính
+  // mình sẽ thành vòng lặp, engine bắt được nhưng báo lỗi khó hiểu.
   const usable = useMemo(
     () => components.filter((item) => item.is_active && item.code && item.code !== selfCode),
     [components, selfCode],
   );
   const codes = useMemo(() => usable.map((item) => item.code), [usable]);
+
+  /**
+   * Mã số liệu tháng mà công ty đã dùng ở đâu đó trong danh mục.
+   *
+   * Gợi ý từ dữ liệu thật thay vì bắt người khai tự nghĩ ra mã — và gõ trùng
+   * mã đã có nghĩa là dùng chung một cột nhập liệu, không đẻ thêm cột mới.
+   */
+  const inputCodes = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const item of components) {
+      if (item.is_active && item.input_code && !seen.has(item.input_code)) {
+        seen.set(item.input_code, item.name);
+      }
+    }
+    return [...seen].map(([code, name]) => ({ code, label: `${code} — ${name}` }));
+  }, [components]);
 
   const guided = parsePayFormula(formula, codes) ?? DEFAULT_GUIDED;
   const set = (patch: Partial<GuidedPayFormula>) =>
@@ -62,8 +79,7 @@ export function PayItemFormulaPicker({
   const generated = buildPayFormula(guided);
   const preview = useMemo(() => {
     try {
-      const scope = { ...sampleScope, MUC_RIENG: Number(amount || 0) };
-      return evaluateFormula(generated, scope).value;
+      return evaluateFormula(generated, { ...sampleScope, MUC_RIENG: Number(amount || 0) }).value;
     } catch {
       return null;
     }
@@ -72,23 +88,50 @@ export function PayItemFormulaPicker({
   const sourceName = guided.source.kind === 'COMPONENT'
     ? usable.find((item) => item.code === (guided.source as { code: string }).code)?.name
     : undefined;
+  const variableName = guided.variable
+    ? SYSTEM_VARIABLES.find((item) => item.code === guided.variable)?.label ?? guided.variable
+    : undefined;
 
-  /** Nhãn ô tiền đổi theo cách nhân, để không ai nhập lương tháng vào ô đơn giá ngày. */
-  const amountLabel = guided.scale === 'PER_DAY'
-    ? 'Đơn giá một ngày (VND)'
-    : guided.scale === 'PRORATE'
-      ? 'Lương một tháng (VND)'
-      : 'Mức cố định (VND)';
+  const isFixed = !guided.variable;
+  /** Số liệu do công ty tự đặt, không phải biến hệ thống → cần người nhập hằng tháng. */
+  const needsMonthlyEntry = !!guided.variable
+    && !SYSTEM_VARIABLES.some((item) => item.code === guided.variable);
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Cách tính khoản này</p>
+      {/* --- Câu 1: cố định hay không --- */}
+      <div className="flex flex-wrap gap-2">
+        {([
+          [true, 'Cố định', 'Tháng nào cũng bằng đó tiền'],
+          [false, 'Không cố định', 'Đơn giá × số liệu theo tháng'],
+        ] as const).map(([fixed, label, hint]) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => set({
+              // Bật "không cố định" thì phải có sẵn một số nhân, nếu không
+              // công thức sinh ra vẫn là khoản cố định và nút trông như hỏng.
+              variable: fixed ? null : (guided.variable ?? 'PAID_DAYS'),
+              prorate: fixed ? false : guided.prorate,
+            })}
+            aria-pressed={isFixed === fixed}
+            className={`flex-1 rounded-lg border-2 px-3 py-2 text-left transition ${
+              isFixed === fixed
+                ? 'border-indigo-600 bg-indigo-50'
+                : 'border-slate-200 bg-white hover:border-indigo-300'
+            }`}
+          >
+            <span className="block text-xs font-bold text-slate-800">{label}</span>
+            <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">{hint}</span>
+          </button>
+        ))}
+      </div>
 
-      {/* --- Vế trái: mức tiền lấy từ đâu --- */}
+      {/* --- Câu 2a: đơn giá lấy từ đâu --- */}
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
           {([
-            ['FIXED', 'Số khai riêng'],
+            ['FIXED', isFixed ? 'Nhập số tiền' : 'Nhập đơn giá'],
             ['COMPONENT', 'Lấy từ khoản khác'],
           ] as const).map(([kind, label]) => (
             <button
@@ -114,7 +157,7 @@ export function PayItemFormulaPicker({
 
         {guided.source.kind === 'FIXED' ? (
           <Input
-            label={amountLabel}
+            label={isFixed ? 'Số tiền mỗi tháng (VND)' : 'Đơn giá một đơn vị (VND)'}
             inputMode="decimal"
             placeholder="VD: 200000"
             value={amount}
@@ -122,7 +165,7 @@ export function PayItemFormulaPicker({
           />
         ) : (
           <Select
-            label="Lấy mức từ khoản"
+            label={isFixed ? 'Lấy số tiền từ khoản' : 'Lấy đơn giá từ khoản'}
             value={guided.source.code}
             onChange={(event) => set({ source: { kind: 'COMPONENT', code: event.target.value } })}
           >
@@ -133,44 +176,64 @@ export function PayItemFormulaPicker({
         )}
       </div>
 
-      {/* --- Vế phải: nhân số công kiểu gì --- */}
-      <div className="space-y-2">
-        {(['NONE', 'PER_DAY', 'PRORATE'] as PayItemScale[]).map((scale) => (
-          <label key={scale} className="flex cursor-pointer items-start gap-2 rounded-lg px-1 py-0.5">
+      {/* --- Câu 2b: nhân với số liệu nào --- */}
+      {!isFixed && (
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5">
+          <Select
+            label="Nhân với số liệu"
+            value={guided.variable ?? ''}
+            onChange={(event) => set({ variable: event.target.value })}
+          >
+            <optgroup label="Lấy tự động từ chấm công">
+              {SYSTEM_VARIABLES.map((item) => (
+                <option key={item.code} value={item.code}>{item.label}</option>
+              ))}
+            </optgroup>
+            {inputCodes.length > 0 && (
+              <optgroup label="Số liệu quản lý nhập hằng tháng">
+                {inputCodes.map((item) => (
+                  <option key={item.code} value={item.code}>{item.label}</option>
+                ))}
+              </optgroup>
+            )}
+          </Select>
+
+          <label className="flex cursor-pointer items-start gap-2">
             <input
-              type="radio"
-              name={`scale-${selfCode ?? 'new'}`}
-              checked={guided.scale === scale}
-              onChange={() => set({ scale })}
+              type="checkbox"
+              checked={guided.prorate}
+              onChange={(event) => set({ prorate: event.target.checked })}
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
-            <span className="text-xs leading-relaxed text-slate-700">{SCALE_LABEL[scale]}</span>
+            <span className="text-[11px] leading-relaxed text-slate-700">
+              Đơn giá đang khai theo <strong>tháng</strong> — chia cho ngày công chuẩn trước khi
+              nhân. Dùng cho lương tháng trả theo ngày thực đi.
+            </span>
           </label>
-        ))}
 
-        {guided.scale !== 'NONE' && (
-          <Select
-            label="Đếm công theo"
-            value={guided.days}
-            onChange={(event) => set({ days: event.target.value as PayItemDays })}
-          >
-            {(Object.keys(DAYS_LABEL) as PayItemDays[]).map((key) => (
-              <option key={key} value={key}>{DAYS_LABEL[key]}</option>
-            ))}
-          </Select>
-        )}
-      </div>
+          {needsMonthlyEntry && (
+            /* Nói trước ai sẽ nhập con số kia, để không ai khai xong rồi chờ
+               một ô nhập liệu mà họ tưởng phải tự tạo. */
+            <p className="flex items-start gap-1.5 rounded bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-800">
+              <TriangleAlert className="mt-0.5 h-3 w-3 flex-shrink-0" />
+              <span>
+                <code className="font-mono font-bold">{guided.variable}</code> là số liệu thay đổi
+                theo tháng. Cột nhập cho nó tự hiện ở màn <strong>Số liệu lương tháng</strong>;
+                tháng nào chưa điền thì khoản này tính ra 0đ.
+              </span>
+            </p>
+          )}
+        </div>
+      )}
 
-      {/* --- Công thức sinh ra, hiện nguyên văn ---
-           Engine chạy trên chuỗi này chứ không chạy trên các ô chọn ở trên.
-           Giấu đi thì lúc con số ra sai không ai soát được bằng mắt. */}
+      {/* --- Công thức sinh ra, hiện nguyên văn --- */}
       <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
         <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
           <Calculator className="h-3 w-3" /> Công thức
         </p>
         <code className="mt-1 block break-words font-mono text-xs text-indigo-700">{generated}</code>
         <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
-          {describePayFormula(guided, sourceName)}
+          {describePayFormula(guided, { source: sourceName, variable: variableName })}
         </p>
         {preview != null && (
           <p className="mt-1 text-[11px] font-semibold text-slate-700">

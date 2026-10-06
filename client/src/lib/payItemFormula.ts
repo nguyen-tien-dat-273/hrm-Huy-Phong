@@ -1,14 +1,17 @@
 // ============================================================================
-// Công thức của MỘT khoản lương, khai bằng vài ô chọn thay vì gõ biểu thức.
+// Công thức của MỘT khoản lương, khai bằng vài ô chọn.
 // ----------------------------------------------------------------------------
-// Gần như mọi khoản trong bảng lương thật đều có cùng một hình dạng:
+// Khoản lương trong thực tế chỉ có hai loại:
 //
-//     (một mức tiền)  ×  (số công)
+//   CỐ ĐỊNH       Tháng nào cũng bằng đó tiền. Nhập thẳng số tiền.
+//   KHÔNG CỐ ĐỊNH Một ĐƠN GIÁ nhân với một SỐ LIỆU thay đổi theo tháng.
+//                 Đơn giá lấy từ một khoản cố định đã khai, hoặc nhập tay.
+//                 Số liệu là ngày công, giờ công, số chuyến, sản lượng...
 //
-// Mức tiền lấy từ một con số cố định khai cho người đó, hoặc từ một khoản khác
-// đã có trong danh mục. Số công thì hoặc không nhân (trả nguyên mức cả tháng),
-// hoặc nhân thẳng (mức là đơn giá NGÀY), hoặc chia công chuẩn rồi nhân công
-// thực tế (mức là lương THÁNG, trả theo ngày đi làm).
+// Số liệu tháng KHÔNG phải khai thêm ở đâu cả: `MonthlyInputsTab` quét công
+// thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu cho nó
+// ở màn "Số liệu lương tháng". Nên chọn `SO_CHUYEN` ở đây là tháng sau quản lý
+// đã có ô để điền.
 //
 // Tách khỏi component React CÓ CHỦ ĐÍCH: đây là logic ra tiền, phải kiểm
 // chứng được bằng `npm run check:flows` mà không phải dựng cây React lên.
@@ -19,75 +22,70 @@
 // thay vì bịa ra một cách khai gần đúng rồi ghi đè mất công thức thật.
 // ============================================================================
 
-/** Mức tiền lấy từ đâu. */
+/** Đơn giá lấy từ đâu. */
 export type PayItemSource =
   /** Con số khai riêng cho người này, vào biến `MUC_RIENG`. */
   | { kind: 'FIXED' }
   /** Một khoản khác trong danh mục, gọi theo mã của nó. */
   | { kind: 'COMPONENT'; code: string };
 
-/** Nhân với số công kiểu gì. */
-export type PayItemScale =
-  /** Trả nguyên mức, không phụ thuộc ngày công. */
-  | 'NONE'
-  /** Mức là đơn giá MỘT NGÀY, nhân thẳng số công. */
-  | 'PER_DAY'
-  /** Mức là lương MỘT THÁNG, chia công chuẩn rồi nhân công thực tế. */
-  | 'PRORATE';
-
-/** Đếm công theo cột nào. */
-export type PayItemDays = 'PAID_DAYS' | 'WORK_DAYS';
-
 export interface GuidedPayFormula {
   source: PayItemSource;
-  scale: PayItemScale;
-  days: PayItemDays;
+  /**
+   * Biến nhân vào đơn giá. `null` = khoản CỐ ĐỊNH, trả nguyên đơn giá.
+   *
+   * Có thể là biến hệ thống (`PAID_DAYS`, `WORK_HOURS`...) hoặc một mã số liệu
+   * tháng do công ty tự đặt (`SO_CHUYEN`, `SAN_LUONG`...).
+   */
+  variable: string | null;
+  /**
+   * Chia đơn giá cho ngày công chuẩn trước khi nhân.
+   *
+   * Dùng khi đơn giá khai theo THÁNG mà trả theo ngày thực đi: lương tháng
+   * 15 triệu, đi 22/24,5 công thì nhận 15tr ÷ 24,5 × 22.
+   */
+  prorate: boolean;
 }
 
-export const SCALE_LABEL: Record<PayItemScale, string> = {
-  NONE: 'Trả nguyên mức, không nhân số công',
-  PER_DAY: 'Mức là đơn giá một ngày — nhân với số công',
-  PRORATE: 'Mức là lương một tháng — chia công chuẩn, nhân công thực tế',
-};
+/** Biến hệ thống dùng được làm số nhân, kèm tên tiếng Việt. */
+export const SYSTEM_VARIABLES: ReadonlyArray<{ code: string; label: string }> = [
+  { code: 'PAID_DAYS', label: 'Ngày hưởng lương (đi làm + phép + lễ)' },
+  { code: 'WORK_DAYS', label: 'Ngày đi làm thực tế' },
+  { code: 'WORK_HOURS', label: 'Giờ làm thực tế' },
+  { code: 'LEAVE_DAYS', label: 'Ngày nghỉ phép' },
+  { code: 'HOLIDAY_DAYS', label: 'Ngày nghỉ lễ' },
+];
 
-export const DAYS_LABEL: Record<PayItemDays, string> = {
-  PAID_DAYS: 'Ngày hưởng lương (đi làm + phép + lễ)',
-  WORK_DAYS: 'Ngày đi làm thực tế',
-};
+const SYSTEM_CODES = new Set(SYSTEM_VARIABLES.map((item) => item.code));
 
 export const DEFAULT_GUIDED: GuidedPayFormula = {
   source: { kind: 'FIXED' },
-  scale: 'PER_DAY',
-  days: 'PAID_DAYS',
+  variable: null,
+  prorate: false,
 };
 
-/** Vế trái: tên biến mang mức tiền. */
 function sourceCode(source: PayItemSource): string {
   return source.kind === 'FIXED' ? 'MUC_RIENG' : source.code;
 }
 
 export function buildPayFormula(guided: GuidedPayFormula): string {
   const base = sourceCode(guided.source);
-  switch (guided.scale) {
-    case 'NONE':
-      return base;
-    case 'PER_DAY':
-      return `${base} * ${guided.days}`;
-    case 'PRORATE':
-      // Ngoặc quanh phép chia để đọc ra ngay là "đơn giá ngày × số công";
-      // không có ngoặc thì vẫn đúng thứ tự nhưng khó soát bằng mắt.
-      return `(${base} / STANDARD_DAYS) * ${guided.days}`;
-    default:
-      return base;
-  }
+  if (!guided.variable) return base;
+  // Ngoặc quanh phép chia để đọc ra ngay là "đơn giá ngày × số liệu"; không có
+  // ngoặc thì vẫn đúng thứ tự nhưng khó soát bằng mắt.
+  const unit = guided.prorate ? `(${base} / STANDARD_DAYS)` : base;
+  return `${unit} * ${guided.variable}`;
 }
 
-const DAYS_RE = '(PAID_DAYS|WORK_DAYS)';
-const NAME_RE = '([A-Z][A-Z0-9_]*)';
+const NAME = '([A-Z][A-Z0-9_]*)';
 
 /**
  * Đọc ngược một công thức về các ô chọn. Trả null nếu nó không đúng hình dạng
  * mà màn hình này sinh ra — khi đó phải giữ nguyên công thức tự do.
+ *
+ * `knownCodes` là mã các khoản trong danh mục. Chỉ nhận đơn giá là MUC_RIENG
+ * hoặc một mã CÓ THẬT: nhận bừa mọi chữ hoa sẽ biến `GROSS * PAID_DAYS` thành
+ * "khoản tên GROSS", rồi lưu lại là hỏng.
  */
 export function parsePayFormula(
   formula: string | null | undefined,
@@ -98,33 +96,36 @@ export function parsePayFormula(
 
   const asSource = (name: string): PayItemSource | null => {
     if (name === 'MUC_RIENG') return { kind: 'FIXED' };
-    // Chỉ nhận mã có thật trong danh mục. Nhận bừa mọi chữ hoa sẽ biến
-    // `GROSS * PAID_DAYS` thành "khoản tên GROSS", rồi lưu lại là hỏng.
     return knownCodes.includes(name) ? { kind: 'COMPONENT', code: name } : null;
   };
 
-  let match = new RegExp(`^\\(\\s*${NAME_RE}\\s*/\\s*STANDARD_DAYS\\s*\\)\\s*\\*\\s*${DAYS_RE}$`).exec(text);
-  if (match) {
+  /** Số nhân nhận biến hệ thống hoặc mã số liệu tháng, nhưng KHÔNG nhận tên
+   *  một khoản khác — `A * B` giữa hai khoản không phải hình dạng này. */
+  const asVariable = (name: string): string | null => {
+    if (SYSTEM_CODES.has(name)) return name;
+    if (knownCodes.includes(name) || name === 'MUC_RIENG' || name === 'STANDARD_DAYS') return null;
+    return name;
+  };
+
+  const patterns: Array<[RegExp, boolean]> = [
+    [new RegExp(`^\\(\\s*${NAME}\\s*/\\s*STANDARD_DAYS\\s*\\)\\s*\\*\\s*${NAME}$`), true],
+    [new RegExp(`^${NAME}\\s*/\\s*STANDARD_DAYS\\s*\\*\\s*${NAME}$`), true],
+    [new RegExp(`^${NAME}\\s*\\*\\s*${NAME}$`), false],
+  ];
+
+  for (const [pattern, prorate] of patterns) {
+    const match = pattern.exec(text);
+    if (!match) continue;
     const source = asSource(match[1]);
-    return source ? { source, scale: 'PRORATE', days: match[2] as PayItemDays } : null;
+    const variable = asVariable(match[2]);
+    if (!source || !variable) return null;
+    return { source, variable, prorate };
   }
 
-  match = new RegExp(`^${NAME_RE}\\s*/\\s*STANDARD_DAYS\\s*\\*\\s*${DAYS_RE}$`).exec(text);
-  if (match) {
-    const source = asSource(match[1]);
-    return source ? { source, scale: 'PRORATE', days: match[2] as PayItemDays } : null;
-  }
-
-  match = new RegExp(`^${NAME_RE}\\s*\\*\\s*${DAYS_RE}$`).exec(text);
-  if (match) {
-    const source = asSource(match[1]);
-    return source ? { source, scale: 'PER_DAY', days: match[2] as PayItemDays } : null;
-  }
-
-  match = new RegExp(`^${NAME_RE}$`).exec(text);
-  if (match) {
-    const source = asSource(match[1]);
-    return source ? { source, scale: 'NONE', days: 'PAID_DAYS' } : null;
+  const plain = new RegExp(`^${NAME}$`).exec(text);
+  if (plain) {
+    const source = asSource(plain[1]);
+    return source ? { source, variable: null, prorate: false } : null;
   }
 
   return null;
@@ -133,19 +134,16 @@ export function parsePayFormula(
 /** Câu tiếng Việt mô tả cách tính, đặt cạnh công thức sinh ra. */
 export function describePayFormula(
   guided: GuidedPayFormula,
-  componentName?: string,
+  names: { source?: string; variable?: string } = {},
 ): string {
-  const what = guided.source.kind === 'FIXED'
+  const unit = guided.source.kind === 'FIXED'
     ? 'mức khai riêng cho người này'
-    : `khoản ${componentName || guided.source.code}`;
-  switch (guided.scale) {
-    case 'NONE':
-      return `Trả đúng ${what}, không phụ thuộc ngày công.`;
-    case 'PER_DAY':
-      return `Lấy ${what} làm đơn giá một ngày, nhân với ${DAYS_LABEL[guided.days].toLowerCase()}.`;
-    case 'PRORATE':
-      return `Lấy ${what} làm lương tháng, chia ngày công chuẩn rồi nhân ${DAYS_LABEL[guided.days].toLowerCase()}.`;
-    default:
-      return '';
-  }
+    : `khoản ${names.source || guided.source.code}`;
+
+  if (!guided.variable) return `Trả đúng ${unit} mỗi tháng, không phụ thuộc gì.`;
+
+  const by = names.variable || guided.variable;
+  return guided.prorate
+    ? `Lấy ${unit} làm mức THÁNG, chia ngày công chuẩn rồi nhân ${by}.`
+    : `Lấy ${unit} làm ĐƠN GIÁ, nhân với ${by}.`;
 }

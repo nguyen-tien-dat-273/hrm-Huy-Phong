@@ -229,25 +229,35 @@ check('ngày kết thúc trước ngày bắt đầu trả 0',
 
 // --- Công thức một khoản lương, khai bằng ô chọn ----------------------------
 //
+// Hai loại khoản: CỐ ĐỊNH (trả nguyên đơn giá) và KHÔNG CỐ ĐỊNH (đơn giá nhân
+// một số liệu thay đổi theo tháng).
+//
 // `parsePayFormula` phải là chiều ngược ĐÚNG của `buildPayFormula`: mở lại một
 // cơ chế đã khai mà các ô chọn hiện sai thì bấm Lưu một cái là ghi đè mất công
 // thức thật của người ta.
 const MA_KHOAN = ['LUONG_CB', 'PC_XANG'];
 
-check('nhân thẳng số công',
-  buildPayFormula({ source: { kind: 'FIXED' }, scale: 'PER_DAY', days: 'PAID_DAYS' }),
-  'MUC_RIENG * PAID_DAYS');
-check('không nhân thì giữ nguyên mức',
-  buildPayFormula({ source: { kind: 'FIXED' }, scale: 'NONE', days: 'PAID_DAYS' }), 'MUC_RIENG');
-check('chia công chuẩn rồi nhân công thực tế',
-  buildPayFormula({ source: { kind: 'COMPONENT', code: 'LUONG_CB' }, scale: 'PRORATE', days: 'WORK_DAYS' }),
-  '(LUONG_CB / STANDARD_DAYS) * WORK_DAYS');
+check('cố định: trả nguyên mức khai riêng',
+  buildPayFormula({ source: { kind: 'FIXED' }, variable: null, prorate: false }), 'MUC_RIENG');
+check('cố định: trả nguyên một khoản khác',
+  buildPayFormula({ source: { kind: 'COMPONENT', code: 'PC_XANG' }, variable: null, prorate: false }),
+  'PC_XANG');
+check('không cố định: đơn giá × số liệu tháng',
+  buildPayFormula({ source: { kind: 'FIXED' }, variable: 'SO_CHUYEN', prorate: false }),
+  'MUC_RIENG * SO_CHUYEN');
+check('không cố định: lấy đơn giá từ khoản khác',
+  buildPayFormula({ source: { kind: 'COMPONENT', code: 'LUONG_CB' }, variable: 'WORK_HOURS', prorate: false }),
+  'LUONG_CB * WORK_HOURS');
+check('chia công chuẩn rồi nhân ngày công thực tế',
+  buildPayFormula({ source: { kind: 'COMPONENT', code: 'LUONG_CB' }, variable: 'PAID_DAYS', prorate: true }),
+  '(LUONG_CB / STANDARD_DAYS) * PAID_DAYS');
 
-// Đi vòng tròn build → parse → build phải ra đúng chuỗi ban đầu, cho cả 12 tổ hợp.
+// Đi vòng tròn build -> parse -> build cho mọi tổ hợp.
 for (const source of [{ kind: 'FIXED' as const }, { kind: 'COMPONENT' as const, code: 'PC_XANG' }]) {
-  for (const scale of ['NONE', 'PER_DAY', 'PRORATE'] as const) {
-    for (const days of ['PAID_DAYS', 'WORK_DAYS'] as const) {
-      const sinh = buildPayFormula({ source, scale, days });
+  for (const variable of [null, 'PAID_DAYS', 'WORK_HOURS', 'SO_CHUYEN']) {
+    for (const prorate of [false, true]) {
+      if (!variable && prorate) continue;   // không nhân thì không có gì để chia
+      const sinh = buildPayFormula({ source, variable, prorate });
       const doc = parsePayFormula(sinh, MA_KHOAN);
       check(`đi vòng tròn: ${sinh}`, doc ? buildPayFormula(doc) : null, sinh);
     }
@@ -258,15 +268,19 @@ for (const source of [{ kind: 'FIXED' as const }, { kind: 'COMPONENT' as const, 
 // do — đoán bừa rồi ghi đè là mất công thức người dùng đã viết tay.
 check('công thức lạ không nhận dạng được',
   parsePayFormula('IF(WORK_DAYS > 20, MUC_RIENG, 0)', MA_KHOAN), null);
-check('mã khoản không có trong danh mục thì không nhận',
+check('đơn giá là mã khoản không có thật thì không nhận',
   parsePayFormula('KHONG_CO * PAID_DAYS', MA_KHOAN), null);
-check('biến hệ thống không bị nhầm thành khoản',
+check('biến hệ thống không bị nhầm thành đơn giá',
   parsePayFormula('GROSS * PAID_DAYS', MA_KHOAN), null);
+// Hai khoản nhân nhau không phải hình dạng "đơn giá × số liệu" — số nhân phải
+// là biến hệ thống hoặc mã số liệu tháng, không phải một khoản lương khác.
+check('hai khoản nhân nhau không nhận',
+  parsePayFormula('LUONG_CB * PC_XANG', MA_KHOAN), null);
 check('công thức rỗng trả null', parsePayFormula('', MA_KHOAN), null);
 check('khoảng trắng thừa vẫn đọc được',
-  parsePayFormula('  MUC_RIENG  *  PAID_DAYS  ', MA_KHOAN)?.scale, 'PER_DAY');
+  parsePayFormula('  MUC_RIENG  *  SO_CHUYEN  ', MA_KHOAN)?.variable, 'SO_CHUYEN');
 check('thiếu ngoặc vẫn đọc được dạng chia công chuẩn',
-  parsePayFormula('LUONG_CB / STANDARD_DAYS * PAID_DAYS', MA_KHOAN)?.scale, 'PRORATE');
+  parsePayFormula('LUONG_CB / STANDARD_DAYS * PAID_DAYS', MA_KHOAN)?.prorate, true);
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
