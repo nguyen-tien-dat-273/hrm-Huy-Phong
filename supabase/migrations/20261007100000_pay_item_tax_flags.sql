@@ -28,7 +28,7 @@ comment on column public.employee_pay_items.is_base is
 -- Moi nguoi chi duoc MOT khoan luong goc.
 --
 -- Khong co rang buoc nay thi hai khoan cung bat is_base se cho ra don gia gio
--- khac nhau tuy dong nao doc truoc — sai tien tang ca mot cach khong lap lai
+-- khac nhau tuy dong nao doc truoc - sai tien tang ca mot cach khong lap lai
 -- duoc, nen rat kho tim.
 --
 -- Chi dem cac dong CON HIEU LUC (effective_to is null): mot nguoi doi khoan

@@ -7,14 +7,14 @@
 --      -> Cong thuc tinh luong -> Ket qua
 --
 -- Truoc do chi `STANDARD_DAYS` (ngay cong chuan) vao duoc cong thuc. Cac tham
--- so con lai — he so OT, don gia van chuyen, he so doanh so, dinh muc KPI —
+-- so con lai - he so OT, don gia van chuyen, he so doanh so, dinh muc KPI -
 -- khong co duong nao tham chieu toi, nen nguoi khai phai go thang con so vao
 -- tung cong thuc cua tung nguoi. Doi chinh sach la phai sua lai tay tung chO.
 --
 -- Bang nay cho khai tham so theo MA, roi dung ma do nhu mot bien trong cong
 -- thuc o Co che luong. Dung bang chu khong phai them cot: dac ta UC-PAY-02 ghi
 -- "Tuyet doi khong hard-code cac con so phap ly, noi bo trong code phan mem",
--- va NFR-MAINT-01 doi "thay doi tham so qua UI, 0% re-deploy" — them mot tham
+-- va NFR-MAINT-01 doi "thay doi tham so qua UI, 0% re-deploy" - them mot tham
 -- so moi khong duoc phep can sua code.
 --
 -- Cac ty le bao hiem va thue van o `payroll_settings`: engine dung chung theo
@@ -59,7 +59,7 @@ create policy payroll_named_params_write on public.payroll_named_params
 --
 -- Gia tri he so OT lay tu Dieu 98 BLLD 2019 va muc 8 cua dac ta: 150% ngay
 -- thuong, 200% ngay nghi hang tuan, 300% ngay le. Cac don gia rieng cua Huy
--- Phong de 0 — chua co so trong tai lieu, va de 0 thi cong thuc ra 0d, de
+-- Phong de 0 - chua co so trong tai lieu, va de 0 thi cong thuc ra 0d, de
 -- nhin ra la chua khai, hon la doan mot con so roi tra sai luong.
 insert into public.payroll_named_params (code, name, value, unit, sort_order, note)
 values
