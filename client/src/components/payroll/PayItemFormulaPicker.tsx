@@ -88,12 +88,19 @@ export function PayItemFormulaPicker({
     [usable, assigned],
   );
 
-  /** Mã số liệu tháng mà công ty đã dùng ở đâu đó trong danh mục. */
+  /**
+   * Mã số liệu tháng mà công ty đã dùng ở đâu đó trong danh mục.
+   *
+   * Nhãn PHẢI kèm mã. Số liệu tháng lấy tên theo khoản dùng nó, nên khoản
+   * "Lương vận chuyển" (`LUONG_VAN_CHUYEN`) và số chuyến của nó (`SO_CHUYEN`)
+   * hiện ra hai dòng TRÙNG TÊN trong cùng một ô chọn — một dòng là tiền, một
+   * dòng là số đếm, chọn nhầm là sai tiền mà nhìn không ra.
+   */
   const inputCodes = useMemo(() => {
     const seen = new Map<string, string>();
     for (const item of components) {
       if (item.is_active && item.input_code && !seen.has(item.input_code)) {
-        seen.set(item.input_code, item.name);
+        seen.set(item.input_code, `${item.name} (${item.input_code})`);
       }
     }
     return [...seen].map(([code, label]) => ({ code, label }));
@@ -133,16 +140,33 @@ export function PayItemFormulaPicker({
   const coNhanChia = !!guided.variable || !!guided.coefficient || guided.percent;
   // Không có vế tiền thì số liệu là tất cả những gì còn lại — không giấu được.
   const hienNhan = moRong || coNhanChia || source.kind === 'NONE';
+  /**
+   * Đang ở chế độ cộng gộp — trạng thái RIÊNG, không suy từ công thức.
+   *
+   * Tổng của MỘT mã sinh ra chuỗi y hệt một mã lẻ (`LUONG_VAN_CHUYEN`), nên
+   * đọc lại nó ra `CODE` chứ không ra `SUM`. Suy từ công thức thì vừa bấm
+   * "Cộng nhiều khoản" là màn hình nhảy ngay về một khoản đơn, các nút cộng
+   * biến mất, và không bao giờ cộng được mã thứ hai.
+   */
+  const [gopThuCong, setGopThuCong] = useState(false);
+
+  /** Các mã đang cộng; `null` nghĩa là không ở chế độ cộng gộp. */
+  const sumCodes: string[] | null = source.kind === 'SUM' ? [...source.codes]
+    : !gopThuCong ? null
+    // Vừa bật gộp từ một khoản lẻ: chính khoản đó là thành viên đầu tiên.
+    : source.kind === 'CODE' ? [source.code]
+    : [];
+  const dangGop = sumCodes !== null;
+
   /** Giá trị đang chọn ở ô vế tiền. */
-  const sourceValue = source.kind === 'FIXED' ? NHAP_TAY
+  const sourceValue = dangGop ? CONG_GOP
+    : source.kind === 'FIXED' ? NHAP_TAY
     : source.kind === 'NONE' ? KHONG_CO
     : source.kind === 'SUM' ? CONG_GOP
     : source.code;
 
   /** Các mã mà công thức đang trỏ tới. */
-  const referenced = source.kind === 'CODE' ? [source.code]
-    : source.kind === 'SUM' ? [...source.codes]
-    : [];
+  const referenced = sumCodes ?? (source.kind === 'CODE' ? [source.code] : []);
   /**
    * Khoản mà CHÍNH NGƯỜI NÀY chưa được gán.
    *
@@ -164,10 +188,15 @@ export function PayItemFormulaPicker({
     : null;
 
   const onSource = (value: string) => {
-    if (value === NHAP_TAY) return set({ source: { kind: 'FIXED' } });
     if (value === CONG_GOP) {
-      return set({ source: { kind: 'SUM', codes: daKhai.slice(0, 1).map((item) => item.code) } });
+      setGopThuCong(true);
+      // Đang trỏ một khoản thì GIỮ NGUYÊN công thức, khoản đó thành thành viên
+      // đầu. Không thì mở ra với danh sách rỗng để người dùng tự tick.
+      if (source.kind !== 'CODE') set({ source: { kind: 'SUM', codes: [] } });
+      return;
     }
+    setGopThuCong(false);
+    if (value === NHAP_TAY) return set({ source: { kind: 'FIXED' } });
     if (value === KHONG_CO) {
       // Không có vế tiền thì PHẢI có số liệu, nếu không công thức rỗng. Và
       // không còn gì để chia cho ngày công chuẩn.
@@ -179,10 +208,10 @@ export function PayItemFormulaPicker({
 
   /** Bật/tắt một mã trong phép cộng gộp. */
   const toggleSum = (code: string) => {
-    if (source.kind !== 'SUM') return;
-    const next = source.codes.includes(code)
-      ? source.codes.filter((item) => item !== code)
-      : [...source.codes, code];
+    if (!sumCodes) return;
+    const next = sumCodes.includes(code)
+      ? sumCodes.filter((item) => item !== code)
+      : [...sumCodes, code];
     set({ source: { kind: 'SUM', codes: next } });
   };
 
@@ -335,10 +364,10 @@ export function PayItemFormulaPicker({
       </div>
 
       {/* --- Chọn các khoản để cộng gộp --- */}
-      {source.kind === 'SUM' && (
+      {sumCodes && (
         <div className="flex flex-wrap gap-1.5 rounded-lg bg-slate-50 px-2.5 py-2">
           {sumChoices.map((item) => {
-            const on = source.codes.includes(item.code);
+            const on = sumCodes.includes(item.code);
             return (
               <button
                 key={item.code}
