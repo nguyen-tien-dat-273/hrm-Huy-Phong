@@ -136,7 +136,14 @@ export function PaySchemeModal({
       // Công thức đã lưu mà các ô chọn không đọc nổi thì mở thẳng ô tự do —
       // hiện ô chọn rồi bấm Lưu là ghi đè mất công thức người ta viết tay.
       handWritten: !!item.formula
-        && !parsePayFormula(item.formula, components.map((c) => c.code)),
+        && !parsePayFormula(
+          item.formula,
+          components.map((c) => c.code),
+          // PHẢI truyền cả mã số liệu tháng. Không có nó thì `MUC_RIENG *
+          // SO_CHUYEN` bị coi là mã gõ sai, và gần như mọi khoản của công ty
+          // mở ra đều rơi về ô viết tay — đúng cái mà bộ ô chọn để tránh.
+          components.map((c) => c.input_code).filter((code): code is string => !!code),
+        ),
       note: item.note ?? '',
     })));
     setRemovedIds([]);
