@@ -959,5 +959,53 @@ check('lễ rơi vào thứ Bảy nửa ngày vẫn hưởng 0,5 công',
 check('lễ rơi vào Chủ nhật không hưởng công nào',
   summarisePeriod([], [], new Date(2026, 7, 1), 8, ['2026-08-09'], lichT7Nua).holidayDays, 0);
 
+// --- Công thức của một người chỉ đọc số liệu CỦA CHÍNH NGƯỜI ĐÓ ------------
+//
+// Một khoản tham chiếu mã của khoản khác (`LUONG_CB * PAID_DAYS`). Cùng một
+// khoản đó được gán cho nhiều người với mức khác nhau, nên nếu phạm vi biến
+// bị dùng chung thì người này sẽ ăn mức của người kia — sai tiền hàng loạt,
+// và sai một cách im lặng vì công thức vẫn chạy ra số.
+const luongCoBan = component({
+  id: 'cb', code: 'LUONG_CB', name: 'Lương cơ bản', calc_type: 'FIXED', sort_order: 10,
+});
+const luongCong = component({
+  id: 'cc', code: 'LUONG_CONG', name: 'Lương công', calc_type: 'FORMULA',
+  formula: '(LUONG_CB / STANDARD_DAYS) * PAID_DAYS', sort_order: 20,
+});
+
+/** Cùng bộ khoản, khác mức khai riêng. */
+const slipFor = (muc: number) => computePayslip({
+  profile,
+  payProfile: payProfile({ base_amount: 0 }),
+  items: [
+    { item: item('cb', { amount: muc }), component: luongCoBan },
+    { item: item('cc'), component: luongCong },
+  ],
+  inputs: {},
+  stats: { ...stats, paidDays: 24.5 },
+  settings,
+});
+
+const nguoiA = slipFor(8_000_000);
+const nguoiB = slipFor(20_000_000);
+const dong = (slip: ReturnType<typeof computePayslip>, code: string) =>
+  slip.lines.find((line) => line.code === code)?.amount ?? null;
+
+// Khẳng định TỶ LỆ chứ không phải con số tuyệt đối: con số còn phụ thuộc ngày
+// công chuẩn của kỳ, nhưng tỷ lệ giữa hai người thì chỉ phụ thuộc mức riêng
+// của họ. B khai gấp 2,5 lần A thì lương công phải gấp đúng 2,5 lần.
+const a = dong(nguoiA, 'LUONG_CONG') ?? 0;
+const b = dong(nguoiB, 'LUONG_CONG') ?? 0;
+check('mỗi người ra một con số khác nhau', a !== b && a > 0, true);
+// Làm tròn về đồng nên tỷ lệ không khớp tuyệt đối; sai số một phần nghìn là
+// của phép làm tròn, không phải của phạm vi biến.
+check('tỷ lệ đúng bằng tỷ lệ mức riêng của hai người',
+  Math.round((b / a) * 1000) / 1000, 2.5);
+
+// Tính A trước rồi tính B, xong tính lại A: nếu phạm vi biến rò rỉ giữa hai
+// lần chạy thì lần sau A sẽ mang số của B.
+check('tính lại A sau khi tính B vẫn ra đúng số của A',
+  dong(slipFor(8_000_000), 'LUONG_CONG'), a);
+
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
