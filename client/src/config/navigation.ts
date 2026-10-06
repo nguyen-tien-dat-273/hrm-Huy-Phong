@@ -223,10 +223,13 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     chip: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700',
   },
   {
+    // Fuchsia chu khong phai rose: mau chinh cua he thong gio la do thuong
+    // hieu Huy Phong, ma rose chinh la do nhat - o KPI se trong y het o
+    // "Tong quan" va nguoi dung phai doc ten moi phan biet duoc.
     name: 'KPI', icon: Target, hint: 'Chấm điểm, bộ tiêu chí và cách quy ra lương',
-    iconIdle: 'bg-rose-50 text-rose-600', iconOn: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30',
-    tileOn: 'bg-rose-50', textOn: 'text-rose-700',
-    chip: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30 hover:bg-rose-700',
+    iconIdle: 'bg-fuchsia-50 text-fuchsia-600', iconOn: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30',
+    tileOn: 'bg-fuchsia-50', textOn: 'text-fuchsia-700',
+    chip: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30 hover:bg-fuchsia-700',
   },
   {
     name: 'Đào tạo & Quy trình', icon: BookOpen, hint: 'Khóa học và thư viện quy trình',

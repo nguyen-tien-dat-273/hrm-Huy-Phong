@@ -242,11 +242,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[18.5rem] border-r border-slate-200 bg-white text-slate-700 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="min-h-20 flex items-center px-5 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-indigo-600 rounded-lg flex flex-col items-center justify-center gap-0.5">
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-              <div className="w-4 h-0.5 bg-white rounded-full" />
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-            </div>
+            <img
+              src="/logo-mark.png"
+              alt=""
+              aria-hidden="true"
+              className="h-9 w-9 flex-shrink-0 object-contain"
+            />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-900">{orgName || 'HRM Huy Phong'}</p>
               <p className="mt-0.5 text-[11px] text-slate-500">Hệ thống quản lý nhân sự</p>
@@ -481,7 +482,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
                     <span className="font-display font-semibold text-sm text-slate-800">Thông báo</span>
                     {unreadCount > 0 && (
-                      <button onClick={markAllRead} className="text-xs font-medium text-blue-600 hover:text-blue-700">Đánh dấu đã đọc</button>
+                      <button onClick={markAllRead} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">Đánh dấu đã đọc</button>
                     )}
                   </div>
                   <div className="max-h-80 overflow-y-auto">
@@ -489,9 +490,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                       <p className="text-sm text-slate-400 text-center py-10">Không có thông báo mới</p>
                     ) : (
                       unreadNotifications.map((n) => (
-                        <button type="button" key={n.id} onClick={() => void openNotification(n)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-blue-50/40">
+                        <button type="button" key={n.id} onClick={() => void openNotification(n)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-indigo-50/40">
                           <div className="flex items-center gap-2">
-                            {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
+                            {!n.is_read && <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />}
                             <p className="text-sm font-medium text-slate-800">{n.title}</p>
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5 ml-4">{n.message}</p>
@@ -531,7 +532,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     onClick={handleSwitchToStaff}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center"><Eye className="w-4 h-4 text-blue-600" /></span>
+                    <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><Eye className="w-4 h-4 text-indigo-600" /></span>
                     {isFullAdmin(profile) ? 'Xem với tư cách Nhân viên' : 'Về khu nhân viên'}
                   </button>
                   <button

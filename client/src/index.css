@@ -8,32 +8,35 @@
   --font-display: 'Space Grotesk', 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
 
   /* --- Mau chinh cua he thong ---------------------------------------------
-     Indigo (tim-xanh) doi sang blue (xanh duong).
+     Do thuong hieu Huy Phong (#BF1F2B, lay thang tu file logo cong ty).
 
-     Ma nguon co 348 cho viet `indigo-*` trai tren 52 file. KHONG sed hang
+     Ma nguon co gan 550 cho viet `indigo-*` trai tren 52 file. KHONG sed hang
      loat: sed se dung ca nhung cho co y dung indigo lam mau phu, va mot lan
      doi y la phai sed nguoc lai. Tailwind 4 cho dinh nghia lai chinh bang mau
      `indigo` o day - moi lop `bg-indigo-600`, `text-indigo-700`... deu lay
      gia tri moi, doi mau ca app bang mot cho, va doi y thi xoa khoi nay di
      la ve nhu cu.
 
-     Blue thay vi teal/violet: teal dam vao emerald cua module Luong, con
-     violet van la tim. Blue doc duoc o moi do sang, va o nen trang thi
-     blue-600 dat 5.2:1 - du chuan AA cho chu thuong. */
-  --color-indigo-50:  #eff6ff;
-  --color-indigo-100: #dbeafe;
-  --color-indigo-200: #bfdbfe;
-  --color-indigo-300: #93c5fd;
-  --color-indigo-400: #60a5fa;
-  --color-indigo-500: #3b82f6;
-  --color-indigo-600: #2563eb;
-  --color-indigo-700: #1d4ed8;
-  --color-indigo-800: #1e40af;
-  --color-indigo-900: #1e3a8a;
-  --color-indigo-950: #172554;
+     Bac 600 la mau logo. Tren nen trang no dat 6.0:1 - du chuan AA cho chu
+     thuong. Cac bac con lai dung chung sac do do, chi doi do sang.
 
-  --color-admin-primary: #2563EB;
-  --color-admin-primary-hover: #1D4ED8;
+     LUU Y: `red-*` cua Tailwind van la mau canh bao/xoa (#DC2626 o bac 600).
+     Do thuong hieu dam hon han nen van phan biet duoc, nhung khi dat mot nut
+     chinh canh mot nut Xoa thi nen de nut Xoa o kieu vien thay vi nen dac. */
+  --color-indigo-50:  #fef2f3;
+  --color-indigo-100: #fde1e3;
+  --color-indigo-200: #fac5c9;
+  --color-indigo-300: #f39aa1;
+  --color-indigo-400: #e66a76;
+  --color-indigo-500: #d23d4b;
+  --color-indigo-600: #bf1f2b;
+  --color-indigo-700: #a01420;
+  --color-indigo-800: #85141d;
+  --color-indigo-900: #6f151c;
+  --color-indigo-950: #3d080c;
+
+  --color-admin-primary: #BF1F2B;
+  --color-admin-primary-hover: #A01420;
   --color-admin-bg: #F8FAFC;
   --color-admin-sidebar: #0F172A;
   --color-admin-text: #1E293B;
@@ -41,13 +44,13 @@
   --color-content-surface: #F8FAFC;
 
   /* Staff palette */
-  --color-staff-primary: #2563EB;
-  --color-staff-primary-hover: #1D4ED8;
+  --color-staff-primary: #BF1F2B;
+  --color-staff-primary-hover: #A01420;
   --color-staff-bg: #F8FAFC;
   --color-staff-sidebar: #0F172A;
   --color-staff-text: #0F172A;
   --color-staff-muted: #64748B;
-  --color-staff-active-bg: #2563EB;
+  --color-staff-active-bg: #BF1F2B;
   --color-staff-active-text: #FFFFFF;
 
   /* Semantic */
@@ -60,7 +63,7 @@
   --shadow-soft: 0 1px 2px 0 rgb(10 10 11 / 0.02);
   --shadow-card: 0 1px 3px 0 rgb(10 10 11 / 0.04), 0 2px 8px -2px rgb(10 10 11 / 0.02);
   --shadow-lifted: 0 10px 20px -5px rgb(10 10 11 / 0.05), 0 4px 6px -2px rgb(10 10 11 / 0.02);
-  --shadow-glow-blue: 0 8px 24px -6px rgb(217 119 6 / 0.4); /* Copper Glow */
+  --shadow-glow-blue: 0 8px 24px -6px rgb(191 31 43 / 0.35); /* Do thuong hieu */
   --shadow-glow-emerald: 0 8px 24px -6px rgb(16 185 129 / 0.4);
 }
 
@@ -319,7 +322,7 @@ button:focus-visible,
 summary:focus-visible,
 [role='button']:focus-visible,
 [tabindex]:not([tabindex='-1']):focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid #bf1f2b;
   outline-offset: 2px;
   border-radius: 10px;
 }

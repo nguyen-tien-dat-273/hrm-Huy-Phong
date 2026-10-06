@@ -214,18 +214,18 @@ export function CommandPalette() {
                     onMouseEnter={() => setActiveIndex(i)}
                     onClick={cmd.run}
                     className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors ${
-                      active ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                      active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-slate-50'
                     }`}
                   >
                     <span
                       className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        active ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+                        active ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
                       }`}
                     >
                       <Icon className="w-4 h-4" />
                     </span>
                     <span className="text-sm font-medium">{cmd.label}</span>
-                    {active && <CornerDownLeft className="w-3.5 h-3.5 ml-auto text-blue-400" />}
+                    {active && <CornerDownLeft className="w-3.5 h-3.5 ml-auto text-indigo-400" />}
                   </button>
                 </div>
               );

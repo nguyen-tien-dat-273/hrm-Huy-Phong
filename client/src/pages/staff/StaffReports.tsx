@@ -243,7 +243,7 @@ export function StaffReports() {
                         return [`${String(value)}% (${total} việc)`, 'Hoàn thành'];
                       }}
                     />
-                    <Bar dataKey="rate" fill="#2563eb" radius={[6, 6, 0, 0]} name="Tỷ lệ" />
+                    <Bar dataKey="rate" fill="#bf1f2b" radius={[6, 6, 0, 0]} name="Tỷ lệ" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -262,7 +262,7 @@ export function StaffReports() {
                 <XAxis dataKey="day" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', fontSize: '13px', boxShadow: '0 12px 32px -4px rgba(15,23,42,0.15)', padding: '8px 12px' }} cursor={{ fill: '#f8fafc' }} />
-                <Bar dataKey="completed" fill="#2563eb" radius={[6, 6, 0, 0]} name="Tác vụ" />
+                <Bar dataKey="completed" fill="#bf1f2b" radius={[6, 6, 0, 0]} name="Tác vụ" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -296,7 +296,7 @@ export function StaffReports() {
                 <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', fontSize: '13px', boxShadow: '0 12px 32px -4px rgba(15,23,42,0.15)', padding: '8px 12px' }} />
-                <Line type="monotone" dataKey="hours" stroke="#2563eb" strokeWidth={3} dot={{ fill: '#2563eb', r: 4 }} name="Giờ" />
+                <Line type="monotone" dataKey="hours" stroke="#bf1f2b" strokeWidth={3} dot={{ fill: '#bf1f2b', r: 4 }} name="Giờ" />
               </LineChart>
             </ResponsiveContainer>
           )}

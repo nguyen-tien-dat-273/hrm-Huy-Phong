@@ -58,10 +58,12 @@ const navGroups: {
     chip: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700',
   },
   {
+    // Fuchsia, trung voi cum KPI ben khu quan tri: mau chinh gio la do thuong
+    // hieu nen rose (do nhat) se trong y het cum "Tong quan".
     name: 'KPI', icon: Target, hint: 'Kết quả chấm điểm của bạn',
-    iconIdle: 'bg-rose-50 text-rose-600', iconOn: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30',
-    tileOn: 'bg-rose-50', textOn: 'text-rose-700',
-    chip: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30 hover:bg-rose-700',
+    iconIdle: 'bg-fuchsia-50 text-fuchsia-600', iconOn: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30',
+    tileOn: 'bg-fuchsia-50', textOn: 'text-fuchsia-700',
+    chip: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30 hover:bg-fuchsia-700',
   },
   {
     // Teal, khong phai rose: KPI da tach ra thanh module rieng nen hai cum
@@ -198,11 +200,12 @@ export function StaffLayout({ children }: { children: ReactNode }) {
       <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[18.5rem] border-r border-slate-200 bg-white text-slate-700 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="min-h-20 flex items-center px-5 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-indigo-600 rounded-lg flex flex-col items-center justify-center gap-0.5">
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-              <div className="w-4 h-0.5 bg-white rounded-full" />
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-            </div>
+            <img
+              src="/logo-mark.png"
+              alt=""
+              aria-hidden="true"
+              className="h-9 w-9 flex-shrink-0 object-contain"
+            />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-900">{orgName || 'HRM Huy Phong'}</p>
               <p className="mt-0.5 text-[11px] text-slate-500">Cổng thông tin nhân viên</p>
@@ -432,7 +435,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                       onClick={handleBackToAdmin}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center"><ArrowLeft className="w-4 h-4 text-blue-600" /></span>
+                      <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><ArrowLeft className="w-4 h-4 text-indigo-600" /></span>
                       Về trang quản trị trước đó
                     </button>
                   ) : hasAnyAdminPermission(profile) && (
@@ -442,7 +445,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                       onClick={() => { setAvatarOpen(false); navigate('/admin'); }}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-blue-600" /></span>
+                      <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-indigo-600" /></span>
                       Khu quản trị
                     </button>
                   )}
