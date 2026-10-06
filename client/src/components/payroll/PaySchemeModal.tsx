@@ -68,6 +68,21 @@ interface PaySchemeModalProps {
   onSaved: () => void;
 }
 
+/**
+ * Cách tính khi người này KHÔNG khai công thức riêng.
+ *
+ * Lúc đó engine dùng `calc_type` của khoản trong Danh mục, không phải không
+ * tính gì. Nói ra để người khai biết mình đang để khoản đó chạy theo cái gì.
+ */
+const CACH_TINH_MAC_DINH: Record<string, string> = {
+  FIXED: 'số tiền cố định',
+  PER_DAY: 'số tiền × ngày hưởng lương',
+  PER_HOUR: 'số tiền × số giờ nhập hằng tháng',
+  PER_UNIT: 'số tiền × sản lượng nhập hằng tháng',
+  PERCENT: '% trên khoản gốc khai ở Danh mục',
+  FORMULA: 'công thức khai ở Danh mục',
+};
+
 interface ItemDraft {
   id?: string;
   componentId: string;
@@ -481,9 +496,24 @@ export function PaySchemeModal({
                                 mỗi thứ một chỗ thì mỗi khoản phải tìm lại từ
                                 đầu. */}
                             <div className="mb-2 flex flex-wrap items-center gap-2">
-                              <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-indigo-700">
-                                {draft.formula.trim() || '—'}
-                              </code>
+                              {/* Bỏ trống KHÔNG có nghĩa là không tính gì:
+                                  engine quay về dùng công thức / cách tính của
+                                  khoản trong Danh mục (payroll.ts:665). Hiện
+                                  "—" ở đây là màn hình nói sai — người khai
+                                  tưởng khoản này im, trong khi nó vẫn trừ tiền
+                                  theo một công thức họ không thấy. */}
+                              {draft.formula.trim() ? (
+                                <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-indigo-700">
+                                  {draft.formula.trim()}
+                                </code>
+                              ) : (
+                                <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-amber-700">
+                                  {component?.formula?.trim() || CACH_TINH_MAC_DINH[component?.calc_type ?? 'FIXED']}
+                                  <span className="ml-1.5 font-sans text-[10px] font-bold text-amber-600">
+                                    ← lấy từ Danh mục, chưa khai riêng
+                                  </span>
+                                </code>
+                              )}
                               {component?.is_base && (
                                 <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
                                   LƯƠNG GỐC
