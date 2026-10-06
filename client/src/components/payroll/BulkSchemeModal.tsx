@@ -130,7 +130,7 @@ export function BulkSchemeModal({
 
       // Mức lương gốc nằm ở KHOẢN, không nằm ở hồ sơ nữa — phải ghi dòng này
       // thì engine mới suy ra được đơn giá giờ tăng ca và mức đóng bảo hiểm.
-      const itemError = await savePayItem({
+      const { error: itemError } = await savePayItem({
         user_id: target.id,
         component_id: baseComponent.id,
         amount: parsedBase,

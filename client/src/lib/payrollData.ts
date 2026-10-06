@@ -238,14 +238,21 @@ export async function savePayProfile(
   return error ? describeDbError(error) : null;
 }
 
+/**
+ * Lưu một khoản của một người. Trả về cả ID của dòng vừa ghi.
+ *
+ * ID là thứ bắt buộc với luồng "lưu lẻ từng khoản": lưu lẻ mà không giữ ID
+ * thì lần lưu tổng sau đó coi khoản ấy là mới và CHÈN THÊM một dòng nữa cho
+ * cùng một khoản — người đó ăn khoản lương hai lần.
+ */
 export async function savePayItem(
   item: Partial<EmployeePayItem> & { user_id: string; component_id: string; effective_from: string },
-): Promise<string | null> {
-  if (!supabase) return 'Chưa kết nối Supabase.';
-  const { error } = item.id
-    ? await supabase.from('employee_pay_items').update(item).eq('id', item.id)
-    : await supabase.from('employee_pay_items').insert(item);
-  return error ? describeDbError(error) : null;
+): Promise<{ error: string | null; id: string | null }> {
+  if (!supabase) return { error: 'Chưa kết nối Supabase.', id: null };
+  const { data, error } = item.id
+    ? await supabase.from('employee_pay_items').update(item).eq('id', item.id).select('id').single()
+    : await supabase.from('employee_pay_items').insert(item).select('id').single();
+  return { error: error ? describeDbError(error) : null, id: (data as { id?: string } | null)?.id ?? null };
 }
 
 export async function deletePayItem(id: string): Promise<string | null> {

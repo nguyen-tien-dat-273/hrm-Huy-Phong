@@ -17,12 +17,13 @@
 // công thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu và
 // đặt tên cột theo tên khoản dùng biến đó.
 //
-// Công thức sinh ra vẫn hiện nguyên văn, vì engine chạy trên chuỗi đó chứ
-// không chạy trên các ô chọn — giấu đi thì lúc sai không ai soát được.
+// Công thức sinh ra, nút tự viết, lưu và xoá nằm ở hàng tiêu đề của khoản
+// (do `PaySchemeModal` dựng), không nằm trong này — để mọi khoản có cùng một
+// hàng thao tác ở cùng một chỗ.
 // ============================================================================
 
 import { useMemo } from 'react';
-import { PenLine, TriangleAlert } from 'lucide-react';
+import { TriangleAlert } from 'lucide-react';
 import { evaluateFormula } from '@/lib/payrollFormula';
 import { formatVND } from '@/lib/utils';
 import {
@@ -50,12 +51,11 @@ interface Props {
   /** Mã các khoản ĐÃ khai cho chính người này, để tách nhóm gợi ý. */
   assignedCodes: readonly string[];
   sampleScope: Readonly<Record<string, number>>;
-  onWriteByHand: () => void;
 }
 
 export function PayItemFormulaPicker({
   componentName, formula, onFormulaChange, amount, onAmountChange,
-  components, selfCode, assignedCodes, sampleScope, onWriteByHand,
+  components, selfCode, assignedCodes, sampleScope,
 }: Props) {
   const usable = useMemo(
     () => components.filter((item) => item.is_active && item.code && item.code !== selfCode),
@@ -82,7 +82,6 @@ export function PayItemFormulaPicker({
   const set = (patch: Partial<GuidedPayFormula>) =>
     onFormulaChange(buildPayFormula({ ...guided, ...patch }));
 
-  const generated = buildPayFormula(guided);
   const scope = useMemo(
     () => ({ ...sampleScope, MUC_RIENG: Number(amount || 0) }),
     [sampleScope, amount],
@@ -225,17 +224,6 @@ export function PayItemFormulaPicker({
           ))}
         </div>
       )}
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <code className="min-w-0 break-words font-mono text-[11px] text-indigo-700">{generated}</code>
-        <button
-          type="button"
-          onClick={onWriteByHand}
-          className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-slate-400 transition hover:text-indigo-700"
-        >
-          <PenLine className="h-3 w-3" /> Tự viết công thức
-        </button>
-      </div>
     </div>
   );
 }

@@ -8,7 +8,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
+import { PenLine, Save, Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -110,6 +110,8 @@ export function PaySchemeModal({
   const [drafts, setDrafts] = useState<ItemDraft[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
   const [componentQuery, setComponentQuery] = useState('');
+  /** Dòng đang được lưu lẻ, để chỉ khoá đúng nút đó. */
+  const [savingOne, setSavingOne] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Nạp lại mỗi lần mở cho người khác. Không dùng `key` ở phía cha vì modal
@@ -179,6 +181,32 @@ export function PaySchemeModal({
    * chưa được khai thì engine tính phần đó bằng 0đ. Đưa danh sách này xuống để
    * ô chọn nguồn tách được "đã khai cho người này" với phần còn lại.
    */
+  /**
+   * Gom khoản theo nhóm, mỗi nhóm MỘT khung.
+   *
+   * Trước đây mỗi khoản một khung riêng, và chữ "KHOẢN CỘNG" lặp lại trên
+   * từng khung — mười khoản cộng là mười lần cùng một chữ. Nhóm chỉ cần nói
+   * một lần ở đầu khung.
+   *
+   * Giữ `index` GỐC trong mảng `drafts` chứ không đánh số lại theo nhóm: mọi
+   * hàm sửa/xoá đều chạy theo chỉ số của mảng gốc, đánh lại là sửa nhầm dòng.
+   */
+  const groups = useMemo(() => {
+    const order: Array<PayComponent['kind']> = ['EARNING', 'DEDUCTION', 'EMPLOYER_COST'];
+    const label: Record<string, string> = {
+      EARNING: 'Khoản cộng', DEDUCTION: 'Khoản trừ', EMPLOYER_COST: 'Chi phí doanh nghiệp',
+    };
+    return order
+      .map((kind) => ({
+        kind,
+        label: label[kind],
+        rows: drafts
+          .map((draft, index) => ({ draft, index }))
+          .filter((row) => (componentById.get(row.draft.componentId)?.kind ?? 'EARNING') === kind),
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [drafts, componentById]);
+
   const assignedCodes = (skipIndex: number) => drafts
     .filter((_, index) => index !== skipIndex)
     .map((draft) => componentById.get(draft.componentId)?.code)
@@ -206,6 +234,40 @@ export function PaySchemeModal({
       if (existing.id) setRemovedIds((ids) => [...ids, existing.id as string]);
       return list.filter((draft) => draft.componentId !== componentId);
     });
+  };
+
+  /**
+   * Lưu RIÊNG một khoản, không chờ lưu cả cơ chế.
+   *
+   * Dùng khi khai xong một khoản rồi muốn chốt nó lại trước khi khai tiếp.
+   *
+   * Phải ghi `id` trả về vào draft: không giữ id thì lần lưu tổng sau đó coi
+   * khoản này là mới và CHÈN THÊM một dòng nữa cho cùng một khoản — người đó
+   * ăn khoản lương hai lần.
+   */
+  const saveOne = async (index: number) => {
+    if (!target) return;
+    const draft = drafts[index];
+    if (!draft?.componentId) return;
+    if (formulaErrors[index]) {
+      toast('Công thức khoản này chưa hợp lệ — sửa trước khi lưu.', 'warning');
+      return;
+    }
+    setSavingOne(index);
+    const { error, id } = await savePayItem({
+      ...(draft.id ? { id: draft.id } : {}),
+      user_id: target.id,
+      component_id: draft.componentId,
+      amount: draft.amount ? Number(draft.amount) : null,
+      formula: draft.formula.trim() || null,
+      effective_from: effectiveFrom,
+      note: draft.note.trim() || null,
+      created_by: actorId,
+    });
+    setSavingOne(null);
+    if (error) return toast('Không lưu được khoản này: ' + error, 'error');
+    if (id) updateDraft(index, { id });
+    toast(`Đã lưu ${componentById.get(draft.componentId)?.name ?? 'khoản'}.`, 'success');
   };
 
   const updateDraft = (index: number, patch: Partial<ItemDraft>) => {
@@ -281,7 +343,7 @@ export function PaySchemeModal({
     }
 
     for (const draft of drafts) {
-      const error = await savePayItem({
+      const { error } = await savePayItem({
         ...(draft.id ? { id: draft.id } : {}),
         user_id: target.id,
         component_id: draft.componentId,
@@ -394,87 +456,116 @@ export function PaySchemeModal({
                 lương gốc ở trên.
               </p>
             ) : (
-              <div className="space-y-3">
-                {drafts.map((draft, index) => {
-                  const component = componentById.get(draft.componentId);
-                  return (
-                    <div key={draft.id ?? `new-${index}`} className="rounded-xl border border-slate-200 p-3">
-                      {/* Tên khoản đã nằm trong dòng phương trình bên dưới, nên
-                          hàng này chỉ còn dấu +/− và nút xoá. */}
-                      <div className="flex items-start gap-2">
-                        <p className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                          {component?.kind === 'DEDUCTION' ? 'Khoản trừ'
-                            : component?.kind === 'EMPLOYER_COST' ? 'Chi phí doanh nghiệp' : 'Khoản cộng'}
-                          {component?.is_base && (
-                            <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                              LƯƠNG GỐC
-                            </span>
-                          )}
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => removeDraft(index)}
-                          className="rounded p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
-                          aria-label="Bỏ khoản này"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+              <div className="space-y-4">
+                {groups.map((group) => (
+                  <div key={group.kind} className="rounded-xl border border-slate-200">
+                    <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                      {group.label} ({group.rows.length})
+                    </p>
+                    <div className="divide-y divide-slate-100">
+                      {group.rows.map(({ draft, index }) => {
+                        const component = componentById.get(draft.componentId);
+                        return (
+                          <div key={draft.id ?? `new-${index}`} className="p-3">
+                            {/* Hàng thao tác đứng TRÊN CÙNG và giống nhau ở mọi
+                                khoản: công thức sinh ra, nút tự viết, lưu lẻ,
+                                xoá. Để rải mỗi thứ một chỗ thì mỗi khoản phải
+                                tìm lại từ đầu. */}
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-indigo-700">
+                                {draft.formula.trim() || '—'}
+                              </code>
+                              {component?.is_base && (
+                                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                                  LƯƠNG GỐC
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => updateDraft(index, { handWritten: !draft.handWritten })}
+                                className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-bold transition ${
+                                  draft.handWritten ? 'bg-indigo-50 text-indigo-700' : 'text-slate-400 hover:text-indigo-700'
+                                }`}
+                              >
+                                <PenLine className="h-3 w-3" /> Tự viết
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void saveOne(index)}
+                                disabled={savingOne !== null}
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-bold text-slate-400 transition hover:text-emerald-700 disabled:opacity-40"
+                              >
+                                <Save className="h-3 w-3" /> {savingOne === index ? 'Đang lưu…' : 'Lưu'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeDraft(index)}
+                                className="rounded p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                                aria-label="Bỏ khoản này"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
 
-                      {/* Khoản tính theo % thì "× số công" vô nghĩa — tỷ lệ
-                          nhân vào một khoản khác, không nhân vào ngày công.
-                          Giữ ô nhập tỷ lệ như cũ cho nhóm đó. */}
-                      {component?.calc_type === 'PERCENT' && (
-                        <div className="mt-3">
-                          <Input
-                            label="Tỷ lệ riêng (%)"
-                            inputMode="decimal"
-                            placeholder={`Trống = ${formatComponentDefault(component)} theo danh mục`}
-                            value={draft.amount}
-                            onChange={(e) => updateDraft(index, { amount: e.target.value.replace(/[^\d.]/g, '') })}
-                          />
-                        </div>
-                      )}
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
 
-                      <div className="mt-3">
-                        {draft.handWritten || component?.calc_type === 'PERCENT' ? (
-                          <PayrollFormulaBuilder
-                            label="Công thức riêng (không bắt buộc)"
-                            value={draft.formula}
-                            onChange={(formula) => updateDraft(index, { formula })}
-                            sampleScope={formulaScope}
-                            components={components}
-                            defaultFormula={component?.formula}
-                          />
-                        ) : (
-                          <PayItemFormulaPicker
-                            componentName={component?.name ?? 'Khoản'}
-                            assignedCodes={assignedCodes(index)}
-                            formula={draft.formula}
-                            onFormulaChange={(formula) => updateDraft(index, { formula })}
-                            amount={draft.amount}
-                            onAmountChange={(amount) => updateDraft(index, { amount: digitsOnly(amount) })}
-                            components={components}
-                            selfCode={component?.code ?? null}
-                            sampleScope={formulaScope}
-                            onWriteByHand={() => updateDraft(index, { handWritten: true })}
-                          />
-                        )}
-                      </div>
+                                {/* Khoản tính theo % thì "× số công" vô nghĩa — tỷ lệ
+                                    nhân vào một khoản khác, không nhân vào ngày công.
+                                    Giữ ô nhập tỷ lệ như cũ cho nhóm đó. */}
+                                {component?.calc_type === 'PERCENT' && (
+                                  <div className="mb-3">
+                                    <Input
+                                      label="Tỷ lệ riêng (%)"
+                                      inputMode="decimal"
+                                      placeholder={`Trống = ${formatComponentDefault(component)} theo danh mục`}
+                                      value={draft.amount}
+                                      onChange={(e) => updateDraft(index, { amount: e.target.value.replace(/[^\d.]/g, '') })}
+                                    />
+                                  </div>
+                                )}
 
-                      {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
-                          xong vẫn ra 0đ — trông như đã làm xong nhưng thực tế
-                          không cộng gì vào lương. */}
-                      {component && !draft.formula.trim() && !draft.amount
-                        && Number(component.default_amount) === 0 && (
-                        <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
-                          <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
-                          Chưa có mức — khoản này sẽ cộng 0đ.
-                        </p>
-                      )}
+                                {draft.handWritten || component?.calc_type === 'PERCENT' ? (
+                                  <PayrollFormulaBuilder
+                                    label={`Công thức ${component?.name ?? ''}`}
+                                    value={draft.formula}
+                                    onChange={(formula) => updateDraft(index, { formula })}
+                                    sampleScope={formulaScope}
+                                    components={components}
+                                    defaultFormula={component?.formula}
+                                  />
+                                ) : (
+                                  <PayItemFormulaPicker
+                                    componentName={component?.name ?? 'Khoản'}
+                                    assignedCodes={assignedCodes(index)}
+                                    formula={draft.formula}
+                                    onFormulaChange={(formula) => updateDraft(index, { formula })}
+                                    amount={draft.amount}
+                                    onAmountChange={(amount) => updateDraft(index, { amount: digitsOnly(amount) })}
+                                    components={components}
+                                    selfCode={component?.code ?? null}
+                                    sampleScope={formulaScope}
+                                  />
+                                )}
+
+                                {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
+                                    xong vẫn ra 0đ — trông như đã làm xong nhưng thực tế
+                                    không cộng gì vào lương. */}
+                                {component && !draft.formula.trim() && !draft.amount
+                                  && Number(component.default_amount) === 0 && (
+                                  <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                                    <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
+                                    Chưa có mức — khoản này sẽ cộng 0đ.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
 
