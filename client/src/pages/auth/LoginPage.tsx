@@ -99,7 +99,7 @@ export function LoginPage() {
           <div className="flex items-center gap-3 fade-up">
             {/* Nen panel trai mau toi, logo do phai dat tren o trang moi ro net. */}
             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-lg shadow-indigo-950/30">
-              <img src="/logo-mark.png?v=2" alt="" aria-hidden="true" className="h-full w-full object-contain" />
+              <img src="/logo-mark.png?v=3" alt="" aria-hidden="true" className="h-full w-full object-contain" />
             </span>
             <div>
               <p className="text-xl font-bold tracking-tight text-white">HRM Huy Phong</p>
@@ -145,7 +145,7 @@ export function LoginPage() {
         <div className="pointer-events-none absolute -bottom-32 -left-24 h-80 w-80 rounded-full bg-emerald-100/50 blur-3xl lg:hidden" />
         <div className="relative w-full max-w-md rounded-3xl border border-white/80 bg-white/90 p-6 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-10 lg:max-w-sm lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
           <div className="flex items-center gap-3 mb-9 lg:hidden">
-            <img src="/logo-mark.png?v=2" alt="" aria-hidden="true" className="h-10 w-10 flex-shrink-0 object-contain" />
+            <img src="/logo-mark.png?v=3" alt="" aria-hidden="true" className="h-10 w-10 flex-shrink-0 object-contain" />
             <div><p className="text-lg font-bold text-slate-900">HRM Huy Phong</p><p className="text-xs text-slate-500">Không gian làm việc tập trung</p></div>
           </div>
 

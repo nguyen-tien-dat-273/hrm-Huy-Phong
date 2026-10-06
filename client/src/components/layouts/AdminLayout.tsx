@@ -243,7 +243,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         <div className="min-h-20 flex items-center px-5 border-b border-slate-200">
           <div className="flex items-center gap-3">
             <img
-              src="/logo-mark.png?v=2"
+              src="/logo-mark.png?v=3"
               alt=""
               aria-hidden="true"
               className="h-9 w-9 flex-shrink-0 object-contain"
