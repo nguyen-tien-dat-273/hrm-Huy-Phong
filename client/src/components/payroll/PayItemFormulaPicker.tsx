@@ -64,8 +64,8 @@ export function PayItemFormulaPicker({
   const codes = useMemo(() => usable.map((item) => item.code), [usable]);
 
   const assigned = useMemo(() => new Set(assignedCodes), [assignedCodes]);
+  /** Chỉ các khoản ĐÃ khai cho chính người này. */
   const daKhai = usable.filter((item) => assigned.has(item.code));
-  const chuaKhai = usable.filter((item) => !assigned.has(item.code));
 
   /** Mã số liệu tháng mà công ty đã dùng ở đâu đó trong danh mục. */
   const inputCodes = useMemo(() => {
@@ -100,6 +100,18 @@ export function PayItemFormulaPicker({
   /** Lấy số từ một khoản mà chính người này chưa được khai. */
   const nguonChuaKhai = !!sourceCode && !assigned.has(sourceCode);
 
+  /**
+   * Khoản đang được chọn nhưng KHÔNG còn trong danh sách đã khai.
+   *
+   * Xảy ra khi công thức lưu từ trước trỏ tới một khoản, rồi khoản đó bị bỏ
+   * tick. Nếu không đưa nó vào danh sách thì `<select>` không tìm thấy giá trị
+   * và tự hiện dòng đầu — màn hình nói một đằng, công thức lưu một nẻo, và
+   * bấm Lưu là ghi đè mất. Nên vẫn liệt kê, kèm chữ nói rõ nó chưa khai.
+   */
+  const nguonLac = nguonChuaKhai
+    ? usable.find((item) => item.code === sourceCode) ?? null
+    : null;
+
   const onSource = (value: string) => set({
     source: value === NHAP_TAY ? { kind: 'FIXED' } : { kind: 'COMPONENT', code: value },
   });
@@ -121,15 +133,9 @@ export function PayItemFormulaPicker({
             className={`${slot} ${nguonChuaKhai ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'}`}
           >
             <option value={NHAP_TAY}>Nhập số cố định…</option>
-            {daKhai.length > 0 && (
-              <optgroup label="Đã khai cho người này">
-                {daKhai.map((item) => <option key={item.id} value={item.code}>{item.name}</option>)}
-              </optgroup>
-            )}
-            {chuaKhai.length > 0 && (
-              <optgroup label="Chưa khai cho người này">
-                {chuaKhai.map((item) => <option key={item.id} value={item.code}>{item.name}</option>)}
-              </optgroup>
+            {daKhai.map((item) => <option key={item.id} value={item.code}>{item.name}</option>)}
+            {nguonLac && (
+              <option value={nguonLac.code}>{nguonLac.name} — chưa khai cho người này</option>
             )}
           </select>
         ) : (
@@ -143,8 +149,11 @@ export function PayItemFormulaPicker({
             />
             <button
               type="button"
-              onClick={() => onSource(codes[0] ?? NHAP_TAY)}
-              disabled={codes.length === 0}
+              onClick={() => onSource(daKhai[0]?.code ?? NHAP_TAY)}
+              disabled={daKhai.length === 0}
+              title={daKhai.length === 0
+                ? 'Chưa khai khoản nào khác cho người này để lấy số'
+                : undefined}
               className="shrink-0 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-slate-500 transition hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-40"
             >
               Lấy từ danh mục
@@ -185,8 +194,8 @@ export function PayItemFormulaPicker({
       {nguonChuaKhai && (
         <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-amber-800">
           <TriangleAlert className="mt-0.5 h-3 w-3 flex-shrink-0" />
-          Người này chưa được khai khoản đó, nên phần này tính bằng 0đ. Tick thêm khoản đó
-          ở danh mục bên trên, hoặc chọn nguồn khác.
+          Khoản này đã bị bỏ tick cho người đó, nên phần này tính bằng 0đ. Tick lại ở danh mục
+          bên trên, hoặc chọn nguồn khác.
         </p>
       )}
 
