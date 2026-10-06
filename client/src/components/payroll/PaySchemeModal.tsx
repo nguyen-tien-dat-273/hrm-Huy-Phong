@@ -26,6 +26,7 @@ import type {
   EmployeePayProfile,
   PayBasis,
   PayComponent,
+  PayrollNamedParam,
   Profile,
   TaxMode,
 } from '@/types';
@@ -60,6 +61,8 @@ interface PaySchemeModalProps {
   /** Bản ghi cơ chế đang áp dụng cho kỳ đang xem, nếu có. */
   current: EmployeePayProfile | null;
   components: PayComponent[];
+  /** Tham số lương tự khai — dùng làm số liệu hoặc hệ số trong công thức. */
+  namedParams?: PayrollNamedParam[];
   assignedItems: EmployeePayItem[];
   /** Ngày đầu tháng đang xem — mặc định cho ngày hiệu lực. */
   defaultEffectiveFrom: string;
@@ -121,7 +124,7 @@ const stripTone = (text: string) => text
 
 export function PaySchemeModal({
   open, target, current, components, assignedItems, params,
-  defaultEffectiveFrom, actorId, onClose, onSaved,
+  defaultEffectiveFrom, actorId, onClose, onSaved, namedParams = [],
 }: PaySchemeModalProps) {
   const { toast } = useToast();
 
@@ -607,6 +610,7 @@ export function PaySchemeModal({
                                     amount={draft.amount}
                                     onAmountChange={(amount) => updateDraft(index, { amount: digitsOnly(amount) })}
                                     components={components}
+                                    namedParams={namedParams}
                                     selfCode={component?.code ?? null}
                                     sampleScope={formulaScope}
                                   />

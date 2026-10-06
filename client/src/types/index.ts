@@ -448,6 +448,29 @@ export interface EmployeePayProfile {
 }
 
 /** Một khoản lương đã gán cho một người, có thể kèm giá trị/công thức riêng. */
+/**
+ * Tham số lương tự khai — mã của nó dùng được THẲNG trong công thức.
+ *
+ * Đặc tả phân hệ Lương mục 2 liệt kê 18 tham số, trong đó hệ số OT, đơn giá
+ * vận chuyển, hệ số doanh số, định mức KPI là số riêng của công ty. Để chúng
+ * thành bảng chứ không phải cột cố định vì UC-PAY-02 yêu cầu "tuyệt đối không
+ * hard-code các con số" và NFR-MAINT-01 đòi đổi tham số qua giao diện, không
+ * phải sửa code.
+ */
+export interface PayrollNamedParam {
+  id: string;
+  code: string;
+  name: string;
+  value: number;
+  /** Chỉ để hiển thị cho đúng: 'VND' | '%' | 'HE_SO' | 'NGAY' | 'GIO'. */
+  unit: string;
+  note: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EmployeePayItem {
   id: string;
   user_id: string;

@@ -222,14 +222,16 @@ function tidyNumber(value: number): string {
  * mà màn hình này sinh ra — khi đó phải giữ nguyên công thức tự do.
  *
  * `knownCodes` là mã các khoản trong danh mục; `knownInputs` là mã số liệu
- * tháng đã khai ở `input_code` của khoản nào đó. Mã KHÔNG thuộc hai danh sách
- * đó (lẫn danh sách hệ thống) bị coi là gõ sai và trả null — thà hiện ô tự do
- * còn hơn dựng một cách khai trỏ vào biến luôn bằng 0 rồi trả thiếu lương.
+ * tháng đã khai ở `input_code` của khoản nào đó; `knownParams` là mã tham số
+ * lương tự khai. Mã KHÔNG thuộc ba danh sách đó (lẫn danh sách hệ thống) bị
+ * coi là gõ sai và trả null — thà hiện ô tự do còn hơn dựng một cách khai trỏ
+ * vào biến luôn bằng 0 rồi trả thiếu lương.
  */
 export function parsePayFormula(
   formula: string | null | undefined,
   knownCodes: readonly string[] = [],
   knownInputs: readonly string[] = [],
+  knownParams: readonly string[] = [],
 ): GuidedPayFormula | null {
   let text = (formula ?? '').trim();
   if (!text) return null;
@@ -253,9 +255,12 @@ export function parsePayFormula(
   /** Mã này có mang nghĩa số tiền không — tức dùng được làm vế tiền. */
   const isMoney = (code: string) =>
     code === 'MUC_RIENG' || MONEY_CODES.has(code) || knownCodes.includes(code);
+  /** Tham số lương tự khai, dùng được ở ô hệ số. */
+  const isParam = (code: string) => knownParams.includes(code);
   /** Mã này là số liệu đếm được — tức dùng được làm số nhân. */
   const isQuantity = (code: string) =>
-    VARIABLE_CODES.has(code) || ENGINE_INPUTS.has(code) || knownInputs.includes(code);
+    VARIABLE_CODES.has(code) || ENGINE_INPUTS.has(code)
+    || knownInputs.includes(code) || isParam(code);
 
   const asSource = (code: string): PayItemSource | null => {
     if (code === 'MUC_RIENG') return { kind: 'FIXED' };
@@ -271,6 +276,7 @@ export function parsePayFormula(
 
   let source: PayItemSource | null = null;
   let prorate = false;
+  let coefRaw: string | null = null;
   const names: string[] = [];
   const numbers: string[] = [];
 
@@ -338,6 +344,15 @@ export function parsePayFormula(
     }
   }
 
+  // Một tham số lương đứng ở vị trí hệ số: `HOURLY_RATE * SO_GIO_OT *
+  // HE_SO_OT_THUONG`. Đặc tả mục 8 viết tiền OT đúng hình dạng ba vế này, nên
+  // không nhận thì cả nhóm làm thêm giờ phải gõ cứng 1.5 / 2 / 3 vào từng
+  // công thức của từng người.
+  if (names.length > 1 && !coefRaw) {
+    const at = names.findIndex(isParam);
+    if (at >= 0) coefRaw = names.splice(at, 1)[0];
+  }
+
   if (names.length > 1) return null;
   const variable = names[0] ?? null;
   // Số nhân phải là số liệu ĐẾM ĐƯỢC. Hai vế tiền nhân nhau (`LUONG_CB *
@@ -345,8 +360,11 @@ export function parsePayFormula(
   // và một mã lạ ở đây nghĩa là gõ sai.
   if (variable && (isMoney(variable) || !isQuantity(variable))) return null;
 
-  let coefficient: string | null = null;
-  if (numbers.length === 1) {
+  let coefficient: string | null = coefRaw;
+  if (coefficient) {
+    // Hệ số là một mã tham số; con số lẻ nếu có thì không còn chỗ.
+    if (numbers.length > 0) return null;
+  } else if (numbers.length === 1) {
     coefficient = numbers[0];
   } else if (numbers.length > 1) {
     // `HOURLY_RATE * OT_NGAY_LE * 2 * 2` — hai hệ số gộp thành một. Tiền

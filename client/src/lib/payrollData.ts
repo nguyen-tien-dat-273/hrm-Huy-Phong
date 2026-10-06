@@ -14,6 +14,7 @@ import type {
   EmployeePayProfile,
   LeaveRequest,
   PayComponent,
+  PayrollNamedParam,
   PayrollInput,
   PayrollRun,
   PayrollRunStatus,
@@ -60,6 +61,8 @@ export interface PayrollWorkspace {
   payslips: Payslip[];
   payslipLines: PayslipLine[];
   payrollSettings: PayrollSettings;
+  /** Tham số tự khai — mã của chúng dùng được trong công thức. */
+  namedParams: PayrollNamedParam[];
   pitBrackets: PitBracket[];
   timesheetLocked: boolean;
   /** Migration chưa chạy — UI hiện hướng dẫn thay vì báo lỗi khó hiểu. */
@@ -72,6 +75,7 @@ const EMPTY: PayrollWorkspace = {
   attendance: [], leaves: [], attendanceRequests: [], holidays: [], schedules: EMPTY_SCHEDULES, adjustments: [],
   run: null, payslips: [], payslipLines: [],
   payrollSettings: DEFAULT_PAYROLL_SETTINGS,
+  namedParams: [],
   pitBrackets: DEFAULT_PIT_BRACKETS,
   timesheetLocked: false, engineReady: false, error: null,
 };
@@ -93,7 +97,7 @@ export async function loadPayrollWorkspace(
     payrollSettings,
     pitBrackets,
     schedules,
-    profilesRes, componentsRes, payProfilesRes, itemsRes, unitItemsRes, inputsRes,
+    profilesRes, componentsRes, namedParamsRes, payProfilesRes, itemsRes, unitItemsRes, inputsRes,
     attendanceRes, leavesRes, attendanceRequestsRes, runRes, periodRes,
   ] = await Promise.all([
     // Tham số lương nằm ở bảng riêng `payroll_settings` (chỉ Admin/CEO ghi
@@ -105,6 +109,7 @@ export async function loadPayrollWorkspace(
     fetchWorkSchedules(),
     supabase.from('profiles').select('*').eq('is_active', true).order('name'),
     supabase.from('payroll_components').select('*').order('sort_order'),
+    supabase.from('payroll_named_params').select('*').eq('is_active', true).order('sort_order'),
     supabase.from('employee_pay_profiles').select('*').lte('effective_from', monthEndStr),
     supabase.from('employee_pay_items').select('*'),
     supabase.from('unit_pay_items').select('*'),
@@ -180,6 +185,9 @@ export async function loadPayrollWorkspace(
   return {
     profiles: (profilesRes.data || []) as Profile[],
     components: (componentsRes.data || []) as PayComponent[],
+    // Bảng có thể chưa tồn tại (migration chưa chạy) — khi đó công thức nào
+    // dùng mã tham số sẽ báo "không có biến", chứ cả trang không chết.
+    namedParams: namedParamsRes.error ? [] : (namedParamsRes.data || []) as PayrollNamedParam[],
     payProfiles: (payProfilesRes.data || []) as EmployeePayProfile[],
     items: (itemsRes.data || []) as EmployeePayItem[],
     // Bảng có thể chưa tồn tại (migration chưa chạy) — khi đó chỉ mất phần
@@ -210,6 +218,22 @@ export async function loadPayrollWorkspace(
 // ---------------------------------------------------------------------------
 // Ghi dữ liệu
 // ---------------------------------------------------------------------------
+
+export async function saveNamedParam(
+  param: Partial<PayrollNamedParam> & { code: string; name: string },
+): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = param.id
+    ? await supabase.from('payroll_named_params').update(param).eq('id', param.id)
+    : await supabase.from('payroll_named_params').insert(param);
+  return error ? describeDbError(error) : null;
+}
+
+export async function deleteNamedParam(id: string): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await supabase.from('payroll_named_params').delete().eq('id', id);
+  return error ? describeDbError(error) : null;
+}
 
 export async function saveComponent(
   component: Partial<PayComponent> & { code: string; name: string },

@@ -66,12 +66,21 @@ interface Props {
   selfCode?: string | null;
   /** Mã các khoản ĐÃ khai cho chính người này. */
   assignedCodes: readonly string[];
+  /**
+   * Tham số lương tự khai — hệ số OT, đơn giá vận chuyển, định mức KPI...
+   *
+   * Đặc tả phân hệ Lương mục 5 xếp tham số ngang hàng với danh mục khoản và số
+   * liệu đầu vào trong công thức. Không liệt kê ở đây thì người khai phải gõ
+   * cứng 1.5 hay 0.01 vào từng công thức của từng người, và đổi chính sách là
+   * sửa lại tay từng chỗ.
+   */
+  namedParams?: ReadonlyArray<{ code: string; name: string }>;
   sampleScope: Readonly<Record<string, number>>;
 }
 
 export function PayItemFormulaPicker({
   componentName, formula, onFormulaChange, amount, onAmountChange,
-  components, selfCode, assignedCodes, sampleScope,
+  components, selfCode, assignedCodes, sampleScope, namedParams = [],
 }: Props) {
   const usable = useMemo(
     () => components.filter((item) => item.is_active && item.code && item.code !== selfCode),
@@ -107,7 +116,8 @@ export function PayItemFormulaPicker({
   }, [components]);
   const inputCodeList = useMemo(() => inputCodes.map((item) => item.code), [inputCodes]);
 
-  const guided = parsePayFormula(formula, codes, inputCodeList) ?? DEFAULT_GUIDED;
+  const paramCodes = useMemo(() => namedParams.map((item) => item.code), [namedParams]);
+  const guided = parsePayFormula(formula, codes, inputCodeList, paramCodes) ?? DEFAULT_GUIDED;
   const set = (patch: Partial<GuidedPayFormula>) =>
     onFormulaChange(buildPayFormula({ ...guided, ...patch }));
 
@@ -122,6 +132,9 @@ export function PayItemFormulaPicker({
       return null;
     }
   };
+
+  /** Id riêng cho datalist: hai khoản trên cùng màn không được trùng id. */
+  const paramListId = `tham-so-${componentName.replace(/\s+/g, '-')}`;
 
   const source = guided.source;
 
@@ -322,18 +335,33 @@ export function PayItemFormulaPicker({
                 ))}
               </optgroup>
             )}
+            {namedParams.length > 0 && (
+              <optgroup label="Tham số lương">
+                {namedParams.map((item) => (
+                  <option key={item.code} value={item.code}>{item.name}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
 
           <span className="shrink-0 text-base text-slate-400">×</span>
 
+          {/* Ô hệ số nhận CẢ con số lẫn mã tham số. Đặc tả mục 8 viết tiền làm
+              thêm giờ là "đơn giá giờ × hệ số OT × số giờ" — hệ số đó phải trỏ
+              được tới tham số, không thì đổi chính sách là sửa tay từng người. */}
+          <datalist id={paramListId}>
+            {namedParams.map((item) => (
+              <option key={item.code} value={item.code}>{item.name}</option>
+            ))}
+          </datalist>
           <input
-            inputMode="decimal"
+            list={paramListId}
             placeholder="hệ số"
             value={guided.coefficient ?? ''}
             onChange={(event) => set({
-              coefficient: event.target.value.replace(/[^\d.]/g, '') || null,
+              coefficient: event.target.value.replace(/[^\dA-Za-z_.]/g, '').toUpperCase() || null,
             })}
-            className="w-[72px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center font-mono text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+            className="w-[104px] shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center font-mono text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
           />
 
           <button

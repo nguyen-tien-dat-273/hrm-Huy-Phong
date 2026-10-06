@@ -513,6 +513,19 @@ export interface ComputePayslipArgs {
   /** Số liệu biến động tháng: mã → số lượng. */
   inputs: Readonly<Record<string, number>>;
   /**
+   * Tham số lương tự khai: mã → giá trị.
+   *
+   * Đặc tả mục 5: "Danh mục khoản lương + Tham số lương + Dữ liệu đầu vào →
+   * Công thức". Không có chỗ này thì hệ số OT hay đơn giá vận chuyển phải gõ
+   * thẳng con số vào từng công thức của từng người, và đổi chính sách là phải
+   * sửa lại tay từng chỗ.
+   *
+   * Đặt TRƯỚC mã khoản và số liệu tháng trong phạm vi biến, nên một mã trùng
+   * tên sẽ bị hai nguồn kia ghi đè — số liệu của tháng cụ thể sát thực tế hơn
+   * một hằng số cấu hình.
+   */
+  namedParams?: Readonly<Record<string, number>>;
+  /**
    * Mã của MỌI khoản trong danh mục, kể cả khoản người này không được gán.
    *
    * Một công thức dùng chung cho cả công ty thường phải cộng các khoản mà chỉ
@@ -810,7 +823,10 @@ function computeComponentLine(
  * không ảnh hưởng nghĩa vụ thuế.
  */
 export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
-  const { profile, payProfile, items, inputs, stats, settings, adjustments = [], catalogCodes = [] } = args;
+  const {
+    profile, payProfile, items, inputs, stats, settings,
+    adjustments = [], catalogCodes = [], namedParams = {},
+  } = args;
   const warnings: string[] = [];
   const lines: ComputedLine[] = [];
 
@@ -952,6 +968,12 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     EARLY_MINUTES: stats.earlyMinutes,
     EARLY_COUNT: stats.earlyCount,
   };
+
+  // Tham số lương tự khai. Đứng trước mã khoản và số liệu tháng để hai nguồn
+  // kia thắng khi trùng mã.
+  for (const [code, value] of Object.entries(namedParams)) {
+    scope[code.toUpperCase()] = value;
+  }
 
   // Moi khoản trong danh mục đều là một biến, bằng 0 với người không được gán.
   for (const code of catalogCodes) {

@@ -208,6 +208,12 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   // --------------------------------------------------------------------------
   // Tính bảng lương
   // --------------------------------------------------------------------------
+  /** Tham số tự khai, dạng mã → giá trị để ném thẳng vào phạm vi biến. */
+  const paramValues = useMemo(
+    () => Object.fromEntries((data?.namedParams ?? []).map((p) => [p.code, Number(p.value)])),
+    [data],
+  );
+
   const rows: PayrollRow[] = useMemo(() => {
     if (!data) return [];
 
@@ -336,6 +342,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           stats,
           settings: params,
           catalogCodes: data.components.map((component) => component.code),
+          namedParams: paramValues,
           adjustments: data.adjustments.filter((adjustment) => adjustment.user_id === person.id),
         }),
       };
@@ -744,6 +751,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         <PayrollParamsTab
           settings={data.payrollSettings}
           brackets={data.pitBrackets}
+          namedParams={data.namedParams}
           actorId={profile?.id ?? null}
           onSaved={() => loadData(true)}
         />
@@ -965,6 +973,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           ? payProfileForPeriod(data.payProfiles.filter((item) => item.user_id === schemeTarget.id), monthEndStr)
           : null}
         components={data?.components ?? []}
+        namedParams={data?.namedParams ?? []}
         assignedItems={data?.items.filter((item) => item.user_id === schemeTarget?.id) ?? []}
         params={params}
         defaultEffectiveFrom={monthStartStr}

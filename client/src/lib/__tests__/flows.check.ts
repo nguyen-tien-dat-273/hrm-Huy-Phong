@@ -339,6 +339,60 @@ check('giờ làm KHÔNG phải số đếm ngày', isDayCount('WORK_HOURS'), fa
 check('KPI% KHÔNG phải số đếm ngày', isDayCount('KPI_PCT'), false);
 check('số liệu tự đặt KHÔNG phải số đếm ngày', isDayCount('SO_CHUYEN'), false);
 
+// --- Tham số lương dùng được trong công thức --------------------------------
+//
+// Đặc tả phân hệ Lương mục 5: "Danh mục khoản lương + Tham số lương + Dữ liệu
+// đầu vào -> Công thức". Mục 8 viết tiền làm thêm giờ là ba vế:
+//
+//     Tiền OT = Đơn giá giờ x Hệ số OT (150/200/300%) x Số giờ OT
+//
+// Không nhận mã tham số ở ô hệ số thì cả nhóm làm thêm giờ phải gõ cứng 1.5 /
+// 2 / 3 vào từng công thức của từng người, và đổi chính sách là sửa lại tay
+// từng chỗ — đúng thứ UC-PAY-02 cấm ("tuyệt đối không hard-code").
+const THAM_SO = ['HE_SO_OT_THUONG', 'HE_SO_OT_LE', 'TY_LE_QUY_1PT'];
+/**
+ * Danh sách khoản RIÊNG cho khối này, không dùng chung `DANH_MUC_THAT`.
+ *
+ * `DANH_MUC_THAT` khai ở dưới, nên truyền nó lên đây là đối số thành
+ * `undefined` và rơi về mặc định `[]` của `parsePayFormula` — kiểm chứng vẫn
+ * chạy, chỉ là chạy với danh mục rỗng. Tham số mặc định che mất lỗi thứ tự,
+ * nên khai tại chỗ để không phụ thuộc vào vị trí trong file.
+ */
+const KHOAN_OT = ['LUONG_DOANH_SO', 'LUONG_VAN_CHUYEN'];
+const docOT = (formula: string) =>
+  parsePayFormula(formula, KHOAN_OT, ['SO_GIO_OT'], THAM_SO);
+
+const ot = docOT('HOURLY_RATE * SO_GIO_OT * HE_SO_OT_THUONG');
+check('tiền OT theo đặc tả: đọc được', !!ot, true);
+check('tiền OT: vế tiền là đơn giá giờ', ot?.source, { kind: 'CODE', code: 'HOURLY_RATE' });
+check('tiền OT: số liệu là số giờ', ot?.variable, 'SO_GIO_OT');
+check('tiền OT: hệ số là THAM SỐ chứ không phải số gõ cứng',
+  ot?.coefficient, 'HE_SO_OT_THUONG');
+check('tiền OT: dựng lại ra đúng chuỗi cũ',
+  ot ? buildPayFormula(ot) : null, 'HOURLY_RATE * SO_GIO_OT * HE_SO_OT_THUONG');
+
+// Tham số thay con số, và tính ra đúng tiền: 50.000đ/giờ x 10 giờ x 1,5.
+check('tiền OT: ra đúng số tiền',
+  evaluateFormula('HOURLY_RATE * SO_GIO_OT * HE_SO_OT_THUONG',
+    { HOURLY_RATE: 50_000, SO_GIO_OT: 10, HE_SO_OT_THUONG: 1.5 }).value,
+  750_000);
+
+// Quỹ 1% của Huy Phong, khai bằng tham số thay vì gõ 0.01.
+//
+// Tham số đứng ở ô số liệu hay ô hệ số đều cho ra CÙNG một chuỗi, nên kiểm
+// chuỗi dựng lại chứ không kiểm nó rơi vào ô nào — ô nào không đổi tiền.
+const quy = '(BASE_WORK + LUONG_DOANH_SO) * TY_LE_QUY_1PT / 100';
+check('trích quỹ theo tham số: đọc rồi dựng lại y nguyên',
+  docOT(quy) ? buildPayFormula(docOT(quy)!) : null, quy);
+check('trích quỹ theo tham số: ra đúng 1% của 20 triệu',
+  evaluateFormula(quy,
+    { BASE_WORK: 15_000_000, LUONG_DOANH_SO: 5_000_000, TY_LE_QUY_1PT: 1 }).value,
+  200_000);
+
+// Mã lạ vẫn phải bị chặn — nới cho tham số không được nới cho mã gõ sai.
+check('mã không nằm trong tham số đã khai thì vẫn trả null',
+  docOT('HOURLY_RATE * SO_GIO_OT * HE_SO_KHONG_CO'), null);
+
 // --- Ô chọn phải diễn tả được công thức THẬT của công ty --------------------
 //
 // Kiểm chứng quan trọng nhất của màn Cơ chế lương. Bản đầu của bộ ô chọn chỉ
