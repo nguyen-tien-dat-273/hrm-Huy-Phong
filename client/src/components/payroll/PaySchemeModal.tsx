@@ -173,6 +173,18 @@ export function PaySchemeModal({
   const chosen = (componentId: string) => drafts.some((draft) => draft.componentId === componentId);
 
   /**
+   * Mã các khoản khác đã khai cho CHÍNH người này.
+   *
+   * Khoản lương gán theo từng người: công thức trỏ tới một khoản mà người này
+   * chưa được khai thì engine tính phần đó bằng 0đ. Đưa danh sách này xuống để
+   * ô chọn nguồn tách được "đã khai cho người này" với phần còn lại.
+   */
+  const assignedCodes = (skipIndex: number) => drafts
+    .filter((_, index) => index !== skipIndex)
+    .map((draft) => componentById.get(draft.componentId)?.code)
+    .filter((code): code is string => !!code);
+
+  /**
    * Tick vào thì thêm một dòng khai; bỏ tick thì gỡ dòng đó.
    *
    * Khoản ĐÃ LƯU mà bỏ tick phải đưa id vào `removedIds` để lúc lưu còn xoá
@@ -387,13 +399,12 @@ export function PaySchemeModal({
                   const component = componentById.get(draft.componentId);
                   return (
                     <div key={draft.id ?? `new-${index}`} className="rounded-xl border border-slate-200 p-3">
-                      {/* Khoản nào đã cố định từ lúc tick ở trên, nên đây chỉ
-                          còn là tiêu đề — không phải một ô chọn nữa. */}
+                      {/* Tên khoản đã nằm trong dòng phương trình bên dưới, nên
+                          hàng này chỉ còn dấu +/− và nút xoá. */}
                       <div className="flex items-start gap-2">
-                        <p className="min-w-0 flex-1 text-sm font-bold text-slate-800">
-                          {component
-                            ? `${component.kind === 'DEDUCTION' ? '− ' : component.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}${component.name}`
-                            : 'Khoản không còn trong danh mục'}
+                        <p className="min-w-0 flex-1 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                          {component?.kind === 'DEDUCTION' ? 'Khoản trừ'
+                            : component?.kind === 'EMPLOYER_COST' ? 'Chi phí doanh nghiệp' : 'Khoản cộng'}
                           {component?.is_base && (
                             <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
                               LƯƠNG GỐC
@@ -437,6 +448,8 @@ export function PaySchemeModal({
                           />
                         ) : (
                           <PayItemFormulaPicker
+                            componentName={component?.name ?? 'Khoản'}
+                            assignedCodes={assignedCodes(index)}
                             formula={draft.formula}
                             onFormulaChange={(formula) => updateDraft(index, { formula })}
                             amount={draft.amount}

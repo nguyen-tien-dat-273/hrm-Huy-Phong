@@ -947,6 +947,32 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     scope[code.toUpperCase()] = 0;
   }
 
+  /**
+   * Công thức trỏ tới một khoản mà NGƯỜI NÀY không được gán.
+   *
+   * Khoản lương được gán theo TỪNG NGƯỜI, nên `LUONG_CB` trong công thức của
+   * một người chỉ có số khi chính người đó được gán khoản đó. Không gán thì
+   * dòng trên vừa seed nó bằng 0 — công thức vẫn chạy, ra 0đ, và không có gì
+   * nói vì sao. Một người mất nguyên khoản lương mà phiếu trông vẫn bình
+   * thường.
+   *
+   * Seed bằng 0 là đúng (khoản chưa phát sinh thì bằng 0), nhưng im lặng thì
+   * không. Nói thẳng tên khoản còn thiếu.
+   */
+  const assignedCodes = new Set(items.map((entry) => entry.component.code.toUpperCase()));
+  const catalogSet = new Set(catalogCodes.map((code) => code.toUpperCase()));
+  for (const entry of items) {
+    const formula = entry.item.formula ?? entry.component.formula;
+    if (!formula) continue;
+    const missing = codesReferencedBy(formula)
+      .filter((code) => catalogSet.has(code) && !assignedCodes.has(code));
+    if (missing.length === 0) continue;
+    warnings.push(
+      `${profile.name}: khoản "${entry.component.name}" lấy số từ `
+      + `${missing.join(', ')} nhưng người này chưa được gán khoản đó — phần đó tính bằng 0đ.`,
+    );
+  }
+
   // Moi so lieu thang da KHAI trong danh muc deu co mat trong pham vi bien,
   // bang 0 neu thang nay chua ai nhap.
   //

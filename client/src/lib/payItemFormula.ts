@@ -24,7 +24,7 @@
 // thay vì bịa ra một cách khai gần đúng rồi ghi đè mất công thức thật.
 // ============================================================================
 
-/** Đơn giá lấy từ đâu. */
+/** Số tiền lấy từ đâu. */
 export type PayItemSource =
   /** Con số khai riêng cho người này, vào biến `MUC_RIENG`. */
   | { kind: 'FIXED' }
@@ -34,16 +34,16 @@ export type PayItemSource =
 export interface GuidedPayFormula {
   source: PayItemSource;
   /**
-   * Biến nhân vào đơn giá. `null` = khoản CỐ ĐỊNH, trả nguyên đơn giá.
+   * Biến nhân vào số tiền. `null` = khoản CỐ ĐỊNH, trả nguyên số tiền.
    *
    * Có thể là biến hệ thống (`PAID_DAYS`, `WORK_HOURS`...) hoặc một mã số liệu
    * tháng do công ty tự đặt (`SO_CHUYEN`, `SAN_LUONG`...).
    */
   variable: string | null;
   /**
-   * Chia đơn giá cho ngày công chuẩn trước khi nhân.
+   * Chia số tiền cho ngày công chuẩn trước khi nhân.
    *
-   * Dùng khi đơn giá khai theo THÁNG mà trả theo ngày thực đi: lương tháng
+   * Dùng khi số tiền khai theo THÁNG mà trả theo ngày thực đi: lương tháng
    * 15 triệu, đi 22/24,5 công thì nhận 15tr ÷ 24,5 × 22.
    */
   prorate: boolean;
@@ -85,7 +85,7 @@ function sourceCode(source: PayItemSource): string {
 export function buildPayFormula(guided: GuidedPayFormula): string {
   const base = sourceCode(guided.source);
   if (!guided.variable) return base;
-  // Ngoặc quanh phép chia để đọc ra ngay là "đơn giá ngày × số liệu"; không có
+  // Ngoặc quanh phép chia để đọc ra ngay là "tiền một ngày × số liệu"; không có
   // ngoặc thì vẫn đúng thứ tự nhưng khó soát bằng mắt.
   const unit = guided.prorate ? `(${base} / STANDARD_DAYS)` : base;
   return `${unit} * ${guided.variable}`;
@@ -97,7 +97,7 @@ const NAME = '([A-Z][A-Z0-9_]*)';
  * Đọc ngược một công thức về các ô chọn. Trả null nếu nó không đúng hình dạng
  * mà màn hình này sinh ra — khi đó phải giữ nguyên công thức tự do.
  *
- * `knownCodes` là mã các khoản trong danh mục. Chỉ nhận đơn giá là MUC_RIENG
+ * `knownCodes` là mã các khoản trong danh mục. Chỉ nhận số tiền là MUC_RIENG
  * hoặc một mã CÓ THẬT: nhận bừa mọi chữ hoa sẽ biến `GROSS * PAID_DAYS` thành
  * "khoản tên GROSS", rồi lưu lại là hỏng.
  */
@@ -143,21 +143,4 @@ export function parsePayFormula(
   }
 
   return null;
-}
-
-/** Câu tiếng Việt mô tả cách tính, đặt cạnh công thức sinh ra. */
-export function describePayFormula(
-  guided: GuidedPayFormula,
-  names: { source?: string; variable?: string } = {},
-): string {
-  const unit = guided.source.kind === 'FIXED'
-    ? 'mức khai riêng cho người này'
-    : `khoản ${names.source || guided.source.code}`;
-
-  if (!guided.variable) return `Trả đúng ${unit} mỗi tháng, không phụ thuộc gì.`;
-
-  const by = names.variable || guided.variable;
-  return guided.prorate
-    ? `Lấy ${unit} làm mức THÁNG, chia ngày công chuẩn rồi nhân ${by}.`
-    : `Lấy ${unit} làm ĐƠN GIÁ, nhân với ${by}.`;
 }

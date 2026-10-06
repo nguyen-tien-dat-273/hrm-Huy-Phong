@@ -1,28 +1,28 @@
 // ============================================================================
-// Khai cách tính một khoản lương bằng vài ô chọn.
+// Khai cách tính một khoản lương, đọc như một dòng phương trình.
 // ----------------------------------------------------------------------------
-// Hỏi đúng hai câu: con số lấy từ đâu, và nhân với gì.
+//     Lương công  =  [ Lương cơ bản ]  ×  [ Ngày hưởng lương ]
 //
-// KHÔNG có bước "chọn loại khoản". Khoản cố định chỉ là trường hợp "không
-// nhân", nên nó là một lựa chọn trong ô "Nhân với" chứ không đáng một nút
-// riêng — bắt chọn loại trước rồi mới khai là thêm một quyết định mà người
-// dùng không cần phải đưa ra.
+// Ô trái gộp hai nguồn làm một: nhập thẳng một số, hoặc lấy từ một khoản khác
+// trong danh mục. Ô phải là số nhân — và "Không nhân" chính là khoản cố định,
+// không cần một nút chọn loại riêng.
+//
+// CÁ NHÂN HOÁ: danh sách bên trái tách hai nhóm theo NGƯỜI ĐANG KHAI. Khoản
+// lương gán theo từng người, nên `LUONG_CB` trong công thức chỉ có số khi
+// chính người đó cũng được gán khoản đó. Chọn một khoản chưa khai cho họ thì
+// engine tính phần ấy bằng 0đ — đúng về số nhưng rất dễ nhầm, nên nói trước
+// thay vì để phát hiện lúc đã trả lương thiếu.
 //
 // Số liệu tháng không phải khai thêm ở đâu: màn "Số liệu lương tháng" quét
-// công thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu.
-// Chọn `SO_CHUYEN` ở đây thì tháng sau quản lý đã có ô để điền — nên màn này
-// nói rõ điều đó thay vì để người khai tự hỏi "rồi ai nhập con số kia".
+// công thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu và
+// đặt tên cột theo tên khoản dùng biến đó.
 //
-// Công thức sinh ra vẫn hiện NGUYÊN VĂN ở dưới, vì cuối cùng engine chạy trên
-// chuỗi đó chứ không chạy trên ô chọn — giấu đi thì lúc sai không ai soát được.
-//
-// Công thức viết tay không khớp hai hình dạng trên thì màn này tự nhường chỗ
-// cho ô tự do, không đoán bừa rồi ghi đè. Xem `lib/payItemFormula.ts`.
+// Công thức sinh ra vẫn hiện nguyên văn, vì engine chạy trên chuỗi đó chứ
+// không chạy trên các ô chọn — giấu đi thì lúc sai không ai soát được.
 // ============================================================================
 
 import { useMemo } from 'react';
-import { Calculator, PenLine } from 'lucide-react';
-import { Input, Select } from '@/components/ui/Input';
+import { PenLine, TriangleAlert } from 'lucide-react';
 import { evaluateFormula } from '@/lib/payrollFormula';
 import { formatVND } from '@/lib/utils';
 import {
@@ -32,38 +32,42 @@ import {
 } from '@/lib/payItemFormula';
 import type { PayComponent } from '@/types';
 
+/** Giá trị riêng của ô chọn nguồn, không trùng mã khoản nào. */
+const NHAP_TAY = '__SO__';
+
 interface Props {
+  /** Tên khoản đang khai — vế trái của phương trình. */
+  componentName: string;
   /** Công thức hiện tại, dạng chuỗi — thứ thật sự được lưu và chạy. */
   formula: string;
   onFormulaChange: (next: string) => void;
-  /** Đơn giá khai riêng cho người này (biến `MUC_RIENG`). */
+  /** Số tiền khai riêng cho người này (biến `MUC_RIENG`). */
   amount: string;
   onAmountChange: (next: string) => void;
   components: PayComponent[];
-  /** Khoản đang khai — tự loại khỏi danh sách để không tự tham chiếu chính nó. */
+  /** Khoản đang khai — tự loại ra để không tham chiếu chính nó. */
   selfCode?: string | null;
+  /** Mã các khoản ĐÃ khai cho chính người này, để tách nhóm gợi ý. */
+  assignedCodes: readonly string[];
   sampleScope: Readonly<Record<string, number>>;
   onWriteByHand: () => void;
 }
 
 export function PayItemFormulaPicker({
-  formula, onFormulaChange, amount, onAmountChange,
-  components, selfCode, sampleScope, onWriteByHand,
+  componentName, formula, onFormulaChange, amount, onAmountChange,
+  components, selfCode, assignedCodes, sampleScope, onWriteByHand,
 }: Props) {
-  // Chỉ nhận khoản ĐANG BẬT, và bỏ chính nó ra: một khoản tham chiếu chính
-  // mình sẽ thành vòng lặp, engine bắt được nhưng báo lỗi khó hiểu.
   const usable = useMemo(
     () => components.filter((item) => item.is_active && item.code && item.code !== selfCode),
     [components, selfCode],
   );
   const codes = useMemo(() => usable.map((item) => item.code), [usable]);
 
-  /**
-   * Mã số liệu tháng mà công ty đã dùng ở đâu đó trong danh mục.
-   *
-   * Gợi ý từ dữ liệu thật thay vì bắt người khai tự nghĩ ra mã — và gõ trùng
-   * mã đã có nghĩa là dùng chung một cột nhập liệu, không đẻ thêm cột mới.
-   */
+  const assigned = useMemo(() => new Set(assignedCodes), [assignedCodes]);
+  const daKhai = usable.filter((item) => assigned.has(item.code));
+  const chuaKhai = usable.filter((item) => !assigned.has(item.code));
+
+  /** Mã số liệu tháng mà công ty đã dùng ở đâu đó trong danh mục. */
   const inputCodes = useMemo(() => {
     const seen = new Map<string, string>();
     for (const item of components) {
@@ -79,93 +83,78 @@ export function PayItemFormulaPicker({
     onFormulaChange(buildPayFormula({ ...guided, ...patch }));
 
   const generated = buildPayFormula(guided);
-  const preview = useMemo(() => {
+  const scope = useMemo(
+    () => ({ ...sampleScope, MUC_RIENG: Number(amount || 0) }),
+    [sampleScope, amount],
+  );
+  const valueOf = (prorate: boolean) => {
     try {
-      return evaluateFormula(generated, { ...sampleScope, MUC_RIENG: Number(amount || 0) }).value;
+      return evaluateFormula(buildPayFormula({ ...guided, prorate }), scope).value;
     } catch {
       return null;
     }
-  }, [generated, sampleScope, amount]);
+  };
 
+  const fromComponent = guided.source.kind === 'COMPONENT';
+  const sourceCode = fromComponent ? (guided.source as { code: string }).code : null;
+  /** Lấy số từ một khoản mà chính người này chưa được khai. */
+  const nguonChuaKhai = !!sourceCode && !assigned.has(sourceCode);
 
-  const isFixed = !guided.variable;
+  const onSource = (value: string) => set({
+    source: value === NHAP_TAY ? { kind: 'FIXED' } : { kind: 'COMPONENT', code: value },
+  });
 
-  /**
-   * Số tiền của cả hai cách hiểu, khi số nhân là ngày công.
-   *
-   * "Lương cơ bản 8tr × 22 công" ra 176 triệu, còn "8tr ÷ 24,5 × 22" ra 7,18
-   * triệu — lệch 24,5 lần, mà khác biệt chỉ là một ô tick. Bày thẳng hai con
-   * số ra thì không ai chọn nhầm; giấu sau một ô tick thì sai cả bảng lương
-   * mà không có gì báo.
-   */
-  const both = useMemo(() => {
-    if (!isDayCount(guided.variable)) return null;
-    const scope = { ...sampleScope, MUC_RIENG: Number(amount || 0) };
-    const value = (prorate: boolean) => {
-      try {
-        return evaluateFormula(buildPayFormula({ ...guided, prorate }), scope).value;
-      } catch {
-        return null;
-      }
-    };
-    return { perDay: value(false), perMonth: value(true) };
-  }, [guided, sampleScope, amount]);
+  const slot = 'min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm outline-none transition'
+    + ' focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20';
 
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-      {/* --- Lấy số từ đâu --- */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-2">
-          {([
-            ['FIXED', isFixed ? 'Nhập số tiền' : 'Nhập đơn giá'],
-            ['COMPONENT', 'Lấy từ danh mục'],
-          ] as const).map(([kind, label]) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => set({
-                source: kind === 'FIXED'
-                  ? { kind: 'FIXED' }
-                  : { kind: 'COMPONENT', code: guided.source.kind === 'COMPONENT' ? guided.source.code : (codes[0] ?? '') },
-              })}
-              aria-pressed={guided.source.kind === kind}
-              disabled={kind === 'COMPONENT' && codes.length === 0}
-              className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition disabled:opacity-40 ${
-                guided.source.kind === kind
-                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+    <div className="space-y-2.5">
+      {/* --- Dòng phương trình --- */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="shrink-0 text-sm font-bold text-slate-800">{componentName}</span>
+        <span className="shrink-0 text-base text-slate-400">=</span>
 
-        {guided.source.kind === 'FIXED' ? (
-          <Input
-            label={isFixed ? 'Số tiền mỗi tháng (VND)' : 'Đơn giá một đơn vị (VND)'}
-            inputMode="decimal"
-            placeholder="VD: 200000"
-            value={amount}
-            onChange={(event) => onAmountChange(event.target.value.replace(/[^\d]/g, ''))}
-          />
-        ) : (
-          <Select
-            label="Khoản trong danh mục"
-            value={guided.source.code}
-            onChange={(event) => set({ source: { kind: 'COMPONENT', code: event.target.value } })}
+        {fromComponent ? (
+          <select
+            value={sourceCode ?? ''}
+            onChange={(event) => onSource(event.target.value)}
+            className={`${slot} ${nguonChuaKhai ? 'border-amber-400 bg-amber-50' : 'border-slate-200 bg-white'}`}
           >
-            {usable.map((item) => (
-              <option key={item.id} value={item.code}>{item.name}</option>
-            ))}
-          </Select>
+            <option value={NHAP_TAY}>Nhập số cố định…</option>
+            {daKhai.length > 0 && (
+              <optgroup label="Đã khai cho người này">
+                {daKhai.map((item) => <option key={item.id} value={item.code}>{item.name}</option>)}
+              </optgroup>
+            )}
+            {chuaKhai.length > 0 && (
+              <optgroup label="Chưa khai cho người này">
+                {chuaKhai.map((item) => <option key={item.id} value={item.code}>{item.name}</option>)}
+              </optgroup>
+            )}
+          </select>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
+            <input
+              inputMode="decimal"
+              placeholder="VD: 200000"
+              value={amount}
+              onChange={(event) => onAmountChange(event.target.value.replace(/[^\d]/g, ''))}
+              className={`${slot} border-indigo-300 bg-white font-mono`}
+            />
+            <button
+              type="button"
+              onClick={() => onSource(codes[0] ?? NHAP_TAY)}
+              disabled={codes.length === 0}
+              className="shrink-0 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-bold text-slate-500 transition hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-40"
+            >
+              Lấy từ danh mục
+            </button>
+          </div>
         )}
-      </div>
 
-      {/* --- Nhân với gì --- */}
-      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5">
-        <Select
-          label="Nhân với"
+        <span className="shrink-0 text-base text-slate-400">×</span>
+
+        <select
           value={guided.variable ?? ''}
           onChange={(event) => set({
             variable: event.target.value || null,
@@ -173,11 +162,9 @@ export function PayItemFormulaPicker({
             // `(MUC_RIENG / STANDARD_DAYS)` cụt đuôi ở lần bật lại sau.
             prorate: event.target.value ? guided.prorate : false,
           })}
+          className={`${slot} border-slate-200 bg-white`}
         >
-          {/* Không nhân = khoản cố định. Để nó là một lựa chọn trong cùng ô
-              thay vì một nút riêng: người khai chỉ phải trả lời MỘT câu
-              "nhân với gì", chứ không phải chọn loại rồi mới khai. */}
-          <option value="">Không nhân — trả nguyên số</option>
+          <option value="">Không nhân</option>
           <optgroup label="Lấy tự động từ chấm công và KPI">
             {SYSTEM_VARIABLES.map((item) => (
               <option key={item.code} value={item.code}>{item.label}</option>
@@ -190,64 +177,56 @@ export function PayItemFormulaPicker({
               ))}
             </optgroup>
           )}
-        </Select>
-
-        {both && (
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Số vừa nhập đang là
-            </p>
-            {([
-              [false, 'Đơn giá MỘT NGÀY', both.perDay],
-              [true, 'Lương MỘT THÁNG', both.perMonth],
-            ] as const).map(([prorate, label, value]) => (
-              <label
-                key={label}
-                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 transition ${
-                  guided.prorate === prorate
-                    ? 'border-indigo-600 bg-indigo-50'
-                    : 'border-slate-200 hover:border-indigo-300'
-                }`}
-              >
-                <input
-                  type="radio"
-                  name={`prorate-${selfCode ?? 'new'}`}
-                  checked={guided.prorate === prorate}
-                  onChange={() => set({ prorate })}
-                  className="h-4 w-4 flex-shrink-0 accent-indigo-600"
-                />
-                <span className="min-w-0 flex-1 text-[11px] font-semibold text-slate-700">{label}</span>
-                {value != null && (
-                  <span className="shrink-0 font-mono text-[11px] font-bold text-slate-900">
-                    {formatVND(value)}
-                  </span>
-                )}
-              </label>
-            ))}
-          </div>
-        )}
+        </select>
       </div>
 
-      {/* --- Công thức sinh ra, hiện nguyên văn --- */}
-      <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-        <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          <Calculator className="h-3 w-3" /> Công thức
+      {/* Lấy số từ khoản mà người này chưa khai thì phần đó bằng 0đ. Nói ngay,
+          vì phát hiện lúc xem phiếu lương là đã trả thiếu rồi. */}
+      {nguonChuaKhai && (
+        <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] leading-relaxed text-amber-800">
+          <TriangleAlert className="mt-0.5 h-3 w-3 flex-shrink-0" />
+          Người này chưa được khai khoản đó, nên phần này tính bằng 0đ. Tick thêm khoản đó
+          ở danh mục bên trên, hoặc chọn nguồn khác.
         </p>
-        <code className="mt-1 block break-words font-mono text-xs text-indigo-700">{generated}</code>
-        {preview != null && (
-          <p className="mt-1 text-[11px] font-semibold text-slate-700">
-            Thử với số liệu mẫu: {formatVND(preview)}
-          </p>
-        )}
-      </div>
+      )}
 
-      <button
-        type="button"
-        onClick={onWriteByHand}
-        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 transition hover:text-indigo-700"
-      >
-        <PenLine className="h-3 w-3" /> Cần tính phức tạp hơn — tự viết công thức
-      </button>
+      {/* Hai cách hiểu con số, kèm tiền thật của từng cách. Chỉ có nghĩa khi
+          nhân với ngày công: "8tr × 22 công" ra 176 triệu, "8tr ÷ 24,5 × 22"
+          ra 7,18 triệu — lệch 24,5 lần. */}
+      {isDayCount(guided.variable) && (
+        <div className="flex flex-wrap gap-1.5">
+          {([
+            [false, 'Tiền của 1 ngày', valueOf(false)],
+            [true, 'Tiền của cả tháng', valueOf(true)],
+          ] as const).map(([prorate, label, value]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => set({ prorate })}
+              aria-pressed={guided.prorate === prorate}
+              className={`rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+                guided.prorate === prorate
+                  ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                  : 'border-slate-200 text-slate-500 hover:border-indigo-300'
+              }`}
+            >
+              {label}
+              {value != null && <span className="ml-1.5 font-mono">{formatVND(value)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <code className="min-w-0 break-words font-mono text-[11px] text-indigo-700">{generated}</code>
+        <button
+          type="button"
+          onClick={onWriteByHand}
+          className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-slate-400 transition hover:text-indigo-700"
+        >
+          <PenLine className="h-3 w-3" /> Tự viết công thức
+        </button>
+      </div>
     </div>
   );
 }

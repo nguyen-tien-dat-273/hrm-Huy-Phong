@@ -1007,5 +1007,41 @@ check('tỷ lệ đúng bằng tỷ lệ mức riêng của hai người',
 check('tính lại A sau khi tính B vẫn ra đúng số của A',
   dong(slipFor(8_000_000), 'LUONG_CONG'), a);
 
+// Công thức trỏ tới khoản mà NGƯỜI NÀY không được gán.
+//
+// Khoản gán theo từng người, nên mã khoản trong công thức chỉ có số khi
+// chính người đó được gán khoản đó. Không gán thì nó bằng 0 — công thức vẫn
+// chạy, ra 0đ. Đúng về số, nhưng im lặng thì một người mất nguyên khoản
+// lương mà phiếu trông vẫn bình thường.
+const thieuNguon = computePayslip({
+  profile,
+  payProfile: payProfile({ base_amount: 0 }),
+  items: [{ item: item('cc'), component: luongCong }],
+  inputs: {},
+  stats,
+  settings,
+  catalogCodes: ['LUONG_CB', 'LUONG_CONG'],
+});
+check('khoản thiếu nguồn vẫn ra 0đ, không ném lỗi',
+  thieuNguon.lines.find((line) => line.code === 'LUONG_CONG')?.amount ?? 0, 0);
+check('nhưng PHẢI cảnh báo, và gọi đúng tên khoản còn thiếu',
+  thieuNguon.warnings.some((w) => w.includes('LUONG_CB') && w.includes('Lương công')), true);
+
+// Người ĐƯỢC gán đủ cả hai thì không cảnh báo gì về chuyện này.
+const duNguon = computePayslip({
+  profile,
+  payProfile: payProfile({ base_amount: 0 }),
+  items: [
+    { item: item('cb', { amount: 8_000_000 }), component: luongCoBan },
+    { item: item('cc'), component: luongCong },
+  ],
+  inputs: {},
+  stats,
+  settings,
+  catalogCodes: ['LUONG_CB', 'LUONG_CONG'],
+});
+check('gán đủ thì không cảnh báo thiếu nguồn',
+  duNguon.warnings.some((w) => w.includes('chưa được gán khoản đó')), false);
+
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
