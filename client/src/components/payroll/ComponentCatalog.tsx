@@ -27,23 +27,28 @@ interface ComponentCatalogProps {
   onChanged: () => void;
 }
 
+/**
+ * Danh mục CHỈ LIỆT KÊ: tên khoản, cộng hay trừ, chịu thuế/bảo hiểm không, và
+ * ghi chú. Không có công thức, không có cách tính, không có mức tiền.
+ *
+ * Mọi cách tính nằm ở Cơ chế lương, khai riêng cho TỪNG NGƯỜI. Lý do: cùng một
+ * khoản nhưng mỗi người một mức, một cách tính — để công thức ở đây thì nó
+ * lặng lẽ áp cho mọi người chưa khai riêng, và không ai thấy nó ở đâu cả.
+ *
+ * `calc_type`, `formula`, `default_amount`, `input_code`, `base_code`,
+ * `prorate`, `ot_multiplier` CỐ Ý không còn trong màn này. Lưu khoản nào là
+ * ghi đè chúng về rỗng, nên khoản đó thành một dòng danh sách thuần.
+ */
 interface Draft {
   id?: string;
   code: string;
   name: string;
   kind: PayComponentKind;
-  calc_type: PayCalcType;
-  default_amount: string;
-  input_code: string;
-  base_code: string;
-  formula: string;
   taxable: boolean;
   insurable: boolean;
   is_base: boolean;
-  prorate: boolean;
   sort_order: string;
   group_name: string;
-  ot_multiplier: string;
   tax_exempt_cap: string;
   max_amount: string;
   is_active: boolean;
@@ -88,9 +93,8 @@ function groupRows(items: PayComponent[]): { group: string | null; items: PayCom
 }
 
 const BLANK: Draft = {
-  code: '', name: '', kind: 'EARNING', calc_type: 'FIXED', default_amount: '0',
-  input_code: '', base_code: '', formula: '', taxable: true, insurable: false, is_base: false,
-  prorate: false, sort_order: '500', group_name: '', ot_multiplier: '',
+  code: '', name: '', kind: 'EARNING', taxable: true, insurable: false,
+  is_base: false, sort_order: '500', group_name: '',
   tax_exempt_cap: '', max_amount: '', is_active: true, note: '',
 };
 
@@ -124,18 +128,11 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
     code: component.code,
     name: component.name,
     kind: component.kind,
-    calc_type: component.calc_type,
-    default_amount: String(Number(component.default_amount)),
-    input_code: component.input_code ?? '',
-    base_code: component.base_code ?? '',
-    formula: component.formula ?? '',
     taxable: component.taxable,
     insurable: component.insurable,
     is_base: component.is_base,
-    prorate: component.prorate,
     sort_order: String(component.sort_order),
     group_name: component.group_name ?? '',
-    ot_multiplier: component.ot_multiplier == null ? '' : String(Number(component.ot_multiplier)),
     tax_exempt_cap: component.tax_exempt_cap == null ? '' : String(Number(component.tax_exempt_cap)),
     max_amount: component.max_amount == null ? '' : String(Number(component.max_amount)),
     is_active: component.is_active,
@@ -159,18 +156,21 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
       code,
       name: draft.name.trim(),
       kind: draft.kind,
-      calc_type: draft.calc_type,
-      default_amount: Number(draft.default_amount) || 0,
-      input_code: draft.input_code.trim().toUpperCase() || null,
-      base_code: draft.base_code.trim().toUpperCase() || null,
-      formula: draft.formula.trim() || null,
       taxable: draft.taxable,
       insurable: draft.insurable,
       is_base: draft.is_base,
-      prorate: draft.prorate,
       sort_order: Number(draft.sort_order) || 500,
       group_name: draft.group_name.trim() || null,
-      ot_multiplier: draft.ot_multiplier ? Number(draft.ot_multiplier) : null,
+      // Ghi đè về rỗng, KHÔNG phải bỏ qua. Bỏ qua thì `update` giữ nguyên giá
+      // trị cũ dưới database — khoản vẫn mang một công thức mà màn này không
+      // còn chỗ nào hiện ra. Lưu một lần là khoản đó sạch hẳn.
+      calc_type: 'FIXED',
+      formula: null,
+      default_amount: 0,
+      input_code: null,
+      base_code: null,
+      prorate: false,
+      ot_multiplier: null,
       tax_exempt_cap: draft.tax_exempt_cap ? Number(draft.tax_exempt_cap) : null,
       max_amount: draft.max_amount ? Number(draft.max_amount) : null,
       is_active: draft.is_active,
@@ -530,6 +530,22 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
                 onChange={(is_base) => setDraft({ ...draft, is_base })}
                 label="Đây là khoản LƯƠNG GỐC"
                 hint="Hệ thống lấy mức của khoản này làm căn cứ tính đơn giá giờ tăng ca và mức đóng bảo hiểm. Cả danh mục chỉ một khoản được bật."
+              />
+              {/* Hai cờ này KHÔNG phải công thức — chúng mô tả khoản đó là
+                  loại tiền gì theo luật, giống nhau với mọi người. Danh sách
+                  đã hiện chúng thành nhãn "MIỄN THUẾ" / "TÍNH BẢO HIỂM" từ
+                  trước; để xem được mà không sửa được mới là thừa. */}
+              <Toggle
+                checked={draft.taxable}
+                onChange={(taxable) => setDraft({ ...draft, taxable })}
+                label="Tính vào thu nhập chịu thuế TNCN"
+                hint="Tắt với khoản được miễn theo luật, ví dụ tiền ăn ca trong mức quy định."
+              />
+              <Toggle
+                checked={draft.insurable}
+                onChange={(insurable) => setDraft({ ...draft, insurable })}
+                label="Tính vào lương đóng bảo hiểm bắt buộc"
+                hint="Bật với khoản thuộc tiền lương làm căn cứ đóng BHXH, BHYT, BHTN."
               />
             </div>
 
