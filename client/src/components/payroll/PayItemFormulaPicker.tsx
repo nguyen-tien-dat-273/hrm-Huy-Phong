@@ -17,9 +17,14 @@
 // công thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu và
 // đặt tên cột theo tên khoản dùng biến đó.
 //
-// Công thức sinh ra, nút tự viết, lưu và xoá nằm ở hàng tiêu đề của khoản
-// (do `PaySchemeModal` dựng), không nằm trong này — để mọi khoản có cùng một
-// hàng thao tác ở cùng một chỗ.
+// Công thức sinh ra, lưu và xoá nằm ở hàng tiêu đề của khoản (do
+// `PaySchemeModal` dựng), không nằm trong này — để mọi khoản có cùng một hàng
+// thao tác ở cùng một chỗ.
+//
+// Không có nút "tự viết": các ô chọn này ĐÃ là cách khai duy nhất. Ô công thức
+// tự do chỉ còn hiện khi mở lại một công thức viết tay từ trước mà các ô chọn
+// không đọc nổi — giữ để không diễn giải sai rồi ghi đè, chứ không phải một
+// chế độ để người dùng tự bật.
 // ============================================================================
 
 import { useMemo } from 'react';

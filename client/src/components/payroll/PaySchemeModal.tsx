@@ -8,7 +8,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { PenLine, Save, Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
+import { Save, Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -77,10 +77,12 @@ interface ItemDraft {
   /**
    * Đang khai bằng ô công thức tự do thay vì các ô chọn.
    *
-   * Bật khi mở một khoản có công thức viết tay (ô chọn không đọc nổi nó), hoặc
-   * khi người dùng tự bấm "tự viết công thức". Không suy lại mỗi lần render:
-   * người đang gõ dở một biểu thức phức tạp mà màn hình nhảy về ô chọn giữa
-   * chừng là mất hết cái vừa gõ.
+   * KHÔNG còn nút bật/tắt — cờ này chỉ do hệ thống đặt lúc MỞ, khi công thức
+   * đã lưu không đọc được bằng các ô chọn. Giữ nó là bắt buộc: bỏ đi thì mở
+   * một cơ chế viết tay ra là màn hình diễn giải lại sai rồi ghi đè mất.
+   *
+   * Tính MỘT LẦN lúc mở, không suy lại mỗi lần render: đang gõ dở một biểu
+   * thức mà màn hình nhảy về ô chọn giữa chừng là mất hết cái vừa gõ.
    */
   handWritten: boolean;
 }
@@ -468,9 +470,9 @@ export function PaySchemeModal({
                         return (
                           <div key={draft.id ?? `new-${index}`} className="p-3">
                             {/* Hàng thao tác đứng TRÊN CÙNG và giống nhau ở mọi
-                                khoản: công thức sinh ra, nút tự viết, lưu lẻ,
-                                xoá. Để rải mỗi thứ một chỗ thì mỗi khoản phải
-                                tìm lại từ đầu. */}
+                                khoản: công thức sinh ra, lưu lẻ, xoá. Để rải
+                                mỗi thứ một chỗ thì mỗi khoản phải tìm lại từ
+                                đầu. */}
                             <div className="mb-2 flex flex-wrap items-center gap-2">
                               <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-indigo-700">
                                 {draft.formula.trim() || '—'}
@@ -480,15 +482,6 @@ export function PaySchemeModal({
                                   LƯƠNG GỐC
                                 </span>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => updateDraft(index, { handWritten: !draft.handWritten })}
-                                className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-bold transition ${
-                                  draft.handWritten ? 'bg-indigo-50 text-indigo-700' : 'text-slate-400 hover:text-indigo-700'
-                                }`}
-                              >
-                                <PenLine className="h-3 w-3" /> Tự viết
-                              </button>
                               <button
                                 type="button"
                                 onClick={() => void saveOne(index)}
