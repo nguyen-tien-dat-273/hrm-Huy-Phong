@@ -14,6 +14,7 @@
 import { kpiSchemeFor, unitLineage, type KpiSchemeData, type ResolvableUnit } from '../kpiSchemeFor';
 import { describeLevelIssues, scoreFromLevels } from '../kpiScoring';
 import { countWorkingDays } from '../leave';
+import { buildPayFormula, parsePayFormula } from '../payItemFormula';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -225,6 +226,47 @@ check('chủ nhật không tính',
   countWorkingDays('2026-02-08', '2026-02-08', { schedules: lichDayDu, holidays: new Set() }), 0);
 check('ngày kết thúc trước ngày bắt đầu trả 0',
   countWorkingDays('2026-02-06', '2026-02-02'), 0);
+
+// --- Công thức một khoản lương, khai bằng ô chọn ----------------------------
+//
+// `parsePayFormula` phải là chiều ngược ĐÚNG của `buildPayFormula`: mở lại một
+// cơ chế đã khai mà các ô chọn hiện sai thì bấm Lưu một cái là ghi đè mất công
+// thức thật của người ta.
+const MA_KHOAN = ['LUONG_CB', 'PC_XANG'];
+
+check('nhân thẳng số công',
+  buildPayFormula({ source: { kind: 'FIXED' }, scale: 'PER_DAY', days: 'PAID_DAYS' }),
+  'MUC_RIENG * PAID_DAYS');
+check('không nhân thì giữ nguyên mức',
+  buildPayFormula({ source: { kind: 'FIXED' }, scale: 'NONE', days: 'PAID_DAYS' }), 'MUC_RIENG');
+check('chia công chuẩn rồi nhân công thực tế',
+  buildPayFormula({ source: { kind: 'COMPONENT', code: 'LUONG_CB' }, scale: 'PRORATE', days: 'WORK_DAYS' }),
+  '(LUONG_CB / STANDARD_DAYS) * WORK_DAYS');
+
+// Đi vòng tròn build → parse → build phải ra đúng chuỗi ban đầu, cho cả 12 tổ hợp.
+for (const source of [{ kind: 'FIXED' as const }, { kind: 'COMPONENT' as const, code: 'PC_XANG' }]) {
+  for (const scale of ['NONE', 'PER_DAY', 'PRORATE'] as const) {
+    for (const days of ['PAID_DAYS', 'WORK_DAYS'] as const) {
+      const sinh = buildPayFormula({ source, scale, days });
+      const doc = parsePayFormula(sinh, MA_KHOAN);
+      check(`đi vòng tròn: ${sinh}`, doc ? buildPayFormula(doc) : null, sinh);
+    }
+  }
+}
+
+// Không khớp hình dạng thì phải trả null để màn hình giữ nguyên ô công thức tự
+// do — đoán bừa rồi ghi đè là mất công thức người dùng đã viết tay.
+check('công thức lạ không nhận dạng được',
+  parsePayFormula('IF(WORK_DAYS > 20, MUC_RIENG, 0)', MA_KHOAN), null);
+check('mã khoản không có trong danh mục thì không nhận',
+  parsePayFormula('KHONG_CO * PAID_DAYS', MA_KHOAN), null);
+check('biến hệ thống không bị nhầm thành khoản',
+  parsePayFormula('GROSS * PAID_DAYS', MA_KHOAN), null);
+check('công thức rỗng trả null', parsePayFormula('', MA_KHOAN), null);
+check('khoảng trắng thừa vẫn đọc được',
+  parsePayFormula('  MUC_RIENG  *  PAID_DAYS  ', MA_KHOAN)?.scale, 'PER_DAY');
+check('thiếu ngoặc vẫn đọc được dạng chia công chuẩn',
+  parsePayFormula('LUONG_CB / STANDARD_DAYS * PAID_DAYS', MA_KHOAN)?.scale, 'PRORATE');
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

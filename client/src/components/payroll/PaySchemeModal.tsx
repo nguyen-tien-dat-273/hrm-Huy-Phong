@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
 import { PayrollFormulaBuilder } from '@/components/payroll/PayrollFormulaBuilder';
+import { PayItemFormulaPicker } from '@/components/payroll/PayItemFormulaPicker';
+import { parsePayFormula } from '@/lib/payItemFormula';
 import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
 import { payBasisLabel, progressiveIncomeTax, sampleFormulaScope, toTaxBrackets } from '@/lib/payroll';
@@ -77,6 +79,15 @@ interface ItemDraft {
   formula: string;
   effectiveFrom: string;
   note: string;
+  /**
+   * Đang khai bằng ô công thức tự do thay vì các ô chọn.
+   *
+   * Bật khi mở một khoản có công thức viết tay (ô chọn không đọc nổi nó), hoặc
+   * khi người dùng tự bấm "tự viết công thức". Không suy lại mỗi lần render:
+   * người đang gõ dở một biểu thức phức tạp mà màn hình nhảy về ô chọn giữa
+   * chừng là mất hết cái vừa gõ.
+   */
+  handWritten: boolean;
 }
 
 const digitsOnly = (value: string) => value.replace(/[^\d]/g, '');
@@ -122,6 +133,10 @@ export function PaySchemeModal({
       componentId: item.component_id,
       amount: item.amount != null ? String(Number(item.amount)) : '',
       formula: item.formula ?? '',
+      // Công thức đã lưu mà các ô chọn không đọc nổi thì mở thẳng ô tự do —
+      // hiện ô chọn rồi bấm Lưu là ghi đè mất công thức người ta viết tay.
+      handWritten: !!item.formula
+        && !parsePayFormula(item.formula, components.map((c) => c.code)),
       effectiveFrom: item.effective_from,
       note: item.note ?? '',
     })));
@@ -157,6 +172,7 @@ export function PaySchemeModal({
       componentId: next.id,
       amount: '',
       formula: '',
+      handWritten: false,
       effectiveFrom: effectiveFrom,
       note: '',
     }]);
@@ -322,14 +338,14 @@ export function PaySchemeModal({
               Bước 1 · Lương gốc
             </h3>
 
-            {/* Khai lương gốc bằng một KHOẢN trong danh mục, như mọi khoản
-                khác — thay vì bắt học một mô hình riêng chỉ để khai một con
-                số. Khoản nào là lương gốc thì bật cờ ở Danh mục khoản lương,
-                cả danh mục chỉ một khoản.
+            {/* Lương gốc cũng là một KHOẢN trong danh mục, khai y như mọi
+                khoản khác ở Bước 3: chọn khoản, rồi chọn cách tính. Không có
+                lý do gì bắt học một mô hình riêng chỉ để khai một con số.
 
-                Chưa bật khoản nào thì vẫn hiện năm thẻ cũ: bỏ chúng đi lúc đó
-                là không còn chỗ nào khai lương gốc, và người đang ăn lương
-                giờ/ngày/khoán mất luôn cơ chế của họ. */}
+                Năm thẻ cơ chế cũ KHÔNG bỏ hẳn, chỉ thu vào mục "cách cũ":
+                người đang ăn lương giờ / ngày / khoán vẫn chạy trên `pay_basis`,
+                bỏ đi là mất cơ chế của họ giữa kỳ. Mục đó tự mở sẵn cho ai
+                đang dùng, và đóng với người khai mới. */}
             {baseComponent ? (
               <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-3.5 py-3">
                 <p className="text-sm font-bold text-slate-900">{baseComponent.name}</p>
@@ -340,29 +356,42 @@ export function PaySchemeModal({
               </div>
             ) : (
               <>
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
-                  Chưa đánh dấu khoản nào là <strong>lương gốc</strong> trong Danh mục khoản lương,
-                  nên vẫn khai theo cách cũ. Bật cờ đó rồi thì bước này chỉ còn một ô nhập mức.
-                </p>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {PAY_BASES.map((entry) => (
-                    <button
-                      key={entry.value}
-                      type="button"
-                      onClick={() => setBasis(entry.value)}
-                      aria-pressed={basis === entry.value}
-                      className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-                        basis === entry.value
-                          ? 'border-indigo-600 bg-indigo-50'
-                          : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span className="block text-sm font-bold text-slate-800">{payBasisLabel(entry.value)}</span>
-                      <span className="mt-0.5 block text-[11px] font-semibold text-indigo-600">{entry.who}</span>
-                      <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{entry.hint}</span>
-                    </button>
-                  ))}
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3.5 py-3">
+                  <p className="text-sm font-bold text-slate-800">Chưa có khoản nào là lương gốc</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                    Sang <strong>Danh mục khoản lương</strong>, bật cờ <strong>&ldquo;Đây là khoản
+                    LƯƠNG GỐC&rdquo;</strong> cho khoản lương cơ bản. Sau đó khai nó như mọi khoản
+                    khác ở Bước 3: chọn khoản, rồi chọn cách tính.
+                  </p>
                 </div>
+
+                {/* `open` theo dữ liệu thật: ai đang ăn lương giờ/ngày/khoán
+                    thì mở sẵn để thấy ngay cơ chế của mình; người khai mới
+                    thấy nó đóng, nên đi theo đường khoản trong danh mục. */}
+                <details open={basis !== 'MONTHLY' || parsedBase > 0} className="group">
+                  <summary className="cursor-pointer list-none text-[11px] font-bold text-slate-500 transition hover:text-indigo-700">
+                    Cách cũ: chọn cơ chế lương cố định ▾
+                  </summary>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {PAY_BASES.map((entry) => (
+                      <button
+                        key={entry.value}
+                        type="button"
+                        onClick={() => setBasis(entry.value)}
+                        aria-pressed={basis === entry.value}
+                        className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
+                          basis === entry.value
+                            ? 'border-indigo-600 bg-indigo-50'
+                            : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="block text-sm font-bold text-slate-800">{payBasisLabel(entry.value)}</span>
+                        <span className="mt-0.5 block text-[11px] font-semibold text-indigo-600">{entry.who}</span>
+                        <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{entry.hint}</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
               </>
             )}
 
@@ -531,7 +560,7 @@ export function PaySchemeModal({
           <section className="space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Bước 3 · Khoản cộng / trừ riêng ({drafts.length})
+                Bước 3 · Các khoản lương ({drafts.length})
               </h3>
               <Button variant="outline" size="sm" onClick={addDraft} disabled={availableComponents.length === 0}>
                 <Plus className="h-3.5 w-3.5" /> Thêm khoản
@@ -582,21 +611,18 @@ export function PaySchemeModal({
                       )}
 
                       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <Input
-                          label={component?.calc_type === 'PERCENT'
-                            ? 'Tỷ lệ / mức riêng (%)'
-                            : 'Mức riêng (MUC_RIENG)'}
-                          inputMode="decimal"
-                          placeholder={
-                            component ? `Trống = ${formatComponentDefault(component)} theo danh mục` : 'Theo danh mục'
-                          }
-                          value={draft.amount}
-                          onChange={(e) => updateDraft(index, {
-                            amount: component?.calc_type === 'PERCENT'
-                              ? e.target.value.replace(/[^\d.]/g, '')
-                              : digitsOnly(e.target.value),
-                          })}
-                        />
+                        {/* Khoản tính theo % thì "× số công" vô nghĩa — tỷ lệ
+                            nhân vào một khoản khác, không nhân vào ngày công.
+                            Giữ ô nhập tỷ lệ như cũ cho nhóm đó. */}
+                        {component?.calc_type === 'PERCENT' && (
+                          <Input
+                            label="Tỷ lệ riêng (%)"
+                            inputMode="decimal"
+                            placeholder={`Trống = ${formatComponentDefault(component)} theo danh mục`}
+                            value={draft.amount}
+                            onChange={(e) => updateDraft(index, { amount: e.target.value.replace(/[^\d.]/g, '') })}
+                          />
+                        )}
                         <Input
                           label="Áp dụng từ"
                           type="date"
@@ -606,14 +632,27 @@ export function PaySchemeModal({
                       </div>
 
                       <div className="mt-3">
-                        <PayrollFormulaBuilder
-                          label="Công thức riêng (không bắt buộc)"
-                          value={draft.formula}
-                          onChange={(formula) => updateDraft(index, { formula })}
-                          sampleScope={formulaScope}
-                          components={components}
-                          defaultFormula={component?.formula}
-                        />
+                        {draft.handWritten || component?.calc_type === 'PERCENT' ? (
+                          <PayrollFormulaBuilder
+                            label="Công thức riêng (không bắt buộc)"
+                            value={draft.formula}
+                            onChange={(formula) => updateDraft(index, { formula })}
+                            sampleScope={formulaScope}
+                            components={components}
+                            defaultFormula={component?.formula}
+                          />
+                        ) : (
+                          <PayItemFormulaPicker
+                            formula={draft.formula}
+                            onFormulaChange={(formula) => updateDraft(index, { formula })}
+                            amount={draft.amount}
+                            onAmountChange={(amount) => updateDraft(index, { amount: digitsOnly(amount) })}
+                            components={components}
+                            selfCode={component?.code ?? null}
+                            sampleScope={formulaScope}
+                            onWriteByHand={() => updateDraft(index, { handWritten: true })}
+                          />
+                        )}
                       </div>
 
                       {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
