@@ -10,10 +10,10 @@
 // ============================================================================
 
 /** Tên hiển thị đầy đủ. */
-export const APP_NAME = 'Huy Phong Wine HRM';
+export const APP_NAME = 'HRM Huy Phong';
 
 /** Tên ngắn cho chỗ hẹp (tab trình duyệt, sidebar thu gọn). */
-export const APP_SHORT_NAME = 'Huy Phong Wine';
+export const APP_SHORT_NAME = 'HRM Huy Phong';
 
 export const APP_TAGLINE = 'Quản trị nhân sự và vận hành xuất khẩu rượu vang';
 
@@ -24,7 +24,9 @@ export const APP_TAGLINE = 'Quản trị nhân sự và vận hành xuất khẩ
 //                                     meta description, favicon nội tuyến
 //   client/public/manifest.webmanifest  name, short_name, description
 //
-// Đã có lần cả hai file lệch khỏi giá trị ở trên ("HRM Huy Phong" thay vì
-// "Huy Phong Wine HRM") mà không ai thấy, vì tên chỉ hiện trên tab trình
-// duyệt và màn hình chính của điện thoại.
+// Đã có lần cả hai file lệch khỏi giá trị ở trên mà không ai thấy, vì tên chỉ
+// hiện trên tab trình duyệt và màn hình chính của điện thoại. Đổi tên ở đây thì
+// phải sửa luôn hai file kia, rồi soát lại bằng:
+//
+//   grep -rn "Huy Phong Wine" client/index.html client/public/ client/src/
 // ---------------------------------------------------------------------------

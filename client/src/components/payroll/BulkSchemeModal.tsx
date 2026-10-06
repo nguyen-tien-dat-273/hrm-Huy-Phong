@@ -21,20 +21,16 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
-import { payBasisLabel } from '@/lib/payroll';
-import { savePayProfile } from '@/lib/payrollData';
-import type { PayBasis, Profile, TaxMode } from '@/types';
+import { savePayItem, savePayProfile } from '@/lib/payrollData';
+import type { PayBasis, PayComponent, Profile, TaxMode } from '@/types';
 import type { PayrollParams } from '@/lib/payrollSettings';
 
-const PAY_BASES: PayBasis[] = ['MONTHLY', 'HOURLY', 'DAILY', 'PIECE', 'COMMISSION'];
-
-const BASE_LABEL: Record<PayBasis, string> = {
-  MONTHLY: 'Lương tháng (VND)',
-  HOURLY: 'Đơn giá một giờ (VND)',
-  DAILY: 'Đơn giá một ngày công (VND)',
-  PIECE: 'Lương cứng tối thiểu (VND)',
-  COMMISSION: 'Lương cứng hằng tháng (VND)',
-};
+/**
+ * `pay_basis` không còn khai ở đây — xem chú thích trong `PaySchemeModal`.
+ * Lương gốc là một khoản trong danh mục, nên gán hàng loạt cũng là gán KHOẢN
+ * đó cho cả nhóm chứ không phải đặt một "hình thức trả lương".
+ */
+const LEGACY_PAY_BASIS: PayBasis = 'MONTHLY';
 
 const TAX_MODES: Array<{ value: TaxMode; label: string }> = [
   { value: 'PROGRESSIVE', label: 'Lũy tiến 7 bậc' },
@@ -47,6 +43,8 @@ const digitsOnly = (value: string) => value.replace(/[^\d]/g, '');
 interface BulkSchemeModalProps {
   open: boolean;
   targets: Profile[];
+  /** Danh mục khoản, để tìm khoản được đánh dấu lương gốc. */
+  components: PayComponent[];
   params: PayrollParams;
   defaultEffectiveFrom: string;
   actorId: string | null;
@@ -55,11 +53,10 @@ interface BulkSchemeModalProps {
 }
 
 export function BulkSchemeModal({
-  open, targets, params, defaultEffectiveFrom, actorId, onClose, onSaved,
+  open, targets, components, params, defaultEffectiveFrom, actorId, onClose, onSaved,
 }: BulkSchemeModalProps) {
   const { toast } = useToast();
 
-  const [basis, setBasis] = useState<PayBasis>('MONTHLY');
   const [baseAmount, setBaseAmount] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(defaultEffectiveFrom);
   const [insuranceEnabled, setInsuranceEnabled] = useState(true);
@@ -70,7 +67,6 @@ export function BulkSchemeModal({
 
   useEffect(() => {
     if (!open) return;
-    setBasis('MONTHLY');
     setBaseAmount('');
     setEffectiveFrom(defaultEffectiveFrom);
     setInsuranceEnabled(true);
@@ -79,17 +75,22 @@ export function BulkSchemeModal({
     setProgress(0);
   }, [open, defaultEffectiveFrom]);
 
+  const baseComponent = components.find((item) => item.is_base && item.is_active);
   const parsedBase = Number(baseAmount || '0');
   const effectiveInsuranceBase = Number(insuranceBase || '0') || parsedBase;
 
-  const monthlyCost = useMemo(() => {
-    if (basis !== 'MONTHLY' || parsedBase <= 0) return null;
-    return parsedBase * targets.length;
-  }, [basis, parsedBase, targets.length]);
+  const monthlyCost = useMemo(
+    () => (parsedBase > 0 ? parsedBase * targets.length : null),
+    [parsedBase, targets.length],
+  );
 
   const save = async () => {
-    if (basis !== 'PIECE' && parsedBase <= 0) {
-      toast('Nhập đơn giá lương hợp lệ.', 'warning');
+    if (!baseComponent) {
+      toast('Chưa có khoản nào được đánh dấu lương gốc trong Danh mục khoản lương.', 'error');
+      return;
+    }
+    if (parsedBase <= 0) {
+      toast('Nhập mức lương gốc hợp lệ.', 'warning');
       return;
     }
 
@@ -104,8 +105,9 @@ export function BulkSchemeModal({
       const error = await savePayProfile({
         user_id: target.id,
         effective_from: effectiveFrom,
-        pay_basis: basis,
-        base_amount: parsedBase,
+        // Hai cột vestigial, xem chú thích ở LEGACY_PAY_BASIS.
+        pay_basis: LEGACY_PAY_BASIS,
+        base_amount: 0,
         insurance_enabled: insuranceEnabled,
         insurance_base: insuranceBase ? Number(insuranceBase) : null,
         dependents: 0,
@@ -120,6 +122,26 @@ export function BulkSchemeModal({
         setSaving(false);
         toast(
           `Dừng ở ${target.name}: ${error}. Đã lưu xong ${index} nhân sự trước đó.`,
+          'error',
+        );
+        onSaved();
+        return;
+      }
+
+      // Mức lương gốc nằm ở KHOẢN, không nằm ở hồ sơ nữa — phải ghi dòng này
+      // thì engine mới suy ra được đơn giá giờ tăng ca và mức đóng bảo hiểm.
+      const itemError = await savePayItem({
+        user_id: target.id,
+        component_id: baseComponent.id,
+        amount: parsedBase,
+        formula: `(MUC_RIENG / STANDARD_DAYS) * PAID_DAYS`,
+        effective_from: effectiveFrom,
+        created_by: actorId,
+      });
+      if (itemError) {
+        setSaving(false);
+        toast(
+          `Đã lưu hồ sơ nhưng không gán được khoản lương gốc cho ${target.name}: ${itemError}.`,
           'error',
         );
         onSaved();
@@ -150,29 +172,33 @@ export function BulkSchemeModal({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Select label="Hình thức trả lương" value={basis} onChange={(e) => setBasis(e.target.value as PayBasis)}>
-              {PAY_BASES.map((value) => (
-                <option key={value} value={value}>{payBasisLabel(value)}</option>
-              ))}
-            </Select>
-          </div>
+        {baseComponent ? (
           <div>
             <Input
-              label={BASE_LABEL[basis]}
+              label={`Mức ${baseComponent.name} mỗi tháng (VND)`}
               inputMode="numeric"
               placeholder="VD: 15000000"
               value={baseAmount}
               onChange={(e) => setBaseAmount(digitsOnly(e.target.value))}
             />
-            {monthlyCost != null && (
-              <p className="mt-1.5 text-xs text-slate-500">
-                Tổng lương tháng của nhóm: <strong className="text-slate-700">{formatVND(monthlyCost)}</strong>
-              </p>
-            )}
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+              Gán cho cả nhóm theo cách tính <strong>chia công chuẩn × ngày hưởng lương</strong>.
+              Ai cần khác thì sửa riêng ở Cơ chế lương của người đó.
+              {monthlyCost != null && (
+                <> Tổng lương tháng của nhóm: <strong className="text-slate-700">{formatVND(monthlyCost)}</strong>.</>
+              )}
+            </p>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+            <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
+            <p className="text-[11px] leading-relaxed text-amber-900">
+              Chưa có khoản nào được đánh dấu <strong>lương gốc</strong> trong Danh mục khoản lương.
+              Bật cờ đó cho khoản lương cơ bản rồi quay lại — không có nó thì gán hàng loạt không
+              biết ghi mức vào đâu.
+            </p>
+          </div>
+        )}
 
         <Input
           label="Áp dụng từ ngày"

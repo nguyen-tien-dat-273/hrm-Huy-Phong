@@ -45,7 +45,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { hasAdminFunction } from '@/lib/permissions';
 import { formatVND, toDateString } from '@/lib/utils';
 import {
-  computePayslip, itemsForPeriod, mergeUnitAndEmployeeItems, payBasisLabel,
+  computePayslip, itemsForPeriod, mergeUnitAndEmployeeItems,
   payProfileForPeriod, splitOvertimeHours, summarisePeriod,
   type AssignedPayItem, type ComputedPayslip,
 } from '@/lib/payroll';
@@ -539,7 +539,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       const nameOf = (key: string) => key.split('|')[2];
 
       const header = [
-        'STT', 'Mã NV', 'Họ tên', 'Bộ phận', 'Cơ chế', 'Ngày công', 'Ngày phép', 'Giờ làm',
+        'STT', 'Mã NV', 'Họ tên', 'Bộ phận', 'Ngày công', 'Ngày phép', 'Giờ làm',
         ...earningCols.map(nameOf),
         'TỔNG THU NHẬP',
         ...deductionCols.map(nameOf),
@@ -566,7 +566,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           row.profile.employee_code ?? '',
           row.profile.name,
           row.profile.department ?? '',
-          payBasisLabel(row.computed.payBasis),
           row.computed.stats.workDays,
           row.computed.stats.leaveDays,
           row.computed.stats.workHours,
@@ -578,7 +577,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         ]),
         [],
         [
-          '', '', 'TỔNG CỘNG', '', '', '', '', '',
+          '', '', 'TỔNG CỘNG', '', '', '', '',
           ...earningCols.map((key) => visibleRows.reduce((sum, row) => sum + amountFor(row, key), 0)),
           totals.gross,
           ...deductionCols.map((key) => visibleRows.reduce((sum, row) => sum + amountFor(row, key), 0)),
@@ -864,7 +863,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
                   <thead>
                     <tr className="border-b border-slate-100 bg-[#FCFAF8]">
                       <Th align="left" className="px-6">Nhân sự</Th>
-                      <Th align="left">Cơ chế</Th>
+                      <Th align="left">Khoản lương</Th>
                       <Th align="center">Công</Th>
                       <Th align="right">Thu nhập</Th>
                       <Th align="right">Khấu trừ</Th>
@@ -895,8 +894,11 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
                           </td>
                           <td className="px-4 py-4">
                             {row.hasScheme ? (
+                              /* Số khoản đã gán thay cho "cơ chế lương": giờ mọi
+                                 người đều là MONTHLY nên cột cũ không phân biệt
+                                 được ai với ai. */
                               <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                                {payBasisLabel(row.computed.payBasis)}
+                                {row.computed.lines.filter((line) => line.kind === 'EARNING').length} khoản
                               </span>
                             ) : (
                               <span className="text-[10px] font-bold uppercase text-red-400">CHƯA THIẾT LẬP</span>
@@ -974,6 +976,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       <BulkSchemeModal
         open={!!bulkTargets && bulkTargets.length > 0}
         targets={bulkTargets ?? []}
+        components={data?.components ?? []}
         params={params}
         defaultEffectiveFrom={monthStartStr}
         actorId={profile?.id ?? null}
@@ -990,7 +993,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         {detailRow && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <MiniStat label="Cơ chế" value={payBasisLabel(detailRow.computed.payBasis)} />
               <MiniStat label="Ngày công" value={`${detailRow.computed.stats.workDays} ngày`} />
               <MiniStat label="Ngày phép" value={`${detailRow.computed.stats.leaveDays} ngày`} />
               <MiniStat label="Giờ làm" value={`${detailRow.computed.stats.workHours} giờ`} />
@@ -1123,8 +1125,9 @@ function SchemesTab({
                         <p className="text-xs text-slate-500">
                           {row.hasScheme ? (
                             <>
-                              {payBasisLabel(scheme.payBasis)}
-                              {scheme.gross > 0 && ` · thu nhập ${formatVND(scheme.gross)}`}
+                              {scheme.gross > 0
+                                ? `Thu nhập ${formatVND(scheme.gross)}`
+                                : 'Chưa khai mức'}
                             </>
                           ) : (
                             <span className="font-bold text-red-500">Chưa thiết lập cơ chế lương</span>

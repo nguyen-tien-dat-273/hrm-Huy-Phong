@@ -18,7 +18,7 @@ import { PayItemFormulaPicker } from '@/components/payroll/PayItemFormulaPicker'
 import { parsePayFormula } from '@/lib/payItemFormula';
 import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
-import { payBasisLabel, progressiveIncomeTax, sampleFormulaScope, toTaxBrackets } from '@/lib/payroll';
+import { progressiveIncomeTax, sampleFormulaScope, toTaxBrackets } from '@/lib/payroll';
 import { validateFormula } from '@/lib/payrollFormula';
 import { deletePayItem, savePayItem, savePayProfile } from '@/lib/payrollData';
 import type {
@@ -31,24 +31,26 @@ import type {
 } from '@/types';
 import type { PayrollParams } from '@/lib/payrollSettings';
 
-const PAY_BASES: Array<{ value: PayBasis; hint: string; who: string }> = [
-  { value: 'MONTHLY', hint: 'Lương tháng ÷ ngày công chuẩn × ngày công thực tế.', who: 'Nhân viên chính thức' },
-  { value: 'HOURLY', hint: 'Đơn giá giờ × giờ làm lấy từ chấm công.', who: 'Part-time, thời vụ' },
-  { value: 'DAILY', hint: 'Đơn giá ngày × số ngày công.', who: 'Lao động công nhật' },
-  { value: 'PIECE', hint: 'Không có lương cứng. Thu nhập hoàn toàn từ khoản khoán sản phẩm.', who: 'Thợ ăn theo sản lượng' },
-  { value: 'COMMISSION', hint: 'Lương cứng thấp + hoa hồng doanh số.', who: 'Nhân viên kinh doanh' },
-];
-
-/** Chỉ lương tháng mới có mẫu số "ngày công chuẩn" để chia. */
-const USES_STANDARD_DAYS: ReadonlyArray<PayBasis> = ['MONTHLY'];
-
-const BASE_AMOUNT_LABEL: Record<PayBasis, string> = {
-  MONTHLY: 'Lương tháng (VND)',
-  HOURLY: 'Đơn giá một giờ (VND)',
-  DAILY: 'Đơn giá một ngày công (VND)',
-  PIECE: 'Lương cứng tối thiểu, để 0 nếu ăn khoán hoàn toàn (VND)',
-  COMMISSION: 'Lương cứng hằng tháng (VND)',
-};
+/**
+ * `pay_basis` và `base_amount` không còn khai trên màn này.
+ *
+ * Trước đây lương gốc là một mô hình RIÊNG: chọn một trong năm cơ chế
+ * (tháng / giờ / ngày / khoán / hoa hồng) rồi nhập một con số. Người khai phải
+ * học hai cách cho cùng một việc — lương gốc một kiểu, mọi khoản khác một kiểu.
+ *
+ * Giờ lương gốc cũng chỉ là một khoản trong danh mục, khai y như mọi khoản
+ * khác: chọn khoản, chọn cách tính. Năm cơ chế cũ diễn đạt lại được hết bằng
+ * cách tính của khoản —
+ *
+ *     lương tháng   -> mức ÷ công chuẩn × số công
+ *     lương ngày    -> mức × số công
+ *     lương giờ     -> công thức riêng với biến WORK_HOURS
+ *     khoán/hoa hồng-> không có khoản lương gốc, chỉ có khoản khoán
+ *
+ * Cột dưới database giữ nguyên để không phải viết migration và để các bản ghi
+ * cũ vẫn đọc được; màn này luôn ghi 'MONTHLY' và 0.
+ */
+const LEGACY_PAY_BASIS: PayBasis = 'MONTHLY';
 
 const TAX_MODES: Array<{ value: TaxMode; label: string; hint: string }> = [
   { value: 'PROGRESSIVE', label: 'Lũy tiến 7 bậc', hint: 'Hợp đồng từ 3 tháng trở lên.' },
@@ -98,10 +100,8 @@ export function PaySchemeModal({
 }: PaySchemeModalProps) {
   const { toast } = useToast();
 
-  const [basis, setBasis] = useState<PayBasis>('MONTHLY');
   /** Khoản được đánh dấu lương gốc trong danh mục, nếu đã khai. */
   const baseComponent = components.find((item) => item.is_base && item.is_active);
-  const [baseAmount, setBaseAmount] = useState('');
   const [effectiveFrom, setEffectiveFrom] = useState(defaultEffectiveFrom);
   const [insuranceEnabled, setInsuranceEnabled] = useState(true);
   const [insuranceBase, setInsuranceBase] = useState('');
@@ -118,8 +118,6 @@ export function PaySchemeModal({
   // cần giữ trạng thái khi người dùng cuộn trong lúc đang sửa.
   useEffect(() => {
     if (!open) return;
-    setBasis(current?.pay_basis ?? 'MONTHLY');
-    setBaseAmount(current ? String(Number(current.base_amount)) : '');
     setEffectiveFrom(current?.effective_from ?? defaultEffectiveFrom);
     setInsuranceEnabled(current?.insurance_enabled ?? true);
     setInsuranceBase(current?.insurance_base != null ? String(Number(current.insurance_base)) : '');
@@ -198,18 +196,16 @@ export function PaySchemeModal({
   });
   const hasFormulaError = formulaErrors.some(Boolean);
 
-  const parsedBase = Number(baseAmount || '0');
-  const preview = useMemo(() => {
-    const days = Number(standardDays) || params.standardWorkDays || 26;
-    const hours = params.hoursPerDay || 8;
-    switch (basis) {
-      case 'HOURLY': return `${formatVND(parsedBase)}/giờ`;
-      case 'DAILY': return `${formatVND(parsedBase)}/ngày · ${formatVND(parsedBase / hours)}/giờ`;
-      case 'PIECE': return 'Thu nhập theo sản lượng nghiệm thu';
-      default:
-        return `${formatVND(parsedBase / days)}/ngày · ${formatVND(parsedBase / days / hours)}/giờ`;
-    }
-  }, [basis, parsedBase, standardDays, params]);
+  /**
+   * Mức của khoản được đánh dấu LƯƠNG GỐC, lấy từ chính dòng vừa khai bên
+   * dưới. Đây là căn cứ suy đơn giá giờ tăng ca và mức đóng bảo hiểm, nên
+   * phải đọc từ cùng một chỗ mà engine đọc — không giữ một ô riêng nữa.
+   */
+  const parsedBase = useMemo(() => {
+    if (!baseComponent) return 0;
+    const row = drafts.find((item) => item.componentId === baseComponent.id);
+    return Number(row?.amount || baseComponent.default_amount || 0);
+  }, [baseComponent, drafts]);
 
   // Mức lương thực dùng để đóng bảo hiểm. Bỏ trống thì engine lấy lương gốc,
   // nên hiện ra đây luôn — "trống = theo lương hợp đồng" là câu mà người đọc
@@ -224,7 +220,7 @@ export function PaySchemeModal({
    * mức thực nhận cỡ nào, thay vì phải lưu rồi chạy bảng lương mới biết.
    */
   const estimate = useMemo(() => {
-    const gross = basis === 'PIECE' ? 0 : parsedBase;
+    const gross = parsedBase;
     const insuranceSalary = insuranceEnabled
       ? Math.min(effectiveInsuranceBase, params.insuranceSalaryCap)
       : 0;
@@ -249,14 +245,18 @@ export function PaySchemeModal({
 
     return { gross, insurance, deduction, tax, net: gross - insurance - tax };
   }, [
-    basis, parsedBase, insuranceEnabled, effectiveInsuranceBase, dependents,
+    parsedBase, insuranceEnabled, effectiveInsuranceBase, dependents,
     taxMode, flatRate, params,
   ]);
 
   const handleSave = async () => {
     if (!target) return;
-    if (basis !== 'PIECE' && parsedBase <= 0) {
-      toast('Nhập đơn giá lương hợp lệ.', 'warning');
+    if (drafts.length === 0) {
+      toast('Chưa chọn khoản lương nào. Thêm ít nhất một khoản.', 'warning');
+      return;
+    }
+    if (drafts.some((item) => !item.componentId)) {
+      toast('Còn dòng chưa chọn khoản lương.', 'warning');
       return;
     }
     if (hasFormulaError) {
@@ -268,8 +268,10 @@ export function PaySchemeModal({
     const profileError = await savePayProfile({
       user_id: target.id,
       effective_from: effectiveFrom,
-      pay_basis: basis,
-      base_amount: parsedBase,
+      // Hai cột vestigial: xem chú thích ở LEGACY_PAY_BASIS đầu file. Lương
+      // gốc thật nằm ở khoản được đánh dấu trong danh mục.
+      pay_basis: LEGACY_PAY_BASIS,
+      base_amount: 0,
       insurance_base: insuranceBase ? Number(insuranceBase) : null,
       insurance_enabled: insuranceEnabled,
       dependents: Number(dependents) || 0,
@@ -332,96 +334,49 @@ export function PaySchemeModal({
             </div>
           </div>
 
-          {/* --- Lương gốc --- */}
+          {/* --- Bước 1: khi nào áp dụng, và mẫu số chia công --- */}
           <section className="space-y-3">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Bước 1 · Lương gốc
+              Bước 1 · Hiệu lực và ngày công chuẩn
             </h3>
 
-            {/* Lương gốc cũng là một KHOẢN trong danh mục, khai y như mọi
-                khoản khác ở Bước 3: chọn khoản, rồi chọn cách tính. Không có
-                lý do gì bắt học một mô hình riêng chỉ để khai một con số.
-
-                Năm thẻ cơ chế cũ KHÔNG bỏ hẳn, chỉ thu vào mục "cách cũ":
-                người đang ăn lương giờ / ngày / khoán vẫn chạy trên `pay_basis`,
-                bỏ đi là mất cơ chế của họ giữa kỳ. Mục đó tự mở sẵn cho ai
-                đang dùng, và đóng với người khai mới. */}
+            {/* Không còn ô "lương gốc" ở đây. Lương gốc là một KHOẢN trong danh
+                mục, khai ở Bước 3 như mọi khoản khác — một cách khai cho mọi
+                thứ, thay vì hai. Mức của nó đọc thẳng từ dòng đó. */}
             {baseComponent ? (
               <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-3.5 py-3">
-                <p className="text-sm font-bold text-slate-900">{baseComponent.name}</p>
+                <p className="text-sm font-bold text-slate-900">
+                  Lương gốc: {baseComponent.name}
+                </p>
                 <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
-                  Khoản được đánh dấu <strong>lương gốc</strong> trong danh mục. Mức khai bên dưới
-                  là căn cứ tính đơn giá giờ tăng ca và mức đóng bảo hiểm.
+                  Khai mức và cách tính của khoản này ở <strong>Bước 3</strong>. Mức đó là căn cứ
+                  suy đơn giá giờ tăng ca và mức đóng bảo hiểm.
+                  {parsedBase > 0 && <> Đang là <strong>{formatVND(parsedBase)}</strong>.</>}
                 </p>
               </div>
             ) : (
-              <>
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-3.5 py-3">
-                  <p className="text-sm font-bold text-slate-800">Chưa có khoản nào là lương gốc</p>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
-                    Sang <strong>Danh mục khoản lương</strong>, bật cờ <strong>&ldquo;Đây là khoản
-                    LƯƠNG GỐC&rdquo;</strong> cho khoản lương cơ bản. Sau đó khai nó như mọi khoản
-                    khác ở Bước 3: chọn khoản, rồi chọn cách tính.
-                  </p>
-                </div>
-
-                {/* `open` theo dữ liệu thật: ai đang ăn lương giờ/ngày/khoán
-                    thì mở sẵn để thấy ngay cơ chế của mình; người khai mới
-                    thấy nó đóng, nên đi theo đường khoản trong danh mục. */}
-                <details open={basis !== 'MONTHLY' || parsedBase > 0} className="group">
-                  <summary className="cursor-pointer list-none text-[11px] font-bold text-slate-500 transition hover:text-indigo-700">
-                    Cách cũ: chọn cơ chế lương cố định ▾
-                  </summary>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {PAY_BASES.map((entry) => (
-                      <button
-                        key={entry.value}
-                        type="button"
-                        onClick={() => setBasis(entry.value)}
-                        aria-pressed={basis === entry.value}
-                        className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-                          basis === entry.value
-                            ? 'border-indigo-600 bg-indigo-50'
-                            : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        <span className="block text-sm font-bold text-slate-800">{payBasisLabel(entry.value)}</span>
-                        <span className="mt-0.5 block text-[11px] font-semibold text-indigo-600">{entry.who}</span>
-                        <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{entry.hint}</span>
-                      </button>
-                    ))}
-                  </div>
-                </details>
-              </>
+              /* Thiếu khoản lương gốc thì đơn giá giờ tăng ca và mức đóng bảo
+                 hiểm đều bằng 0 — hai thứ đó sai thì không hiện ra dưới dạng
+                 lỗi, chỉ là vài con số nhỏ đi trên phiếu lương. */
+              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
+                <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
+                <p className="text-[11px] leading-relaxed text-amber-900">
+                  Chưa có khoản nào được đánh dấu <strong>lương gốc</strong>. Sang{' '}
+                  <strong>Danh mục khoản lương</strong> bật cờ đó cho khoản lương cơ bản — thiếu nó
+                  thì <strong>đơn giá giờ tăng ca</strong> và <strong>mức đóng bảo hiểm</strong>{' '}
+                  đều tính trên 0đ.
+                </p>
+              </div>
             )}
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Input
-                  label={baseComponent ? `Mức ${baseComponent.name} (VND)` : BASE_AMOUNT_LABEL[basis]}
-                  inputMode="numeric"
-                  placeholder="VD: 15000000"
-                  value={baseAmount}
-                  onChange={(e) => setBaseAmount(digitsOnly(e.target.value))}
-                />
-                {parsedBase > 0 && (
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    {formatVND(parsedBase)} — quy đổi {preview}
-                  </p>
-                )}
-              </div>
               <Input
                 label="Áp dụng từ ngày"
                 type="date"
                 value={effectiveFrom}
                 onChange={(e) => setEffectiveFrom(e.target.value)}
               />
-            </div>
-
-            {/* Ngày công chuẩn chỉ là mẫu số của lương THÁNG. Hiện nó khi trả
-                theo giờ hay theo sản lượng chỉ khiến người khai tưởng nó có
-                ảnh hưởng. */}
-            {USES_STANDARD_DAYS.includes(basis) && (
+              {/* Mẫu số của cách tính "chia công chuẩn × số công" ở Bước 3. */}
               <Input
                 label={`Ngày công chuẩn riêng (trống = ${params.standardWorkDays} theo công ty)`}
                 inputMode="numeric"
@@ -429,8 +384,9 @@ export function PaySchemeModal({
                 value={standardDays}
                 onChange={(e) => setStandardDays(digitsOnly(e.target.value))}
               />
-            )}
-            <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs leading-relaxed text-blue-800">
+            </div>
+
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
               Đổi lương là tạo bản ghi mới theo ngày hiệu lực. Các tháng đã chạy lương trước
               ngày này giữ nguyên mức cũ.
             </p>

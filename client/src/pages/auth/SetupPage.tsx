@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { Building2, Database, KeyRound, CheckCircle2, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/contexts/ToastContext';
 import { saveSupabaseConfig, getSupabaseConfig } from '@/lib/supabaseConfig';
+import { APP_SHORT_NAME } from '@/lib/branding';
 
 const LOGO_URL = '/manus-storage/hrm-copper-signal-logo_2f21e543.png';
 const BACKDROP_URL = '/manus-storage/hrm-command-center-background_78a59e90.png';
 
 function BrandMark({ small = false }: { small?: boolean }) {
   return (
-    <span className={`relative inline-flex ${small ? 'h-10 w-10' : 'h-11 w-11'} items-end justify-center gap-0.5`} aria-label="Huy Phong Wine">
+    <span className={`relative inline-flex ${small ? 'h-10 w-10' : 'h-11 w-11'} items-end justify-center gap-0.5`} aria-label={APP_SHORT_NAME}>
       <img src={LOGO_URL} alt="" onError={(event) => { event.currentTarget.style.display = 'none'; }} className="absolute inset-0 h-full w-full object-contain" />
       <i className="h-[68%] w-[22%] bg-[#102A43]" /><i className="h-full w-[22%] bg-[#C8754A]" /><i className="h-[82%] w-[22%] bg-[#102A43]" />
     </span>
@@ -46,7 +47,7 @@ export function SetupPage() {
         <div className="relative z-10 flex items-center gap-3">
           <BrandMark />
           <div>
-            <div className="font-[Space_Grotesk] text-lg font-semibold tracking-tight">Huy Phong Wine</div>
+            <div className="font-[Space_Grotesk] text-lg font-semibold tracking-tight">{APP_SHORT_NAME}</div>
             <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#C8754A]">People / Time / Work</div>
           </div>
         </div>
@@ -63,7 +64,7 @@ export function SetupPage() {
         <div className="mx-auto w-full max-w-xl">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <BrandMark small />
-            <div><div className="font-[Space_Grotesk] text-lg font-semibold">Huy Phong Wine</div><div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#C8754A]">System setup / 01</div></div>
+            <div><div className="font-[Space_Grotesk] text-lg font-semibold">{APP_SHORT_NAME}</div><div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#C8754A]">System setup / 01</div></div>
           </div>
           <div className="mb-8 flex items-end justify-between gap-6">
             <div>
