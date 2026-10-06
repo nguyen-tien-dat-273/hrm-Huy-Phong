@@ -90,6 +90,16 @@ interface ItemDraft {
   formula: string;
   note: string;
   /**
+   * Ba tính chất của khoản, khai RIÊNG cho người này.
+   *
+   * Danh mục khoản lương chỉ còn là danh sách tên. Nạp lần đầu thì lấy theo
+   * danh mục nên không ai phải khai lại từ đầu; lưu một lần là nó thành giá
+   * trị riêng của người này, từ đó danh mục đổi cũng không kéo theo.
+   */
+  taxable: boolean;
+  insurable: boolean;
+  isBase: boolean;
+  /**
    * Đang khai bằng ô công thức tự do thay vì các ô chọn.
    *
    * KHÔNG còn nút bật/tắt — cờ này chỉ do hệ thống đặt lúc MỞ, khi công thức
@@ -148,6 +158,9 @@ export function PaySchemeModal({
       componentId: item.component_id,
       amount: item.amount != null ? String(Number(item.amount)) : '',
       formula: item.formula ?? '',
+      taxable: item.taxable ?? componentById.get(item.component_id)?.taxable ?? true,
+      insurable: item.insurable ?? componentById.get(item.component_id)?.insurable ?? false,
+      isBase: item.is_base ?? componentById.get(item.component_id)?.is_base ?? false,
       // Công thức đã lưu mà các ô chọn không đọc nổi thì mở thẳng ô tự do —
       // hiện ô chọn rồi bấm Lưu là ghi đè mất công thức người ta viết tay.
       handWritten: !!item.formula
@@ -247,12 +260,16 @@ export function PaySchemeModal({
     setDrafts((list) => {
       const existing = list.find((draft) => draft.componentId === componentId);
       if (!existing) {
+        const chon = componentById.get(componentId);
         return [...list, {
           componentId,
           amount: '',
           formula: '',
           handWritten: false,
           note: '',
+          taxable: chon?.taxable ?? true,
+          insurable: chon?.insurable ?? false,
+          isBase: chon?.is_base ?? false,
         }];
       }
       if (existing.id) setRemovedIds((ids) => [...ids, existing.id as string]);
@@ -284,6 +301,9 @@ export function PaySchemeModal({
       component_id: draft.componentId,
       amount: draft.amount ? Number(draft.amount) : null,
       formula: draft.formula.trim() || null,
+      taxable: draft.taxable,
+      insurable: draft.insurable,
+      is_base: draft.isBase,
       effective_from: effectiveFrom,
       note: draft.note.trim() || null,
       created_by: actorId,
@@ -296,6 +316,17 @@ export function PaySchemeModal({
 
   const updateDraft = (index: number, patch: Partial<ItemDraft>) => {
     setDrafts((list) => list.map((draft, i) => (i === index ? { ...draft, ...patch } : draft)));
+  };
+
+  /**
+   * Bật lương gốc cho một khoản, TẮT các khoản còn lại.
+   *
+   * Database có unique index chặn hai khoản cùng là lương gốc của một người.
+   * Không tắt ở đây thì người dùng bật cái thứ hai, bấm Lưu, và nhận một lỗi
+   * ràng buộc khó hiểu — trong khi ý họ rõ ràng là đổi khoản lương gốc.
+   */
+  const setBase = (index: number, on: boolean) => {
+    setDrafts((list) => list.map((draft, i) => ({ ...draft, isBase: on && i === index })));
   };
 
   const removeDraft = (index: number) => {
@@ -373,6 +404,9 @@ export function PaySchemeModal({
         component_id: draft.componentId,
         amount: draft.amount ? Number(draft.amount) : null,
         formula: draft.formula.trim() || null,
+        taxable: draft.taxable,
+        insurable: draft.insurable,
+        is_base: draft.isBase,
         // Dùng chung ngày của cả cơ chế: ô "Áp dụng từ" giờ nằm ngoài, mỗi
         // khoản không còn ngày riêng.
         effective_from: effectiveFrom,
@@ -577,6 +611,35 @@ export function PaySchemeModal({
                                     sampleScope={formulaScope}
                                   />
                                 )}
+
+                                {/* Ba tính chất của khoản, khai cho CHÍNH NGƯỜI NÀY.
+                                    Danh mục chỉ còn là danh sách tên, nên đây là nơi
+                                    duy nhất quyết định khoản có vào thu nhập chịu thuế,
+                                    vào mức đóng bảo hiểm, và khoản nào là lương gốc. */}
+                                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                  {([
+                                    ['Chịu thuế TNCN', draft.taxable,
+                                      () => updateDraft(index, { taxable: !draft.taxable })],
+                                    ['Tính bảo hiểm', draft.insurable,
+                                      () => updateDraft(index, { insurable: !draft.insurable })],
+                                    ['Lương gốc', draft.isBase,
+                                      () => setBase(index, !draft.isBase)],
+                                  ] as const).map(([label, on, toggle]) => (
+                                    <button
+                                      key={label}
+                                      type="button"
+                                      onClick={toggle}
+                                      aria-pressed={on}
+                                      className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+                                        on
+                                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                          : 'border-slate-200 text-slate-400 hover:border-indigo-300'
+                                      }`}
+                                    >
+                                      {on ? '✓ ' : '○ '}{label}
+                                    </button>
+                                  ))}
+                                </div>
 
                                 {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
                                     xong vẫn ra 0đ — trông như đã làm xong nhưng thực tế

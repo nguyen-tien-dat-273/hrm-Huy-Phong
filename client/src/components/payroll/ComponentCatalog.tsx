@@ -14,7 +14,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { deleteComponent, saveComponent } from '@/lib/payrollData';
-import type { PayCalcType, PayComponent, PayComponentKind } from '@/types';
+import type { PayComponent, PayComponentKind } from '@/types';
 
 const KIND_LABEL: Record<PayComponentKind, string> = {
   EARNING: 'Khoản cộng',
@@ -44,9 +44,6 @@ interface Draft {
   code: string;
   name: string;
   kind: PayComponentKind;
-  taxable: boolean;
-  insurable: boolean;
-  is_base: boolean;
   sort_order: string;
   group_name: string;
   tax_exempt_cap: string;
@@ -93,8 +90,7 @@ function groupRows(items: PayComponent[]): { group: string | null; items: PayCom
 }
 
 const BLANK: Draft = {
-  code: '', name: '', kind: 'EARNING', taxable: true, insurable: false,
-  is_base: false, sort_order: '500', group_name: '',
+  code: '', name: '', kind: 'EARNING', sort_order: '500', group_name: '',
   tax_exempt_cap: '', max_amount: '', is_active: true, note: '',
 };
 
@@ -128,9 +124,6 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
     code: component.code,
     name: component.name,
     kind: component.kind,
-    taxable: component.taxable,
-    insurable: component.insurable,
-    is_base: component.is_base,
     sort_order: String(component.sort_order),
     group_name: component.group_name ?? '',
     tax_exempt_cap: component.tax_exempt_cap == null ? '' : String(Number(component.tax_exempt_cap)),
@@ -156,9 +149,6 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
       code,
       name: draft.name.trim(),
       kind: draft.kind,
-      taxable: draft.taxable,
-      insurable: draft.insurable,
-      is_base: draft.is_base,
       sort_order: Number(draft.sort_order) || 500,
       group_name: draft.group_name.trim() || null,
       // Ghi đè về rỗng, KHÔNG phải bỏ qua. Bỏ qua thì `update` giữ nguyên giá
@@ -521,31 +511,6 @@ export function ComponentCatalog({ components, onChanged }: ComponentCatalogProp
                 onChange={(is_active) => setDraft({ ...draft, is_active })}
                 label="Đang sử dụng"
                 hint="Tắt để ẩn khỏi lựa chọn mới nhưng vẫn giữ lịch sử đã sử dụng."
-              />
-              {/* Chi MOT khoan trong ca danh muc duoc lam luong goc - database
-                  co unique index chan. Noi ro hai thu phu thuoc vao no, vi do
-                  moi la cho sai ma khong ai nhin thay. */}
-              <Toggle
-                checked={draft.is_base}
-                onChange={(is_base) => setDraft({ ...draft, is_base })}
-                label="Đây là khoản LƯƠNG GỐC"
-                hint="Hệ thống lấy mức của khoản này làm căn cứ tính đơn giá giờ tăng ca và mức đóng bảo hiểm. Cả danh mục chỉ một khoản được bật."
-              />
-              {/* Hai cờ này KHÔNG phải công thức — chúng mô tả khoản đó là
-                  loại tiền gì theo luật, giống nhau với mọi người. Danh sách
-                  đã hiện chúng thành nhãn "MIỄN THUẾ" / "TÍNH BẢO HIỂM" từ
-                  trước; để xem được mà không sửa được mới là thừa. */}
-              <Toggle
-                checked={draft.taxable}
-                onChange={(taxable) => setDraft({ ...draft, taxable })}
-                label="Tính vào thu nhập chịu thuế TNCN"
-                hint="Tắt với khoản được miễn theo luật, ví dụ tiền ăn ca trong mức quy định."
-              />
-              <Toggle
-                checked={draft.insurable}
-                onChange={(insurable) => setDraft({ ...draft, insurable })}
-                label="Tính vào lương đóng bảo hiểm bắt buộc"
-                hint="Bật với khoản thuộc tiền lương làm căn cứ đóng BHXH, BHYT, BHTN."
               />
             </div>
 

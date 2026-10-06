@@ -245,13 +245,40 @@ export async function savePayProfile(
  * thì lần lưu tổng sau đó coi khoản ấy là mới và CHÈN THÊM một dòng nữa cho
  * cùng một khoản — người đó ăn khoản lương hai lần.
  */
+/**
+ * Ba cột chỉ có sau migration 20261007100000.
+ *
+ * Đẩy code lên là deploy ngay, còn migration thì người dùng chạy tay — nên có
+ * một quãng mà code mới gặp database cũ. Không xử lý thì cả màn Cơ chế lương
+ * không lưu được gì trong quãng đó.
+ */
+const COT_MOI = ['taxable', 'insurable', 'is_base'] as const;
+
+/** Database chưa có ba cột kia, chứ không phải người dùng nhập sai. */
+function thieuCotMoi(error: { message?: string; code?: string }): boolean {
+  const text = error.message ?? '';
+  return COT_MOI.some((cot) => text.includes(`'${cot}'`) || text.includes(`"${cot}"`));
+}
+
 export async function savePayItem(
   item: Partial<EmployeePayItem> & { user_id: string; component_id: string; effective_from: string },
 ): Promise<{ error: string | null; id: string | null }> {
   if (!supabase) return { error: 'Chưa kết nối Supabase.', id: null };
-  const { data, error } = item.id
-    ? await supabase.from('employee_pay_items').update(item).eq('id', item.id).select('id').single()
-    : await supabase.from('employee_pay_items').insert(item).select('id').single();
+
+  const ghi = async (payload: Record<string, unknown>) => (item.id
+    ? await supabase!.from('employee_pay_items').update(payload).eq('id', item.id).select('id').single()
+    : await supabase!.from('employee_pay_items').insert(payload).select('id').single());
+
+  let { data, error } = await ghi(item);
+
+  // Chạy lại không có ba cột mới. Khoản vẫn lưu được; ba tính chất kia tạm
+  // lấy theo danh mục cho tới khi migration chạy.
+  if (error && thieuCotMoi(error)) {
+    const rutGon = { ...item } as Record<string, unknown>;
+    for (const cot of COT_MOI) delete rutGon[cot];
+    ({ data, error } = await ghi(rutGon));
+  }
+
   return { error: error ? describeDbError(error) : null, id: (data as { id?: string } | null)?.id ?? null };
 }
 

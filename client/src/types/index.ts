@@ -454,6 +454,16 @@ export interface EmployeePayItem {
   component_id: string;
   amount: number | null;
   formula: string | null;
+  /**
+   * Ba cờ khai RIÊNG cho người này. `null` = chưa khai, lấy theo danh mục.
+   *
+   * Danh mục khoản lương chỉ còn là danh sách tên; mọi thứ quyết định ra tiền
+   * đều khai ở Cơ chế lương của từng người. Giữ `null` chứ không đặt mặc định
+   * cứng, để còn phân biệt "chưa khai" với "cố ý khai bằng giá trị đó".
+   */
+  taxable: boolean | null;
+  insurable: boolean | null;
+  is_base: boolean | null;
   effective_from: string;
   effective_to: string | null;
   note: string | null;

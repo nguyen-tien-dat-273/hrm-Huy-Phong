@@ -422,6 +422,16 @@ export interface PayItemAssignment {
   amount: number | null;
   /** Công thức riêng. NULL = dùng công thức chung của khoản. */
   formula: string | null;
+  /**
+   * Ba cờ khai riêng cho người này. NULL = chưa khai, lấy theo danh mục.
+   *
+   * Danh mục khoản lương chỉ còn là danh sách tên, nên thứ quyết định một
+   * khoản có chịu thuế / tính bảo hiểm / là lương gốc hay không nằm ở đây.
+   * Tuỳ chọn để engine chạy được cả với dữ liệu khai trước khi có ba cột này.
+   */
+  taxable?: boolean | null;
+  insurable?: boolean | null;
+  is_base?: boolean | null;
   effective_from: string;
   effective_to: string | null;
 }
@@ -782,8 +792,9 @@ function computeComponentLine(
     quantity,
     rate,
     amount: round(value),
-    taxable: component.taxable,
-    insurable: component.insurable,
+    // Cờ khai riêng cho người này thắng; chưa khai thì theo danh mục.
+    taxable: item.taxable ?? component.taxable,
+    insurable: item.insurable ?? component.insurable,
     otMultiplier: component.ot_multiplier ?? null,
     taxExemptCap: component.tax_exempt_cap ?? null,
     detail,
@@ -813,7 +824,7 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
    * cờ này bật lên không làm đổi lương của bất kỳ ai cho tới khi chính người
    * dùng gán khoản đó cho một người.
    */
-  const baseItem = items.find((entry) => entry.component.is_base);
+  const baseItem = items.find((entry) => entry.item.is_base ?? entry.component.is_base);
 
   const basis: PayBasis = payProfile?.pay_basis ?? 'MONTHLY';
   const baseAmount = baseItem
