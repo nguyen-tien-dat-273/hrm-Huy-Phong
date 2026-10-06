@@ -431,12 +431,12 @@ export function PaySchemeModal({
                       && ` — vượt trần, chỉ đóng BHXH/BHYT trên ${formatVND(params.insuranceSalaryCap)}`}
                   </p>
                 ) : (
-                  /* Lương khoán không có mức cứng để suy ra, để trống là đóng
-                     bảo hiểm trên 0đ — sai mà không có gì báo. */
+                  /* Chưa khai khoản lương gốc thì không suy ra được mức đóng,
+                     để trống là đóng bảo hiểm trên 0đ — sai mà không có gì báo. */
                   <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700">
                     <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    Chưa xác định được mức đóng. Hình thức trả lương này không có mức cứng để suy ra,
-                    phải nhập tay — bỏ trống là đóng bảo hiểm trên 0 đồng.
+                    Chưa suy ra được mức đóng vì chưa khai khoản lương gốc ở Bước 3. Nhập tay ở
+                    đây, hoặc khai khoản đó — bỏ trống là đóng bảo hiểm trên 0 đồng.
                   </p>
                 )}
               </div>
@@ -525,7 +525,10 @@ export function PaySchemeModal({
 
             {drafts.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
-                Chưa gán khoản nào. Người này chỉ nhận lương gốc, bảo hiểm và thuế.
+                {/* Không còn "lương gốc" ngoài danh mục nữa: không khoản nào
+                    thì phiếu lương thật sự ra 0đ, phải nói đúng như vậy. */}
+                Chưa gán khoản nào — phiếu lương của người này sẽ ra 0đ. Thêm ít nhất khoản
+                lương gốc.
               </p>
             ) : (
               <div className="space-y-3">
