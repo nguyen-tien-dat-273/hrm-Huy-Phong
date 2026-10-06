@@ -8,7 +8,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, TriangleAlert, Wallet } from 'lucide-react';
+import { Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
@@ -94,6 +94,11 @@ interface ItemDraft {
 
 const digitsOnly = (value: string) => value.replace(/[^\d]/g, '');
 
+/** Bỏ dấu để gõ "xang" tìm ra "Phụ cấp xăng xe". */
+const stripTone = (text: string) => text
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
+  .toLowerCase().trim();
+
 export function PaySchemeModal({
   open, target, current, components, assignedItems, params,
   defaultEffectiveFrom, actorId, onClose, onSaved,
@@ -112,6 +117,7 @@ export function PaySchemeModal({
   const [note, setNote] = useState('');
   const [drafts, setDrafts] = useState<ItemDraft[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
+  const [componentQuery, setComponentQuery] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Nạp lại mỗi lần mở cho người khác. Không dùng `key` ở phía cha vì modal
@@ -156,24 +162,48 @@ export function PaySchemeModal({
     return sampleFormulaScope(params, [...inputCodes, ...componentCodes]);
   }, [components, params]);
 
-  const availableComponents = components.filter(
-    (component) => component.is_active && !drafts.some((draft) => draft.componentId === component.id),
-  );
+  /**
+   * Danh mục để tick chọn, lọc theo ô tìm.
+   *
+   * Danh mục thật có gần 40 khoản. Bản cũ bắt bấm "Thêm khoản" rồi dò trong
+   * một dropdown dài bằng đó — mỗi khoản một lần, và không lúc nào thấy được
+   * mình đã chọn những gì. Bày cả danh mục ra, tick một lượt, rồi mới khai
+   * công thức cho từng khoản đã tick.
+   */
+  const pickable = useMemo(() => {
+    const keyword = stripTone(componentQuery);
+    return components
+      .filter((item) => item.is_active)
+      .filter((item) => !keyword
+        || stripTone(item.name).includes(keyword)
+        || stripTone(item.code || '').includes(keyword));
+  }, [components, componentQuery]);
 
-  const addDraft = () => {
-    const next = availableComponents[0];
-    if (!next) {
-      toast('Đã gán hết các khoản đang hoạt động.', 'warning');
-      return;
-    }
-    setDrafts((list) => [...list, {
-      componentId: next.id,
-      amount: '',
-      formula: '',
-      handWritten: false,
-      effectiveFrom: effectiveFrom,
-      note: '',
-    }]);
+  const chosen = (componentId: string) => drafts.some((draft) => draft.componentId === componentId);
+
+  /**
+   * Tick vào thì thêm một dòng khai; bỏ tick thì gỡ dòng đó.
+   *
+   * Khoản ĐÃ LƯU mà bỏ tick phải đưa id vào `removedIds` để lúc lưu còn xoá
+   * dưới database — chỉ gỡ khỏi màn hình thì lần mở sau nó hiện lại như chưa
+   * có gì xảy ra.
+   */
+  const toggleComponent = (componentId: string) => {
+    setDrafts((list) => {
+      const existing = list.find((draft) => draft.componentId === componentId);
+      if (!existing) {
+        return [...list, {
+          componentId,
+          amount: '',
+          formula: '',
+          handWritten: false,
+          effectiveFrom,
+          note: '',
+        }];
+      }
+      if (existing.id) setRemovedIds((ids) => [...ids, existing.id as string]);
+      return list.filter((draft) => draft.componentId !== componentId);
+    });
   };
 
   const updateDraft = (index: number, patch: Partial<ItemDraft>) => {
@@ -514,21 +544,63 @@ export function PaySchemeModal({
 
           {/* --- Khoản riêng --- */}
           <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Bước 3 · Các khoản lương ({drafts.length})
-              </h3>
-              <Button variant="outline" size="sm" onClick={addDraft} disabled={availableComponents.length === 0}>
-                <Plus className="h-3.5 w-3.5" /> Thêm khoản
-              </Button>
+            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Bước 3 · Các khoản lương ({drafts.length})
+            </h3>
+
+            {/* --- Chọn khoản từ danh mục --- */}
+            <div className="rounded-xl border border-slate-200 p-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={componentQuery}
+                  onChange={(event) => setComponentQuery(event.target.value)}
+                  placeholder="Tìm khoản trong danh mục..."
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/60 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+              <div className="mt-2 max-h-48 overflow-y-auto">
+                {pickable.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-slate-500">
+                    Không có khoản nào khớp &ldquo;{componentQuery}&rdquo;.
+                  </p>
+                ) : (
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    {pickable.map((item) => (
+                      <label
+                        key={item.id}
+                        className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={chosen(item.id)}
+                          onChange={() => toggleComponent(item.id)}
+                          className="mt-0.5 h-4 w-4 flex-shrink-0 accent-indigo-600"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-semibold text-slate-800">
+                            {/* Dấu +/−/◦ cho thấy ngay khoản này cộng vào hay
+                                trừ đi, không phải đọc tên mới đoán ra. */}
+                            {item.kind === 'DEDUCTION' ? '− ' : item.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}
+                            {item.name}
+                          </span>
+                          {item.is_base && (
+                            <span className="text-[10px] font-bold text-indigo-600">LƯƠNG GỐC</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {drafts.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
                 {/* Không còn "lương gốc" ngoài danh mục nữa: không khoản nào
                     thì phiếu lương thật sự ra 0đ, phải nói đúng như vậy. */}
-                Chưa gán khoản nào — phiếu lương của người này sẽ ra 0đ. Thêm ít nhất khoản
-                lương gốc.
+                Chưa chọn khoản nào — phiếu lương của người này sẽ ra 0đ. Tick ít nhất khoản
+                lương gốc ở trên.
               </p>
             ) : (
               <div className="space-y-3">
@@ -536,26 +608,23 @@ export function PaySchemeModal({
                   const component = componentById.get(draft.componentId);
                   return (
                     <div key={draft.id ?? `new-${index}`} className="rounded-xl border border-slate-200 p-3">
+                      {/* Khoản nào đã cố định từ lúc tick ở trên, nên đây chỉ
+                          còn là tiêu đề — không phải một ô chọn nữa. */}
                       <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          <Select
-                            value={draft.componentId}
-                            onChange={(e) => updateDraft(index, { componentId: e.target.value })}
-                          >
-                            {components
-                              .filter((item) => item.is_active || item.id === draft.componentId)
-                              .map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.kind === 'DEDUCTION' ? '− ' : item.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}
-                                  {item.name}
-                                </option>
-                              ))}
-                          </Select>
-                        </div>
+                        <p className="min-w-0 flex-1 text-sm font-bold text-slate-800">
+                          {component
+                            ? `${component.kind === 'DEDUCTION' ? '− ' : component.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}${component.name}`
+                            : 'Khoản không còn trong danh mục'}
+                          {component?.is_base && (
+                            <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                              LƯƠNG GỐC
+                            </span>
+                          )}
+                        </p>
                         <button
                           type="button"
                           onClick={() => removeDraft(index)}
-                          className="mt-1 rounded p-2 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                          className="rounded p-1.5 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
                           aria-label="Bỏ khoản này"
                         >
                           <Trash2 className="h-4 w-4" />
