@@ -1,10 +1,12 @@
 // ============================================================================
 // Khai cách tính một khoản lương bằng vài ô chọn.
 // ----------------------------------------------------------------------------
-// Hỏi đúng hai câu mà nghiệp vụ thật chỉ có hai câu:
+// Hỏi đúng hai câu: con số lấy từ đâu, và nhân với gì.
 //
-//   1. Khoản này CỐ ĐỊNH hay KHÔNG CỐ ĐỊNH?
-//   2. Nếu không cố định: đơn giá là gì, nhân với số liệu nào?
+// KHÔNG có bước "chọn loại khoản". Khoản cố định chỉ là trường hợp "không
+// nhân", nên nó là một lựa chọn trong ô "Nhân với" chứ không đáng một nút
+// riêng — bắt chọn loại trước rồi mới khai là thêm một quyết định mà người
+// dùng không cần phải đưa ra.
 //
 // Số liệu tháng không phải khai thêm ở đâu: màn "Số liệu lương tháng" quét
 // công thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu.
@@ -90,34 +92,7 @@ export function PayItemFormulaPicker({
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-      {/* --- Câu 1: cố định hay không --- */}
-      <div className="flex flex-wrap gap-2">
-        {([
-          [true, 'Cố định'],
-          [false, 'Không cố định'],
-        ] as const).map(([fixed, label]) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => set({
-              // Bật "không cố định" thì phải có sẵn một số nhân, nếu không
-              // công thức sinh ra vẫn là khoản cố định và nút trông như hỏng.
-              variable: fixed ? null : (guided.variable ?? 'PAID_DAYS'),
-              prorate: fixed ? false : guided.prorate,
-            })}
-            aria-pressed={isFixed === fixed}
-            className={`flex-1 rounded-lg border-2 px-3 py-2 text-left transition ${
-              isFixed === fixed
-                ? 'border-indigo-600 bg-indigo-50'
-                : 'border-slate-200 bg-white hover:border-indigo-300'
-            }`}
-          >
-            <span className="block text-xs font-bold text-slate-800">{label}</span>
-          </button>
-        ))}
-      </div>
-
-      {/* --- Câu 2a: đơn giá lấy từ đâu --- */}
+      {/* --- Lấy số từ đâu --- */}
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2">
           {([
@@ -166,28 +141,37 @@ export function PayItemFormulaPicker({
         )}
       </div>
 
-      {/* --- Câu 2b: nhân với số liệu nào --- */}
-      {!isFixed && (
-        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5">
-          <Select
-            label="Nhân với số liệu"
-            value={guided.variable ?? ''}
-            onChange={(event) => set({ variable: event.target.value })}
-          >
-            <optgroup label="Lấy tự động từ chấm công">
-              {SYSTEM_VARIABLES.map((item) => (
+      {/* --- Nhân với gì --- */}
+      <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2.5">
+        <Select
+          label="Nhân với"
+          value={guided.variable ?? ''}
+          onChange={(event) => set({
+            variable: event.target.value || null,
+            // Không nhân thì không có gì để chia; để sót cờ này lại sẽ sinh ra
+            // `(MUC_RIENG / STANDARD_DAYS)` cụt đuôi ở lần bật lại sau.
+            prorate: event.target.value ? guided.prorate : false,
+          })}
+        >
+          {/* Không nhân = khoản cố định. Để nó là một lựa chọn trong cùng ô
+              thay vì một nút riêng: người khai chỉ phải trả lời MỘT câu
+              "nhân với gì", chứ không phải chọn loại rồi mới khai. */}
+          <option value="">Không nhân — trả nguyên số</option>
+          <optgroup label="Lấy tự động từ chấm công và KPI">
+            {SYSTEM_VARIABLES.map((item) => (
+              <option key={item.code} value={item.code}>{item.label}</option>
+            ))}
+          </optgroup>
+          {inputCodes.length > 0 && (
+            <optgroup label="Số liệu quản lý nhập hằng tháng">
+              {inputCodes.map((item) => (
                 <option key={item.code} value={item.code}>{item.label}</option>
               ))}
             </optgroup>
-            {inputCodes.length > 0 && (
-              <optgroup label="Số liệu quản lý nhập hằng tháng">
-                {inputCodes.map((item) => (
-                  <option key={item.code} value={item.code}>{item.label}</option>
-                ))}
-              </optgroup>
-            )}
-          </Select>
+          )}
+        </Select>
 
+        {!isFixed && (
           <label className="flex cursor-pointer items-start gap-2">
             <input
               type="checkbox"
@@ -199,8 +183,8 @@ export function PayItemFormulaPicker({
               Chia cho ngày công chuẩn
             </span>
           </label>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* --- Công thức sinh ra, hiện nguyên văn --- */}
       <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">

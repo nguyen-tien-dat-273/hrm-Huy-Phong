@@ -1,12 +1,14 @@
 // ============================================================================
 // Công thức của MỘT khoản lương, khai bằng vài ô chọn.
 // ----------------------------------------------------------------------------
-// Khoản lương trong thực tế chỉ có hai loại:
+// Mọi khoản lương đều là cùng một hình dạng:
 //
-//   CỐ ĐỊNH       Tháng nào cũng bằng đó tiền. Nhập thẳng số tiền.
-//   KHÔNG CỐ ĐỊNH Một ĐƠN GIÁ nhân với một SỐ LIỆU thay đổi theo tháng.
-//                 Đơn giá lấy từ một khoản cố định đã khai, hoặc nhập tay.
-//                 Số liệu là ngày công, giờ công, số chuyến, sản lượng...
+//     (một con số)  ×  (nhân với gì)
+//
+// Con số lấy từ ô nhập tay, hoặc từ một khoản khác trong danh mục.
+// "Nhân với gì" có thể là KHÔNG NHÂN — và đó chính là khoản cố định, không
+// cần một loại riêng. Còn lại là ngày công, giờ công, KPI, số chuyến, sản
+// lượng... tức những con số thay đổi theo tháng.
 //
 // Số liệu tháng KHÔNG phải khai thêm ở đâu cả: `MonthlyInputsTab` quét công
 // thức của mọi khoản đã gán, thấy một biến lạ là tự dựng cột nhập liệu cho nó
@@ -50,6 +52,7 @@ export interface GuidedPayFormula {
 /** Biến hệ thống dùng được làm số nhân, kèm tên tiếng Việt. */
 export const SYSTEM_VARIABLES: ReadonlyArray<{ code: string; label: string }> = [
   { code: 'PAID_DAYS', label: 'Ngày hưởng lương (đi làm + phép + lễ)' },
+  { code: 'KPI_PCT', label: 'KPI đạt được (%)' },
   { code: 'WORK_DAYS', label: 'Ngày đi làm thực tế' },
   { code: 'WORK_HOURS', label: 'Giờ làm thực tế' },
   { code: 'LEAVE_DAYS', label: 'Ngày nghỉ phép' },
