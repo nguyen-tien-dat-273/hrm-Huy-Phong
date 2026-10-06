@@ -27,7 +27,7 @@ import { evaluateFormula } from '@/lib/payrollFormula';
 import { formatVND } from '@/lib/utils';
 import {
   buildPayFormula, parsePayFormula,
-  DEFAULT_GUIDED, SYSTEM_VARIABLES,
+  DEFAULT_GUIDED, isDayCount, SYSTEM_VARIABLES,
   type GuidedPayFormula,
 } from '@/lib/payItemFormula';
 import type { PayComponent } from '@/types';
@@ -71,7 +71,7 @@ export function PayItemFormulaPicker({
         seen.set(item.input_code, item.name);
       }
     }
-    return [...seen].map(([code, name]) => ({ code, label: `${code} — ${name}` }));
+    return [...seen].map(([code, name]) => ({ code, label: name }));
   }, [components]);
 
   const guided = parsePayFormula(formula, codes) ?? DEFAULT_GUIDED;
@@ -90,6 +90,27 @@ export function PayItemFormulaPicker({
 
   const isFixed = !guided.variable;
 
+  /**
+   * Số tiền của cả hai cách hiểu, khi số nhân là ngày công.
+   *
+   * "Lương cơ bản 8tr × 22 công" ra 176 triệu, còn "8tr ÷ 24,5 × 22" ra 7,18
+   * triệu — lệch 24,5 lần, mà khác biệt chỉ là một ô tick. Bày thẳng hai con
+   * số ra thì không ai chọn nhầm; giấu sau một ô tick thì sai cả bảng lương
+   * mà không có gì báo.
+   */
+  const both = useMemo(() => {
+    if (!isDayCount(guided.variable)) return null;
+    const scope = { ...sampleScope, MUC_RIENG: Number(amount || 0) };
+    const value = (prorate: boolean) => {
+      try {
+        return evaluateFormula(buildPayFormula({ ...guided, prorate }), scope).value;
+      } catch {
+        return null;
+      }
+    };
+    return { perDay: value(false), perMonth: value(true) };
+  }, [guided, sampleScope, amount]);
+
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
       {/* --- Lấy số từ đâu --- */}
@@ -97,7 +118,7 @@ export function PayItemFormulaPicker({
         <div className="flex flex-wrap gap-2">
           {([
             ['FIXED', isFixed ? 'Nhập số tiền' : 'Nhập đơn giá'],
-            ['COMPONENT', 'Lấy từ khoản khác'],
+            ['COMPONENT', 'Lấy từ danh mục'],
           ] as const).map(([kind, label]) => (
             <button
               key={kind}
@@ -130,12 +151,12 @@ export function PayItemFormulaPicker({
           />
         ) : (
           <Select
-            label={isFixed ? 'Lấy số tiền từ khoản' : 'Lấy đơn giá từ khoản'}
+            label="Khoản trong danh mục"
             value={guided.source.code}
             onChange={(event) => set({ source: { kind: 'COMPONENT', code: event.target.value } })}
           >
             {usable.map((item) => (
-              <option key={item.id} value={item.code}>{item.name} ({item.code})</option>
+              <option key={item.id} value={item.code}>{item.name}</option>
             ))}
           </Select>
         )}
@@ -171,18 +192,39 @@ export function PayItemFormulaPicker({
           )}
         </Select>
 
-        {!isFixed && (
-          <label className="flex cursor-pointer items-start gap-2">
-            <input
-              type="checkbox"
-              checked={guided.prorate}
-              onChange={(event) => set({ prorate: event.target.checked })}
-              className="mt-0.5 h-4 w-4 accent-indigo-600"
-            />
-            <span className="text-[11px] font-semibold text-slate-700">
-              Chia cho ngày công chuẩn
-            </span>
-          </label>
+        {both && (
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+              Số vừa nhập đang là
+            </p>
+            {([
+              [false, 'Đơn giá MỘT NGÀY', both.perDay],
+              [true, 'Lương MỘT THÁNG', both.perMonth],
+            ] as const).map(([prorate, label, value]) => (
+              <label
+                key={label}
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 transition ${
+                  guided.prorate === prorate
+                    ? 'border-indigo-600 bg-indigo-50'
+                    : 'border-slate-200 hover:border-indigo-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name={`prorate-${selfCode ?? 'new'}`}
+                  checked={guided.prorate === prorate}
+                  onChange={() => set({ prorate })}
+                  className="h-4 w-4 flex-shrink-0 accent-indigo-600"
+                />
+                <span className="min-w-0 flex-1 text-[11px] font-semibold text-slate-700">{label}</span>
+                {value != null && (
+                  <span className="shrink-0 font-mono text-[11px] font-bold text-slate-900">
+                    {formatVND(value)}
+                  </span>
+                )}
+              </label>
+            ))}
+          </div>
         )}
       </div>
 

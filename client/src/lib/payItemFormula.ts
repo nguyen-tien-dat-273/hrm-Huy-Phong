@@ -49,15 +49,26 @@ export interface GuidedPayFormula {
   prorate: boolean;
 }
 
-/** Biến hệ thống dùng được làm số nhân, kèm tên tiếng Việt. */
-export const SYSTEM_VARIABLES: ReadonlyArray<{ code: string; label: string }> = [
-  { code: 'PAID_DAYS', label: 'Ngày hưởng lương (đi làm + phép + lễ)' },
-  { code: 'KPI_PCT', label: 'KPI đạt được (%)' },
-  { code: 'WORK_DAYS', label: 'Ngày đi làm thực tế' },
+/**
+ * Biến hệ thống dùng được làm số nhân.
+ *
+ * `days` đánh dấu biến ĐẾM NGÀY CÔNG. Chỉ những biến đó mới có nghĩa khi chia
+ * cho ngày công chuẩn — chia rồi nhân số chuyến hay nhân KPI% là vô nghĩa, nên
+ * màn hình giấu lựa chọn đó đi với các biến còn lại.
+ */
+export const SYSTEM_VARIABLES: ReadonlyArray<{ code: string; label: string; days?: boolean }> = [
+  { code: 'PAID_DAYS', label: 'Ngày hưởng lương (đi làm + phép + lễ)', days: true },
+  { code: 'WORK_DAYS', label: 'Ngày đi làm thực tế', days: true },
   { code: 'WORK_HOURS', label: 'Giờ làm thực tế' },
-  { code: 'LEAVE_DAYS', label: 'Ngày nghỉ phép' },
-  { code: 'HOLIDAY_DAYS', label: 'Ngày nghỉ lễ' },
+  { code: 'KPI_PCT', label: 'KPI đạt được (%)' },
+  { code: 'LEAVE_DAYS', label: 'Ngày nghỉ phép', days: true },
+  { code: 'HOLIDAY_DAYS', label: 'Ngày nghỉ lễ', days: true },
 ];
+
+/** Biến này có phải là số đếm ngày công không. */
+export function isDayCount(code: string | null): boolean {
+  return !!code && SYSTEM_VARIABLES.some((item) => item.code === code && item.days);
+}
 
 const SYSTEM_CODES = new Set(SYSTEM_VARIABLES.map((item) => item.code));
 

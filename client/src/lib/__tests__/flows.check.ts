@@ -14,7 +14,8 @@
 import { kpiSchemeFor, unitLineage, type KpiSchemeData, type ResolvableUnit } from '../kpiSchemeFor';
 import { describeLevelIssues, scoreFromLevels } from '../kpiScoring';
 import { countWorkingDays } from '../leave';
-import { buildPayFormula, parsePayFormula } from '../payItemFormula';
+import { evaluateFormula } from '../payrollFormula';
+import { buildPayFormula, isDayCount, parsePayFormula } from '../payItemFormula';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -281,6 +282,24 @@ check('khoảng trắng thừa vẫn đọc được',
   parsePayFormula('  MUC_RIENG  *  SO_CHUYEN  ', MA_KHOAN)?.variable, 'SO_CHUYEN');
 check('thiếu ngoặc vẫn đọc được dạng chia công chuẩn',
   parsePayFormula('LUONG_CB / STANDARD_DAYS * PAID_DAYS', MA_KHOAN)?.prorate, true);
+
+// Ví dụ thật: lương cơ bản 8tr, đi 22/24,5 công.
+//
+// Hai cách hiểu lệch nhau 24,5 lần, mà khác biệt chỉ là một lựa chọn. Màn
+// hình bày cả hai con số ra cạnh nhau chính vì ca này.
+const LUONG = { LUONG_CB: 8_000_000, PAID_DAYS: 22, STANDARD_DAYS: 24.5 };
+const tinh = (prorate: boolean) => evaluateFormula(buildPayFormula({
+  source: { kind: 'COMPONENT', code: 'LUONG_CB' }, variable: 'PAID_DAYS', prorate,
+}), LUONG).value;
+check('coi 8tr là đơn giá NGÀY thì ra 176 triệu', tinh(false), 176_000_000);
+check('coi 8tr là lương THÁNG thì ra đúng ~7,18 triệu',
+  Math.round(tinh(true)), 7_183_673);
+
+// Chia công chuẩn chỉ có nghĩa với biến đếm NGÀY công.
+check('ngày hưởng lương là số đếm ngày', isDayCount('PAID_DAYS'), true);
+check('giờ làm KHÔNG phải số đếm ngày', isDayCount('WORK_HOURS'), false);
+check('KPI% KHÔNG phải số đếm ngày', isDayCount('KPI_PCT'), false);
+check('số liệu tự đặt KHÔNG phải số đếm ngày', isDayCount('SO_CHUYEN'), false);
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
