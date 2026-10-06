@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Input, Textarea } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
 import { PayrollFormulaBuilder } from '@/components/payroll/PayrollFormulaBuilder';
 import { PayItemFormulaPicker } from '@/components/payroll/PayItemFormulaPicker';
@@ -51,12 +51,6 @@ import type { PayrollParams } from '@/lib/payrollSettings';
  * cũ vẫn đọc được; màn này luôn ghi 'MONTHLY' và 0.
  */
 const LEGACY_PAY_BASIS: PayBasis = 'MONTHLY';
-
-const TAX_MODES: Array<{ value: TaxMode; label: string; hint: string }> = [
-  { value: 'PROGRESSIVE', label: 'Lũy tiến 7 bậc', hint: 'Hợp đồng từ 3 tháng trở lên.' },
-  { value: 'FLAT', label: 'Khấu trừ thẳng theo %', hint: 'Hợp đồng dưới 3 tháng, cộng tác viên.' },
-  { value: 'NONE', label: 'Không khấu trừ', hint: 'Người đã tự quyết toán hoặc được miễn.' },
-];
 
 interface PaySchemeModalProps {
   /** Tham số lương, dùng dựng bộ biến mẫu khi kiểm tra công thức. */
@@ -242,43 +236,6 @@ export function PaySchemeModal({
   // vẫn phải tự suy ra con số.
   const effectiveInsuranceBase = Number(insuranceBase || '0') || parsedBase;
 
-  /**
-   * Ước tính một tháng đi ĐỦ công, CHƯA tính phụ cấp, tăng ca hay khoán.
-   *
-   * Không cố tính chính xác: số thật phụ thuộc chấm công và số liệu tháng chưa
-   * tồn tại lúc đang setup. Mục đích là để người khai thấy ngay mình vừa tạo ra
-   * mức thực nhận cỡ nào, thay vì phải lưu rồi chạy bảng lương mới biết.
-   */
-  const estimate = useMemo(() => {
-    const gross = parsedBase;
-    const insuranceSalary = insuranceEnabled
-      ? Math.min(effectiveInsuranceBase, params.insuranceSalaryCap)
-      : 0;
-    const unemploymentSalary = insuranceEnabled
-      ? Math.min(effectiveInsuranceBase, params.unemploymentSalaryCap)
-      : 0;
-    const insurance = Math.round(
-      (insuranceSalary * (params.socialInsuranceRate + params.healthInsuranceRate)) / 100
-        + (unemploymentSalary * params.unemploymentInsuranceRate) / 100,
-    );
-
-    const deduction = params.taxPersonalDeduction + Number(dependents || '0') * params.taxDependentDeduction;
-    let tax = 0;
-    if (taxMode === 'PROGRESSIVE') {
-      tax = Math.round(progressiveIncomeTax(
-        Math.max(0, gross - insurance - deduction),
-        toTaxBrackets(params.brackets),
-      ).tax);
-    } else if (taxMode === 'FLAT') {
-      tax = Math.round((gross * (Number(flatRate) || 0)) / 100);
-    }
-
-    return { gross, insurance, deduction, tax, net: gross - insurance - tax };
-  }, [
-    parsedBase, insuranceEnabled, effectiveInsuranceBase, dependents,
-    taxMode, flatRate, params,
-  ]);
-
   const handleSave = async () => {
     if (!target) return;
     if (drafts.length === 0) {
@@ -364,188 +321,14 @@ export function PaySchemeModal({
             </div>
           </div>
 
-          {/* --- Bước 1: khi nào áp dụng, và mẫu số chia công --- */}
+          {/* Màn này hiện CHỈ còn danh mục khoản. Hiệu lực, ngày công chuẩn,
+              bảo hiểm và thuế đã bỏ khỏi giao diện theo yêu cầu — nhưng state
+              của chúng GIỮ NGUYÊN và vẫn được ghi xuống khi lưu, lấy từ bản
+              ghi hiện có. Bỏ ô nhập mà ghi giá trị mặc định là âm thầm xoá
+              thiết lập bảo hiểm/thuế của người ta. */}
           <section className="space-y-3">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Bước 1 · Hiệu lực và ngày công chuẩn
-            </h3>
-
-            {/* Không còn ô "lương gốc" ở đây. Lương gốc là một KHOẢN trong danh
-                mục, khai ở Bước 3 như mọi khoản khác — một cách khai cho mọi
-                thứ, thay vì hai. Mức của nó đọc thẳng từ dòng đó. */}
-            {baseComponent ? (
-              <div className="rounded-xl border-2 border-indigo-200 bg-indigo-50/60 px-3.5 py-3">
-                <p className="text-sm font-bold text-slate-900">
-                  Lương gốc: {baseComponent.name}
-                </p>
-                <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
-                  Khai mức và cách tính của khoản này ở <strong>Bước 3</strong>. Mức đó là căn cứ
-                  suy đơn giá giờ tăng ca và mức đóng bảo hiểm.
-                  {parsedBase > 0 && <> Đang là <strong>{formatVND(parsedBase)}</strong>.</>}
-                </p>
-              </div>
-            ) : (
-              /* Thiếu khoản lương gốc thì đơn giá giờ tăng ca và mức đóng bảo
-                 hiểm đều bằng 0 — hai thứ đó sai thì không hiện ra dưới dạng
-                 lỗi, chỉ là vài con số nhỏ đi trên phiếu lương. */
-              <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
-                <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-700" />
-                <p className="text-[11px] leading-relaxed text-amber-900">
-                  Chưa có khoản nào được đánh dấu <strong>lương gốc</strong>. Sang{' '}
-                  <strong>Danh mục khoản lương</strong> bật cờ đó cho khoản lương cơ bản — thiếu nó
-                  thì <strong>đơn giá giờ tăng ca</strong> và <strong>mức đóng bảo hiểm</strong>{' '}
-                  đều tính trên 0đ.
-                </p>
-              </div>
-            )}
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input
-                label="Áp dụng từ ngày"
-                type="date"
-                value={effectiveFrom}
-                onChange={(e) => setEffectiveFrom(e.target.value)}
-              />
-              {/* Mẫu số của cách tính "chia công chuẩn × số công" ở Bước 3. */}
-              <Input
-                label={`Ngày công chuẩn riêng (trống = ${params.standardWorkDays} theo công ty)`}
-                inputMode="numeric"
-                placeholder={String(params.standardWorkDays)}
-                value={standardDays}
-                onChange={(e) => setStandardDays(digitsOnly(e.target.value))}
-              />
-            </div>
-
-            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-              Đổi lương là tạo bản ghi mới theo ngày hiệu lực. Các tháng đã chạy lương trước
-              ngày này giữ nguyên mức cũ.
-            </p>
-          </section>
-
-          {/* --- Bảo hiểm & thuế --- */}
-          <section className="space-y-3">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Bước 2 · Bảo hiểm và thuế
-            </h3>
-            <label className="flex items-start gap-2.5 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={insuranceEnabled}
-                onChange={(e) => setInsuranceEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300"
-              />
-              <span>
-                Tham gia bảo hiểm bắt buộc
-                <span className="block text-xs text-slate-500">
-                  BHXH {params.socialInsuranceRate}% + BHYT {params.healthInsuranceRate}% +
-                  BHTN {params.unemploymentInsuranceRate}% = {(
-                    params.socialInsuranceRate + params.healthInsuranceRate + params.unemploymentInsuranceRate
-                  ).toFixed(1)}% phần người lao động đóng.
-                </span>
-              </span>
-            </label>
-            {insuranceEnabled && (
-              <div>
-                <Input
-                  label="Mức lương đóng bảo hiểm"
-                  inputMode="numeric"
-                  placeholder={parsedBase > 0 ? String(parsedBase) : 'VD: 8000000'}
-                  value={insuranceBase}
-                  onChange={(e) => setInsuranceBase(digitsOnly(e.target.value))}
-                />
-                {effectiveInsuranceBase > 0 ? (
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Sẽ đóng trên <strong className="text-slate-700">{formatVND(effectiveInsuranceBase)}</strong>
-                    {!insuranceBase && ' (lấy theo lương gốc vì đang để trống)'}
-                    {effectiveInsuranceBase > params.insuranceSalaryCap
-                      && ` — vượt trần, chỉ đóng BHXH/BHYT trên ${formatVND(params.insuranceSalaryCap)}`}
-                  </p>
-                ) : (
-                  /* Chưa khai khoản lương gốc thì không suy ra được mức đóng,
-                     để trống là đóng bảo hiểm trên 0đ — sai mà không có gì báo. */
-                  <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700">
-                    <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    Chưa suy ra được mức đóng vì chưa khai khoản lương gốc ở Bước 3. Nhập tay ở
-                    đây, hoặc khai khoản đó — bỏ trống là đóng bảo hiểm trên 0 đồng.
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Select label="Cách tính thuế TNCN" value={taxMode} onChange={(e) => setTaxMode(e.target.value as TaxMode)}>
-                  {TAX_MODES.map((mode) => (
-                    <option key={mode.value} value={mode.value}>{mode.label}</option>
-                  ))}
-                </Select>
-                <p className="mt-1.5 text-xs text-slate-500">
-                  {TAX_MODES.find((mode) => mode.value === taxMode)?.hint}
-                </p>
-              </div>
-              {taxMode === 'FLAT' ? (
-                <Input
-                  label="Tỷ lệ khấu trừ (%)"
-                  inputMode="decimal"
-                  value={flatRate}
-                  onChange={(e) => setFlatRate(e.target.value.replace(/[^\d.]/g, ''))}
-                />
-              ) : (
-                <div>
-                  <Input
-                    label="Số người phụ thuộc"
-                    inputMode="numeric"
-                    value={dependents}
-                    onChange={(e) => setDependents(digitsOnly(e.target.value))}
-                  />
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Giảm trừ {formatVND(params.taxDependentDeduction)}/người, cộng với{' '}
-                    {formatVND(params.taxPersonalDeduction)} cho bản thân.
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* --- Ước tính --- */}
-          {estimate.gross > 0 && (
-            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Ước tính một tháng đi đủ công
-              </p>
-              <dl className="mt-3 space-y-1.5 text-sm">
-                <EstimateRow label="Lương gốc" value={estimate.gross} />
-                {estimate.insurance > 0 && (
-                  <EstimateRow label="Bảo hiểm người lao động đóng" value={-estimate.insurance} />
-                )}
-                {taxMode === 'PROGRESSIVE' && (
-                  <EstimateRow
-                    label={`Giảm trừ gia cảnh (bản thân${Number(dependents) > 0 ? ` + ${dependents} người phụ thuộc` : ''})`}
-                    value={estimate.deduction}
-                    muted
-                  />
-                )}
-                <EstimateRow
-                  label={taxMode === 'NONE' ? 'Thuế TNCN (không khấu trừ)' : 'Thuế TNCN'}
-                  value={-estimate.tax}
-                />
-                <div className="flex items-baseline justify-between border-t border-slate-200 pt-2">
-                  <dt className="text-sm font-bold text-slate-700">Thực nhận ước tính</dt>
-                  <dd className="text-base font-extrabold tabular-nums text-indigo-700">
-                    {formatVND(estimate.net)}
-                  </dd>
-                </div>
-              </dl>
-              <p className="mt-2.5 text-[11px] leading-relaxed text-slate-500">
-                Chỉ tính lương gốc — <strong>chưa</strong> gồm phụ cấp, tăng ca, khoán sản phẩm hay
-                khoản trừ. Số thật phụ thuộc chấm công và số liệu của từng tháng.
-              </p>
-            </section>
-          )}
-
-          {/* --- Khoản riêng --- */}
-          <section className="space-y-3">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Bước 3 · Các khoản lương ({drafts.length})
+              Các khoản lương ({drafts.length})
             </h3>
 
             {/* --- Chọn khoản từ danh mục --- */}
@@ -750,13 +533,3 @@ function describeCalcType(component: PayComponent): string {
 }
 
 /** Một dòng trong bảng ước tính. `muted` cho dòng chỉ để tham khảo, không cộng trừ. */
-function EstimateRow({ label, value, muted }: { label: string; value: number; muted?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className={`text-xs ${muted ? 'text-slate-400' : 'text-slate-600'}`}>{label}</dt>
-      <dd className={`text-sm tabular-nums ${muted ? 'text-slate-400' : 'font-semibold text-slate-800'}`}>
-        {value < 0 ? `− ${formatVND(-value)}` : formatVND(value)}
-      </dd>
-    </div>
-  );
-}
