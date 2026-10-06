@@ -19,12 +19,12 @@
 // ============================================================================
 
 import { useMemo } from 'react';
-import { Calculator, PenLine, TriangleAlert } from 'lucide-react';
+import { Calculator, PenLine } from 'lucide-react';
 import { Input, Select } from '@/components/ui/Input';
 import { evaluateFormula } from '@/lib/payrollFormula';
 import { formatVND } from '@/lib/utils';
 import {
-  buildPayFormula, describePayFormula, parsePayFormula,
+  buildPayFormula, parsePayFormula,
   DEFAULT_GUIDED, SYSTEM_VARIABLES,
   type GuidedPayFormula,
 } from '@/lib/payItemFormula';
@@ -85,26 +85,17 @@ export function PayItemFormulaPicker({
     }
   }, [generated, sampleScope, amount]);
 
-  const sourceName = guided.source.kind === 'COMPONENT'
-    ? usable.find((item) => item.code === (guided.source as { code: string }).code)?.name
-    : undefined;
-  const variableName = guided.variable
-    ? SYSTEM_VARIABLES.find((item) => item.code === guided.variable)?.label ?? guided.variable
-    : undefined;
 
   const isFixed = !guided.variable;
-  /** Số liệu do công ty tự đặt, không phải biến hệ thống → cần người nhập hằng tháng. */
-  const needsMonthlyEntry = !!guided.variable
-    && !SYSTEM_VARIABLES.some((item) => item.code === guided.variable);
 
   return (
     <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
       {/* --- Câu 1: cố định hay không --- */}
       <div className="flex flex-wrap gap-2">
         {([
-          [true, 'Cố định', 'Tháng nào cũng bằng đó tiền'],
-          [false, 'Không cố định', 'Đơn giá × số liệu theo tháng'],
-        ] as const).map(([fixed, label, hint]) => (
+          [true, 'Cố định'],
+          [false, 'Không cố định'],
+        ] as const).map(([fixed, label]) => (
           <button
             key={label}
             type="button"
@@ -122,7 +113,6 @@ export function PayItemFormulaPicker({
             }`}
           >
             <span className="block text-xs font-bold text-slate-800">{label}</span>
-            <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">{hint}</span>
           </button>
         ))}
       </div>
@@ -205,24 +195,10 @@ export function PayItemFormulaPicker({
               onChange={(event) => set({ prorate: event.target.checked })}
               className="mt-0.5 h-4 w-4 accent-indigo-600"
             />
-            <span className="text-[11px] leading-relaxed text-slate-700">
-              Đơn giá đang khai theo <strong>tháng</strong> — chia cho ngày công chuẩn trước khi
-              nhân. Dùng cho lương tháng trả theo ngày thực đi.
+            <span className="text-[11px] font-semibold text-slate-700">
+              Chia cho ngày công chuẩn
             </span>
           </label>
-
-          {needsMonthlyEntry && (
-            /* Nói trước ai sẽ nhập con số kia, để không ai khai xong rồi chờ
-               một ô nhập liệu mà họ tưởng phải tự tạo. */
-            <p className="flex items-start gap-1.5 rounded bg-amber-50 px-2 py-1.5 text-[11px] leading-relaxed text-amber-800">
-              <TriangleAlert className="mt-0.5 h-3 w-3 flex-shrink-0" />
-              <span>
-                <code className="font-mono font-bold">{guided.variable}</code> là số liệu thay đổi
-                theo tháng. Cột nhập cho nó tự hiện ở màn <strong>Số liệu lương tháng</strong>;
-                tháng nào chưa điền thì khoản này tính ra 0đ.
-              </span>
-            </p>
-          )}
         </div>
       )}
 
@@ -232,9 +208,6 @@ export function PayItemFormulaPicker({
           <Calculator className="h-3 w-3" /> Công thức
         </p>
         <code className="mt-1 block break-words font-mono text-xs text-indigo-700">{generated}</code>
-        <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
-          {describePayFormula(guided, { source: sourceName, variable: variableName })}
-        </p>
         {preview != null && (
           <p className="mt-1 text-[11px] font-semibold text-slate-700">
             Thử với số liệu mẫu: {formatVND(preview)}

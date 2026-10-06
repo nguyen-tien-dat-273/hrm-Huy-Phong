@@ -327,10 +327,6 @@ export function PaySchemeModal({
               value={effectiveFrom}
               onChange={(event) => setEffectiveFrom(event.target.value)}
             />
-            <p className="-mt-1 text-[11px] leading-relaxed text-slate-500">
-              Áp cho mọi khoản bên dưới. Các tháng đã chạy lương trước ngày này giữ nguyên mức cũ.
-            </p>
-
             {/* --- Chọn khoản từ danh mục --- */}
             <div className="rounded-xl border border-slate-200 p-3">
               <div className="relative">
@@ -458,11 +454,9 @@ export function PaySchemeModal({
                           không cộng gì vào lương. */}
                       {component && !draft.formula.trim() && !draft.amount
                         && Number(component.default_amount) === 0 && (
-                        <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-amber-700">
-                          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                          Khoản này trong danh mục đang để mức 0đ. Không khai mức riêng thì gán xong
-                          vẫn cộng 0đ vào lương — nhập mức ở ô bên trái, hoặc sửa mức chung ở
-                          Danh mục khoản lương.
+                        <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                          <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
+                          Chưa có mức — khoản này sẽ cộng 0đ.
                         </p>
                       )}
                     </div>

@@ -253,11 +253,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                           }`}>
                             {item.label}
                           </span>
-                          <span className={`mt-0.5 block text-[11px] leading-snug ${
-                            isActive ? 'text-indigo-100' : 'text-slate-500'
-                          }`}>
-                            {item.description}
-                          </span>
                         </span>
                       </>
                     )}

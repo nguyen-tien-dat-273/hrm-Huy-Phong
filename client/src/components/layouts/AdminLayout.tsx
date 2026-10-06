@@ -304,15 +304,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                           }`}>
                             {item.label}
                           </span>
-                          {/* Cau mo ta cua tung chuc nang: nhan khong noi
-                              duoc "Co che luong" khac "Tham so luong" cho
-                              nao, ma do la thu nguoi dung can biet truoc khi
-                              bam chu khong phai sau. */}
-                          <span className={`mt-0.5 block text-[11px] leading-snug ${
-                            isActive ? 'text-indigo-100' : 'text-slate-500'
-                          }`}>
-                            {item.description}
-                          </span>
                         </span>
                         {item.to === '/admin/assignments' && pendingAssignments > 0 && (
                           <span className={`mt-0.5 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
