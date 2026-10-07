@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, CheckCircle2, Clock, Fingerprint, History, ShieldCheck, ClipboardList, LogOut } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock, Fingerprint, History, ShieldCheck, ClipboardList, LogIn, LogOut } from 'lucide-react';
 import { addDays } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -18,7 +18,7 @@ import type { Attendance } from '@/types';
 const sourceLabel = (record: Attendance) => {
   const method = String(record.check_in_method || '').toUpperCase();
   if (method === 'DEVICE') return 'Máy chấm công';
-  if (method === 'MANUAL') return 'Quản trị ghi nhận';
+  if (method === 'MANUAL') return 'Ghi nhận trên HRM';
   return 'Dữ liệu kế thừa';
 };
 
@@ -27,6 +27,7 @@ export function StaffDeviceAttendance() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [checkingIn, setCheckingIn] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [records, setRecords] = useState<Attendance[]>([]);
 
@@ -65,6 +66,31 @@ export function StaffDeviceAttendance() {
     device: new Set(records.filter((record) => String(record.check_in_method).toUpperCase() === 'DEVICE').map((record) => record.date)).size,
     approved: new Set(records.filter((record) => record.approved_by_lead).map((record) => record.date)).size,
   }), [records]);
+
+  // Check-in trên HRM là LỐI NGOẠI LỆ: quên quét máy, hoặc làm ngoài văn
+  // phòng. Đã quét máy rồi thì trigger attendance_block_manual_after_device
+  // dưới database chặn — giao diện ẩn nút chỉ là lớp ngoài, người dùng gọi
+  // thẳng API vẫn không tạo được dòng thứ hai cùng ngày.
+  const handleCheckIn = async () => {
+    if (!profile || todayRecord) return;
+    setCheckingIn(true);
+    const { error } = await supabase.from('attendance').insert({
+      user_id: profile.id,
+      date: today,
+      check_in_time: new Date().toISOString(),
+      status: 'active',
+      check_in_method: 'MANUAL',
+      approved_by_lead: false,
+    });
+    setCheckingIn(false);
+    if (error) {
+      toast(`Check-in thất bại: ${describeDbError(error)}`, 'error');
+      await loadData(true);
+      return;
+    }
+    toast('Đã check-in. Nhớ bấm Check-out khi về.', 'success');
+    await loadData(true);
+  };
 
   const handleCheckOut = async () => {
     if (!profile || !checkoutRecord) return;
@@ -107,8 +133,24 @@ export function StaffDeviceAttendance() {
 
       <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3.5 text-sm text-blue-900">
         <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
-        <p className="leading-relaxed"><strong>Dữ liệu máy là nguồn ghi nhận giờ vào.</strong> Bạn không cần check-in hoặc cấp quyền vị trí trên trang này; cuối ngày chỉ cần checkout.</p>
+        <p className="leading-relaxed">
+          <strong>Máy chấm công là nguồn chính ghi giờ vào.</strong> Quét ở máy rồi thì không cần
+          check-in ở đây nữa — cuối ngày chỉ bấm <strong>Check-out</strong>. Nút check-in bên dưới
+          chỉ dành cho hôm nào bạn chưa kịp quét máy.
+        </p>
       </div>
+
+      {!todayRecord && focusRecord && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5">
+          <p className="text-sm text-slate-600">
+            Hôm nay chưa có giờ vào — ca đang hiển thị bên dưới là ca cũ chưa checkout.
+          </p>
+          <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn}>
+            <LogIn className="h-4 w-4" />
+            {checkingIn ? 'Đang check-in…' : 'Check-in hôm nay'}
+          </Button>
+        </div>
+      )}
 
       <Card className="overflow-hidden">
         <div className="border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white px-5 py-4 sm:px-6">
@@ -118,8 +160,15 @@ export function StaffDeviceAttendance() {
           {!focusRecord ? (
             <div className="py-8 text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Fingerprint className="h-8 w-8" /></div>
-              <h2 className="mt-4 font-display text-lg font-bold text-slate-800">Chưa có dữ liệu vào ca hôm nay</h2>
-              <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-slate-500">Hãy quét tại máy chấm công. Trang sẽ tự cập nhật sau lần đồng bộ kế tiếp.</p>
+              <h2 className="mt-4 font-display text-lg font-bold text-slate-800">Chưa có giờ vào hôm nay</h2>
+              <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-slate-500">
+                Quét tại máy chấm công là cách thông thường; trang sẽ tự cập nhật sau lần đồng bộ
+                kế tiếp. Nếu hôm nay bạn không quét được máy thì check-in ở đây.
+              </p>
+              <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn} className="mt-5">
+                <LogIn className="h-4 w-4" />
+                {checkingIn ? 'Đang check-in…' : 'Check-in trên HRM'}
+              </Button>
             </div>
           ) : (
             <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
