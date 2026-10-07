@@ -28,6 +28,10 @@ export function AdminAttendance() {
   const [asgProgress, setAsgProgress] = useState<Record<string, { approved: number; total: number }>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Dem rieng ban ghi KHONG phai tu may ma con cho duyet. Loc man hinh ve
+  // mot nguon la dung y do, nhung giau luon nhung dong do thi chung khong
+  // bao gio duoc duyet va khong bao gio vao bang luong - mat im lang.
+  const [legacyPending, setLegacyPending] = useState(0);
   const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
   // Trưởng nhóm duyệt được ngày công của phạm vi mình quản lý nhưng không đổi
   // quy tắc giờ làm dùng chung toàn công ty — khớp với guard của route cài đặt.
@@ -49,9 +53,13 @@ export function AdminAttendance() {
     // `attendance` có HAI khóa ngoại trỏ về `profiles` (user_id và
     // approved_by_user_id), nên `profiles(*)` là mơ hồ và PostgREST trả lỗi
     // PGRST201. Phải chỉ rõ khóa.
+    // Cham cong o day CHI den tu may cham cong vat ly. Luong tu khai bang GPS
+    // khong con dung; don tu (nghi phep, di muon, ve som, lam them) xu ly ben
+    // /admin/leave chu khong phai man nay.
     let query = supabase
       .from('attendance')
       .select('*, profile:profiles_directory!user_id(*)')
+      .eq('check_in_method', 'DEVICE')
       .order('date', { ascending: false });
     if (filter === 'today') {
       query = query.eq('date', getTodayString());
@@ -61,6 +69,13 @@ export function AdminAttendance() {
     }
     const { data, error } = await query;
     setLoadError(error ? describeDbError(error) : null);
+
+    const legacy = await supabase
+      .from('attendance')
+      .select('id', { head: true, count: 'exact' })
+      .neq('check_in_method', 'DEVICE')
+      .eq('approved_by_lead', false);
+    setLegacyPending(legacy.error ? 0 : (legacy.count ?? 0));
     const list = (data || []) as Attendance[];
     setRecords(list);
 
@@ -211,6 +226,23 @@ export function AdminAttendance() {
 
   return (
     <div className="space-y-5">
+      <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
+        <p className="text-sm font-semibold text-slate-800">Chấm công từ máy chấm công</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Chỉ hiển thị ngày công do máy vân tay/khuôn mặt ghi lại. Đơn nghỉ phép, đi muộn,
+          về sớm và làm thêm xử lý ở <Link to="/admin/leave" className="font-semibold text-indigo-700 hover:underline">Trung tâm đơn từ</Link>.
+        </p>
+      </div>
+
+      {legacyPending > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+          <p className="text-xs text-amber-900">
+            Còn <strong>{legacyPending}</strong> ngày công cũ không đến từ máy và chưa được duyệt.
+            Màn này đã lọc bỏ chúng, nên chúng sẽ không bao giờ được duyệt và không vào bảng lương.
+          </p>
+        </div>
+      )}
+
       {canConfigureAttendance && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
           <p className="text-xs text-slate-500">
