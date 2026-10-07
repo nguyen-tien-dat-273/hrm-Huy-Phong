@@ -5,8 +5,8 @@ Toàn bộ mã đã có sẵn trong repo. Tài liệu này là thứ tự các b
 ## Vì sao phải có "bridge" chứ không nối trực tiếp
 
 Máy chấm công nói giao thức nhị phân ZKTeco trên cổng 4370 và chỉ tồn tại ở IP nội bộ
-(`192.168.x.x`). Website chạy trên Vercel không thể với tới IP đó, và cũng không nên: mở
-máy chấm công ra Internet là mở luôn một thiết bị firmware cũ, không HTTPS, cho cả thế giới.
+(`192.168.x.x`). Không đưa kết nối trực tiếp tới máy chấm công ra Internet: mở thiết bị
+firmware cũ, không HTTPS, cho cả thế giới là rủi ro bảo mật.
 
 Nên đường đi là:
 

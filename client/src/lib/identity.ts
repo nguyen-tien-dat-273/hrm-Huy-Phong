@@ -7,7 +7,7 @@
 // giờ nhận được thư. Tài khoản kiểu này khi quên mật khẩu thì admin cấp lại
 // mật khẩu tạm.
 //
-// Logic này được lặp lại trong api/admin-users.ts (chạy trên Vercel) —
+// Logic này được lặp lại trong api/admin-users.ts —
 // sửa một bên thì phải sửa bên kia.
 // ============================================================================
 

@@ -6,6 +6,8 @@
 dist/
 build/
 *.dist
+server/dist/
+package-lock.json
 
 # Environment variables
 .env
@@ -14,6 +16,7 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.docker
 
 # IDE and editor files
 .vscode/

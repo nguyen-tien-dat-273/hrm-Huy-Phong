@@ -121,7 +121,7 @@ with probe as (
      to_regclass('public.daily_assignments') is not null,
      'Giao viec hang ngay'),
 
-    ('20260929130000_employee_profile_records',
+    ('20260929133000_employee_profile_records',
      exists (select 1 from information_schema.columns
              where table_schema = 'public' and table_name = 'profiles'
                and column_name = 'permanent_address'),
@@ -277,6 +277,14 @@ with probe as (
              where table_schema = 'public' and table_name = 'payroll_components'
                and column_name = 'is_base'),
      'Khai luong goc bang mot khoan trong danh muc thay cho pay_basis'),
+
+    ('20261006100000_daily_assignments_security',
+     to_regprocedure('public.guard_daily_assignment_changes()') is not null
+       and exists (select 1 from pg_policies
+                   where schemaname = 'public'
+                     and tablename = 'daily_assignments'
+                     and policyname = 'daily_assignments_update'),
+     'Gioi han giao viec theo pham vi quan ly va khoa chuyen trang thai'),
 
     ('20261003100000_profiles_phone',
      exists (select 1 from information_schema.columns

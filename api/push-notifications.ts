@@ -79,9 +79,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   const token = readBearer(request);
   if (!token) return response.status(401).json({ error: 'Phiên đăng nhập không hợp lệ.' });
 
-  // Vercel đôi khi suy luận declaration browser rút gọn cho function server,
-  // làm mất `auth.getUser` ở bước typecheck dù API tồn tại đúng ở runtime.
-  // Nới kiểu tại biên server, thống nhất với các endpoint xác thực còn lại.
+  // Nới kiểu tại biên server vì API Auth không được suy luận chính xác từ
+  // declaration dùng chung của trình duyệt.
   const authClient: any = createClient(supabaseUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const service: any = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: authData, error: authError } = await authClient.auth.getUser(token);

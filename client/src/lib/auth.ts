@@ -1,8 +1,8 @@
 // ============================================================================
-// Lớp xác thực: Supabase Auth (mật khẩu, phiên) + backend admin trên Vercel.
+// Lớp xác thực: Supabase Auth (mật khẩu, phiên) + backend admin.
 // ----------------------------------------------------------------------------
 // - Đăng nhập / đổi mật khẩu: gọi thẳng Supabase Auth từ trình duyệt.
-// - Tạo / xóa user, cấp mật khẩu tạm: gọi `/api/admin-users` (Vercel Function),
+// - Tạo / xóa user, cấp mật khẩu tạm: gọi `/api/admin-users`,
 //   nơi duy nhất giữ service_role key. Không bao giờ gọi `supabase.auth.admin.*`
 //   từ trình duyệt vì API đó đòi service_role key.
 // ============================================================================
@@ -13,9 +13,7 @@ import { describeDbError } from './dbError';
 import { toAuthEmail } from './identity';
 
 /**
- * Gốc của API admin. Mặc định cùng origin (bản deploy trên Vercel).
- * Khi chạy `npm run dev` bằng Vite thuần thì `/api/*` KHÔNG tồn tại — dùng
- * `vercel dev`, hoặc đặt VITE_ADMIN_API_BASE trỏ sang bản đã deploy.
+ * Gốc của API admin. Mặc định cùng origin; có thể đặt URL riêng khi phát triển.
  */
 const ADMIN_API_BASE = (import.meta.env.VITE_ADMIN_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
 
@@ -310,7 +308,7 @@ export async function changeOwnPassword(
 }
 
 // ----------------------------------------------------------------------------
-// Quản trị người dùng (qua /api/admin-users trên Vercel)
+// Quản trị người dùng (qua /api/admin-users)
 // ----------------------------------------------------------------------------
 
 async function callAdminApi<T>(payload: Record<string, unknown>): Promise<{ data?: T; error?: string }> {
@@ -343,7 +341,7 @@ async function callAdminApi<T>(payload: Record<string, unknown>): Promise<{ data
     if (res.status === 404) {
       return {
         error:
-          'Không tìm thấy /api/admin-users. Chạy bằng `vercel dev` hoặc deploy lên Vercel — Vite thuần không phục vụ thư mục api/.',
+          'Không tìm thấy /api/admin-users. Hãy chạy backend API cùng ứng dụng hoặc kiểm tra cấu hình máy chủ.',
       };
     }
     return { error: json?.error ?? `Lỗi máy chủ (${res.status}).` };

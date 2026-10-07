@@ -75,7 +75,7 @@ export default tseslint.config(
 
   // ---- Script Node viết bằng JavaScript thuần -----------------------------
   {
-    files: ['tools/**/*.{js,mjs}'],
+    files: ['tools/**/*.{js,mjs}', 'server/**/*.{js,mjs}'],
     extends: [js.configs.recommended],
     languageOptions: {
       globals: globals.node,

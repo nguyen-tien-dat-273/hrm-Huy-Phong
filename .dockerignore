@@ -1,0 +1,15 @@
+.git
+.github
+.vscode
+node_modules
+**/node_modules
+client/dist
+server/dist
+coverage
+.cache
+.env
+.env.*
+!.env.docker.example
+*.log
+*.tsbuildinfo
+docs

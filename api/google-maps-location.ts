@@ -13,7 +13,7 @@ type ApiResponse = {
 };
 
 const GOOGLE_MAPS_HOSTS = new Set(['google.com', 'www.google.com', 'maps.google.com', 'maps.app.goo.gl', 'goo.gl']);
-const APP_USER_AGENT = 'HuyPhongHRM/1.0 (https://hrm-online-six.vercel.app)';
+const APP_USER_AGENT = process.env.APP_USER_AGENT || 'HuyPhongHRM/1.0 (self-hosted)';
 
 function fail(response: ApiResponse, status: number, error: string) {
   response.status(status).json({ error });
