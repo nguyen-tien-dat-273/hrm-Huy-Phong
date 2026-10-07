@@ -147,6 +147,9 @@ export function AdminAttendance() {
   };
 
   const missingCheckout = records.filter((r) => r.check_in_time && !r.check_out_time);
+  // Xac nhan duoc = da co ca hai moc gio ma chua tinh cong. Thuc te la nhung
+  // dong check-in tu HRM; dong tu may da tu tinh cong khi co gio ra.
+  const needConfirm = records.filter((r) => r.check_out_time && !r.approved_by_lead);
 
   // Gom theo ngay, moi nhat len truoc. Cham cong la du lieu theo ngay nen bang
   // doc theo ngay moi de doi chieu voi bang cong; de phang thi mot thang hon
@@ -255,15 +258,15 @@ export function AdminAttendance() {
   };
 
   const handleApproveAllPending = async () => {
-    const pending = records.filter((r) => !r.approved_by_lead);
+    const pending = needConfirm;
     if (pending.length === 0) {
-      toast('Mọi ngày công trong danh sách đều đã được tính.', 'warning');
+      toast('Không có ngày công nào cần xác nhận.', 'warning');
       return;
     }
     const ok = await confirm({
-      title: `Tính công cho ${pending.length} ngày công sót lại?`,
-      message: 'Chấm công từ máy vốn tự tính công. Những dòng này sót lại vì lý do nào đó; tính công xong chúng mới vào bảng lương.',
-      confirmLabel: 'Tính công',
+      title: `Xác nhận ${pending.length} ngày công?`,
+      message: 'Đây là những ngày đã có đủ giờ vào và giờ ra nhưng chưa vào bảng lương — thường là check-in tự khai trên HRM. Xác nhận xong chúng mới được tính công.',
+      confirmLabel: 'Xác nhận',
     });
     if (!ok) return;
     let success = 0;
@@ -368,10 +371,10 @@ export function AdminAttendance() {
               Ghi giờ ra ({missingCheckout.length})
             </Button>
           )}
-          {records.some((item) => !item.approved_by_lead) && (
+          {needConfirm.length > 0 && (
             <Button variant="outline" theme="admin" size="sm" onClick={handleApproveAllPending}>
               <CheckCheck className="w-4 h-4" />
-              Tính công cho {records.filter((item) => !item.approved_by_lead).length} dòng sót
+              Xác nhận {needConfirm.length} dòng
             </Button>
           )}
           <Link to="/admin/timesheet">
@@ -399,7 +402,6 @@ export function AdminAttendance() {
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Nhân viên</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ vào</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ ra</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Trạng thái</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Công việc</th>
                     <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thao tác</th>
                   </tr>
@@ -409,7 +411,7 @@ export function AdminAttendance() {
                   return (
                     <tbody key={date} className="divide-y divide-slate-50">
                       <tr className="bg-slate-50/80">
-                        <td colSpan={6} className="px-6 py-2.5">
+                        <td colSpan={5} className="px-6 py-2.5">
                           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                             <span className="text-sm font-bold text-slate-800">{dayLabel(date)}</span>
                             <span className="text-xs text-slate-500">{rows.length} người</span>
@@ -446,22 +448,6 @@ export function AdminAttendance() {
                               </button>
                             )}
                           </td>
-                          <td data-label="Trạng thái" className="px-6 py-4">
-                            {r.approved_by_lead ? (
-                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">Đã tính công</Badge>
-                            ) : (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Badge className="bg-amber-50 text-amber-700 border-amber-100">Chưa tính công</Badge>
-                                <button
-                                  onClick={() => handleApprove(r)}
-                                  className="text-xs font-semibold text-indigo-700 hover:underline"
-                                  title="Dòng này chưa vào bảng lương — bấm để tính công"
-                                >
-                                  Tính công
-                                </button>
-                              </div>
-                            )}
-                          </td>
                           <td data-label="Công việc" className="px-6 py-4">
                             {(() => {
                               const p = asgProgress[r.user_id + '|' + r.date];
@@ -481,6 +467,15 @@ export function AdminAttendance() {
                           </td>
                           <td data-label="" className="px-5 py-3.5">
                             <div className="flex items-center justify-end gap-2">
+                              {r.check_out_time && !r.approved_by_lead && (
+                                <button
+                                  onClick={() => handleApprove(r)}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
+                                  title="Check-in từ HRM cần quản lý xác nhận mới vào bảng lương"
+                                >
+                                  Xác nhận
+                                </button>
+                              )}
                               <button
                                 onClick={() => handleDelete(r)}
                                 title="Xóa bản ghi"
