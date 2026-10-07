@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Clock, XCircle, Calendar, Trash2, CheckCheck, ClipboardList, LogOut, Table, Cpu, UserRoundCog } from 'lucide-react';
+import { CheckCheck, Clock, LogOut, Table, Trash2 } from 'lucide-react';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,9 +18,19 @@ import { isTeamlead } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
-import { formatTime, formatDateTime, getTodayString } from '@/lib/utils';
+import { formatTime, getTodayString } from '@/lib/utils';
 import { notifyUser } from '@/lib/assignments';
-import type { Attendance, Profile } from '@/types';
+import type { Attendance } from '@/types';
+
+const THU_TRONG_TUAN = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+function dayLabel(iso: string): string {
+  const parsed = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(parsed.getTime())) return iso;
+  const d = String(parsed.getDate()).padStart(2, '0');
+  const m = String(parsed.getMonth() + 1).padStart(2, '0');
+  return THU_TRONG_TUAN[parsed.getDay()] + ', ' + d + '/' + m + '/' + parsed.getFullYear();
+}
 
 export function AdminAttendance() {
   const { profile } = useAuth();
@@ -40,14 +50,19 @@ export function AdminAttendance() {
   const [checkoutTarget, setCheckoutTarget] = useState<Attendance | 'bulk' | null>(null);
   const [checkoutTime, setCheckoutTime] = useState('17:30');
   const [savingCheckout, setSavingCheckout] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
+  // Chấm công là dữ liệu theo ngày, nên bộ lọc cũng đi theo ngày. Ba nút cũ
+  // ("Hôm nay / Cần xử lý / Tất cả") không trả lời được câu hỏi hay gặp nhất là
+  // "ngày 03 ai đi làm", và "Tất cả" thì đổ hàng nghìn dòng không mốc thời gian.
+  const [scope, setScope] = useState<'day' | 'month'>('day');
+  const [day, setDay] = useState(getTodayString());
+  const [month, setMonth] = useState(getTodayString().slice(0, 7));
   // Trưởng nhóm duyệt được ngày công của phạm vi mình quản lý nhưng không đổi
   // quy tắc giờ làm dùng chung toàn công ty — khớp với guard của route cài đặt.
   const canConfigureAttendance = !isTeamlead(profile);
 
   useEffect(() => {
     loadAttendance();
-  }, [filter]);
+  }, [scope, day, month]);
 
   // Nghe cả daily_assignments: quản lý xác nhận việc xong là cột "Công việc"
   // ở đây phải nhảy số theo.
@@ -84,11 +99,15 @@ export function AdminAttendance() {
       .select('*')
       .eq('check_in_method', 'DEVICE')
       .order('date', { ascending: false });
-    if (filter === 'today') {
-      query = query.eq('date', getTodayString());
-    } else if (filter === 'pending') {
-      // Gom cả bản ghi thiếu checkout để quản lý thấy nguyên nhân chưa thể duyệt.
-      query = query.eq('approved_by_lead', false);
+    if (scope === 'day') {
+      query = query.eq('date', day);
+    } else {
+      // Ngày cuối tháng lấy bằng cách lùi một ngày từ mùng 1 tháng sau, để khỏi
+      // phải tự đếm 28/29/30/31.
+      const [y, m] = month.split('-').map(Number);
+      const last = new Date(y, m, 0);
+      const lastStr = `${month}-${String(last.getDate()).padStart(2, '0')}`;
+      query = query.gte('date', `${month}-01`).lte('date', lastStr);
     }
     const { data, error } = await query;
     setLoadError(error ? describeDbError(error) : null);
@@ -129,6 +148,19 @@ export function AdminAttendance() {
   };
 
   const missingCheckout = records.filter((r) => r.check_in_time && !r.check_out_time);
+
+  // Gom theo ngay, moi nhat len truoc. Cham cong la du lieu theo ngay nen bang
+  // doc theo ngay moi de doi chieu voi bang cong; de phang thi mot thang hon
+  // nghin dong khong co moc nao.
+  const groupedByDay = useMemo(() => {
+    const buckets = new Map<string, Attendance[]>();
+    for (const record of records) {
+      const bucket = buckets.get(record.date);
+      if (bucket) bucket.push(record);
+      else buckets.set(record.date, [record]);
+    }
+    return [...buckets.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }, [records]);
 
   // Dựng mốc giờ ra từ ngày công + giờ người dùng gõ, theo múi giờ của TRÌNH
   // DUYỆT. Cố ý: cột giờ vào trên màn này cũng hiển thị theo giờ trình duyệt,
@@ -337,24 +369,46 @@ export function AdminAttendance() {
         </div>
       )}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {([
-            { key: 'today', label: 'Hôm nay' },
-            { key: 'pending', label: 'Cần xử lý' },
-            { key: 'all', label: 'Tất cả' },
-] as { key: typeof filter; label: string }[]).map((f) => (
+            { key: 'day', label: 'Theo ngày' },
+            { key: 'month', label: 'Theo tháng' },
+          ] as { key: typeof scope; label: string }[]).map((item) => (
             <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
+              key={item.key}
+              onClick={() => setScope(item.key)}
               className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all duration-200 ${
-                filter === f.key
+                scope === item.key
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
               }`}
             >
-              {f.label}
+              {item.label}
             </button>
           ))}
+
+          {scope === 'day' ? (
+            <>
+              <input
+                type="date"
+                value={day}
+                onChange={(event) => setDay(event.target.value)}
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
+              />
+              {day !== getTodayString() && (
+                <button onClick={() => setDay(getTodayString())} className="text-xs font-semibold text-indigo-700 hover:underline">
+                  Về hôm nay
+                </button>
+              )}
+            </>
+          ) : (
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
+            />
+          )}
         </div>
         <div className="flex items-center gap-2">
           {missingCheckout.length > 0 && (
@@ -363,7 +417,7 @@ export function AdminAttendance() {
               Ghi giờ ra ({missingCheckout.length})
             </Button>
           )}
-          {filter === 'pending' && (
+          {records.some((item) => !item.approved_by_lead) && (
             <Button variant="outline" theme="admin" size="sm" onClick={handleApproveAllPending}>
               <CheckCheck className="w-4 h-4" />
               Duyệt tất cả
@@ -392,112 +446,112 @@ export function AdminAttendance() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-[#FCFAF8]">
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Nhân viên</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thời gian</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Nguồn</th>
+                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ vào</th>
+                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ ra</th>
+                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Trạng thái</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Công việc</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Kiểm soát</th>
                     <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {records.map((r) => (
-                    <tr key={r.id} className="hover:bg-[#FCFAF8] transition-colors group">
-                      <td data-label="" className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar name={r.profile?.name || ''} url={r.profile?.avatar_url} size="sm" />
-                          <div className="flex flex-col">
-                            <span className="text-sm font-bold text-slate-800">{r.profile?.name}</span>
-                            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{r.profile?.department || 'OPS STAFF'}</span>
+                {groupedByDay.map(([date, rows]) => {
+                  const thieuGioRa = rows.filter((item) => !item.check_out_time).length;
+                  return (
+                    <tbody key={date} className="divide-y divide-slate-50">
+                      <tr className="bg-slate-50/80">
+                        <td colSpan={6} className="px-6 py-2.5">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <span className="text-sm font-bold text-slate-800">{dayLabel(date)}</span>
+                            <span className="text-xs text-slate-500">{rows.length} người</span>
+                            {thieuGioRa > 0 && (
+                              <span className="text-xs font-semibold text-amber-700">{thieuGioRa} chưa có giờ ra</span>
+                            )}
                           </div>
-                        </div>
-                      </td>
-                      <td data-label="Thời gian" className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-slate-700 uppercase tracking-tight">{r.date}</span>
-                          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">
-                            {formatTime(r.check_in_time)}
-                            {r.check_out_time ? ` — ${formatTime(r.check_out_time)}` : r.check_in_method === 'DEVICE' ? ' · chỉ giờ vào' : ' — ...'}
-                          </span>
-                        </div>
-                      </td>
-                      <td data-label="Nguồn" className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-                          {r.check_in_method === 'DEVICE' ? <Cpu className="h-4 w-4 text-indigo-500" /> : <UserRoundCog className="h-4 w-4 text-slate-400" />}
-                          {r.check_in_method === 'DEVICE' ? 'Máy / file' : r.check_in_method === 'MANUAL' ? 'Quản trị ghi nhận' : 'Dữ liệu kế thừa'}
-                        </span>
-                      </td>
-                      <td data-label="Công việc" className="px-6 py-4">
-                        {(() => {
-                          const p = asgProgress[`${r.user_id}|${r.date}`];
-                          if (!p) return <span className="text-xs font-semibold text-slate-400">Không có việc</span>;
-                          const done = p.approved === p.total;
-                          return (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-bold uppercase tracking-widest ${done ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                {p.approved}/{p.total} hoàn thành
-                              </span>
-                              <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                <div className={`h-full ${done ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${(p.approved/p.total)*100}%` }} />
+                        </td>
+                      </tr>
+                      {rows.map((r) => (
+                        <tr key={r.id} className="hover:bg-[#FCFAF8] transition-colors group">
+                          <td data-label="" className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar name={r.profile?.name || ''} url={r.profile?.avatar_url} size="sm" />
+                              <div className="flex flex-col">
+                                <span className="text-sm font-bold text-slate-800">{r.profile?.name || 'Chưa rõ nhân viên'}</span>
+                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{r.profile?.department || '—'}</span>
                               </div>
                             </div>
-                          );
-                        })()}
-                      </td>
-                      <td data-label="Kiểm soát" className="px-6 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <Badge className={r.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}>
-                            {r.check_out_time ? 'Đã checkout' : r.check_in_method === 'DEVICE' ? 'Ghi nhận từ máy' : 'Thiếu checkout'}
-                          </Badge>
-	                          {r.approved_by_lead && (
-	                            <Badge className="bg-slate-900 text-white border-slate-900">
-	                              Đã duyệt
-	                            </Badge>
-	                          )}
-                        </div>
-                      </td>
-                      <td data-label="" className="px-5 py-3.5">
-                        <div className="flex items-center justify-end gap-2">
-                          {r.check_in_time && !r.check_out_time && (
-                            <button
-                              onClick={() => setCheckoutTarget(r)}
-                              className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 transition-colors"
-                              title="Nhập giờ ra cho ngày công này"
-                            >
-                              Ghi giờ ra
-                            </button>
-                          )}
-	                          {!r.approved_by_lead ? (
-	                            <button
-	                              onClick={() => handleApprove(r)}
-	                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-	                                r.status === 'completed' && r.check_out_time
-	                                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-	                                  : 'bg-slate-50 text-slate-400 cursor-not-allowed'
-	                              }`}
-	                              title={!r.check_out_time ? 'Chờ nhân viên checkout' : r.status !== 'completed' ? 'Ngày công chưa kết thúc' : 'Duyệt ngày công'}
-	                            >
-	                              Duyệt
-	                            </button>
-	                          ) : (
-	                            <button
-	                              onClick={() => handleUnapprove(r)}
-	                              className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors"
-	                            >
-	                              Bỏ duyệt
-	                            </button>
-	                          )}
-                          <button
-                            onClick={() => handleDelete(r)}
-                            title="Xóa bản ghi"
-                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+                          </td>
+                          <td data-label="Giờ vào" className="px-6 py-4">
+                            <span className="text-sm font-semibold text-slate-800">{formatTime(r.check_in_time)}</span>
+                          </td>
+                          <td data-label="Giờ ra" className="px-6 py-4">
+                            {r.check_out_time ? (
+                              <span className="text-sm font-semibold text-slate-800">{formatTime(r.check_out_time)}</span>
+                            ) : (
+                              <button
+                                onClick={() => setCheckoutTarget(r)}
+                                className="text-sm font-semibold text-indigo-700 hover:underline"
+                                title="Nhập giờ ra cho ngày công này"
+                              >
+                                Ghi giờ ra
+                              </button>
+                            )}
+                          </td>
+                          <td data-label="Trạng thái" className="px-6 py-4">
+                            <div className="flex flex-wrap gap-2">
+                              {r.approved_by_lead ? (
+                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">Đã tính công</Badge>
+                              ) : (
+                                <Badge className="bg-amber-50 text-amber-700 border-amber-100">Chưa duyệt</Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td data-label="Công việc" className="px-6 py-4">
+                            {(() => {
+                              const p = asgProgress[r.user_id + '|' + r.date];
+                              if (!p) return <span className="text-xs text-slate-400">—</span>;
+                              const done = p.approved === p.total;
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className={done ? 'text-[10px] font-bold uppercase tracking-widest text-emerald-600' : 'text-[10px] font-bold uppercase tracking-widest text-amber-600'}>
+                                    {p.approved}/{p.total} hoàn thành
+                                  </span>
+                                  <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={done ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'} style={{ width: ((p.approved / p.total) * 100) + '%' }} />
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td data-label="" className="px-5 py-3.5">
+                            <div className="flex items-center justify-end gap-2">
+                              {r.approved_by_lead ? (
+                                <button
+                                  onClick={() => handleUnapprove(r)}
+                                  className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors"
+                                >
+                                  Bỏ duyệt
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleApprove(r)}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
+                                >
+                                  Duyệt
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDelete(r)}
+                                title="Xóa bản ghi"
+                                className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  );
+                })}
               </table>
             </div>
           )}
