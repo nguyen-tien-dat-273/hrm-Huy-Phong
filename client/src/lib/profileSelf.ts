@@ -1,11 +1,9 @@
 // ============================================================================
 // Hồ sơ cá nhân — nhân viên tự sửa thông tin của mình.
 // ----------------------------------------------------------------------------
-// Ghi thẳng vào `profiles` chứ không qua RPC: policy `profiles_update_own` đã
-// cho sửa đúng dòng của mình, còn trigger `prevent_self_privilege_change` chặn
-// mọi cột nhạy cảm (role, permissions, is_active, hạn mức phép,
-// must_change_password, email). Nghĩa là hàng rào nằm ở database — kể cả người
-// gọi thẳng PostgREST trong DevTools cũng không vượt được.
+// Ghi thẳng vào `profiles`: policy giới hạn đúng dòng của mình, còn trigger
+// `profile_privilege_changes_guard` chặn thay đổi vai trò, quyền, trạng thái,
+// vị trí, đơn vị và các trường ảnh hưởng tới phân quyền.
 //
 // Ảnh đại diện nằm ở bucket `avatars`, đường dẫn LUÔN là `<user_id>/<file>` vì
 // policy storage khoá quyền ghi theo đúng thư mục mang id của mình.

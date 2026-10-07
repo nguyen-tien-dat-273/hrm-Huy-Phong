@@ -157,16 +157,15 @@ export async function notifyUser(
  * 'attendance' nên không tái sử dụng được cho module khác.
  */
 export async function fetchManagerIds(permission: AdminPermission = 'attendance'): Promise<string[]> {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, role, permissions')
-    .eq('is_active', true);
-  return (data || [])
-    .filter(
-      (p) =>
-        p.role === 'admin' ||
-        p.role === 'ceo' ||
-        ((p.permissions as string[] | null) ?? []).includes(permission),
-    )
-    .map((p) => p.id);
+  const { data, error } = await supabase.rpc('get_profile_approver_ids', {
+    target_permission: permission,
+  });
+  if (error) throw new Error(`Không tải được danh sách người duyệt: ${error.message}`);
+  if (!Array.isArray(data)) throw new Error('Danh sách người duyệt trả về sai định dạng.');
+  return data.map((row: unknown) => {
+    if (typeof row !== 'object' || row === null || !('user_id' in row) || typeof row.user_id !== 'string') {
+      throw new Error('Danh sách người duyệt có bản ghi không hợp lệ.');
+    }
+    return row.user_id;
+  });
 }

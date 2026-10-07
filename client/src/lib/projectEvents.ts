@@ -34,7 +34,7 @@ export function isEventPast(ev: ProjectEvent): boolean {
 export async function fetchProjectEvents(projectId: string): Promise<{ data: ProjectEvent[]; error: string | null }> {
   const { data, error } = await supabase
     .from('project_events')
-    .select('*, creator:profiles!project_events_created_by_fkey(id,name,avatar_url)')
+    .select('*, creator:profiles_directory!project_events_created_by_fkey(id, name, avatar_url)')
     .eq('project_id', projectId)
     .order('start_at', { ascending: true });
   return { data: (data || []) as ProjectEvent[], error: error ? describeDbError(error) : null };

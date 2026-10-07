@@ -94,8 +94,8 @@ export function AdminProjectDetail() {
     ] = await Promise.all([
       supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
       supabase.from('tasks').select('*').eq('project_id', projectId).order('order_index', { ascending: true }),
-      supabase.from('project_members').select('*, profile:profiles(*)').eq('project_id', projectId),
-      supabase.from('profiles').select('*').eq('is_active', true),
+      supabase.from('project_members').select('*, profile:profiles_directory(*)').eq('project_id', projectId),
+      supabase.from('profiles_directory').select('*').eq('is_active', true),
       supabase.from('project_role_definitions').select('*').eq('is_active', true).order('sort_order'),
     ]);
 
@@ -660,7 +660,7 @@ export function AdminProjectDetail() {
                       <Avatar name={m.profile?.name || ''} url={m.profile?.avatar_url} size="md" />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">{m.profile?.name}</p>
-                        <p className="text-xs text-slate-500">{m.profile?.email}</p>
+                        <p className="text-xs text-slate-500">{m.profile?.employee_code || m.profile?.department || 'Thành viên dự án'}</p>
                       </div>
                       <Badge className={getMemberRoleView(m).color}>
                         {getMemberRoleView(m).label}
@@ -773,14 +773,14 @@ export function AdminProjectDetail() {
             >
               <option value="">— Chọn —</option>
               {availableProfiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.email})</option>
+                <option key={p.id} value={p.id}>{p.name}{p.employee_code ? ` (${p.employee_code})` : ''}</option>
               ))}
             </Select>
           )}
           {editingMember && (
             <div className="p-3 rounded-lg bg-slate-50">
               <p className="text-sm font-medium text-slate-800">{editingMember.profile?.name}</p>
-              <p className="text-xs text-slate-500">{editingMember.profile?.email}</p>
+              <p className="text-xs text-slate-500">{editingMember.profile?.employee_code || editingMember.profile?.department || 'Thành viên dự án'}</p>
             </div>
           )}
           <Select

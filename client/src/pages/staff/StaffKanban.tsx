@@ -111,9 +111,9 @@ export function StaffKanban() {
       { data: projectData, error: projectErr },
       { data: memberData, error: memberErr },
     ] = await Promise.all([
-      supabase.from('tasks').select('*, project:projects(*), assignee:profiles(*)').in('project_id', projectIds).order('order_index', { ascending: true }),
+      supabase.from('tasks').select('*, project:projects(*), assignee:profiles_directory(*)').in('project_id', projectIds).order('order_index', { ascending: true }),
       supabase.from('projects').select('*').in('id', projectIds),
-      supabase.from('project_members').select('*, profile:profiles(*)').in('project_id', projectIds),
+      supabase.from('project_members').select('*, profile:profiles_directory(*)').in('project_id', projectIds),
     ]);
 
     const firstError = membershipErr ?? taskErr ?? projectErr ?? memberErr;

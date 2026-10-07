@@ -46,7 +46,7 @@ export function AdminProjects() {
     let isMounted = true;
 
     loadProjects();
-    supabase.from('profiles').select('*').in('role', ['staff', 'teamlead']).eq('is_active', true).order('name').then(({ data }) => {
+    supabase.from('profiles_directory').select('*').in('role', ['staff', 'teamlead']).eq('is_active', true).order('name').then(({ data }) => {
       if (isMounted) setStaffList((data || []) as Profile[]);
     });
 

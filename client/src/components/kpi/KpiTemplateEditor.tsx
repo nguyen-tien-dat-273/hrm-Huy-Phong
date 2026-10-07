@@ -137,7 +137,7 @@ export function KpiTemplateEditor({
       supabase.from('kpi_template_criteria').select('*').order('sort_order'),
       supabase.from('kpi_rating_bands').select('*').order('sort_order'),
       supabase.from('organization_units').select('id, name, parent_id').eq('is_active', true).order('name'),
-      supabase.from('profiles').select('id, name, avatar_url, unit_id, position_id').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('id, name, avatar_url, unit_id, position_id').eq('is_active', true).order('name'),
       supabase.from('employee_kpi_schemes').select('user_id, template_id'),
     ]);
     if (templateRes.error || criteriaRes.error) {

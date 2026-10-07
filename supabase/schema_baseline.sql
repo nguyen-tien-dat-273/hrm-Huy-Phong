@@ -110,6 +110,25 @@ create table if not exists public.payroll_components (
   created_at timestamptz default now()
 );
 
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id = auth.uid()
+      and p.is_active
+      and p.role in ('admin', 'ceo')
+  );
+$$;
+
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to authenticated;
+
 -- Bật RLS mặc định cho tất cả các bảng
 alter table public.organization_units enable row level security;
 alter table public.profiles enable row level security;
@@ -120,7 +139,10 @@ alter table public.leave_requests enable row level security;
 alter table public.payroll_components enable row level security;
 
 -- Chính sách RLS mặc định
-create policy "Allow read for authenticated users" on public.profiles for select to authenticated using (true);
+drop policy if exists "Allow read for authenticated users" on public.profiles;
+drop policy if exists profiles_read_direct on public.profiles;
+create policy profiles_read_direct on public.profiles for select to authenticated
+  using (id = auth.uid() or public.is_admin());
 create policy "Allow read for authenticated users" on public.organization_units for select to authenticated using (true);
 create policy "Allow read for authenticated users" on public.timesheet_periods for select to authenticated using (true);
 create policy "Allow read own attendance" on public.attendance_sessions for select to authenticated using (auth.uid() = user_id);

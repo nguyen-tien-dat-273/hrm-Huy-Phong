@@ -76,7 +76,7 @@ export function StaffAssignments() {
     // khi embed, tranh loi PGRST201.
     const { data, error } = await supabase
       .from('daily_assignments')
-      .select('*, assigner:profiles!daily_assignments_assigned_by_fkey(id,name,avatar_url)')
+      .select('*, assigner:profiles_directory!daily_assignments_assigned_by_fkey(id,name,avatar_url)')
       .eq('user_id', profile.id)
       .gte('work_date', toDateString(weekStart))
       .lte('work_date', toDateString(weekEnd))

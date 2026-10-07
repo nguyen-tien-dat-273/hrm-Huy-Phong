@@ -207,7 +207,8 @@ with probe as (
     -- doan ma da sua trong than ham.
     ('20260927130000_attendance_device_autoapprove',
      exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-             where n.nspname = 'public' and p.proname = 'ingest_attendance_device_events'
+             where n.nspname = 'public'
+               and p.proname in ('ingest_attendance_device_events', 'ingest_attendance_device_events_validated')
                and p.prosrc like '%approved_by_lead = true%'),
      'Cham cong tu may tu duyet - THIEU THI LUONG RA 0 NGAY CONG'),
 
@@ -306,7 +307,32 @@ with probe as (
                      and tablename = 'employee_lifecycle_processes'
                      and policyname = 'lifecycle_read'
                      and qual like '%owns_lifecycle_checklist%'),
-     'Nguoi phu trach checklist mo duoc quy trinh tu thong bao')
+     'Nguoi phu trach checklist mo duoc quy trinh tu thong bao'),
+
+    ('20261007113000_security_payroll_attendance_hardening',
+     to_regprocedure('public.is_admin()') is not null
+       and to_regprocedure('public.persist_payroll_payslips(uuid,jsonb)') is not null
+       and to_regprocedure('public.set_annual_leave_quota(uuid,integer)') is not null
+       and to_regprocedure('public.get_profile_approver_ids(text)') is not null
+       and to_regclass('public.profiles_directory') is not null
+       and to_regclass('public.profiles_workforce_accounts') is not null
+       and to_regclass('public.profiles_leave_quota') is not null
+       and to_regclass('public.attendance_device_auth_failures') is not null
+       and exists (select 1 from pg_policies
+                   where schemaname = 'public' and tablename = 'profiles'
+                     and policyname = 'profiles_read_direct')
+       and exists (select 1 from pg_class c
+                   join pg_namespace n on n.oid = c.relnamespace
+                   where n.nspname = 'public' and c.relname = 'profiles'
+                     and c.relrowsecurity)
+       and not exists (select 1 from pg_policies
+                       where schemaname = 'public' and tablename = 'profiles'
+                         and cmd = 'SELECT' and qual in ('true', '(true)'))
+       and not exists (select 1 from public.attendance_device_tokens
+                       where revoked_at is null and expires_at is null)
+       and not has_table_privilege('authenticated', 'public.payslips', 'INSERT')
+       and not has_table_privilege('authenticated', 'public.payslip_lines', 'INSERT'),
+     'Gioi han doc profile, ghi payslip nguyen tu, token cham cong het han')
 
   ) as t(migration, applied, mo_ta)
 )

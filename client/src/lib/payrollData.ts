@@ -107,7 +107,7 @@ export async function loadPayrollWorkspace(
     fetchPitBrackets(),
     // Ca làm việc: cho công chuẩn theo tháng (P02) và đo đi muộn.
     fetchWorkSchedules(),
-    supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+    supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
     supabase.from('payroll_components').select('*').order('sort_order'),
     supabase.from('payroll_named_params').select('*').eq('is_active', true).order('sort_order'),
     supabase.from('employee_pay_profiles').select('*').lte('effective_from', monthEndStr),
@@ -364,9 +364,8 @@ export interface PayslipToPersist {
 /**
  * Ghi kết quả tính xuống database — đây là bước "đóng băng".
  *
- * Xóa hết phiếu cũ của kỳ rồi ghi lại: tính lại một kỳ là thay toàn bộ, không
- * phải vá từng dòng. Trigger `payslips_immutable` chặn thao tác này khi kỳ đã
- * duyệt, nên không có đường nào sửa lén số liệu đã chốt.
+ * Thay toàn bộ phiếu và dòng chi tiết qua một RPC transaction. Trigger
+ * `payslips_immutable` chặn thao tác này khi kỳ đã duyệt.
  */
 export async function persistPayslips(
   run: PayrollRun,
@@ -374,15 +373,9 @@ export async function persistPayslips(
 ): Promise<string | null> {
   if (!supabase) return 'Chưa kết nối Supabase.';
 
-  const { error: clearError } = await supabase.from('payslips').delete().eq('run_id', run.id);
-  if (clearError) return describeDbError(clearError);
-
-  if (entries.length === 0) return null;
-
-  const { data: inserted, error: insertError } = await supabase
-    .from('payslips')
-    .insert(entries.map(({ profile, computed }) => ({
-      run_id: run.id,
+  const { error } = await supabase.rpc('persist_payroll_payslips', {
+    target_run_id: run.id,
+    payslip_entries: entries.map(({ profile, computed }) => ({
       user_id: profile.id,
       employee_name: profile.name,
       employee_code: profile.employee_code ?? null,
@@ -401,33 +394,21 @@ export async function persistPayslips(
       other_deductions: computed.otherDeductions,
       net_pay: computed.netPay,
       snapshot: computed.snapshot,
-    })))
-    .select('id, user_id');
-
-  if (insertError) return describeDbError(insertError);
-
-  const slipIdByUser = new Map((inserted || []).map((row) => [row.user_id as string, row.id as string]));
-  const lines = entries.flatMap(({ profile, computed }) => {
-    const payslipId = slipIdByUser.get(profile.id);
-    if (!payslipId) return [];
-    return computed.lines.map((line, index) => ({
-      payslip_id: payslipId,
-      sequence: index,
-      code: line.code,
-      name: line.name,
-      kind: line.kind,
-      quantity: line.quantity,
-      rate: line.rate,
-      amount: line.amount,
-      taxable: line.taxable,
-      insurable: line.insurable,
-      detail: line.detail,
-    }));
+      lines: computed.lines.map((line, sequence) => ({
+        sequence,
+        code: line.code,
+        name: line.name,
+        kind: line.kind,
+        quantity: line.quantity,
+        rate: line.rate,
+        amount: line.amount,
+        taxable: line.taxable,
+        insurable: line.insurable,
+        detail: line.detail,
+      })),
+    })),
   });
-
-  if (lines.length === 0) return null;
-  const { error: lineError } = await supabase.from('payslip_lines').insert(lines);
-  return lineError ? describeDbError(lineError) : null;
+  return error ? describeDbError(error) : null;
 }
 
 // ---------------------------------------------------------------------------

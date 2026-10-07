@@ -69,7 +69,7 @@ export function AdminReports() {
     if (!silent) setMonthLoading(true);
     const { data, error } = await supabase
       .from('daily_assignments')
-      .select('*, profile:profiles!daily_assignments_user_id_fkey(id,name,avatar_url,department)')
+      .select('*, profile:profiles_directory!daily_assignments_user_id_fkey(id,name,avatar_url,department)')
       .gte('work_date', toDateString(monthStart))
       .lte('work_date', toDateString(endOfMonth(monthStart)));
     setMonthError(error ? describeDbError(error) : null);

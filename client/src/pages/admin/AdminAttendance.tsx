@@ -51,7 +51,7 @@ export function AdminAttendance() {
     // PGRST201. Phải chỉ rõ khóa.
     let query = supabase
       .from('attendance')
-      .select('*, profile:profiles!user_id(*)')
+      .select('*, profile:profiles_directory!user_id(*)')
       .order('date', { ascending: false });
     if (filter === 'today') {
       query = query.eq('date', getTodayString());

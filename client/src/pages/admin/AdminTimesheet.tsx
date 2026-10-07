@@ -81,7 +81,7 @@ export function AdminTimesheet() {
   const loadData = async (silent = false) => {
     if (!silent) setLoading(true);
     const [profRes, attRes, leaveRes, asgRes, periodRes, exceptionRes] = await Promise.all([
-      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       // Bảng công chính thức dùng cùng tập dữ liệu với Payroll.
       supabase.from('attendance').select('*').eq('status', 'completed').eq('approved_by_lead', true).gte('date', monthStartStr).lte('date', monthEndStr),
       supabase

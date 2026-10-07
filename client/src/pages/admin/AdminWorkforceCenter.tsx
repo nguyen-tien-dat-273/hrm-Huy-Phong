@@ -90,7 +90,7 @@ export function AdminWorkforceCenter({ section }: { section: Section }) {
       supabase.from('worker_status_logs').select('*').order('changed_at', { ascending: false }),
       // Danh sách tài khoản để gán vào hồ sơ. Không nằm trong `firstError` bên
       // dưới: thiếu nó thì chỉ mất ô chọn tài khoản, phần còn lại vẫn dùng được.
-      supabase.from('profiles').select('id, name, email, is_active').eq('is_active', true).order('name'),
+      supabase.from('profiles_workforce_accounts').select('id, name, email, is_active').eq('is_active', true).order('name'),
     ]);
     setAccounts((results[6].data || []) as AccountOption[]);
     const firstError = results.slice(0, 6).find((result) => result.error)?.error;

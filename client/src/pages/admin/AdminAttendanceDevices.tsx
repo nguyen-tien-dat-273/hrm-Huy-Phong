@@ -52,9 +52,9 @@ export function AdminAttendanceDevices() {
     setLoading(true);
     const [deviceRes, mappingRes, eventRes, profileRes, locationRes] = await Promise.all([
       supabase.from('attendance_devices').select('*, location:work_locations(id,name)').order('created_at'),
-      supabase.from('attendance_device_mappings').select('*, profile:profiles(id,name,employee_code,department)').order('device_user_id'),
+      supabase.from('attendance_device_mappings').select('*, profile:profiles_directory(id,name,employee_code,department)').order('device_user_id'),
       supabase.from('attendance_device_events').select('id,device_id,device_user_id,profile_id,punched_at,processing_error,received_at').not('processing_error', 'is', null).order('punched_at', { ascending: false }).limit(200),
-      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase.from('work_locations').select('id,name,address').eq('is_active', true).order('name'),
     ]);
     const firstError = deviceRes.error || mappingRes.error || eventRes.error || profileRes.error || locationRes.error;
@@ -249,7 +249,7 @@ export function AdminAttendanceDevices() {
 
       <Modal open={!!issuedToken} onClose={() => setIssuedToken(null)} title="Token bridge — chỉ hiển thị một lần">
         <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><p className="text-sm text-emerald-900">Sao chép token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> trên máy tính bridge. HRM không thể hiển thị lại token này.</p></div>
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><p className="text-sm text-emerald-900">Sao chép token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> trên máy tính bridge. Token mới hết hạn sau 90 ngày; token cũ còn hiệu lực tối đa 7 ngày để chuyển cấu hình. HRM không thể hiển thị lại token này.</p></div>
           <div className="flex items-center gap-2 rounded-xl bg-slate-950 p-3"><code className="min-w-0 flex-1 break-all text-xs text-emerald-300">{issuedToken}</code><button onClick={() => { navigator.clipboard.writeText(issuedToken || ''); toast('Đã sao chép token.', 'success'); }} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><Clipboard className="h-4 w-4" /></button></div>
           <Button className="w-full" onClick={() => setIssuedToken(null)}>Tôi đã lưu token</Button>
         </div>

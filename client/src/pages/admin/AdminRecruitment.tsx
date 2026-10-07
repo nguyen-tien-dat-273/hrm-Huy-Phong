@@ -148,7 +148,7 @@ export function AdminRecruitment() {
     const [requestRes, candidateRes, peopleRes, unitRes, positionRes, interviewRes, offerRes, handoffRes] = await Promise.all([
       supabase.from('recruitment_requisitions').select('*').order('created_at', { ascending: false }),
       supabase.from('recruitment_candidates').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('id,name').eq('is_active', true),
+      supabase.from('profiles_directory').select('id,name').eq('is_active', true),
       supabase.from('organization_units').select('id,name').eq('is_active', true).order('name'),
       supabase.from('job_positions').select('id,title').eq('is_active', true).order('title'),
       supabase.from('recruitment_interviews').select('*').order('scheduled_at', { ascending: false }),

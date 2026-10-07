@@ -65,7 +65,7 @@ const projectIds = mList.map((m: { project_id: string; role: string }) => m.proj
       { data: taskData, error: taskErr },
     ] = await Promise.all([
       supabase.from('projects').select('*').in('id', projectIds),
-      supabase.from('project_members').select('*, profile:profiles(*)').in('project_id', projectIds),
+      supabase.from('project_members').select('*, profile:profiles_directory(*)').in('project_id', projectIds),
       supabase.from('tasks').select('project_id').in('project_id', projectIds),
     ]);
 

@@ -45,7 +45,7 @@ export function AdminTraining() {
     setLoading(true);
     const [{ data: courseData, error }, { data: staffData }, { data: enrollmentData }] = await Promise.all([
       supabase.from('training_courses').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase.from('training_enrollments').select('course_id'),
     ]);
     if (error) toast('Không tải được khóa học: ' + describeDbError(error), 'error');

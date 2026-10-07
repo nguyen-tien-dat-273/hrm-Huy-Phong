@@ -406,7 +406,7 @@ export async function updateProfile(
     ({ error } = await supabase.from('profiles').update(legacyUpdates).eq('id', id));
   }
   if (error) {
-    // Trigger prevent_self_privilege_change chặn tự đổi quyền của chính mình.
+    // Trigger profile_privilege_changes_guard chặn tự đổi quyền của chính mình.
     const msg = /tự thay đổi quyền/i.test(error.message)
       ? 'Không thể tự thay đổi vai trò hoặc quyền của chính mình. Nhờ một quản trị viên khác thực hiện.'
       : describeDbError(error);

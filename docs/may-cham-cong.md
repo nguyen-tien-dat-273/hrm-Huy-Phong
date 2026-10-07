@@ -37,18 +37,19 @@ IP máy và comm key **chỉ nằm trên máy tính chạy bridge**, không bao 
 
 ## Bước 1 — Nạp phần máy chấm công vào database
 
-Tính đến 30/09/2026, Supabase của dự án **chưa có** bảng và RPC của máy chấm công — hai
-migration dưới đây chưa được chạy. Đây là điểm chặn đầu tiên, làm xong mới đi tiếp được.
+Trước khi cấu hình bridge, xác nhận các migration chấm công đã được triển khai trên đúng
+Supabase project. Không suy ra trạng thái production từ file SQL trong repo.
 
-Mở Supabase > SQL Editor, dán cả file **`supabase/paste-attendance-devices.sql`** rồi Run.
-File này là hai migration gộp lại, comment đã chuyển hết sang ASCII để dán không lỗi
-encoding, và mọi câu lệnh đều chạy lại được nhiều lần:
+Ưu tiên triển khai các migration trong `supabase/migrations` theo thứ tự. Nếu môi trường
+vẫn dùng SQL Editor, `supabase/paste-attendance-devices.sql` cài phần tích hợp thiết bị,
+sau đó chạy các migration chấm công mới hơn theo thứ tự:
 
 | gộp từ | làm gì |
 | --- | --- |
 | `20260926100000_attendance_devices` | Bảng thiết bị, ánh xạ nhân viên, token bridge, log thô, RPC nạp sự kiện. |
 | `20260927130000_attendance_device_autoapprove` | Ngày công từ máy tự động duyệt, không cần ai duyệt tay. |
 | `20260930230000_attendance_device_arrival_only` | Máy chỉ ghi giờ vào: một lần quét = một ngày công, `check_out_time` để NULL. |
+| `20261007113000_security_payroll_attendance_hardening` | Token hết hạn, luân chuyển token có thời gian chuyển tiếp, và log tổng hợp lần xác thực sai. |
 
 Thứ tự trong file là cố ý — phần sau thay thân hàm của phần trước.
 
@@ -69,6 +70,9 @@ ra `✅ ĐÃ CHẠY`. Hoặc chạy `pnpm attendance:doctor` — bước 6 của
 1. Vào HRM > **Máy chấm công** (`/admin/attendance-devices`).
 2. **Thêm máy**: tên, model, chọn địa điểm làm việc. Serial để trống được, bước 4 sẽ đọc ra.
 3. Bấm **Tạo token bridge**. Token dạng `rj_...` **chỉ hiện đúng một lần** — copy ngay.
+   Token mới hết hạn sau 90 ngày. Khi tạo token thay thế, token cũ còn hiệu lực tối đa
+   7 ngày để cập nhật cấu hình; hãy dán token mới vào máy bridge và khởi động lại trong
+   khoảng thời gian này. Không dùng lại token/hash cố định từ script SQL.
 
 Gắn địa điểm có tác dụng thật: ngày công do máy tạo ra sẽ mang `location_id` đó, và
 trigger kiểm tra toạ độ GPS được bỏ qua cho nguồn `DEVICE` (máy vật lý đã cố định chỗ
@@ -244,6 +248,8 @@ lấy lần chấm muộn nhất khi ngày đó có từ hai lần.
 | Giờ vào/ra lệch đều nhau | Đồng hồ máy chấm công sai. Doctor bước 3 báo rõ lệch bao nhiêu phút. |
 | Lương ra 0 ngày công | Migration `20260927130000_attendance_device_autoapprove` chưa chạy. |
 
-Đổi token khi nghi bị lộ: HRM > Máy chấm công > **Thu hồi token**, tạo token mới, dán lại
-vào `.env.attendance-bridge`, khởi động lại bridge. Token cũ chết ngay lập tức — HRM chỉ
-lưu bản băm SHA-256, không lưu token gốc.
+Đổi token định kỳ trước hạn 90 ngày, hoặc ngay khi nghi bị lộ: tạo token mới trong HRM,
+cập nhật `.env.attendance-bridge`, khởi động lại bridge và xác nhận doctor/đồng bộ chạy
+thành công. Sau khi xác nhận, có thể bấm **Thu hồi token** để vô hiệu hóa token cũ ngay.
+HRM chỉ lưu bản băm SHA-256, không lưu token gốc. Số lần xác thực sai được gom theo phút
+trong `attendance_device_auth_failures`; bảng này không lưu token hay địa chỉ thiết bị.

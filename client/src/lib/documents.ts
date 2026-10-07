@@ -148,7 +148,7 @@ export function formatFileSize(bytes: number): string {
 export async function listDocuments(projectId: string): Promise<{ data: ProjectDocument[]; error?: string }> {
   const { data, error } = await supabase
     .from('project_documents')
-    .select('*, uploader:profiles!uploaded_by(id, name, avatar_url)')
+    .select('*, uploader:profiles_directory!uploaded_by(id, name, avatar_url)')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
 

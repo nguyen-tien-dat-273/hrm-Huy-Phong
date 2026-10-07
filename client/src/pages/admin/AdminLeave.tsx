@@ -69,7 +69,7 @@ export function AdminLeave() {
     // bảng shifts và attendance.
     let query = supabase
       .from('leave_requests')
-      .select('*, profile:profiles!user_id(*)')
+      .select('*, profile:profiles_directory!user_id(*)')
       .order('created_at', { ascending: false });
 
     if (filter !== 'all') query = query.eq('status', filter);
@@ -77,7 +77,7 @@ export function AdminLeave() {
     const { data, error } = await query;
     const cancellationResult = await supabase
       .from('leave_cancellation_requests')
-      .select('*, leave:leave_requests!leave_request_id(*, profile:profiles!user_id(*))')
+      .select('*, leave:leave_requests!leave_request_id(*, profile:profiles_directory!user_id(*))')
       .order('created_at', { ascending: false });
     setLoadError(error ? describeDbError(error) : null);
     setRequests((data || []) as LeaveRequest[]);

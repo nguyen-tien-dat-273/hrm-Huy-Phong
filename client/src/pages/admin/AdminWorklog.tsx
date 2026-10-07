@@ -51,7 +51,7 @@ export function AdminWorklog() {
     const to = days[6].key;
 
     const [staffResult, logResult, attResult] = await Promise.all([
-      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase.from('task_worklogs').select('user_id, work_date, hours').gte('work_date', from).lte('work_date', to),
       supabase.from('attendance').select('user_id, date, check_in_time, check_out_time').gte('date', from).lte('date', to),
     ]);

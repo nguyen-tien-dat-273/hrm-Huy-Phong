@@ -283,6 +283,9 @@ if (skipSupabase) {
     } else {
       fail(`Supabase tu choi: ${message}`);
     }
+  } else if (data?.ok === false && data?.code === 'AUTH_FAILED') {
+    fail('Token bi tu choi: sai, het han, da thu hoi, hoac thiet bi dang tat (is_active = false).',
+      'Tao token moi trong HRM > May cham cong va dan lai vao .env.attendance-bridge.');
   } else {
     ok(`Token hop le, RPC chay duoc (sync_id ${data?.sync_id || '-'}).`);
     if (Number(data?.unmapped || 0) > 0) {

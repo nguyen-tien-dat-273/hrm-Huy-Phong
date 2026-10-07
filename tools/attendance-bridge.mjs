@@ -128,6 +128,9 @@ async function push(events) {
       events: batch,
     });
     if (error) throw new Error(`Supabase từ chối đồng bộ: ${error.message}`);
+    if (data?.ok === false && data?.code === 'AUTH_FAILED') {
+      throw new Error('Token bridge sai, đã hết hạn hoặc đã bị thu hồi. Tạo token mới trong HRM và cập nhật cấu hình bridge.');
+    }
     inserted += Number(data?.inserted || 0);
     processed += Number(data?.processed || 0);
     unmapped += Number(data?.unmapped || 0);

@@ -90,16 +90,16 @@ export function AdminAssignments() {
       // RLS cua `daily_assignments` cung khong he chan theo vai tro nguoi
       // duoc giao - no chi doi nguoi tao phai la chinh minh hoac nguoi giao.
       // Tuc la bo loc nay khong do mot quy tac nghiep vu nao ca.
-      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase
         .from('daily_assignments')
-        .select('*, profile:profiles!daily_assignments_user_id_fkey(*)')
+        .select('*, profile:profiles_directory!daily_assignments_user_id_fkey(*)')
         .gte('work_date', weekStartStr)
         .lte('work_date', weekEndStr)
         .order('created_at', { ascending: true }),
       supabase
         .from('daily_assignments')
-        .select('*, profile:profiles!daily_assignments_user_id_fkey(*)')
+        .select('*, profile:profiles_directory!daily_assignments_user_id_fkey(*)')
         .eq('status', 'submitted')
         .order('submitted_at', { ascending: true }),
     ]);

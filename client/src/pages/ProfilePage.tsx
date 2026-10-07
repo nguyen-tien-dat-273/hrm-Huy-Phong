@@ -2,7 +2,7 @@
 // Hồ sơ cá nhân — dùng chung cho cả nhân viên và quản trị.
 // ----------------------------------------------------------------------------
 // Trước đây KHÔNG có trang này: đổi số điện thoại hay ảnh đại diện đều phải
-// nhờ admin sửa hộ, dù policy `profiles_update_own` đã cho phép tự sửa từ lâu.
+// nhờ admin sửa hộ, dù policy hồ sơ cá nhân cho phép tự sửa từ lâu.
 //
 // Những gì KHÔNG sửa được ở đây (vai trò, quyền, hạn mức phép, phòng ban) được
 // hiển thị dạng chỉ đọc kèm giải thích, thay vì giấu đi — người dùng cần biết

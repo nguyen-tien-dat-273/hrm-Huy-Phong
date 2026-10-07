@@ -51,7 +51,7 @@ export function LeaveQuotaPanel() {
 
     const [profileRes, leaveRes, ledgerRes] = await Promise.all([
       supabase
-        .from('profiles')
+        .from('profiles_leave_quota')
         .select('*')
         .eq('is_active', true)
         .order('name'),
@@ -78,7 +78,7 @@ export function LeaveQuotaPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useRealtimeSync([{ table: 'profiles' }, { table: 'leave_requests' }], () => load(true), {
+  useRealtimeSync([{ table: 'leave_ledger' }, { table: 'leave_requests' }], () => load(true), {
     channelKey: 'leave-quota',
   });
 

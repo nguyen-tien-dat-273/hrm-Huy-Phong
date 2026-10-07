@@ -75,7 +75,7 @@ export function AdminNexusCenter({ section }: { section: Section }) {
     setLoading(true); setError('');
     const [results, unitsResult, assignmentsResult] = await Promise.all([
       Promise.all([
-      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase.from('employee_lifecycle_processes').select('*').order('created_at', { ascending: false }),
       supabase.from('employee_checklist_items').select('*').order('order_index'),
       supabase.from('work_locations').select('*').order('name'),

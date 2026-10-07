@@ -55,7 +55,7 @@ export function AdminOverview() {
       supabase.from('projects').select('*'),
       supabase.from('tasks').select('id, project_id, status, due_date, priority'),
       supabase.from('project_members').select('id, project_id, user_id, role'),
-      supabase.from('profiles').select('*').eq('is_active', true),
+      supabase.from('profiles_directory').select('*').eq('is_active', true),
       supabase.from('project_events').select('*, project:projects(id,name)').gte('start_at', new Date().toISOString()).order('start_at', { ascending: true }),
       supabase.from('leave_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
       supabase.from('daily_assignments').select('id', { count: 'exact', head: true }).eq('status', 'submitted'),
