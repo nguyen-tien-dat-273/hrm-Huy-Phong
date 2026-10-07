@@ -53,6 +53,24 @@ sau đó chạy các migration chấm công mới hơn theo thứ tự:
 
 Thứ tự trong file là cố ý — phần sau thay thân hàm của phần trước.
 
+Hai migration sau nằm ở file khác, **`supabase/paste-cap-nhat-dong-bo.sql`**:
+
+| migration | làm gì |
+| --- | --- |
+| `20261007140000_fix_ingest_variable_conflict` | Sửa hai lỗi chặn mọi lần đồng bộ (xem bên dưới). |
+| `20261007130000_attendance_sync_on_demand` | Nút "Đồng bộ ngay" trên HRM, và mốc báo danh của bridge. |
+
+**Thiếu `20261007140000`:** mọi lời gọi đồng bộ đều văng exception, không bản ghi nào vào
+được. Hàm gốc hỏng hai lớp và lớp sau chỉ lộ ra sau khi vá lớp trước:
+
+- `column reference "unmapped_count" is ambiguous` — bảng `attendance_device_sync_runs`
+  có cột trùng tên biến plpgsql.
+- `missing FROM-clause entry for table "ingest_attendance_device_events"` — bản gốc định
+  danh biến bằng tên hàm, PostgreSQL hiểu đó là tên bảng.
+
+Bản vá đổi tên biến thành `v_received`, `v_inserted`, `v_processed`, `v_unmapped` cho khác
+hẳn tên cột. Chạy riêng phần này thì dùng `supabase/paste-sua-ingest.sql`.
+
 **Thiếu phần 2:** ngày công mắc ở `approved_by_lead = false`, mà màn "Duyệt chấm công" đã bị
 bỏ khỏi menu nên không còn cách nào đặt cờ đó thành true — bảng lương ra ~0 ngày công cho
 tất cả mọi người mà không báo lỗi gì.
@@ -136,13 +154,30 @@ pnpm attendance:doctor -- --users --logs=20
 `--users` in hết danh sách người trên máy (mặc định chỉ 15 dòng đầu), `--logs=20` in 20
 lần chấm gần nhất kèm mã `status` mà máy này thực dùng.
 
+### Khi không biết máy đang ở IP nào
+
+```bash
+pnpm attendance:find
+```
+
+Máy lấy IP qua DHCP nên địa chỉ sẽ trôi. Script quét cả dải mạng, lọc theo OUI `00:17:61`
+của ZKTeco rồi **bắt tay thật** để xác nhận — một host mở cổng 4370 chưa chắc là máy chấm
+công. Cuối cùng nó đối chiếu với `RJ_DEVICE_IP` trong env và báo nếu đã lệch.
+
+**Dòng đầu ra luôn in máy tính đang ở mạng nào.** Nhìn dòng đó trước: nếu nó không phải
+dải của máy chấm công thì vấn đề nằm ở máy tính, không phải ở thiết bị.
+
 ## Bước 5 — Ánh xạ mã nhân viên
 
 Bridge cần biết mã trên máy ứng với ai trong HRM. Có hai đường:
 
 - **Tự nhận**: mã trên máy trùng `employee_code` trong HRM thì khớp luôn, không cần khai gì.
-  Đây là cách nên nhắm tới — đặt User ID trên máy đúng bằng mã nhân viên.
+  Khớp chính xác từng ký tự, không phân biệt hoa thường — `1` không khớp `01` hay `NV001`.
+  Sửa mã tại HRM > **Hồ sơ & tài khoản** (`/admin/users`) > Sửa > **Mã nhân viên**; ô này **chỉ Admin/CEO**
+  sửa được, vai trò khác vẫn chỉ xem.
 - **Khai tay**: HRM > Máy chấm công > **Ánh xạ nhân viên**, nhập mã máy và chọn người.
+  Bảng này được ưu tiên **trước** `employee_code` (`coalesce(m.profile_id, p.id)`), nên
+  dùng nó khi hệ mã nhân viên hiện có đang mang ý nghĩa riêng và không muốn đổi.
 
 Dùng bảng ở bước 4 để đối chiếu. Người nào trên máy không có User ID thì bản ghi của họ
 bị bỏ qua hoàn toàn — phải đặt mã cho họ ngay trên máy chấm công.
@@ -167,6 +202,24 @@ pnpm attendance:bridge
 
 Kiểm tra trên HRM: trang Máy chấm công phải đổi trạng thái thành **Ổn định**, kèm mốc
 "Đồng bộ gần nhất". Ngày công xuất hiện ở trang chấm công với `check_in_method = DEVICE`.
+
+### Đồng bộ từ HRM, không cần terminal
+
+Khi bridge đang chạy liên tục, bấm **Đồng bộ ngay** trên trang Máy chấm công là đủ.
+
+Vercel không với tới `192.168.x.x`, nên HRM không gọi xuống máy. Nó chỉ đặt cờ
+`sync_requested_at`; bridge trong LAN hỏi cờ đó mỗi 20 giây (`RJ_COMMAND_POLL_SECONDS`)
+rồi đọc máy. Nhận lệnh và xoá cờ nằm trong cùng một câu `UPDATE`, nên hai bridge chạy song
+song thì chỉ một cái lấy được — máy chấm công chỉ phục vụ một kết nối.
+
+Nút này **chỉ có tác dụng khi bridge đang chạy**. Chạy `attendance:sync` một lần rồi tắt
+thì không ai nghe lệnh cả — xem bước 7.
+
+Trang còn hai thứ để tự chẩn đoán:
+
+- **Bridge báo danh** — cập nhật mỗi lần bridge hỏi lệnh, phân biệt "bridge chết" với
+  "máy chấm công tắt". Trước đây hai trường hợp này nhìn giống hệt nhau.
+- **Lịch sử đồng bộ** — 8 lượt gần nhất kèm số nhận/mới/xử lý, và thông điệp lỗi in đỏ.
 
 ## Bước 7 — Cho bridge tự chạy lại sau khi khởi động máy
 

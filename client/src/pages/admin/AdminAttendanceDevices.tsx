@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clipboard, Cpu, KeyRound, Link2, Plus, RefreshCw, Trash2, TriangleAlert, Wifi } from 'lucide-react';
+import { Activity, CheckCircle2, Clipboard, Cpu, KeyRound, Link2, Plus, RefreshCw, Trash2, TriangleAlert, Wifi, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -12,7 +12,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { describeDbError } from '@/lib/dbError';
 import { supabase } from '@/lib/supabase';
 import { formatDateTime } from '@/lib/utils';
-import type { AttendanceDevice, AttendanceDeviceEvent, AttendanceDeviceMapping, Profile } from '@/types';
+import type { AttendanceDevice, AttendanceDeviceEvent, AttendanceDeviceMapping, AttendanceDeviceSyncRun, Profile } from '@/types';
 import { AttendanceFileImport } from '@/components/attendance/AttendanceFileImport';
 import { AttendanceImportHistory } from '@/components/attendance/AttendanceImportHistory';
 
@@ -26,6 +26,7 @@ export function AdminAttendanceDevices() {
   const [devices, setDevices] = useState<AttendanceDevice[]>([]);
   const [mappings, setMappings] = useState<AttendanceDeviceMapping[]>([]);
   const [events, setEvents] = useState<AttendanceDeviceEvent[]>([]);
+  const [syncRuns, setSyncRuns] = useState<AttendanceDeviceSyncRun[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [locations, setLocations] = useState<WorkLocation[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -41,6 +42,7 @@ export function AdminAttendanceDevices() {
   const selected = devices.find((item) => item.id === selectedId) || devices[0];
   const selectedMappings = mappings.filter((item) => item.device_id === selected?.id);
   const selectedEvents = events.filter((item) => item.device_id === selected?.id);
+  const selectedRuns = syncRuns.filter((item) => item.device_id === selected?.id);
   const mappedProfileIds = new Set(selectedMappings.map((item) => item.profile_id));
   const availableProfiles = profiles.filter((item) => !mappedProfileIds.has(item.id));
   const unmappedCodes = useMemo(
@@ -50,12 +52,13 @@ export function AdminAttendanceDevices() {
 
   const loadData = async () => {
     setLoading(true);
-    const [deviceRes, mappingRes, eventRes, profileRes, locationRes] = await Promise.all([
+    const [deviceRes, mappingRes, eventRes, profileRes, locationRes, runRes] = await Promise.all([
       supabase.from('attendance_devices').select('*, location:work_locations(id,name)').order('created_at'),
       supabase.from('attendance_device_mappings').select('*, profile:profiles_directory(id,name,employee_code,department)').order('device_user_id'),
       supabase.from('attendance_device_events').select('id,device_id,device_user_id,profile_id,punched_at,processing_error,received_at').not('processing_error', 'is', null).order('punched_at', { ascending: false }).limit(200),
       supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase.from('work_locations').select('id,name,address').eq('is_active', true).order('name'),
+      supabase.from('attendance_device_sync_runs').select('*').order('started_at', { ascending: false }).limit(50),
     ]);
     const firstError = deviceRes.error || mappingRes.error || eventRes.error || profileRes.error || locationRes.error;
     setError(firstError ? describeDbError(firstError) : null);
@@ -65,6 +68,7 @@ export function AdminAttendanceDevices() {
     setEvents((eventRes.data || []) as AttendanceDeviceEvent[]);
     setProfiles((profileRes.data || []) as Profile[]);
     setLocations((locationRes.data || []) as WorkLocation[]);
+    setSyncRuns((runRes.data || []) as AttendanceDeviceSyncRun[]);
     if (!selectedId && nextDevices[0]) setSelectedId(nextDevices[0].id);
     setLoading(false);
   };
@@ -103,6 +107,21 @@ export function AdminAttendanceDevices() {
     if (deleteError) return toast(`Không xóa được: ${describeDbError(deleteError)}`, 'error');
     setSelectedId('');
     toast('Đã xóa cấu hình máy chấm công.', 'success');
+    loadData();
+  };
+
+  const requestSync = async () => {
+    if (!selected) return;
+    setBusy(true);
+    const { error: syncError } = await supabase.rpc('request_attendance_device_sync', { target_device: selected.id });
+    setBusy(false);
+    if (syncError) {
+      // Migration chua chay thi bao dung viec can lam, dung de nguoi dung doan.
+      return toast(/does not exist|schema cache/i.test(syncError.message || '')
+        ? 'Chưa bật tính năng này. Chạy supabase/paste-cap-nhat-dong-bo.sql trên Supabase.'
+        : `Không yêu cầu được đồng bộ: ${describeDbError(syncError)}`, 'error');
+    }
+    toast('Đã gửi lệnh. Bridge sẽ đọc máy trong vài chục giây.', 'success');
     loadData();
   };
 
@@ -188,10 +207,18 @@ export function AdminAttendanceDevices() {
                     <div className="flex items-center justify-between"><span className="text-slate-500">Đồng bộ gần nhất</span><strong className="text-slate-800">{selected.last_sync_at ? formatDateTime(selected.last_sync_at) : 'Chưa đồng bộ'}</strong></div>
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Thông báo</span><span className="max-w-64 text-right text-slate-700">{selected.last_sync_message || '—'}</span></div>
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Serial</span><span className="text-slate-700">{selected.serial_number || '—'}</span></div>
+                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Bridge báo danh</span><BridgeHeartbeat lastSeenAt={selected.last_seen_at} /></div>
                   </div>
                   <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP và Comm Key chỉ lưu trên máy tính đó.</p>
+                  {selected.sync_requested_at && (
+                    <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+                      <Activity className="mt-0.5 h-4 w-4 shrink-0 animate-pulse" />
+                      <span>Đã gửi lệnh lúc {formatDateTime(selected.sync_requested_at)} — đang chờ bridge nhận. Bridge hỏi lệnh mỗi 20 giây.</span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />Tạo token bridge</Button>
+                    <Button onClick={requestSync} disabled={busy}><Zap className="h-4 w-4" />Đồng bộ ngay</Button>
+                    <Button variant="outline" onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />Tạo token bridge</Button>
                     <Button variant="outline" onClick={revokeTokens}>Thu hồi token</Button>
                     <Button variant="danger" onClick={deleteDevice}><Trash2 className="h-4 w-4" />Xóa máy</Button>
                   </div>
@@ -202,6 +229,31 @@ export function AdminAttendanceDevices() {
                 <CardHeader><CardTitle className="flex items-center gap-2"><TriangleAlert className="h-5 w-5 text-amber-500" />Mã chưa ánh xạ</CardTitle></CardHeader>
                 <CardContent>
                   {unmappedCodes.length === 0 ? <p className="text-sm text-slate-500">Không có mã lỗi ánh xạ.</p> : <div className="flex flex-wrap gap-2">{unmappedCodes.map((code) => <button key={code} onClick={() => setMappingUserId(code)} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-xs font-semibold text-amber-800">{code}</button>)}</div>}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-indigo-600" />Lịch sử đồng bộ</CardTitle></CardHeader>
+                <CardContent>
+                  {selectedRuns.length === 0 ? (
+                    <p className="text-sm text-slate-500">Bridge chưa đồng bộ lần nào. Bấm “Đồng bộ ngay”, hoặc chạy <code className="rounded bg-slate-100 px-1">pnpm attendance:sync</code> trên máy chạy bridge.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {selectedRuns.slice(0, 8).map((run) => (
+                        <li key={run.id} className="rounded-xl border border-slate-200 p-3 text-sm">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-slate-500">{formatDateTime(run.started_at)}</span>
+                            <StatusBadge status={run.status === 'RUNNING' ? null : run.status} />
+                          </div>
+                          <p className="mt-1 text-slate-700">
+                            nhận {run.received_count} · mới {run.inserted_count} · xử lý {run.processed_count}
+                            {run.unmapped_count > 0 && <span className="text-amber-700"> · chưa ánh xạ {run.unmapped_count}</span>}
+                          </p>
+                          {run.message && <p className={`mt-1 break-words text-xs ${run.status === 'ERROR' ? 'font-semibold text-red-700' : 'text-slate-500'}`}>{run.message}</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -256,6 +308,16 @@ export function AdminAttendanceDevices() {
       </Modal>
     </div>
   );
+}
+
+// Bridge chet va may cham cong tat la hai chuyen khac nhau, truoc day nhin
+// giong het nhau tren man hinh. Moc bao danh nay tach duoc hai truong hop.
+function BridgeHeartbeat({ lastSeenAt }: { lastSeenAt: string | null }) {
+  if (!lastSeenAt) return <span className="text-slate-500">Chưa thấy bridge</span>;
+  const minutes = Math.round((Date.now() - new Date(lastSeenAt).getTime()) / 60_000);
+  if (minutes <= 2) return <span className="font-semibold text-emerald-700">Đang chạy</span>;
+  if (minutes < 60) return <span className="font-semibold text-amber-700">{minutes} phút trước</span>;
+  return <span className="font-semibold text-red-700">{formatDateTime(lastSeenAt)}</span>;
 }
 
 function StatusBadge({ status }: { status: AttendanceDevice['last_sync_status'] }) {

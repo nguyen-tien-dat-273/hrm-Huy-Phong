@@ -39,6 +39,7 @@ const config = {
   utcOffset: process.env.RJ_UTC_OFFSET || '+07:00',
   pollMinutes: integer('RJ_POLL_MINUTES', 5),
   backfillDays: integer('RJ_BACKFILL_DAYS', 0),
+  commandPollSeconds: integer('RJ_COMMAND_POLL_SECONDS', 20),
   once: process.argv.includes('--once'),
   supabaseUrl: required('SUPABASE_URL', process.env.VITE_SUPABASE_URL),
   supabaseAnonKey: required('SUPABASE_ANON_KEY', process.env.VITE_SUPABASE_ANON_KEY),
@@ -53,6 +54,7 @@ if (!/^[+-](0\d|1\d|2[0-3]):[0-5]\d$/.test(config.utcOffset)) {
 }
 if (config.pollMinutes < 1) throw new Error('RJ_POLL_MINUTES phải từ 1 trở lên.');
 if (config.backfillDays < 0) throw new Error('RJ_BACKFILL_DAYS không được âm.');
+if (config.commandPollSeconds < 5) throw new Error('RJ_COMMAND_POLL_SECONDS phải từ 5 trở lên.');
 
 const supabase = createClient(config.supabaseUrl, config.supabaseAnonKey, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -120,6 +122,10 @@ function toEvent(log) {
 async function push(events) {
   let inserted = 0;
   let processed = 0;
+  // `unmapped` KHÁC hai số kia: RPC trả về tổng số bản ghi đang chờ ánh xạ của
+  // CẢ thiết bị, không phải của riêng lô vừa gửi. Cộng dồn qua 15 lô thì ra
+  // 59870 cho một máy chỉ có 7370 bản ghi — con số vô nghĩa mà vẫn trông như
+  // thật. Lấy giá trị của lô cuối, vì đó mới là tổng sau khi nạp xong.
   let unmapped = 0;
   for (let offset = 0; offset < events.length; offset += 500) {
     const batch = events.slice(offset, offset + 500);
@@ -133,7 +139,7 @@ async function push(events) {
     }
     inserted += Number(data?.inserted || 0);
     processed += Number(data?.processed || 0);
-    unmapped += Number(data?.unmapped || 0);
+    unmapped = Number(data?.unmapped || 0);
   }
   return { inserted, processed, unmapped };
 }
@@ -186,8 +192,36 @@ async function guardedSync() {
   }
 }
 
+// Website chạy trên Vercel không với tới được IP nội bộ của máy chấm công, nên
+// nút "Đồng bộ ngay" trên HRM chỉ đặt một cờ trong database. Bridge đang ở trong
+// LAN hỏi cờ đó vài chục giây một lần rồi đọc máy — người dùng thấy như bấm là chạy.
+let commandPollingDisabled = false;
+async function pollCommands() {
+  if (commandPollingDisabled || syncing) return;
+  const { data, error } = await supabase.rpc('claim_attendance_device_sync', {
+    bridge_token: config.bridgeToken,
+  });
+  if (error) {
+    // Chưa chạy migration thì tắt hẳn vòng hỏi, đừng để nó rính rích báo lỗi mãi:
+    // đồng bộ theo lịch vẫn chạy bình thường mà không cần tính năng này.
+    if (/does not exist|schema cache|function public/i.test(error.message || '')) {
+      commandPollingDisabled = true;
+      console.warn('Chưa có RPC claim_attendance_device_sync — nút "Đồng bộ ngay" trên HRM sẽ không tác dụng.');
+      console.warn('Chạy supabase/paste-cap-nhat-dong-bo.sql để bật.');
+      return;
+    }
+    console.error(`[${new Date().toISOString()}] Hỏi lệnh thất bại:`, error.message);
+    return;
+  }
+  if (data?.sync_requested) {
+    console.log(`[${new Date().toISOString()}] Nhận lệnh đồng bộ từ HRM.`);
+    await guardedSync();
+  }
+}
+
 await guardedSync();
 if (!config.once) {
-  console.log(`Bridge đang chạy; đồng bộ mỗi ${config.pollMinutes} phút.`);
+  console.log(`Bridge đang chạy; đồng bộ mỗi ${config.pollMinutes} phút, hỏi lệnh mỗi ${config.commandPollSeconds} giây.`);
   setInterval(guardedSync, config.pollMinutes * 60_000);
+  setInterval(pollCommands, config.commandPollSeconds * 1000);
 }

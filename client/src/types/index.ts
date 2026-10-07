@@ -648,6 +648,8 @@ export interface AttendanceDevice {
   last_sync_at: string | null;
   last_sync_status: 'SUCCESS' | 'PARTIAL' | 'ERROR' | null;
   last_sync_message: string | null;
+  /** Khác null = đã bấm "Đồng bộ ngay" mà bridge chưa nhận lệnh. */
+  sync_requested_at: string | null;
   created_at: string;
   location?: { id: string; name: string } | null;
 }
@@ -669,6 +671,19 @@ export interface AttendanceDeviceEvent {
   punched_at: string;
   processing_error: string | null;
   received_at: string;
+}
+
+export interface AttendanceDeviceSyncRun {
+  id: string;
+  device_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'ERROR';
+  received_count: number;
+  inserted_count: number;
+  processed_count: number;
+  unmapped_count: number;
+  message: string | null;
 }
 
 export interface LeaveLedgerEntry {

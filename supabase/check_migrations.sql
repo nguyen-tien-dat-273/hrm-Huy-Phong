@@ -218,6 +218,20 @@ with probe as (
                and column_name = 'records_checkout'),
      'May chi ghi gio vao - THIEU THI DONG BO VANG EXCEPTION'),
 
+    ('20261007130000_attendance_sync_on_demand',
+     exists (select 1 from information_schema.columns
+             where table_schema = 'public' and table_name = 'attendance_devices'
+               and column_name = 'sync_requested_at'),
+     'Nut "Dong bo ngay" tren HRM va moc bao danh cua bridge'),
+
+    -- Lai la migration chi THAY than ham. Ban da sua doi ten bien thanh v_*
+    -- de het nhap nhang voi ten cot, nen do bang chinh ten bien do.
+    ('20261007140000_fix_ingest_variable_conflict',
+     exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public' and p.proname = 'ingest_attendance_device_events'
+               and p.prosrc like '%v_unmapped%'),
+     'Sua ambiguous + missing FROM-clause - THIEU THI MOI LAN DONG BO DEU VANG LOI'),
+
     -- --- Ra soat trang nhan vien (01/10) ----------------------------------
     ('20261001100000_unit_multiple_managers',
      to_regclass('public.organization_unit_managers') is not null,

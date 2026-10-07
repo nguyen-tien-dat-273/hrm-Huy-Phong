@@ -85,6 +85,7 @@ export function AdminUsers() {
     role: 'staff' as SystemRole,
     access_role_code: 'staff',
     department: '',
+    employee_code: '',
     phone: '', hometown: '', permanent_address: '', current_address: '',
     education_level: '' as Profile['education_level'] | '', school_name: '', major: '', graduation_year: '',
     permissions: [] as AdminPermission[],
@@ -162,7 +163,7 @@ export function AdminUsers() {
 
   const openCreate = () => {
     setEditingUser(null);
-    setForm({ name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '', phone: '', hometown: '', permanent_address: '', current_address: '', education_level: '', school_name: '', major: '', graduation_year: '', permissions: [] });
+    setForm({ name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '', employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '', education_level: '', school_name: '', major: '', graduation_year: '', permissions: [] });
     setModalOpen(true);
   };
 
@@ -174,6 +175,7 @@ export function AdminUsers() {
       role: user.role,
       access_role_code: user.access_role_code || user.role,
       department: user.department || '',
+      employee_code: user.employee_code || '',
       phone: user.phone || '',
       hometown: user.hometown || '',
       permanent_address: user.permanent_address || '',
@@ -208,6 +210,10 @@ export function AdminUsers() {
       );
       const permissionsChanged = current.length !== form.permissions.length
         || current.some((code) => !form.permissions.includes(code));
+      // Rut ra bien vi can dung o ca hai cho: quyet dinh co gui len khong, va
+      // doan loi trung khoa co phai do ma nhan vien khong.
+      const nextCode = form.employee_code.trim();
+      const codeChanged = fullAdmin && nextCode !== (editingUser.employee_code || '');
       const { error } = await updateUser(editingUser.id, {
         name: form.name,
         role: fullAdmin ? form.role : 'staff',
@@ -215,6 +221,11 @@ export function AdminUsers() {
         // Khi đã thuộc cơ cấu, phòng ban lấy từ organization_units; không cho
         // form hồ sơ ghi đè bằng một chuỗi tự do gây lệch dữ liệu.
         ...(editingUser.unit_id ? {} : { department: form.department || null }),
+        // Ma nhan vien la khoa doi chieu voi may cham cong, va co unique index
+        // tren lower(employee_code). Chi Admin/CEO duoc sua, va chi gui khi
+        // that su doi — gui lai gia tri cu cho moi lan luu la tu dam vao
+        // chinh minh khi database so sanh khong phan biet hoa thuong.
+        ...(codeChanged ? { employee_code: nextCode || null } : {}),
         phone: form.phone.trim() || null,
         hometown: form.hometown.trim() || null,
         permanent_address: form.permanent_address.trim() || null,
@@ -231,7 +242,9 @@ export function AdminUsers() {
         ...(permissionsChanged ? { permissions: form.permissions } : {}),
       });
       if (error) {
-        toast('Cập nhật thất bại: ' + error, 'error');
+        toast(codeChanged && /đã tồn tại|duplicate|unique/i.test(error)
+          ? `Mã nhân viên “${nextCode}” đã thuộc về người khác. Mỗi mã chỉ gán được cho một người.`
+          : 'Cập nhật thất bại: ' + error, 'error');
       } else {
         toast('Cập nhật người dùng thành công!', 'success');
         setModalOpen(false);
@@ -534,7 +547,16 @@ export function AdminUsers() {
 
           {editingUser && <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
             <div><p className="text-sm font-bold text-slate-800">Thông tin cá nhân & học vấn</p><p className="mt-0.5 text-xs text-slate-500">HR cập nhật tại một nơi; dữ liệu được dùng lại cho các nghiệp vụ nhân sự.</p></div>
-            <div className="grid gap-4 sm:grid-cols-2"><Input label="Mã nhân viên" value={editingUser.employee_code || 'Hệ thống tự cấp'} disabled /><Input label="Số điện thoại" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /><Input label="Quê quán" value={form.hometown} onChange={(e) => setForm({ ...form, hometown: e.target.value })} /><Input label="Nơi ở hiện tại" value={form.current_address} onChange={(e) => setForm({ ...form, current_address: e.target.value })} /></div>
+            <div className="grid gap-4 sm:grid-cols-2"><div>
+                <Input
+                  label="Mã nhân viên"
+                  value={fullAdmin ? form.employee_code : (editingUser.employee_code || 'Hệ thống tự cấp')}
+                  onChange={fullAdmin ? (e) => setForm({ ...form, employee_code: e.target.value }) : undefined}
+                  disabled={!fullAdmin}
+                  placeholder={fullAdmin ? 'Để trống nếu chưa cấp mã' : undefined}
+                />
+                {fullAdmin && <p className="mt-1.5 text-xs text-slate-500">Đặt trùng mã trên máy chấm công thì ngày công tự khớp về đúng người, khỏi khai ánh xạ.</p>}
+              </div><Input label="Số điện thoại" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /><Input label="Quê quán" value={form.hometown} onChange={(e) => setForm({ ...form, hometown: e.target.value })} /><Input label="Nơi ở hiện tại" value={form.current_address} onChange={(e) => setForm({ ...form, current_address: e.target.value })} /></div>
             <Input label="Địa chỉ thường trú" value={form.permanent_address} onChange={(e) => setForm({ ...form, permanent_address: e.target.value })} />
             <div className="grid gap-4 sm:grid-cols-2"><Select label="Trình độ học vấn" value={form.education_level || ''} onChange={(e) => setForm({ ...form, education_level: e.target.value as Profile['education_level'] | '' })}><option value="">Chưa cập nhật</option><option value="HIGH_SCHOOL">THPT</option><option value="VOCATIONAL">Trung cấp / Nghề</option><option value="COLLEGE">Cao đẳng</option><option value="UNIVERSITY">Đại học</option><option value="POSTGRADUATE">Sau đại học</option><option value="OTHER">Khác</option></Select><Input label="Trường / Cơ sở đào tạo" value={form.school_name} onChange={(e) => setForm({ ...form, school_name: e.target.value })} /><Input label="Chuyên ngành" value={form.major} onChange={(e) => setForm({ ...form, major: e.target.value })} /><Input label="Năm tốt nghiệp" type="number" min="1950" max="2100" value={form.graduation_year} onChange={(e) => setForm({ ...form, graduation_year: e.target.value })} /></div>
           </div>}

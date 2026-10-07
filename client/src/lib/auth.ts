@@ -395,7 +395,7 @@ export async function adminDeleteUser(userId: string): Promise<{ error?: string;
 /** Cập nhật hồ sơ (không đụng tới mật khẩu) — đi thẳng qua RLS. */
 export async function updateProfile(
   id: string,
-  updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year'>>,
+  updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code'>>,
 ): Promise<{ error?: string }> {
   let { error } = await supabase.from('profiles').update(updates).eq('id', id);
   // Frontend có thể được deploy trước migration vai trò mở rộng. Trong thời
@@ -407,8 +407,16 @@ export async function updateProfile(
   }
   if (error) {
     // Trigger profile_privilege_changes_guard chặn tự đổi quyền của chính mình.
-    const msg = /tự thay đổi quyền/i.test(error.message)
-      ? 'Không thể tự thay đổi vai trò hoặc quyền của chính mình. Nhờ một quản trị viên khác thực hiện.'
+    //
+    // Nhận diện bằng CẢ HAI cách viết: bản cũ raise "tự thay đổi quyền", bản
+    // 20261007113000 raise "tự thay đổi vai trò, quyền hoặc thông tin phân
+    // quyền". Chuỗi mới không chứa "tự thay đổi quyền" (có "vai trò," chen
+    // giữa), nên regex cũ trượt và câu này rơi xuống nhánh 42501 chung —
+    // "Nhờ quản trị viên cấp quyền", lời khuyên sai hướng với một Admin đang
+    // sửa chính hồ sơ mình: họ ĐÃ là admin, vấn đề là không ai được tự sửa
+    // trường phân quyền của bản thân.
+    const msg = /tự thay đổi (vai trò|quyền)/i.test(error.message)
+      ? 'Không thể tự sửa vai trò, quyền hay mã nhân viên của chính mình. Nhờ một quản trị viên khác thực hiện.'
       : describeDbError(error);
     return { error: msg };
   }

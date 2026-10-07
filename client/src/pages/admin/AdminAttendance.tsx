@@ -296,7 +296,10 @@ export function AdminAttendance() {
                       <td data-label="Thời gian" className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="text-xs font-bold text-slate-700 uppercase tracking-tight">{r.date}</span>
-                          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{formatTime(r.check_in_time)} — {formatTime(r.check_out_time) || '...'}</span>
+                          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">
+                            {formatTime(r.check_in_time)}
+                            {r.check_out_time ? ` — ${formatTime(r.check_out_time)}` : r.check_in_method === 'DEVICE' ? ' · chỉ giờ vào' : ' — ...'}
+                          </span>
                         </div>
                       </td>
                       <td data-label="Nguồn" className="px-6 py-4">
@@ -325,7 +328,7 @@ export function AdminAttendance() {
                       <td data-label="Kiểm soát" className="px-6 py-4">
                         <div className="flex flex-wrap gap-2">
                           <Badge className={r.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}>
-                            {r.check_out_time ? 'Đã checkout' : 'Thiếu checkout'}
+                            {r.check_out_time ? 'Đã checkout' : r.check_in_method === 'DEVICE' ? 'Ghi nhận từ máy' : 'Thiếu checkout'}
                           </Badge>
 	                          {r.approved_by_lead && (
 	                            <Badge className="bg-slate-900 text-white border-slate-900">
