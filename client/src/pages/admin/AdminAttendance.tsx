@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Clock, XCircle, Calendar, Trash2, CheckCheck, ClipboardList, Table, Cpu, UserRoundCog } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, Calendar, Trash2, CheckCheck, ClipboardList, LogOut, Table, Cpu, UserRoundCog } from 'lucide-react';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -32,6 +34,11 @@ export function AdminAttendance() {
   // mot nguon la dung y do, nhung giau luon nhung dong do thi chung khong
   // bao gio duoc duyet va khong bao gio vao bang luong - mat im lang.
   const [legacyPending, setLegacyPending] = useState(0);
+  // Máy chấm công này chỉ ghi giờ vào, nên giờ ra phải nhập tay ở đây.
+  // `checkoutTarget` là một bản ghi, hoặc 'bulk' cho toàn bộ dòng đang hiển thị.
+  const [checkoutTarget, setCheckoutTarget] = useState<Attendance | 'bulk' | null>(null);
+  const [checkoutTime, setCheckoutTime] = useState('17:30');
+  const [savingCheckout, setSavingCheckout] = useState(false);
   const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
   // Trưởng nhóm duyệt được ngày công của phạm vi mình quản lý nhưng không đổi
   // quy tắc giờ làm dùng chung toàn công ty — khớp với guard của route cài đặt.
@@ -47,6 +54,21 @@ export function AdminAttendance() {
     [{ table: 'attendance' }, { table: 'daily_assignments' }],
     () => loadAttendance(true),
   );
+
+  useEffect(() => {
+    // Giờ tan ca theo ca đang áp dụng; không có ca nào thì giữ 17:30 mặc định.
+    void (async () => {
+      const today = getTodayString();
+      const { data } = await supabase
+        .from('work_schedules')
+        .select('end_time,effective_from,effective_to')
+        .lte('effective_from', today)
+        .order('effective_from', { ascending: false })
+        .limit(5);
+      const current = (data || []).find((s) => !s.effective_to || s.effective_to >= today);
+      if (current?.end_time) setCheckoutTime(String(current.end_time).slice(0, 5));
+    })();
+  }, []);
 
   const loadAttendance = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -99,6 +121,59 @@ export function AdminAttendance() {
       setAsgProgress({});
     }
     setLoading(false);
+  };
+
+  const missingCheckout = records.filter((r) => r.check_in_time && !r.check_out_time);
+
+  // Dựng mốc giờ ra từ ngày công + giờ người dùng gõ, theo múi giờ của TRÌNH
+  // DUYỆT. Cố ý: cột giờ vào trên màn này cũng hiển thị theo giờ trình duyệt,
+  // nên gõ "17:30" là ra đúng 17:30 như mắt nhìn thấy. Ghép cứng +07:00 ở đây
+  // thì máy đặt sai múi giờ sẽ ghi lệch mà không ai thấy.
+  const buildCheckout = (record: Attendance, hhmm: string) => {
+    const stamp = new Date(`${record.date}T${hhmm}:00`);
+    if (Number.isNaN(stamp.getTime())) return null;
+    const checkIn = record.check_in_time ? new Date(record.check_in_time).getTime() : 0;
+    if (stamp.getTime() <= checkIn) return 'BEFORE_CHECKIN' as const;
+    return stamp.toISOString();
+  };
+
+  const saveCheckout = async () => {
+    if (!checkoutTarget) return;
+    const targets = checkoutTarget === 'bulk' ? missingCheckout : [checkoutTarget];
+    if (targets.length === 0) return;
+
+    setSavingCheckout(true);
+    let done = 0;
+    let tooEarly = 0;
+    let failed: string | null = null;
+
+    for (const record of targets) {
+      const value = buildCheckout(record, checkoutTime);
+      if (value === null) { failed = 'Giờ không hợp lệ.'; break; }
+      if (value === 'BEFORE_CHECKIN') { tooEarly += 1; continue; }
+      const { error } = await supabase
+        .from('attendance')
+        .update({ check_out_time: value, status: 'completed' })
+        .eq('id', record.id);
+      if (error) { failed = describeDbError(error); break; }
+      done += 1;
+    }
+    setSavingCheckout(false);
+
+    if (failed) {
+      toast(`Ghi giờ ra thất bại: ${failed}`, 'error');
+    } else if (done === 0 && tooEarly > 0) {
+      toast(`Giờ ra phải sau giờ vào. ${tooEarly} bản ghi bị bỏ qua.`, 'error');
+    } else {
+      toast(
+        tooEarly > 0
+          ? `Đã ghi giờ ra cho ${done} bản ghi; bỏ qua ${tooEarly} bản ghi có giờ vào muộn hơn.`
+          : `Đã ghi giờ ra cho ${done} bản ghi.`,
+        'success',
+      );
+      setCheckoutTarget(null);
+      loadAttendance();
+    }
   };
 
   const handleApprove = async (record: Attendance) => {
@@ -277,6 +352,12 @@ export function AdminAttendance() {
           ))}
         </div>
         <div className="flex items-center gap-2">
+          {missingCheckout.length > 0 && (
+            <Button variant="outline" theme="admin" size="sm" onClick={() => setCheckoutTarget('bulk')}>
+              <LogOut className="w-4 h-4" />
+              Ghi giờ ra ({missingCheckout.length})
+            </Button>
+          )}
           {filter === 'pending' && (
             <Button variant="outline" theme="admin" size="sm" onClick={handleApproveAllPending}>
               <CheckCheck className="w-4 h-4" />
@@ -371,6 +452,15 @@ export function AdminAttendance() {
                       </td>
                       <td data-label="" className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-2">
+                          {r.check_in_time && !r.check_out_time && (
+                            <button
+                              onClick={() => setCheckoutTarget(r)}
+                              className="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-medium hover:bg-indigo-100 transition-colors"
+                              title="Nhập giờ ra cho ngày công này"
+                            >
+                              Ghi giờ ra
+                            </button>
+                          )}
 	                          {!r.approved_by_lead ? (
 	                            <button
 	                              onClick={() => handleApprove(r)}
@@ -408,6 +498,45 @@ export function AdminAttendance() {
           )}
         </CardContent>
       </Card>
+
+      <Modal
+        open={checkoutTarget !== null}
+        onClose={() => setCheckoutTarget(null)}
+        title={checkoutTarget === 'bulk' ? `Ghi giờ ra cho ${missingCheckout.length} bản ghi` : 'Ghi giờ ra'}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            {checkoutTarget === 'bulk' ? (
+              <>Áp dụng cùng một giờ ra cho tất cả ngày công đang hiển thị mà chưa có giờ ra.</>
+            ) : checkoutTarget ? (
+              <>
+                <strong>{checkoutTarget.profile?.name || 'Nhân viên'}</strong> · ngày {checkoutTarget.date} ·
+                vào lúc {formatTime(checkoutTarget.check_in_time)}
+              </>
+            ) : null}
+          </p>
+
+          <Input
+            label="Giờ ra"
+            type="time"
+            value={checkoutTime}
+            onChange={(e) => setCheckoutTime(e.target.value)}
+          />
+
+          <p className="text-xs text-slate-500">
+            Máy chấm công chỉ ghi giờ vào, nên giờ ra nhập ở đây. Giá trị mặc định lấy từ ca
+            làm việc đang áp dụng. Bản ghi nào có giờ vào muộn hơn giờ này sẽ được bỏ qua chứ
+            không ghi đè thành số âm.
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCheckoutTarget(null)}>Hủy</Button>
+            <Button onClick={saveCheckout} disabled={savingCheckout || !checkoutTime}>
+              {savingCheckout ? 'Đang ghi...' : 'Ghi giờ ra'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
