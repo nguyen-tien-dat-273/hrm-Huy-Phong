@@ -22,6 +22,19 @@ const sourceLabel = (record: Attendance) => {
   return 'Dữ liệu kế thừa';
 };
 
+// Hai nguồn, hai luật: giờ vào từ máy được nhận ngay, giờ vào tự khai trên HRM
+// phải chờ quản lý xác nhận. Ngày công chỉ tính khi đã có giờ ra.
+const statusLabel = (record: Attendance): string => {
+  const fromDevice = String(record.check_in_method || '').toUpperCase() === 'DEVICE';
+  if (record.approved_by_lead) return 'Đã tính công';
+  if (!record.check_out_time) {
+    return fromDevice
+      ? 'Máy đã ghi giờ vào · chờ bạn checkout'
+      : 'Đã check-in trên HRM · chờ checkout, rồi quản lý xác nhận';
+  }
+  return fromDevice ? 'Đã checkout · đang tính công' : 'Đã checkout · chờ quản lý xác nhận';
+};
+
 export function StaffDeviceAttendance() {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -133,11 +146,12 @@ export function StaffDeviceAttendance() {
 
       <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3.5 text-sm text-blue-900">
         <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
-        <p className="leading-relaxed">
-          <strong>Máy chấm công là nguồn chính ghi giờ vào.</strong> Quét ở máy rồi thì không cần
-          check-in ở đây nữa — cuối ngày chỉ bấm <strong>Check-out</strong>. Nút check-in bên dưới
-          chỉ dành cho hôm nào bạn chưa kịp quét máy.
-        </p>
+        <div className="leading-relaxed">
+          <p><strong>Máy chấm công là nguồn chính ghi giờ vào.</strong> Quét ở máy rồi thì không cần
+          check-in ở đây nữa — cuối ngày chỉ bấm <strong>Check-out</strong>, ngày công tính ngay.</p>
+          <p className="mt-1.5">Hôm nào chưa kịp quét máy thì check-in ở đây, nhưng ngày đó
+          <strong> phải chờ quản lý xác nhận</strong> mới được tính công.</p>
+        </div>
       </div>
 
       {!todayRecord && focusRecord && (
@@ -186,7 +200,7 @@ export function StaffDeviceAttendance() {
                 )}
               </div>
               <div className="space-y-3">
-                <InfoRow icon={<CheckCircle2 className="h-4 w-4" />} label="Trạng thái" value={!focusRecord.check_out_time ? 'Đã vào ca · chờ checkout' : focusRecord.approved_by_lead ? 'Đã duyệt ngày công' : 'Đã checkout · chờ quản lý duyệt'} />
+                <InfoRow icon={<CheckCircle2 className="h-4 w-4" />} label="Trạng thái" value={statusLabel(focusRecord)} />
                 <InfoRow icon={<Fingerprint className="h-4 w-4" />} label="Nguồn dữ liệu" value={sourceLabel(focusRecord)} />
               </div>
             </div>
