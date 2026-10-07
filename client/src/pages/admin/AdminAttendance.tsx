@@ -19,7 +19,6 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { formatTime, getTodayString } from '@/lib/utils';
-import { notifyUser } from '@/lib/assignments';
 import type { Attendance } from '@/types';
 
 const THU_TRONG_TUAN = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
@@ -214,12 +213,9 @@ export function AdminAttendance() {
   };
 
   const handleApprove = async (record: Attendance) => {
-    // Không cho phép duyệt khi nhân viên chưa checkout
-    if (record.status !== 'completed' || !record.check_out_time) {
-      toast('Không thể duyệt: Nhân viên chưa Check-out.', 'warning');
-      return;
-    }
-
+    // Cố ý KHÔNG đòi có giờ ra: máy này chỉ ghi giờ vào, đòi giờ ra thì không
+    // dòng nào tính công được. Trigger guard_attendance_approval dưới database
+    // cũng đã nới đúng cho nguồn DEVICE.
     const { data: updated, error } = await supabase.from('attendance').update({
       approved_by_lead: true,
       approved_at: new Date().toISOString(),
@@ -227,8 +223,6 @@ export function AdminAttendance() {
     })
       .eq('id', record.id)
       .eq('approved_by_lead', false)
-      .eq('status', 'completed')
-      .not('check_out_time', 'is', null)
       .select('id')
       .maybeSingle();
 
@@ -238,38 +232,7 @@ export function AdminAttendance() {
       toast('Bản ghi đã thay đổi hoặc chưa đủ điều kiện duyệt. Danh sách sẽ được cập nhật lại.', 'warning');
       loadAttendance();
     } else {
-      await notifyUser(
-        record.user_id,
-        'Chấm công đã được duyệt',
-        `Quản lý đã xác nhận ngày làm việc ${record.date} của bạn.`,
-        'attendance_approved',
-      );
-      toast('Đã duyệt chấm công', 'success');
-      loadAttendance();
-    }
-  };
-
-  const handleUnapprove = async (record: Attendance) => {
-    const ok = await confirm({
-      title: 'Bỏ duyệt chấm công?',
-      message: `Bạn muốn bỏ duyệt ngày công ${record.date} của ${record.profile?.name || 'nhân viên này'}?`,
-      confirmLabel: 'Bỏ duyệt',
-    });
-    if (!ok) return;
-
-    const { data: updated, error } = await supabase.from('attendance').update({
-      approved_by_lead: false,
-      approved_at: null,
-      approved_by_user_id: null,
-    }).eq('id', record.id).eq('approved_by_lead', true).select('id').maybeSingle();
-
-    if (error) {
-      toast('Thao tác thất bại', 'error');
-    } else if (!updated) {
-      toast('Bản ghi đã thay đổi hoặc không còn ở trạng thái đã duyệt.', 'warning');
-      loadAttendance(true);
-    } else {
-      toast('Đã bỏ duyệt chấm công', 'success');
+      toast('Đã tính công cho ngày này', 'success');
       loadAttendance();
     }
   };
@@ -292,17 +255,15 @@ export function AdminAttendance() {
   };
 
   const handleApproveAllPending = async () => {
-    const pending = records.filter(
-      (r) => !r.approved_by_lead && r.status === 'completed' && Boolean(r.check_out_time),
-    );
+    const pending = records.filter((r) => !r.approved_by_lead);
     if (pending.length === 0) {
-      toast('Không có bản ghi nào cần duyệt.', 'warning');
+      toast('Mọi ngày công trong danh sách đều đã được tính.', 'warning');
       return;
     }
     const ok = await confirm({
-      title: `Duyệt tất cả ${pending.length} bản ghi?`,
-      message: 'Mỗi nhân viên liên quan sẽ nhận được một thông báo xác nhận.',
-      confirmLabel: 'Duyệt tất cả',
+      title: `Tính công cho ${pending.length} ngày công sót lại?`,
+      message: 'Chấm công từ máy vốn tự tính công. Những dòng này sót lại vì lý do nào đó; tính công xong chúng mới vào bảng lương.',
+      confirmLabel: 'Tính công',
     });
     if (!ok) return;
     let success = 0;
@@ -314,25 +275,15 @@ export function AdminAttendance() {
       })
         .eq('id', r.id)
         .eq('approved_by_lead', false)
-        .eq('status', 'completed')
-        .not('check_out_time', 'is', null)
         .select('id')
         .maybeSingle();
-      if (!error && updated) {
-        success++;
-        await notifyUser(
-          r.user_id,
-          'Chấm công đã được duyệt',
-          `Quản lý đã xác nhận ngày làm việc ${r.date} của bạn.`,
-          'attendance_approved',
-        );
-      }
+      if (!error && updated) success++;
     }
     if (success > 0) {
-      toast(`Đã duyệt ${success} bản ghi chấm công`, 'success');
+      toast(`Đã tính công cho ${success} ngày công`, 'success');
       loadAttendance();
     } else {
-      toast('Duyệt thất bại', 'error');
+      toast('Tính công thất bại', 'error');
     }
   };
 
@@ -420,7 +371,7 @@ export function AdminAttendance() {
           {records.some((item) => !item.approved_by_lead) && (
             <Button variant="outline" theme="admin" size="sm" onClick={handleApproveAllPending}>
               <CheckCheck className="w-4 h-4" />
-              Duyệt tất cả
+              Tính công cho {records.filter((item) => !item.approved_by_lead).length} dòng sót
             </Button>
           )}
           <Link to="/admin/timesheet">
@@ -496,13 +447,20 @@ export function AdminAttendance() {
                             )}
                           </td>
                           <td data-label="Trạng thái" className="px-6 py-4">
-                            <div className="flex flex-wrap gap-2">
-                              {r.approved_by_lead ? (
-                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">Đã tính công</Badge>
-                              ) : (
-                                <Badge className="bg-amber-50 text-amber-700 border-amber-100">Chưa duyệt</Badge>
-                              )}
-                            </div>
+                            {r.approved_by_lead ? (
+                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100">Đã tính công</Badge>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Badge className="bg-amber-50 text-amber-700 border-amber-100">Chưa tính công</Badge>
+                                <button
+                                  onClick={() => handleApprove(r)}
+                                  className="text-xs font-semibold text-indigo-700 hover:underline"
+                                  title="Dòng này chưa vào bảng lương — bấm để tính công"
+                                >
+                                  Tính công
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td data-label="Công việc" className="px-6 py-4">
                             {(() => {
@@ -523,21 +481,6 @@ export function AdminAttendance() {
                           </td>
                           <td data-label="" className="px-5 py-3.5">
                             <div className="flex items-center justify-end gap-2">
-                              {r.approved_by_lead ? (
-                                <button
-                                  onClick={() => handleUnapprove(r)}
-                                  className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors"
-                                >
-                                  Bỏ duyệt
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => handleApprove(r)}
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
-                                >
-                                  Duyệt
-                                </button>
-                              )}
                               <button
                                 onClick={() => handleDelete(r)}
                                 title="Xóa bản ghi"
