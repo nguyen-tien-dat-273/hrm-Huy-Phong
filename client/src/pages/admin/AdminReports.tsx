@@ -14,6 +14,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { toDateString } from '@/lib/utils';
 import type { DailyAssignment, Project, Task, Profile, Attendance } from '@/types';
 
@@ -69,11 +70,14 @@ export function AdminReports() {
     if (!silent) setMonthLoading(true);
     const { data, error } = await supabase
       .from('daily_assignments')
-      .select('*, profile:profiles_directory!daily_assignments_user_id_fkey(id,name,avatar_url,department)')
+      .select('*')
       .gte('work_date', toDateString(monthStart))
       .lte('work_date', toDateString(endOfMonth(monthStart)));
     setMonthError(error ? describeDbError(error) : null);
-    setMonthAsg((data || []) as DailyAssignment[]);
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
+    const rows = (data || []) as DailyAssignment[];
+    const people = await fetchProfileMap(rows.map((row) => row.user_id));
+    setMonthAsg(rows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) })));
     setMonthLoading(false);
   };
 

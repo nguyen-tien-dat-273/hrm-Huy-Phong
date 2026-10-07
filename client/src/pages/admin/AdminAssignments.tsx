@@ -93,13 +93,13 @@ export function AdminAssignments() {
       supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase
         .from('daily_assignments')
-        .select('*, profile:profiles_directory!daily_assignments_user_id_fkey(*)')
+        .select('*')
         .gte('work_date', weekStartStr)
         .lte('work_date', weekEndStr)
         .order('created_at', { ascending: true }),
       supabase
         .from('daily_assignments')
-        .select('*, profile:profiles_directory!daily_assignments_user_id_fkey(*)')
+        .select('*')
         .eq('status', 'submitted')
         .order('submitted_at', { ascending: true }),
     ]);
@@ -120,8 +120,17 @@ export function AdminAssignments() {
       staffList = staffList.filter((p) => idSet.has(p.id));
     }
     setStaff(staffList);
-    setWeekAssignments((weekRes.data || []) as DailyAssignment[]);
-    setQueue((queueRes.data || []) as DailyAssignment[]);
+
+    // Ghép hồ sơ tại chỗ: `profiles_directory` là VIEW nên PostgREST không
+    // nhúng được. Lấy từ cả danh sách đầy đủ (chưa lọc theo nhóm) để dòng của
+    // người ngoài nhóm vẫn hiện tên.
+    const everyone = (staffRes.data || []) as Profile[];
+    const people = new Map(everyone.map((item) => [item.id, item]));
+    const withProfile = (rows: DailyAssignment[]) =>
+      rows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) }));
+
+    setWeekAssignments(withProfile((weekRes.data || []) as DailyAssignment[]));
+    setQueue(withProfile((queueRes.data || []) as DailyAssignment[]));
     setLoading(false);
   }, [weekStartStr, weekEndStr, profile]);
 

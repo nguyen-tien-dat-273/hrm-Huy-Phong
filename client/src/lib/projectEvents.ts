@@ -8,6 +8,7 @@
 
 import { supabase } from './supabase';
 import { describeDbError } from './dbError';
+import { attachProfiles, fetchProfileMap } from './profileDirectory';
 import type { ProjectEvent, ProjectEventType } from '@/types';
 
 export const EVENT_TYPE_CONFIG: Record<
@@ -34,10 +35,13 @@ export function isEventPast(ev: ProjectEvent): boolean {
 export async function fetchProjectEvents(projectId: string): Promise<{ data: ProjectEvent[]; error: string | null }> {
   const { data, error } = await supabase
     .from('project_events')
-    .select('*, creator:profiles_directory!project_events_created_by_fkey(id, name, avatar_url)')
+    .select('*')
     .eq('project_id', projectId)
     .order('start_at', { ascending: true });
-  return { data: (data || []) as ProjectEvent[], error: error ? describeDbError(error) : null };
+  if (error) return { data: [], error: describeDbError(error) };
+  const rows = (data || []) as ProjectEvent[];
+  const people = await fetchProfileMap(rows.map((row) => row.created_by));
+  return { data: attachProfiles(rows, (row) => row.created_by, people, 'creator') as ProjectEvent[], error: null };
 }
 
 /**

@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { supabase } from './supabase';
+import { attachProfiles, fetchProfileMap } from './profileDirectory';
 import { describeDbError } from '@/lib/dbError';
 import type { DocumentType, ProjectDocument } from '@/types';
 
@@ -148,12 +149,14 @@ export function formatFileSize(bytes: number): string {
 export async function listDocuments(projectId: string): Promise<{ data: ProjectDocument[]; error?: string }> {
   const { data, error } = await supabase
     .from('project_documents')
-    .select('*, uploader:profiles_directory!uploaded_by(id, name, avatar_url)')
+    .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
 
   if (error) return { data: [], error: describeDbError(error) };
-  return { data: (data || []) as ProjectDocument[] };
+  const rows = (data || []) as ProjectDocument[];
+  const people = await fetchProfileMap(rows.map((row) => row.uploaded_by));
+  return { data: attachProfiles(rows, (row) => row.uploaded_by, people, 'uploader') as ProjectDocument[] };
 }
 
 export async function uploadDocument(input: {

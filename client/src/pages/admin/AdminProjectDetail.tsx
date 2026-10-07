@@ -94,7 +94,7 @@ export function AdminProjectDetail() {
     ] = await Promise.all([
       supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
       supabase.from('tasks').select('*').eq('project_id', projectId).order('order_index', { ascending: true }),
-      supabase.from('project_members').select('*, profile:profiles_directory(*)').eq('project_id', projectId),
+      supabase.from('project_members').select('*').eq('project_id', projectId),
       supabase.from('profiles_directory').select('*').eq('is_active', true),
       supabase.from('project_role_definitions').select('*').eq('is_active', true).order('sort_order'),
     ]);
@@ -106,7 +106,13 @@ export function AdminProjectDetail() {
 
     setProject(proj as Project | null);
     setTasks((tks || []) as Task[]);
-    setMembers((mems || []) as ProjectMember[]);
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200);
+    // ghép tại chỗ bằng danh sách nhân sự trang này vốn đã nạp ở ngay trên.
+    const people = new Map(((profiles || []) as Profile[]).map((item) => [item.id, item]));
+    setMembers(((mems || []) as ProjectMember[]).map((item) => ({
+      ...item,
+      profile: item.profile ?? people.get(item.user_id),
+    })));
     setProjectRoles((roles || []) as ProjectRoleDefinition[]);
     setAllProfiles((profiles || []) as Profile[]);
     setLoading(false);

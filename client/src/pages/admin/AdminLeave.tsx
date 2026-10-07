@@ -15,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { LEAVE_TYPE_CONFIG, leaveStatusLabel } from '@/lib/leave';
 import { notifyUser } from '@/lib/assignments';
 import { LeaveQuotaPanel } from '@/components/LeaveQuotaPanel';
@@ -69,7 +70,7 @@ export function AdminLeave() {
     // bảng shifts và attendance.
     let query = supabase
       .from('leave_requests')
-      .select('*, profile:profiles_directory!user_id(*)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (filter !== 'all') query = query.eq('status', filter);
@@ -77,11 +78,25 @@ export function AdminLeave() {
     const { data, error } = await query;
     const cancellationResult = await supabase
       .from('leave_cancellation_requests')
-      .select('*, leave:leave_requests!leave_request_id(*, profile:profiles_directory!user_id(*))')
+      .select('*, leave:leave_requests!leave_request_id(*)')
       .order('created_at', { ascending: false });
     setLoadError(error ? describeDbError(error) : null);
-    setRequests((data || []) as LeaveRequest[]);
-    setCancellations(cancellationResult.error ? [] : (cancellationResult.data || []) as unknown as LeaveCancellationRequest[]);
+
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200);
+    // nạp hồ sơ rời rồi ghép tại chỗ, cho cả đơn nghỉ lẫn đơn xin hủy phép.
+    const requestRows = (data || []) as LeaveRequest[];
+    const cancelRows = cancellationResult.error
+      ? []
+      : ((cancellationResult.data || []) as unknown as LeaveCancellationRequest[]);
+    const people = await fetchProfileMap([
+      ...requestRows.map((row) => row.user_id),
+      ...cancelRows.map((row) => row.leave?.user_id),
+    ]);
+
+    setRequests(requestRows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) })));
+    setCancellations(cancelRows.map((row) => (row.leave
+      ? { ...row, leave: { ...row.leave, profile: row.leave.profile ?? people.get(row.leave.user_id) } }
+      : row)));
     setCancellationSupported(!cancellationResult.error);
     setLoading(false);
   };

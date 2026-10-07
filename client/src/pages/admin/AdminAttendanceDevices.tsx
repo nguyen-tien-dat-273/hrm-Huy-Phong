@@ -40,7 +40,10 @@ export function AdminAttendanceDevices() {
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
 
   const selected = devices.find((item) => item.id === selectedId) || devices[0];
-  const selectedMappings = mappings.filter((item) => item.device_id === selected?.id);
+  const profileById = new Map(profiles.map((item) => [item.id, item]));
+  const selectedMappings = mappings
+    .filter((item) => item.device_id === selected?.id)
+    .map((item) => ({ ...item, profile: item.profile ?? profileById.get(item.profile_id) }));
   const selectedEvents = events.filter((item) => item.device_id === selected?.id);
   const selectedRuns = syncRuns.filter((item) => item.device_id === selected?.id);
   const mappedProfileIds = new Set(selectedMappings.map((item) => item.profile_id));
@@ -54,7 +57,7 @@ export function AdminAttendanceDevices() {
     setLoading(true);
     const [deviceRes, mappingRes, eventRes, profileRes, locationRes, runRes] = await Promise.all([
       supabase.from('attendance_devices').select('*, location:work_locations(id,name)').order('created_at'),
-      supabase.from('attendance_device_mappings').select('*, profile:profiles_directory(id,name,employee_code,department)').order('device_user_id'),
+      supabase.from('attendance_device_mappings').select('*').order('device_user_id'),
       supabase.from('attendance_device_events').select('id,device_id,device_user_id,profile_id,punched_at,processing_error,received_at').not('processing_error', 'is', null).order('punched_at', { ascending: false }).limit(200),
       supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase.from('work_locations').select('id,name,address').eq('is_active', true).order('name'),

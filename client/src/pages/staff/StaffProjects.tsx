@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { PROJECT_STATUS_CONFIG, MEMBER_ROLE_CONFIG, formatDate, formatVND } from '@/lib/utils';
 import type { Project, ProjectMember, Task } from '@/types';
 
@@ -65,7 +66,7 @@ const projectIds = mList.map((m: { project_id: string; role: string }) => m.proj
       { data: taskData, error: taskErr },
     ] = await Promise.all([
       supabase.from('projects').select('*').in('id', projectIds),
-      supabase.from('project_members').select('*, profile:profiles_directory(*)').in('project_id', projectIds),
+      supabase.from('project_members').select('*').in('project_id', projectIds),
       supabase.from('tasks').select('project_id').in('project_id', projectIds),
     ]);
 
@@ -73,7 +74,10 @@ const projectIds = mList.map((m: { project_id: string; role: string }) => m.proj
     setLoadError(firstError ? describeDbError(firstError) : null);
 
     const projectList = (projectData || []) as Project[];
-    const memberList = (memberData || []) as ProjectMember[];
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
+    const rawMembers = (memberData || []) as ProjectMember[];
+    const people = await fetchProfileMap(rawMembers.map((item) => item.user_id));
+    const memberList = rawMembers.map((item) => ({ ...item, profile: item.profile ?? people.get(item.user_id) }));
     const taskList = (taskData || []) as Task[];
 
 const result = projectList.map((project) => {

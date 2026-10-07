@@ -21,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { supabase } from '@/lib/supabase';
 import { formatDate, getTodayString } from '@/lib/utils';
 import type { DailyAssignment } from '@/types';
@@ -76,7 +77,7 @@ export function StaffAssignments() {
     // khi embed, tranh loi PGRST201.
     const { data, error } = await supabase
       .from('daily_assignments')
-      .select('*, assigner:profiles_directory!daily_assignments_assigned_by_fkey(id,name,avatar_url)')
+      .select('*')
       .eq('user_id', profile.id)
       .gte('work_date', toDateString(weekStart))
       .lte('work_date', toDateString(weekEnd))
@@ -84,7 +85,10 @@ export function StaffAssignments() {
       .order('created_at', { ascending: true });
 
     if (error) toast(describeDbError(error), 'error');
-    setAssignments((data || []) as DailyAssignment[]);
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
+    const rows = (data || []) as DailyAssignment[];
+    const people = await fetchProfileMap(rows.map((row) => row.assigned_by));
+    setAssignments(rows.map((row) => ({ ...row, assigner: row.assigner ?? people.get(row.assigned_by || '') })));
     setLoading(false);
   }, [profile, weekStart, weekEnd, toast]);
 

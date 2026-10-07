@@ -21,6 +21,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { notifyUser } from '@/lib/assignments';
 import { KANBAN_COLUMNS, PRIORITY_CONFIG, formatDate, isOverdue } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, Project, Profile, ProjectMember, MemberRole, ProjectRoleDefinition } from '@/types';
@@ -111,13 +112,18 @@ export function StaffKanban() {
       { data: projectData, error: projectErr },
       { data: memberData, error: memberErr },
     ] = await Promise.all([
-      supabase.from('tasks').select('*, project:projects(*), assignee:profiles_directory(*)').in('project_id', projectIds).order('order_index', { ascending: true }),
+      supabase.from('tasks').select('*, project:projects(*)').in('project_id', projectIds).order('order_index', { ascending: true }),
       supabase.from('projects').select('*').in('id', projectIds),
-      supabase.from('project_members').select('*, profile:profiles_directory(*)').in('project_id', projectIds),
+      supabase.from('project_members').select('*').in('project_id', projectIds),
     ]);
 
     const firstError = membershipErr ?? taskErr ?? projectErr ?? memberErr;
-    const members = (memberData || []) as ProjectMember[];
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
+    // Chỉ cần hồ sơ của thành viên dự án: bảng Kanban dùng `assignee_id` để
+    // phân quyền kéo thả chứ không hiển thị hồ sơ người được giao.
+    const rawMembers = (memberData || []) as ProjectMember[];
+    const people = await fetchProfileMap(rawMembers.map((item) => item.user_id));
+    const members = rawMembers.map((item) => ({ ...item, profile: item.profile ?? people.get(item.user_id) }));
     const uniqueProfiles = Array.from(
       new Map(members.flatMap((member) => member.profile ? [[member.profile.id, member.profile] as const] : [])).values(),
     );

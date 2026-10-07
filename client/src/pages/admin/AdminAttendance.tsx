@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { isTeamlead } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { formatTime, formatDateTime, getTodayString } from '@/lib/utils';
 import { notifyUser } from '@/lib/assignments';
 import type { Attendance, Profile } from '@/types';
@@ -80,7 +81,7 @@ export function AdminAttendance() {
     // /admin/leave chu khong phai man nay.
     let query = supabase
       .from('attendance')
-      .select('*, profile:profiles_directory!user_id(*)')
+      .select('*')
       .eq('check_in_method', 'DEVICE')
       .order('date', { ascending: false });
     if (filter === 'today') {
@@ -98,7 +99,11 @@ export function AdminAttendance() {
       .neq('check_in_method', 'DEVICE')
       .eq('approved_by_lead', false);
     setLegacyPending(legacy.error ? 0 : (legacy.count ?? 0));
-    const list = (data || []) as Attendance[];
+    const rows = (data || []) as Attendance[];
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
+    // Nạp hồ sơ rời theo đúng những người đang hiển thị rồi ghép tại chỗ.
+    const people = await fetchProfileMap(rows.map((row) => row.user_id));
+    const list = rows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) }));
     setRecords(list);
 
     // Ghép tiến độ công việc của đúng những ngày đang hiển thị — để người
