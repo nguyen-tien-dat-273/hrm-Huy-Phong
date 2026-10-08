@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "eslint . --quiet && tsc -b && vite build && node tools/stamp-sw.mjs && tsc -p api/tsconfig.json --noEmit false --outDir server/dist/api",
     "preview": "vite preview",
+    "bridge:bundle": "esbuild tools/attendance-bridge.mjs --bundle --platform=node --format=esm --target=node20 --outfile=dist-bridge/attendance-bridge.mjs --log-level=warning && esbuild tools/attendance-doctor.mjs --bundle --platform=node --format=esm --target=node20 --outfile=dist-bridge/kiem-tra.mjs --log-level=warning && esbuild tools/attendance-find.mjs --bundle --platform=node --format=esm --target=node20 --outfile=dist-bridge/tim-may.mjs --log-level=warning && node -e \"const fs=require('fs');fs.mkdirSync('dist-bridge',{recursive:true});for(const f of ['chay-bridge.cmd','cai-dat.ps1','HUONG-DAN.txt'])fs.copyFileSync('tools/bridge-pack/'+f,'dist-bridge/'+f)\"",
     "attendance:find": "node --env-file=.env.attendance-bridge tools/attendance-find.mjs",
     "attendance:doctor": "node --env-file=.env.attendance-bridge tools/attendance-doctor.mjs",
     "attendance:sync": "node --env-file=.env.attendance-bridge tools/attendance-bridge.mjs --once",

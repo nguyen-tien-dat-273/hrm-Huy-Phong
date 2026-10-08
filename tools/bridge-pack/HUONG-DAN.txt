@@ -1,0 +1,91 @@
+========================================================================
+ BRIDGE MAY CHAM CONG -> HRM
+ Cai tren may tinh nam CUNG MANG LAN voi may cham cong.
+========================================================================
+
+MAY NAO CAI
+-----------
+Phai la may:
+  - Bat 24/7 (hoac it nhat suot gio lam)
+  - Cung dai mang voi may cham cong: 192.168.110.x
+  - Khong doi mang (dung laptop mang di mang lai se dut lien tuc)
+
+May DESKTOP-4E1ET1Q (192.168.110.58) dang chay Ronald Jack Pro la lua
+chon dung: no da nam san tren mang do va bat ca ngay.
+
+
+CAN GI
+------
+Chi can Node.js tu phien ban 20 tro len. Tai ban LTS tai nodejs.org.
+KHONG can npm install, khong can chep node_modules - moi thu da nam
+trong file attendance-bridge.mjs roi.
+
+
+CAI DAT - 3 BUOC
+----------------
+1. Chep ca thu muc nay vao may do. Vi du: C:\hrm-bridge
+
+2. Mo PowerShell bang CHUOT PHAI > "Run as administrator".
+   Khong lam buoc nay thi script se bao thieu quyen va dung lai.
+
+3. Go hai dong:
+
+      cd C:\hrm-bridge
+      powershell -ExecutionPolicy Bypass -File cai-dat.ps1
+
+Xong. Bridge chay ngay, va tu chay lai moi lan may khoi dong.
+
+
+KIEM TRA CHAY DUNG CHUA
+-----------------------
+      node --env-file=.env.attendance-bridge kiem-tra.mjs
+
+No di lan luot sau muc va dung ngay cho hong, kem cach sua:
+  1. Bien moi truong    4. Danh sach ma nhan vien tren may
+  2. Duong mang         5. Vai lan cham gan nhat
+  3. Bat tay thiet bi   6. Token tren Supabase
+
+Xem log dang chay:
+      Get-Content logs\bridge.log -Tail 30 -Wait
+
+
+KHI MAY CHAM CONG DOI DIA CHI IP
+--------------------------------
+May dang lay IP qua DHCP nen dia chi se troi. Troi la bridge mat dau may
+va ngung chay du lieu, KHONG co canh bao nao.
+
+Tim lai dia chi that:
+      node --env-file=.env.attendance-bridge tim-may.mjs
+
+Thay dia chi moi thi sua dong RJ_DEVICE_IP trong .env.attendance-bridge,
+roi khoi dong lai:
+      Stop-ScheduledTask  -TaskName "HRM Attendance Bridge"
+      Start-ScheduledTask -TaskName "HRM Attendance Bridge"
+
+Cach dut diem: dat IP TINH cho may cham cong (Menu > Comm > Ethernet),
+hoac dat reservation tren router theo MAC 00:17:61:11:4D:F6.
+
+
+THEO DOI TU XA
+--------------
+Tren HRM > May cham cong co dong "Bridge bao danh", cap nhat moi 20 giay
+khi bridge con song:
+
+      Dang chay        -> binh thuong
+      N phut truoc     -> bridge vua dung
+      ngay gio cu the  -> da dung lau
+
+Day la cach phan biet "bridge chet" voi "may cham cong tat" - hai chuyen
+khac nhau nhung truoc day nhin giong het nhau tren man hinh.
+
+
+LUU Y
+-----
+- File .env.attendance-bridge chua TOKEN va comm key. Dung gui qua chat
+  hay email cong khai.
+- CHI cai bridge tren MOT may. May cham cong chi phuc vu mot ket noi;
+  hai bridge cung goi thi mot cai bao mat ket noi.
+- Du lieu khong mat khi bridge dung: may tu luu trong bo nho (hien
+  7372/150000 ban ghi). Bridge chay lai se keo ve 30 ngay gan nhat.
+
+========================================================================
