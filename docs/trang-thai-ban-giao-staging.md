@@ -1,43 +1,49 @@
 # Trạng thái chuẩn bị database và staging Linux
 
 **Cập nhật:** 07/10/2026
-**Trạng thái chung:** Đã có tài liệu hướng dẫn; chưa nạp schema vào project đang chạy và chưa nghiệm thu trên máy Linux.
+**Trạng thái chung:** Supabase Local chạy được trong WSL bằng profile clone cô lập; chưa import snapshot đã ẩn danh và chưa kiểm thử hết các migration pending.
 
 ## Đã thực hiện
 
 - Có cấu hình đóng gói HRM bằng Docker tại `Dockerfile`, `compose.yaml` và `.env.docker.example`.
 - Có dịch vụ backup PostgreSQL và Storage trong Compose, cùng các script `tools/docker-backup-loop.sh` và `tools/docker-backup-once.sh`.
-- Có file `supabase/schema_baseline.sql` và 76 file SQL trong `supabase/migrations/`.
+- Có file `supabase/schema_baseline.sql` và 81 file SQL trong `supabase/migrations/`.
 - Đã bổ sung runbook kiểm thử Ubuntu/Debian tại [linux-staging-dry-run.md](./linux-staging-dry-run.md).
 - Đã cập nhật [docker-handover.md](./docker-handover.md) về điều kiện database và tình trạng các script.
-- Theo kết quả kiểm tra read-only bằng Supabase CLI, project test được chỉ định đang hoạt động nhưng chưa có bảng trong schema `public` và chưa có bảng migration history. Không có lệnh ghi schema nào được chạy lên project đó.
-- Cấu hình local của ứng dụng trỏ tới một Supabase project khác với project test vừa kiểm tra. Cần chủ sở hữu xác nhận project/database chính xác trước khi export hoặc triển khai.
+- Docker daemon trong WSL và Supabase CLI Linux 2.119.0 đã được xác minh.
+- Đã tạo profile Supabase clone tại `tools/staging-clone/supabase/config.toml`, dùng ports riêng và tắt tự chạy migration/seed.
+- Profile clone đã start thành công; database và dịch vụ Supabase báo healthy, endpoint Auth trả HTTP 200.
+- Thử chạy toàn bộ migration trên database rỗng: sau khi thêm bảng/hàm `profiles` nền, migration dừng ở `20260903120000_leave_half_day.sql` do thiếu `public.leave_requests`. Đây là bằng chứng migrations cần schema hiện hữu, không phải bộ cài mới từ database rỗng.
+- Không chạy lệnh link hoặc ghi lên Supabase Cloud. Chưa có snapshot dữ liệu nào được export/import.
 
 ## Chưa hoàn tất / chưa được xác nhận
 
-- `supabase/schema_baseline.sql` hiện là baseline một phần, không phải schema-only export đầy đủ từ database HRM đang chạy.
-- Chưa xác minh đủ sự tương thích giữa baseline và toàn bộ migrations. Không nạp các file hiện có vào project test cho đến khi hoàn thành việc đối chiếu.
+- `supabase/schema_baseline.sql` là baseline một phần, không phải schema export đầy đủ; kiểu dữ liệu tổ chức trong file cũng không tương thích với migration UUID mới.
+- Chưa có snapshot schema/dữ liệu đã ẩn danh, được phê duyệt và có thể khôi phục từ database HRM nguồn.
+- Chưa đối chiếu migration history thực tế của nguồn với toàn bộ 81 migration; không replay toàn bộ thư mục migration lên clone một cách mù quáng.
 - Chưa có `tools/init-production-db.sh`.
 - Chưa có `tools/docker-restore.sh`.
 - Chưa có mẫu Supabase self-hosted Compose và cấu hình Nginx HTTPS trong repo.
 - Chưa cấu hình/kiểm thử SMTP thật.
-- Máy làm việc hiện tại là Windows; chưa chạy `docker compose config`, chưa build/chạy container trên Linux, và chưa kiểm thử đăng nhập, upload KPI, chấm công, tính lương hoặc restore trên staging.
+- Chưa kiểm thử đăng nhập, RLS, upload KPI, chấm công, tính lương hoặc quy trình restore trên snapshot clone.
 
 ## Việc cần đội quản trị/Sếp cung cấp
 
 1. Xác nhận project Supabase chứa database HRM hiện đang dùng và cấp quyền phù hợp cho người thực hiện.
-2. Cung cấp **schema-only export** từ đúng database đó, không kèm dữ liệu nhân sự, password, API key, token hoặc secrets.
-3. Xác nhận có thể dùng một Supabase project/database staging riêng, trống để thử nghiệm; tuyệt đối không thử bằng cách chạy baseline lên production.
-4. Cung cấp máy Ubuntu/Debian staging có Docker Engine và Docker Compose plugin, cùng thông tin domain/DNS, đường dẫn Storage và vùng lưu backup nếu muốn nghiệm thu đầy đủ.
-5. Nếu cần kiểm thử email, cung cấp thông số SMTP staging qua kênh quản lý secrets an toàn, không ghi vào tài liệu hoặc Git.
+2. Cung cấp snapshot staging đã được phê duyệt và ẩn danh, giữ nguyên quan hệ cần kiểm thử; không gồm password hashes, tokens, MFA secrets, API keys hoặc secrets. Không đưa dump thô vào Git.
+3. Cung cấp migration history của nguồn hoặc xác nhận các migration đã chạy thủ công để đối chiếu. Nếu lịch sử không rõ, dừng trước khi đánh dấu migration đã áp dụng.
+4. Xác nhận chỉ dùng profile clone local riêng hoặc một Supabase project/database staging riêng; tuyệt đối không thử bằng cách chạy baseline lên production.
+5. Cung cấp máy Ubuntu/Debian staging có Docker Engine và Docker Compose plugin, cùng thông tin domain/DNS, đường dẫn Storage và vùng lưu backup nếu muốn nghiệm thu đầy đủ.
+6. Nếu cần kiểm thử email, cấu hình SMTP staging qua secret manager; không ghi secrets vào tài liệu hoặc Git.
 
 ## Trình tự tiếp theo
 
-1. Đối chiếu schema-only export với `supabase/schema_baseline.sql` và tất cả migration; xác định thứ tự, dependencies và các thao tác thủ công cần thiết.
-2. Hoàn thiện baseline/migration và script init; rà soát trước khi ghi vào project staging rỗng.
-3. Nạp schema vào staging, chạy migration và kiểm tra kết quả bằng `supabase/check_migrations.sql`.
-4. Trên máy Linux, làm theo [linux-staging-dry-run.md](./linux-staging-dry-run.md): kiểm tra Compose, khởi động HRM/backup và kiểm thử các luồng nghiệp vụ bằng dữ liệu giả.
-5. Hoàn thiện script restore và diễn tập khôi phục trên môi trường cô lập. Chỉ đánh dấu nghiệm thu sau khi dữ liệu PostgreSQL và file Storage đã được khôi phục, rồi xác minh ứng dụng hoạt động.
+1. Nạp snapshot đã ẩn danh vào profile clone riêng, không restore Supabase system schemas hoặc thông tin xác thực của người dùng thật.
+2. Đối chiếu schema và migration history với các file migration, xác định chính xác migration pending.
+3. Chạy từng migration pending trên clone bằng `ON_ERROR_STOP`; khi lỗi, khôi phục snapshot sạch rồi thử lại sau khi sửa.
+4. Chạy [supabase/check_migrations.sql](../supabase/check_migrations.sql) như kiểm tra đối chiếu, không dùng kết quả probe làm bằng chứng duy nhất về lịch sử migration.
+5. Trên máy Linux, làm theo [linux-staging-dry-run.md](./linux-staging-dry-run.md): kiểm tra Compose, khởi động HRM/backup và kiểm thử các luồng nghiệp vụ bằng dữ liệu giả.
+6. Hoàn thiện script restore và diễn tập khôi phục trên môi trường cô lập. Chỉ đánh dấu nghiệm thu sau khi dữ liệu PostgreSQL và file Storage đã được khôi phục, rồi xác minh ứng dụng hoạt động.
 
 ## Lưu ý an toàn
 

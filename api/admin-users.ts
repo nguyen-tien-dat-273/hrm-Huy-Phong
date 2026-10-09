@@ -197,7 +197,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       await service.auth.admin.deleteUser(created.user.id);
       return fail(response, 400, `Không tạo được hồ sơ nhân sự: ${profileError.message}`);
     }
-    return response.status(201).json({ email: identifier.email, tempPassword: password });
+    return response.status(201).json({ id: created.user.id, email: identifier.email, tempPassword: password });
   }
 
   if (action === 'reset-password' || action === 'delete') {

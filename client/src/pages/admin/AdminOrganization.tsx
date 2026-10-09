@@ -376,18 +376,22 @@ export function AdminOrganization() {
   const unitOptions = useMemo(() => {
     const rows: { unit: OrganizationUnit; depth: number }[] = [];
     const walk = (unit: OrganizationUnit, depth: number) => {
-      if (!unit.is_active || !scopedUnitIds.has(unit.id)) return;
+      if (!unit.is_active || (activeCompany && !scopedUnitIds.has(unit.id))) return;
       rows.push({ unit, depth });
       (childUnitsByParent.get(unit.id) || []).forEach((child) => walk(child, depth + 1));
     };
-    if (activeCompany) walk(activeCompany, 0);
+    if (activeCompany) {
+      walk(activeCompany, 0);
+    } else {
+      (childUnitsByParent.get(null) || []).forEach((unit) => walk(unit, 0));
+    }
     return rows;
   }, [activeCompany, childUnitsByParent, scopedUnitIds]);
 
   /** Thụt đầu dòng bằng khoảng trắng cứng — thẻ <option> không nhận CSS padding. */
   const unitOptionLabel = (row: { unit: OrganizationUnit; depth: number }) =>
     `${'\u00a0\u00a0\u00a0\u00a0'.repeat(row.depth)}${row.depth > 0 ? '└ ' : ''}${row.unit.name}`;
-  const companyPositions = positions.filter((position) => scopedUnitIds.has(position.unit_id));
+  const companyPositions = positions.filter((position) => !activeCompany || scopedUnitIds.has(position.unit_id));
 
   const companyHeadcount = (unit: OrganizationUnit) => {
     let total = 0;

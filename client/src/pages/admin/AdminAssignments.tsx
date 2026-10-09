@@ -26,6 +26,15 @@ import {
 } from '@/lib/assignments';
 import type { DailyAssignment, Profile, TaskPriority } from '@/types';
 
+interface AssignmentHistoryRow {
+  id: number;
+  event_type: 'CREATED' | 'UPDATED' | 'DELETED';
+  actor_id: string | null;
+  old_values: Record<string, unknown> | null;
+  new_values: Record<string, unknown> | null;
+  created_at: string;
+}
+
 /** Thứ trong tuần cho khu chọn ngày của chế độ "Cả tuần" (index 0 = Thứ Hai). */
 const WEEKDAY_SHORT = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
@@ -71,6 +80,9 @@ export function AdminAssignments() {
   const [editDesc, setEditDesc] = useState('');
   const [editPriority, setEditPriority] = useState<TaskPriority>('medium');
   const [editDate, setEditDate] = useState('');
+  const [historyRows, setHistoryRows] = useState<AssignmentHistoryRow[]>([]);
+  const [historyNames, setHistoryNames] = useState<Map<string, string>>(new Map());
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const days = useMemo(() => weekDates(weekStart), [weekStart]);
   const weekStartStr = toDateString(weekStart);
@@ -138,6 +150,58 @@ export function AdminAssignments() {
 
   // Nhân viên bấm "Gửi duyệt" là hàng chờ ở đây phải hiện ngay.
   useRealtimeSync([{ table: 'daily_assignments' }], () => loadData(true));
+
+  const loadAssignmentHistory = useCallback(async (assignmentId?: string) => {
+    if (!assignmentId) {
+      setHistoryRows([]);
+      setHistoryNames(new Map());
+      return;
+    }
+    setHistoryLoading(true);
+    const { data, error } = await supabase
+      .from('daily_assignment_history')
+      .select('id,event_type,actor_id,old_values,new_values,created_at')
+      .eq('assignment_id', assignmentId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      toast(`Không tải được lịch sử giao việc: ${describeDbError(error)}`, 'error');
+      setHistoryLoading(false);
+      return;
+    }
+    const rows = (data || []) as AssignmentHistoryRow[];
+    const actorIds = [...new Set(rows.flatMap((row) => row.actor_id ? [row.actor_id] : []))];
+    const { data: actors, error: actorError } = actorIds.length
+      ? await supabase.from('profiles_directory').select('id,name').in('id', actorIds)
+      : { data: [], error: null };
+    if (actorError) toast(`Không tải được người thao tác: ${describeDbError(actorError)}`, 'error');
+    setHistoryRows(rows);
+    setHistoryNames(new Map((actors || []).map((actor) => [actor.id, actor.name])));
+    setHistoryLoading(false);
+  }, [toast]);
+
+  useRealtimeSync(
+    detail ? [{ table: 'daily_assignment_history', filter: `assignment_id=eq.${detail.id}` }] : [],
+    () => { void loadAssignmentHistory(detail?.id); },
+    { enabled: !!detail, channelKey: `assignment-history-${detail?.id ?? 'none'}` },
+  );
+
+  useEffect(() => {
+    void loadAssignmentHistory(detail?.id);
+  }, [detail?.id, loadAssignmentHistory]);
+
+  const historySummary = (row: AssignmentHistoryRow) => {
+    const before = row.old_values;
+    const after = row.new_values;
+    if (row.event_type === 'CREATED') return 'Tạo giao việc';
+    if (row.event_type === 'DELETED') return 'Xóa giao việc';
+    const changes: string[] = [];
+    if (before?.status !== after?.status) changes.push(`Trạng thái: ${String(before?.status ?? '—')} → ${String(after?.status ?? '—')}`);
+    if (before?.title !== after?.title) changes.push(`Nội dung: ${String(before?.title ?? '—')} → ${String(after?.title ?? '—')}`);
+    if (before?.work_date !== after?.work_date) changes.push(`Ngày: ${String(before?.work_date ?? '—')} → ${String(after?.work_date ?? '—')}`);
+    if (before?.review_note !== after?.review_note && after?.review_note) changes.push(`Lý do trả lại: ${String(after.review_note)}`);
+    if (before?.submit_note !== after?.submit_note && after?.submit_note) changes.push(`Ghi chú gửi: ${String(after.submit_note)}`);
+    return changes.length ? changes.join(' · ') : 'Cập nhật thông tin';
+  };
 
   /** Tra cứu nhanh việc theo ô (người × ngày) cho bảng tuần. */
   const byCell = useMemo(() => {
@@ -888,6 +952,27 @@ export function AdminAssignments() {
                     Lý do trả lại: {detail.review_note}
                   </div>
                 )}
+
+                <div className="border-t border-slate-100 pt-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lịch sử thao tác</h3>
+                  {historyLoading ? (
+                    <p className="mt-2 text-xs text-slate-400">Đang tải lịch sử…</p>
+                  ) : historyRows.length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-400">Chưa có lịch sử (các thay đổi trước khi áp dụng migration không được hồi tố).</p>
+                  ) : (
+                    <ol className="mt-2 max-h-48 space-y-2 overflow-y-auto">
+                      {historyRows.map((row) => (
+                        <li key={row.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                          <p className="font-medium text-slate-700">
+                            {historyNames.get(row.actor_id ?? '') ?? 'Hệ thống'}
+                            <span className="font-normal text-slate-400"> · {new Date(row.created_at).toLocaleString('vi-VN')}</span>
+                          </p>
+                          <p className="mt-0.5 text-slate-600">{historySummary(row)}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
 
                 <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
                   <div className="flex gap-2">

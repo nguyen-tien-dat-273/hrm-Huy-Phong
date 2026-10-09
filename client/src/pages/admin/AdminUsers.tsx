@@ -16,6 +16,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { displayIdentifier, isInternalEmail, validateIdentifier } from '@/lib/identity';
+import { describeDbError } from '@/lib/dbError';
 import { supabase } from '@/lib/supabase';
 import {
   ADMIN_PERMISSIONS,
@@ -24,7 +25,15 @@ import {
   isFullAdmin,
   type AdminPermission,
 } from '@/lib/permissions';
-import type { Profile, SystemRole } from '@/types';
+import type { EmploymentStatus, Profile, SystemRole } from '@/types';
+
+const employmentStatusOptions: Record<EmploymentStatus, string> = {
+  onboarding: 'Đang tiếp nhận',
+  probation: 'Thử việc',
+  active: 'Chính thức',
+  suspended: 'Tạm hoãn',
+  terminated: 'Đã nghỉ việc',
+};
 
 const roleConfig: Record<SystemRole, { label: string; color: string }> = {
   admin: { label: 'Admin', color: 'bg-blue-100 text-blue-700' },
@@ -48,6 +57,8 @@ interface IssuedCredential {
   email: string;
   tempPassword: string;
   kind: 'create' | 'reset';
+  userId?: string;
+  assignmentPending?: boolean;
 }
 
 interface AccessRole {
@@ -68,6 +79,7 @@ export function AdminUsers() {
   const { users, loading, createUser, updateUser, deleteUser, resetUserPassword, profile: currentUser, loadUsers } = useAuth();
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('Tất cả');
+  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'unassigned'>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [viewingUser, setViewingUser] = useState<Profile | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -77,7 +89,7 @@ export function AdminUsers() {
   const [issued, setIssued] = useState<IssuedCredential | null>(null);
   const [copied, setCopied] = useState(false);
   const [accessRoles, setAccessRoles] = useState<AccessRole[]>([]);
-  const [organizationUnits, setOrganizationUnits] = useState<{ id: string; code: string; name: string; is_active: boolean }[]>([]);
+  const [organizationUnits, setOrganizationUnits] = useState<{ id: string; code: string; name: string; parent_id: string | null; is_active: boolean }[]>([]);
   const [jobPositions, setJobPositions] = useState<{ id: string; code: string; title: string; unit_id: string; is_active: boolean }[]>([]);
   const [form, setForm] = useState({
     name: '',
@@ -88,6 +100,8 @@ export function AdminUsers() {
     employee_code: '',
     phone: '', hometown: '', permanent_address: '', current_address: '',
     education_level: '' as Profile['education_level'] | '', school_name: '', major: '', graduation_year: '',
+    unit_id: '', position_id: '', manager_id: '', hire_date: '',
+    employment_status: 'active' as EmploymentStatus,
     permissions: [] as AdminPermission[],
   });
   const [submitting, setSubmitting] = useState(false);
@@ -110,11 +124,11 @@ export function AdminUsers() {
   useEffect(() => {
     let active = true;
     void Promise.all([
-      supabase.from('organization_units').select('id,code,name,is_active').order('name'),
+      supabase.from('organization_units').select('id,code,name,parent_id,is_active').order('name'),
       supabase.from('job_positions').select('id,code,title,unit_id,is_active').order('title'),
     ]).then(([unitResult, positionResult]) => {
       if (!active) return;
-      setOrganizationUnits((unitResult.data || []) as { id: string; code: string; name: string; is_active: boolean }[]);
+      setOrganizationUnits((unitResult.data || []) as { id: string; code: string; name: string; parent_id: string | null; is_active: boolean }[]);
       setJobPositions((positionResult.data || []) as { id: string; code: string; title: string; unit_id: string; is_active: boolean }[]);
     });
     return () => { active = false; };
@@ -131,8 +145,28 @@ export function AdminUsers() {
     setForm((current) => ({ ...current, access_role_code: code, role: legacyRole }));
   };
   const unitName = (unitId: string | null | undefined) => organizationUnits.find((unit) => unit.id === unitId)?.name || 'Chưa gán đơn vị';
+  const unitPath = (unitId: string) => {
+    const path: string[] = [];
+    const visited = new Set<string>();
+    let unit = organizationUnits.find((item) => item.id === unitId);
+    while (unit && !visited.has(unit.id)) {
+      visited.add(unit.id);
+      path.unshift(unit.name);
+      const parentId = unit.parent_id;
+      unit = parentId ? organizationUnits.find((item) => item.id === parentId) : undefined;
+    }
+    return path.join(' / ');
+  };
   const positionName = (positionId: string | null | undefined) => jobPositions.find((position) => position.id === positionId)?.title || 'Chưa gán vị trí';
   const managerName = (managerId: string | null | undefined) => users.find((user) => user.id === managerId)?.name || 'Chưa gán quản lý';
+  const managerUnitIds = new Set<string>();
+  let managerUnit = organizationUnits.find((unit) => unit.id === form.unit_id);
+  while (managerUnit && !managerUnitIds.has(managerUnit.id)) {
+    managerUnitIds.add(managerUnit.id);
+    const parentId = managerUnit.parent_id;
+    managerUnit = parentId ? organizationUnits.find((unit) => unit.id === parentId) : undefined;
+  }
+  const managerOptions = users.filter((user) => user.is_active && !!user.unit_id && managerUnitIds.has(user.unit_id));
   const openOrganizationAssignment = (user: Profile) => {
     setModalOpen(false);
     navigate(`/admin/organization?tab=assignments&user=${encodeURIComponent(user.id)}`);
@@ -154,8 +188,10 @@ export function AdminUsers() {
       || (user.hometown || '').toLowerCase().includes(normalizedSearch)
       || roleLabel(user).toLowerCase().includes(normalizedSearch);
     const matchesDepartment = department === 'Tất cả' || user.department === department;
-    return matchesSearch && matchesDepartment;
+    const matchesAssignment = assignmentFilter === 'all' || !user.unit_id;
+    return matchesSearch && matchesDepartment && matchesAssignment;
   });
+  const unassignedCount = users.filter((user) => !user.unit_id).length;
 
   const openPayslip = (user: Profile) => {
     navigate(`/admin/payroll?user=${encodeURIComponent(user.id)}`);
@@ -163,7 +199,7 @@ export function AdminUsers() {
 
   const openCreate = () => {
     setEditingUser(null);
-    setForm({ name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '', employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '', education_level: '', school_name: '', major: '', graduation_year: '', permissions: [] });
+    setForm({ name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '', employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '', education_level: '', school_name: '', major: '', graduation_year: '', unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active', permissions: [] });
     setModalOpen(true);
   };
 
@@ -184,6 +220,11 @@ export function AdminUsers() {
       school_name: user.school_name || '',
       major: user.major || '',
       graduation_year: user.graduation_year?.toString() || '',
+      unit_id: user.unit_id || '',
+      position_id: user.position_id || '',
+      manager_id: user.manager_id || '',
+      hire_date: user.hire_date || '',
+      employment_status: user.employment_status || 'active',
       permissions: (user.permissions ?? []).filter((p): p is AdminPermission =>
         (ADMIN_PERMISSIONS as readonly string[]).includes(p),
       ),
@@ -250,7 +291,7 @@ export function AdminUsers() {
         setModalOpen(false);
       }
     } else {
-      const { error, tempPassword, email } = await createUser({
+      const { error, id, tempPassword, email } = await createUser({
         name: form.name,
         identifier: form.identifier,
         role: fullAdmin ? form.role : 'staff',
@@ -261,11 +302,45 @@ export function AdminUsers() {
       if (error) {
         toast('Tạo người dùng thất bại: ' + error, 'error');
       } else {
-        toast('Tạo người dùng thành công!', 'success');
+        const needsOrganizationAssignment = Boolean(
+          form.unit_id || form.hire_date || form.employment_status !== 'active',
+        );
+        let assignmentError: string | null = null;
+        if (needsOrganizationAssignment && id) {
+          try {
+            const { error: assignError } = await supabase.rpc('assign_employee_organization', {
+              target_user: id,
+              target_employee_code: null,
+              target_unit: form.unit_id || null,
+              target_position: form.position_id || null,
+              target_manager: form.manager_id || null,
+              target_hire_date: form.hire_date || null,
+              target_employment_status: form.employment_status,
+            });
+            if (assignError) assignmentError = describeDbError(assignError);
+            else await loadUsers();
+          } catch (error) {
+            assignmentError = describeDbError(error instanceof Error ? error : new Error(String(error)));
+          }
+        } else if (needsOrganizationAssignment) {
+          assignmentError = 'Không nhận được mã hồ sơ để lưu phân công.';
+        }
         setModalOpen(false);
         if (tempPassword) {
           setCopied(false);
-          setIssued({ name: form.name, email: email ?? form.identifier, tempPassword, kind: 'create' });
+          setIssued({
+            name: form.name,
+            email: email ?? form.identifier,
+            tempPassword,
+            kind: 'create',
+            userId: id,
+            assignmentPending: !!assignmentError || !form.unit_id,
+          });
+        }
+        if (assignmentError) {
+          toast(`Đã tạo tài khoản nhưng chưa lưu được phân công: ${assignmentError}`, 'warning');
+        } else {
+          toast('Tạo người dùng thành công!', 'success');
         }
       }
     }
@@ -371,12 +446,15 @@ export function AdminUsers() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm theo tên, mã nhân viên, quê quán, phòng ban..." className="w-full h-11 pl-10 pr-3.5 rounded-xl border border-slate-200 bg-slate-50/60 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Lọc phòng ban">
+        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Lọc nhân sự">
           {['Tất cả', ...departments].map((item) => (
             <button key={item} type="button" onClick={() => setDepartment(item)} className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors ${department === item ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'}`}>
               {item}
             </button>
           ))}
+          <button type="button" onClick={() => setAssignmentFilter((current) => current === 'all' ? 'unassigned' : 'all')} aria-pressed={assignmentFilter === 'unassigned'} className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors ${assignmentFilter === 'unassigned' ? 'border-amber-500 bg-amber-500 text-white shadow-sm' : 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300'}`}>
+            Chưa phân công ({unassignedCount})
+          </button>
         </div>
       </div>
 
@@ -401,6 +479,7 @@ export function AdminUsers() {
                       {user.is_active ? 'Hoạt động' : 'Vô hiệu'}
                     </span>
                   </div>
+                  {!user.unit_id && <Badge className="mt-1 bg-amber-50 text-amber-700">Chưa phân công</Badge>}
                   <p className="mt-1 truncate text-[11px] font-semibold text-indigo-600">{user.department || 'Chưa phân phòng ban'}</p>
                 </div>
               </div>
@@ -416,6 +495,7 @@ export function AdminUsers() {
                   <button type="button" onClick={() => openPayslip(user)} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"><Wallet className="h-3.5 w-3.5" /> Phiếu lương</button>
                 )}
               </div>
+              {!user.unit_id && <Button type="button" variant="outline" size="sm" onClick={() => openOrganizationAssignment(user)} className="mt-2 w-full"><Building2 className="h-4 w-4" />Phân công vào cơ cấu</Button>}
               <div className="mt-2 flex justify-end gap-1 border-t border-slate-100 pt-2">
                 {canAdminister(user) && <button onClick={() => setResetTarget(user)} title="Cấp mật khẩu tạm mới" className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"><KeyRound className="w-4 h-4" /></button>}
                 {canAdminister(user) && <button onClick={() => openEdit(user)} title="Chỉnh sửa" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"><Edit3 className="w-4 h-4" /></button>}
@@ -434,9 +514,11 @@ export function AdminUsers() {
               </div>
               <div className="flex items-center gap-2 sm:w-48"><Building2 className="h-4 w-4 text-slate-400" /><span className="truncate text-xs text-slate-600">{user.department || 'Chưa phân phòng ban'}</span></div>
               <Badge className={roleConfig[user.role]?.color ?? 'bg-slate-100 text-slate-700'}>{user.role === 'admin' && <Shield className="w-3 h-3" />}{roleLabel(user)}</Badge>
+              {!user.unit_id && <Badge className="bg-amber-50 text-amber-700">Chưa phân công</Badge>}
               <span className={`text-xs font-semibold ${user.is_active ? 'text-emerald-600' : 'text-slate-400'}`}>{user.is_active ? 'Hoạt động' : 'Vô hiệu'}</span>
               <div className="flex items-center gap-1 sm:justify-end">
                 <button onClick={() => setViewingUser(user)} title="Xem hồ sơ" className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"><UserRound className="w-4 h-4" /></button>
+                {!user.unit_id && <button onClick={() => openOrganizationAssignment(user)} title="Phân công vào cơ cấu" className="p-2 rounded-lg text-amber-600 hover:bg-amber-50"><Building2 className="w-4 h-4" /></button>}
                 {canAdminister(user) && <button onClick={() => setResetTarget(user)} title="Cấp mật khẩu tạm mới" className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"><KeyRound className="w-4 h-4" /></button>}
                 {canAdminister(user) && <button onClick={() => openEdit(user)} title="Chỉnh sửa" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"><Edit3 className="w-4 h-4" /></button>}
                 {canAdminister(user) && <button onClick={() => handleDelete(user)} title="Xóa" className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>}
@@ -482,7 +564,7 @@ export function AdminUsers() {
         )}
       </Modal>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingUser ? 'Cập nhật hồ sơ nhân sự' : 'Thêm người dùng mới'} size={editingUser ? 'xl' : 'md'}>
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingUser ? 'Cập nhật hồ sơ nhân sự' : 'Thêm người dùng mới'} size="xl">
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             label="Họ tên"
@@ -583,9 +665,56 @@ export function AdminUsers() {
               </Button>
             </div>
           ) : (
-            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-sm leading-relaxed text-slate-600">
-              <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <span>Sau khi tạo tài khoản, hãy mở <strong>Cơ cấu tổ chức → Phân công nhân sự</strong> để gán đơn vị, vị trí và quản lý trực tiếp. Đây là luồng chuẩn duy nhất cho dữ liệu tổ chức.</span>
+            <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+              <div className="flex items-start gap-3">
+                <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-indigo-500" />
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Phân công tổ chức</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-600">Có thể khai báo ngay hoặc bổ sung sau trong Cơ cấu tổ chức. Chức danh và quản lý sẽ được lọc theo đơn vị đã chọn.</p>
+                </div>
+              </div>
+              <Select
+                label="Đơn vị"
+                value={form.unit_id}
+                onChange={(event) => setForm({ ...form, unit_id: event.target.value, position_id: '', manager_id: '' })}
+              >
+                <option value="">Chưa phân công</option>
+                {organizationUnits.filter((unit) => unit.is_active).map((unit) => (
+                  <option key={unit.id} value={unit.id}>{unitPath(unit.id)}</option>
+                ))}
+              </Select>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Select
+                  label="Vị trí/chức danh"
+                  value={form.position_id}
+                  onChange={(event) => setForm({ ...form, position_id: event.target.value })}
+                  disabled={!form.unit_id}
+                >
+                  <option value="">Chưa gán vị trí</option>
+                  {jobPositions.filter((position) => position.is_active && position.unit_id === form.unit_id).map((position) => (
+                    <option key={position.id} value={position.id}>{position.title}</option>
+                  ))}
+                </Select>
+                <Select
+                  label="Quản lý trực tiếp"
+                  value={form.manager_id}
+                  onChange={(event) => setForm({ ...form, manager_id: event.target.value })}
+                  disabled={!form.unit_id}
+                >
+                  <option value="">Chưa gán quản lý</option>
+                  {managerOptions.map((manager) => (
+                    <option key={manager.id} value={manager.id}>{manager.name} · {unitName(manager.unit_id)}</option>
+                  ))}
+                </Select>
+                <Input label="Ngày vào làm" type="date" value={form.hire_date} onChange={(event) => setForm({ ...form, hire_date: event.target.value })} />
+                <Select
+                  label="Trạng thái nhân sự"
+                  value={form.employment_status}
+                  onChange={(event) => setForm({ ...form, employment_status: event.target.value as EmploymentStatus })}
+                >
+                  {Object.entries(employmentStatusOptions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </Select>
+              </div>
             </div>
           )}
 
@@ -760,11 +889,26 @@ export function AdminUsers() {
             </div>
           </div>
 
-          <div className="flex gap-3 pt-1">
+          <div className="flex flex-wrap gap-3 pt-1">
             <Button type="button" variant="outline" onClick={copyCredential} className="flex-1">
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               {copied ? 'Đã copy' : 'Copy thông tin'}
             </Button>
+            {issued?.assignmentPending && issued.userId && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const userId = issued.userId;
+                  if (!userId) return;
+                  setIssued(null);
+                  navigate(`/admin/organization?tab=assignments&user=${encodeURIComponent(userId)}`);
+                }}
+                className="flex-1"
+              >
+                <Building2 className="w-4 h-4" />Phân công
+              </Button>
+            )}
             <Button type="button" onClick={() => setIssued(null)} theme="admin" className="flex-1">
               Đã bàn giao xong
             </Button>

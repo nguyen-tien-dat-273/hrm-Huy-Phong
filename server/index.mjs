@@ -5,7 +5,6 @@ import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import adminUsers from './dist/api/admin-users.js';
 import googleMapsLocation from './dist/api/google-maps-location.js';
-import passwordRecovery from './dist/api/password-recovery.js';
 import passwordRecoveryV2 from './dist/api/password-recovery-v2.js';
 import pushConfig from './dist/api/push-config.js';
 import pushNotifications from './dist/api/push-notifications.js';
@@ -17,7 +16,6 @@ const port = Number(process.env.PORT || 8080);
 const apiHandlers = new Map([
   ['/api/admin-users', adminUsers],
   ['/api/google-maps-location', googleMapsLocation],
-  ['/api/password-recovery', passwordRecovery],
   ['/api/password-recovery-v2', passwordRecoveryV2],
   ['/api/push-config', pushConfig],
   ['/api/push-notifications', pushNotifications],

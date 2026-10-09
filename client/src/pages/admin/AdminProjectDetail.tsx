@@ -23,6 +23,8 @@ import { isFullAdmin, isTeamlead, hasPermission } from '@/lib/permissions';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ProjectDocuments } from '@/components/ProjectDocuments';
 import { ProjectEventsPanel } from '@/components/ProjectEventsPanel';
+import { ProjectTaskWorkflowPanel } from '@/components/ProjectTaskWorkflowPanel';
+import { WorklogApprovalQueue } from '@/pages/admin/AdminWorklog';
 import { GanttChart } from '@/components/GanttChart';
 import { estimateRatio, fetchTaskTotals, formatHours as formatWorkHours } from '@/lib/worklog';
 import { notifyUser } from '@/lib/assignments';
@@ -222,6 +224,11 @@ export function AdminProjectDetail() {
   };
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (status === 'done' && task?.status !== 'done') {
+      toast('Người được giao cần gửi yêu cầu nghiệm thu; Project lead duyệt tại tab Tác vụ.', 'warning');
+      return;
+    }
     const { error } = await supabase.from('tasks').update({ status }).eq('id', taskId);
     if (error) {
       toast('Cập nhật thất bại', 'error');
@@ -261,6 +268,10 @@ export function AdminProjectDetail() {
 
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
+    if (newStatus === 'done') {
+      toast('Người được giao cần gửi yêu cầu nghiệm thu; Project lead duyệt tại tab Tác vụ.', 'warning');
+      return;
+    }
 
     // Cập nhật UI ngay lập tức (Optimistic Update)
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus! } : t));
@@ -493,6 +504,13 @@ export function AdminProjectDetail() {
       {/* Tasks tab */}
 	      {tab === 'tasks' && (
 	        <div className="space-y-4">
+	          <ProjectTaskWorkflowPanel
+	            projectId={id!}
+	            canReview={!!project && (project.lead_id === profile?.id || isFullAdmin(profile))}
+	          />
+	          {project && (project.lead_id === profile?.id || isFullAdmin(profile)) && (
+	            <WorklogApprovalQueue projectId={project.id} />
+	          )}
 	          <div className="flex justify-end">
 	            <Button onClick={openCreateTask} theme="admin" size="sm">
 	              <Plus className="w-4 h-4" />
@@ -555,6 +573,7 @@ export function AdminProjectDetail() {
 	                          className="w-36 h-9 text-xs"
 	                        >
 	                          {TASK_STATUSES.map((s) => (
+	                            (s.value !== 'done' || task.status === 'done') &&
 	                            <option key={s.value} value={s.value}>{s.label}</option>
 	                          ))}
 	                        </Select>
@@ -745,9 +764,15 @@ export function AdminProjectDetail() {
               type="date"
               value={taskForm.due_date}
               min={taskForm.start_date || undefined}
+              disabled={!!editingTask}
               onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })}
             />
           </div>
+          {editingTask && (
+            <p className="text-xs text-slate-500">
+              Muốn đổi hạn chót, người được giao gửi yêu cầu gia hạn. Project lead duyệt trong tab Tác vụ.
+            </p>
+          )}
           <Select
             label="Mức ưu tiên"
             value={taskForm.priority}

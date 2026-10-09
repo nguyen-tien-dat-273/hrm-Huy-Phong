@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
-import { describeDbErrorOrNull } from '@/lib/dbError';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { describeDbError, describeDbErrorOrNull } from '@/lib/dbError';
 import { ChevronLeft, ChevronRight, CalendarDays, TriangleAlert, NotebookPen } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
+import { Modal } from '@/components/ui/Modal';
+import { Textarea } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
+import { useToast } from '@/contexts/ToastContext';
+import { notifyUser } from '@/lib/assignments';
 import { addDays, startOfWeek, weekDays, UNLOGGED_TOLERANCE_HOURS, attendanceHours, formatHours } from '@/lib/worklog';
-import { toDateString } from '@/lib/utils';
+import { formatDate, toDateString } from '@/lib/utils';
 import type { Attendance, Profile } from '@/types';
 
 interface WorklogRow {
@@ -35,17 +40,7 @@ export function AdminWorklog() {
 
   const days = useMemo(() => weekDays(anchor), [anchor]);
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchor]);
-
-  useRealtimeSync(
-    [{ table: 'task_worklogs' }, { table: 'attendance' }],
-    () => load(true),
-  );
-
-  const load = async (silent = false) => {
+  const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     const from = days[0].key;
     const to = days[6].key;
@@ -62,7 +57,14 @@ export function AdminWorklog() {
     setLogs((logResult.data || []) as WorklogRow[]);
     setAttendance((attResult.data || []) as typeof attendance);
     setLoading(false);
-  };
+  }, [days]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  useRealtimeSync(
+    [{ table: 'task_worklogs' }, { table: 'attendance' }],
+    () => load(true),
+  );
 
   const loggedOn = (userId: string, dateKey: string) =>
     logs
@@ -218,10 +220,228 @@ export function AdminWorklog() {
         </CardContent>
       </Card>
 
+      <WorklogApprovalQueue weekStart={days[0].key} />
+
       <p className="text-xs text-slate-400 leading-relaxed">
         Ô màu cam nghĩa là chấm công ghi nhận có mặt nhưng nhật ký khai ít hơn quá {UNLOGGED_TOLERANCE_HOURS} giờ.
         Ngày chưa tới và ngày chưa check-out không được tính.
       </p>
     </div>
+  );
+}
+
+interface WorklogReviewRow {
+  id: string;
+  user_id: string;
+  project_id: string;
+  week_start: string;
+  submit_note: string | null;
+  created_at: string;
+}
+
+interface WorklogReviewEntry {
+  work_date: string;
+  hours: number;
+  note: string | null;
+  task: { id: string; title: string; project_id: string } | Array<{ id: string; title: string; project_id: string }>;
+}
+
+export function WorklogApprovalQueue({
+  weekStart,
+  projectId,
+}: {
+  weekStart?: string;
+  projectId?: string;
+}) {
+  const { toast } = useToast();
+  const [rows, setRows] = useState<WorklogReviewRow[]>([]);
+  const [names, setNames] = useState<Map<string, string>>(new Map());
+  const [projects, setProjects] = useState<Map<string, string>>(new Map());
+  const [entriesBySubmission, setEntriesBySubmission] = useState<Map<string, WorklogReviewEntry[]>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [target, setTarget] = useState<WorklogReviewRow | null>(null);
+  const [reviewNote, setReviewNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    let query = supabase.from('worklog_submissions')
+      .select('id,user_id,project_id,week_start,submit_note,created_at')
+      .eq('status', 'SUBMITTED')
+      .order('week_start', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (weekStart) query = query.eq('week_start', weekStart);
+    if (projectId) query = query.eq('project_id', projectId);
+    if (!weekStart) query = query.limit(100);
+    const { data, error } = await query;
+    if (error) {
+      setLoadError(describeDbError(error));
+      setLoading(false);
+      return;
+    }
+    const submissions = (data || []) as WorklogReviewRow[];
+    const userIds = [...new Set(submissions.map((row) => row.user_id))];
+    const projectIds = [...new Set(submissions.map((row) => row.project_id))];
+    const rangeStart = weekStart ?? submissions.reduce(
+      (minimum, row) => row.week_start < minimum ? row.week_start : minimum,
+      submissions[0]?.week_start ?? toDateString(new Date()),
+    );
+    const rangeEnd = weekStart
+      ? toDateString(addDays(new Date(`${weekStart}T00:00:00`), 6))
+      : submissions.reduce((maximum, row) => {
+          const end = toDateString(addDays(new Date(`${row.week_start}T00:00:00`), 6));
+          return end > maximum ? end : maximum;
+        }, rangeStart);
+    const [peopleResult, projectResult, logsResult] = await Promise.all([
+      userIds.length ? supabase.from('profiles_directory').select('id,name').in('id', userIds) : Promise.resolve({ data: [], error: null }),
+      projectIds.length ? supabase.from('projects').select('id,name').in('id', projectIds) : Promise.resolve({ data: [], error: null }),
+      userIds.length ? supabase.from('task_worklogs')
+        .select('user_id,work_date,hours,note,task:tasks!inner(id,title,project_id)')
+        .in('user_id', userIds).gte('work_date', rangeStart).lte('work_date', rangeEnd)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    const detailError = peopleResult.error ?? projectResult.error ?? logsResult.error;
+    const worklogEntries = (logsResult.data || []) as (WorklogReviewEntry & { user_id: string })[];
+    const entryMap = new Map<string, WorklogReviewEntry[]>();
+    for (const submission of submissions) {
+      const items = worklogEntries.filter((entry) => {
+        const task = Array.isArray(entry.task) ? entry.task[0] : entry.task;
+        const submissionWeekEnd = toDateString(addDays(new Date(`${submission.week_start}T00:00:00`), 6));
+        return entry.user_id === submission.user_id
+          && task?.project_id === submission.project_id
+          && entry.work_date >= submission.week_start
+          && entry.work_date <= submissionWeekEnd;
+      });
+      entryMap.set(submission.id, items);
+    }
+    setLoadError(detailError ? describeDbError(detailError) : null);
+    setRows(submissions);
+    setNames(new Map((peopleResult.data || []).map((row) => [row.id, row.name])));
+    setProjects(new Map((projectResult.data || []).map((row) => [row.id, row.name])));
+    setEntriesBySubmission(entryMap);
+    setLoading(false);
+  }, [weekStart, projectId]);
+
+  useEffect(() => { void load(); }, [load]);
+  useRealtimeSync([{ table: 'worklog_submissions' }], () => load(true), {
+    channelKey: `worklog-approval-${projectId ?? 'all'}-${weekStart ?? 'pending'}`,
+  });
+
+  const review = async (submission: WorklogReviewRow, decision: 'APPROVED' | 'RETURNED') => {
+    if (decision === 'RETURNED' && reviewNote.trim().length < 3) {
+      toast('Nhập lý do trả worklog (ít nhất 3 ký tự).', 'warning');
+      return;
+    }
+    setBusy(true);
+    const { error } = await supabase.rpc('review_project_worklog_submission', {
+      target_submission: submission.id,
+      decision,
+      decision_note: reviewNote.trim() || null,
+    });
+    setBusy(false);
+    if (error) {
+      toast(`Xử lý worklog thất bại: ${describeDbError(error)}`, 'error');
+      return;
+    }
+    toast(decision === 'APPROVED' ? 'Đã duyệt worklog.' : 'Đã trả worklog để chỉnh sửa.', 'success');
+    await notifyUser(
+      submission.user_id,
+      decision === 'APPROVED' ? 'Worklog đã được duyệt' : 'Worklog cần chỉnh sửa',
+      `${projects.get(submission.project_id) ?? 'Dự án'}${decision === 'RETURNED' ? ` · ${reviewNote.trim()}` : ''}`,
+      'worklog_review_result',
+    );
+    setTarget(null);
+    setReviewNote('');
+    await load(true);
+  };
+
+  return (
+    <>
+      <Card>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-800">
+                Worklog chờ duyệt{weekStart ? ` · tuần từ ${weekStart}` : ' của dự án'}
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">Chỉ Project lead của dự án hoặc Admin/CEO có thể xử lý.</p>
+            </div>
+            <Badge className="bg-amber-50 text-amber-700">{rows.length} chờ duyệt</Badge>
+          </div>
+          {loading ? (
+            <Skeleton className="h-16" />
+          ) : loadError ? (
+            <ErrorState message={loadError} onRetry={() => void load()} />
+          ) : rows.length === 0 ? (
+            <p className="text-sm text-slate-400">Không có worklog chờ duyệt trong tuần này hoặc tài khoản không có phạm vi duyệt.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {rows.map((row) => (
+                <li key={row.id} className="flex flex-wrap items-start gap-3 py-3">
+                  <NotebookPen className="mt-0.5 h-4 w-4 flex-shrink-0 text-indigo-500" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800">
+                      {names.get(row.user_id) ?? 'Nhân viên'} · {projects.get(row.project_id) ?? 'Dự án'}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Tuần từ {row.week_start} · gửi {new Date(row.created_at).toLocaleString('vi-VN')}
+                    </p>
+                    {row.submit_note && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{row.submit_note}</p>}
+                    <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
+                      <p className="text-xs font-semibold text-slate-600">
+                        {formatHours((entriesBySubmission.get(row.id) || []).reduce((sum, entry) => sum + Number(entry.hours), 0))} tổng giờ
+                      </p>
+                      <ul className="mt-1 space-y-1">
+                        {(entriesBySubmission.get(row.id) || []).map((entry, index) => {
+                          const task = Array.isArray(entry.task) ? entry.task[0] : entry.task;
+                          return (
+                            <li key={`${entry.work_date}-${task?.id ?? index}`} className="text-xs text-slate-500">
+                              {formatDate(entry.work_date)} · {task?.title ?? 'Task'}: {formatHours(Number(entry.hours))}
+                              {entry.note ? ` · ${entry.note}` : ''}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { setTarget(row); setReviewNote(''); }} disabled={busy}>
+                      Trả lại
+                    </Button>
+                    <Button size="sm" variant="success" onClick={() => void review(row, 'APPROVED')} disabled={busy}>
+                      Duyệt
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <Modal open={!!target} onClose={() => setTarget(null)} title="Trả worklog">
+        {target && (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              {names.get(target.user_id) ?? 'Nhân viên'} · {projects.get(target.project_id) ?? 'Dự án'}
+            </p>
+            <Textarea
+              label="Lý do cần chỉnh sửa"
+              rows={3}
+              value={reviewNote}
+              onChange={(event) => setReviewNote(event.target.value)}
+              required
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setTarget(null)} disabled={busy}>Hủy</Button>
+              <Button onClick={() => void review(target, 'RETURNED')} disabled={busy || reviewNote.trim().length < 3}>
+                Trả để chỉnh sửa
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }

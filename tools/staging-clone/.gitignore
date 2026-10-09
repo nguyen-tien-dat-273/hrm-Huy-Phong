@@ -1,0 +1,8 @@
+.env*
+*.backup
+*.dump
+*.sql
+*.sql.gz
+restore/
+supabase/.branches/
+supabase/.temp/

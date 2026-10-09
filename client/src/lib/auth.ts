@@ -358,8 +358,8 @@ export async function adminCreateUser(input: {
   access_role_code?: string;
   department?: string;
   permissions?: string[];
-}): Promise<{ tempPassword?: string; email?: string; error?: string }> {
-  const { data, error } = await callAdminApi<{ tempPassword: string; email: string }>({
+}): Promise<{ id?: string; tempPassword?: string; email?: string; error?: string }> {
+  const { data, error } = await callAdminApi<{ id: string; tempPassword: string; email: string }>({
     action: 'create',
     name: input.name,
     identifier: input.identifier,
@@ -369,7 +369,7 @@ export async function adminCreateUser(input: {
     permissions: input.permissions ?? [],
   });
   if (error) return { error };
-  return { tempPassword: data?.tempPassword, email: data?.email };
+  return { id: data?.id, tempPassword: data?.tempPassword, email: data?.email };
 }
 
 export async function adminResetPassword(userId: string): Promise<{ tempPassword?: string; error?: string }> {

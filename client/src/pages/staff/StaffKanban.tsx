@@ -5,7 +5,7 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Calendar, AlertCircle, Edit3, Trash2, Plus, ShieldCheck } from 'lucide-react';
+import { GripVertical, Calendar, AlertCircle, Edit3, Trash2, Plus, ShieldCheck, Send } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
@@ -27,6 +27,21 @@ import { KANBAN_COLUMNS, PRIORITY_CONFIG, formatDate, isOverdue } from '@/lib/ut
 import type { Task, TaskStatus, TaskPriority, Project, Profile, ProjectMember, MemberRole, ProjectRoleDefinition } from '@/types';
 
 type ProjectAccess = Pick<ProjectRoleDefinition, 'code' | 'name' | 'permissions'>;
+interface MyTaskRequest {
+  id: string;
+  task_id: string;
+  request_type: 'DEADLINE_EXTENSION' | 'COMPLETION';
+  status: 'SUBMITTED' | 'APPROVED' | 'RETURNED';
+  review_note: string | null;
+  requested_due_date: string | null;
+  created_at: string;
+}
+
+function nextDate(date: string): string {
+  const value = new Date(`${date}T12:00:00`);
+  value.setDate(value.getDate() + 1);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
 
 const LEGACY_ACCESS: Record<string, ProjectAccess> = {
   lead: { code: 'lead', name: 'Trưởng dự án', permissions: ['project.view', 'member.manage', 'task.create', 'task.edit', 'task.delete', 'task.assign', 'task.move_any', 'task.move_own'] },
@@ -43,12 +58,18 @@ export function StaffKanban() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([]);
   const [projectAccess, setProjectAccess] = useState<Record<string, ProjectAccess>>({});
+  const [myTaskRequests, setMyTaskRequests] = useState<MyTaskRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [workflowTarget, setWorkflowTarget] = useState<Task | null>(null);
+  const [workflowKind, setWorkflowKind] = useState<'DEADLINE_EXTENSION' | 'COMPLETION'>('COMPLETION');
+  const [workflowDate, setWorkflowDate] = useState('');
+  const [workflowNote, setWorkflowNote] = useState('');
+  const [workflowSaving, setWorkflowSaving] = useState(false);
   const [createForm, setCreateForm] = useState({ title: '', description: '', project_id: '', assignee_id: '', start_date: '', due_date: '', priority: 'medium' as TaskPriority });
 
   const sensors = useSensors(
@@ -60,7 +81,7 @@ export function StaffKanban() {
   }, [profile]);
 
   useRealtimeSync(
-    profile ? [{ table: 'tasks' }, { table: 'project_members' }] : [],
+    profile ? [{ table: 'tasks' }, { table: 'project_members' }, { table: 'project_task_requests', filter: `requested_by=eq.${profile.id}` }] : [],
     () => loadData(true),
     { enabled: !!profile },
   );
@@ -102,6 +123,7 @@ export function StaffKanban() {
       setProjects([]);
       setProfiles([]);
       setProjectMembers([]);
+      setMyTaskRequests([]);
       setLoadError(membershipErr ? describeDbError(membershipErr) : null);
       setLoading(false);
       return;
@@ -111,16 +133,19 @@ export function StaffKanban() {
       { data: taskData, error: taskErr },
       { data: projectData, error: projectErr },
       { data: memberData, error: memberErr },
+      { data: requestData, error: requestErr },
     ] = await Promise.all([
       supabase.from('tasks').select('*, project:projects(*)').in('project_id', projectIds).order('order_index', { ascending: true }),
       supabase.from('projects').select('*').in('id', projectIds),
       supabase.from('project_members').select('*').in('project_id', projectIds),
+      supabase.from('project_task_requests')
+        .select('id,task_id,request_type,status,review_note,requested_due_date,created_at')
+        .eq('requested_by', profile?.id ?? '')
+        .order('created_at', { ascending: false }),
     ]);
 
-    const firstError = membershipErr ?? taskErr ?? projectErr ?? memberErr;
-    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
-    // Chỉ cần hồ sơ của thành viên dự án: bảng Kanban dùng `assignee_id` để
-    // phân quyền kéo thả chứ không hiển thị hồ sơ người được giao.
+    const firstError = membershipErr ?? taskErr ?? projectErr ?? memberErr ?? requestErr;
+    // Chỉ tải hồ sơ thành viên thuộc các dự án hiện tại, không nhúng VIEW qua PostgREST.
     const rawMembers = (memberData || []) as ProjectMember[];
     const people = await fetchProfileMap(rawMembers.map((item) => item.user_id));
     const members = rawMembers.map((item) => ({ ...item, profile: item.profile ?? people.get(item.user_id) }));
@@ -132,6 +157,7 @@ export function StaffKanban() {
     setProjects((projectData || []) as Project[]);
     setProjectMembers(members);
     setProfiles(uniqueProfiles);
+    setMyTaskRequests((requestData || []) as MyTaskRequest[]);
     setLoading(false);
   };
 
@@ -149,6 +175,10 @@ export function StaffKanban() {
       .filter((member) => member.project_id === createForm.project_id)
       .flatMap((member) => member.profile ? [[member.profile.id, member.profile] as const] : [])
   ).values());
+  const latestRequestByTask = new Map<string, MyTaskRequest>();
+  for (const request of myTaskRequests) {
+    if (!latestRequestByTask.has(request.task_id)) latestRequestByTask.set(request.task_id, request);
+  }
 
   const filteredTasks = projectFilter === 'all'
     ? tasks
@@ -190,6 +220,21 @@ export function StaffKanban() {
       toast('Bạn chỉ được chuyển trạng thái tác vụ được giao cho mình.', 'warning');
       return;
     }
+    if (newStatus === 'done') {
+      if (task.assignee_id !== profile?.id) {
+        toast('Chỉ người được giao mới gửi yêu cầu nghiệm thu.', 'warning');
+        return;
+      }
+      if (latestRequestByTask.get(task.id)?.status === 'SUBMITTED') {
+        toast('Yêu cầu nghiệm thu đang chờ Project lead xử lý.', 'warning');
+        return;
+      }
+      setWorkflowTarget(task);
+      setWorkflowKind('COMPLETION');
+      setWorkflowDate('');
+      setWorkflowNote('');
+      return;
+    }
 
     // Cập nhật UI ngay lập tức (Optimistic Update)
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus! } : t));
@@ -201,6 +246,49 @@ export function StaffKanban() {
     } else {
       toast(`Đã chuyển sang "${KANBAN_COLUMNS.find((c) => c.value === newStatus)?.label}"`, 'success');
     }
+  };
+
+  const openWorkflowRequest = (task: Task, kind: 'DEADLINE_EXTENSION' | 'COMPLETION') => {
+    setWorkflowTarget(task);
+    setWorkflowKind(kind);
+    setWorkflowDate(kind === 'DEADLINE_EXTENSION' && task.due_date ? nextDate(task.due_date) : '');
+    setWorkflowNote('');
+  };
+
+  const submitWorkflowRequest = async () => {
+    if (!workflowTarget) return;
+    if (workflowNote.trim().length < 3) {
+      toast('Nhập lý do hoặc kết quả công việc (ít nhất 3 ký tự).', 'warning');
+      return;
+    }
+    if (workflowKind === 'DEADLINE_EXTENSION' && !workflowDate) {
+      toast('Chọn hạn mới.', 'warning');
+      return;
+    }
+    setWorkflowSaving(true);
+    const { error } = await supabase.rpc('request_project_task_action', {
+      target_task: workflowTarget.id,
+      request_kind: workflowKind,
+      target_due_date: workflowKind === 'DEADLINE_EXTENSION' ? workflowDate : null,
+      request_reason: workflowNote.trim(),
+    });
+    setWorkflowSaving(false);
+    if (error) {
+      toast(`Gửi yêu cầu thất bại: ${describeDbError(error)}`, 'error');
+      return;
+    }
+    toast(workflowKind === 'DEADLINE_EXTENSION' ? 'Đã gửi yêu cầu gia hạn.' : 'Đã gửi yêu cầu nghiệm thu.', 'success');
+    const leadId = projects.find((project) => project.id === workflowTarget.project_id)?.lead_id;
+    if (leadId && leadId !== profile?.id) {
+      await notifyUser(
+        leadId,
+        workflowKind === 'DEADLINE_EXTENSION' ? 'Yêu cầu gia hạn deadline' : 'Yêu cầu nghiệm thu task',
+        workflowTarget.title,
+        'project_task_review',
+      );
+    }
+    setWorkflowTarget(null);
+    await loadData(true);
   };
 
   const handleCreateTask = async (e: React.FormEvent) => {
@@ -416,6 +504,13 @@ export function StaffKanban() {
                         canMove={canMoveTask(task)}
                         onEdit={canEditTask(task.project_id) ? () => openEditTask(task) : undefined}
                         onDelete={canDeleteTask(task.project_id) ? () => handleDeleteTask(task) : undefined}
+                        onRequestDeadline={task.assignee_id === profile?.id && task.due_date
+                          && latestRequestByTask.get(task.id)?.status !== 'SUBMITTED'
+                          ? () => openWorkflowRequest(task, 'DEADLINE_EXTENSION') : undefined}
+                        onRequestCompletion={task.assignee_id === profile?.id && task.status !== 'done'
+                          && latestRequestByTask.get(task.id)?.status !== 'SUBMITTED'
+                          ? () => openWorkflowRequest(task, 'COMPLETION') : undefined}
+                        request={latestRequestByTask.get(task.id)}
                       />
                     ))}
                   </div>
@@ -492,9 +587,11 @@ export function StaffKanban() {
               type="date"
               value={createForm.due_date}
               min={createForm.start_date || undefined}
+              disabled={!!editingTask}
               onChange={(e) => setCreateForm({ ...createForm, due_date: e.target.value })}
             />
           </div>
+          {editingTask && <p className="text-xs text-slate-500">Đổi hạn chót cần gửi yêu cầu gia hạn để Project lead duyệt.</p>}
           <div className="grid grid-cols-2 gap-4">
             <Select
               label="Mức ưu tiên"
@@ -513,11 +610,59 @@ export function StaffKanban() {
           </div>
         </form>
       </Modal>
+
+      <Modal
+        open={!!workflowTarget}
+        onClose={() => setWorkflowTarget(null)}
+        title={workflowKind === 'DEADLINE_EXTENSION' ? 'Yêu cầu gia hạn deadline' : 'Gửi nghiệm thu task'}
+      >
+        {workflowTarget && (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-slate-700">{workflowTarget.title}</p>
+            {workflowKind === 'DEADLINE_EXTENSION' && (
+              <>
+                <p className="text-xs text-slate-500">Hạn hiện tại: {workflowTarget.due_date ? formatDate(workflowTarget.due_date) : '—'}</p>
+                <Input
+                  label="Hạn mới đề xuất"
+                  type="date"
+                  min={workflowTarget.due_date ? nextDate(workflowTarget.due_date) : undefined}
+                  value={workflowDate}
+                  onChange={(event) => setWorkflowDate(event.target.value)}
+                  required
+                />
+              </>
+            )}
+            <Textarea
+              label={workflowKind === 'DEADLINE_EXTENSION' ? 'Lý do xin gia hạn' : 'Kết quả công việc / ghi chú nghiệm thu'}
+              rows={4}
+              value={workflowNote}
+              onChange={(event) => setWorkflowNote(event.target.value)}
+              required
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setWorkflowTarget(null)} disabled={workflowSaving}>Hủy</Button>
+              <Button onClick={() => void submitWorkflowRequest()} disabled={workflowSaving || workflowNote.trim().length < 3}>
+                <Send className="h-4 w-4" />
+                {workflowSaving ? 'Đang gửi…' : 'Gửi Project lead'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
 
-function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete }: { task: Task; assignee?: Profile; canMove: boolean; onEdit?: () => void; onDelete?: () => void }) {
+function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequestDeadline, onRequestCompletion, request }: {
+  task: Task;
+  assignee?: Profile;
+  canMove: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onRequestDeadline?: () => void;
+  onRequestCompletion?: () => void;
+  request?: MyTaskRequest;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: !canMove });
 
   const style = {
@@ -528,12 +673,22 @@ function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete }: { task:
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard task={task} assignee={assignee} canMove={canMove} onEdit={onEdit} onDelete={onDelete} />
+      <TaskCard task={task} assignee={assignee} canMove={canMove} onEdit={onEdit} onDelete={onDelete} onRequestDeadline={onRequestDeadline} onRequestCompletion={onRequestCompletion} request={request} />
     </div>
   );
 }
 
-function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete }: { task: Task; assignee?: Profile; dragging?: boolean; canMove?: boolean; onEdit?: () => void; onDelete?: () => void }) {
+function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, onRequestDeadline, onRequestCompletion, request }: {
+  task: Task;
+  assignee?: Profile;
+  dragging?: boolean;
+  canMove?: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onRequestDeadline?: () => void;
+  onRequestCompletion?: () => void;
+  request?: MyTaskRequest;
+}) {
   const priority = PRIORITY_CONFIG[task.priority];
   const overdue = isOverdue(task.due_date, task.status);
 
@@ -564,6 +719,24 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete }
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           )}
+          {onRequestDeadline && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRequestDeadline(); }}
+              className="p-1 rounded text-slate-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+              title="Yêu cầu gia hạn deadline"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {onRequestCompletion && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onRequestCompletion(); }}
+              className="p-1 rounded text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+              title="Gửi nghiệm thu"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+            </button>
+          )}
           {canMove && <GripVertical className="w-3.5 h-3.5 text-slate-300 mt-0.5" />}
         </div>
       </div>
@@ -573,6 +746,22 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete }
           <span className="text-xs text-slate-400 truncate">{task.project.name}</span>
         )}
       </div>
+      {request && (
+        <div className="mt-2">
+          <Badge className={request.status === 'APPROVED'
+            ? 'bg-emerald-50 text-emerald-700'
+            : request.status === 'RETURNED'
+              ? 'bg-rose-50 text-rose-700'
+              : 'bg-amber-50 text-amber-700'}>
+            {request.request_type === 'DEADLINE_EXTENSION' ? 'Gia hạn' : 'Nghiệm thu'} · {
+              request.status === 'APPROVED' ? 'đã duyệt' : request.status === 'RETURNED' ? 'cần gửi lại' : 'chờ duyệt'
+            }
+          </Badge>
+          {request.status === 'RETURNED' && request.review_note && (
+            <p className="mt-1 text-xs text-rose-700">{request.review_note}</p>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-slate-50">
         <div className="flex items-center gap-2">
           {task.due_date && (

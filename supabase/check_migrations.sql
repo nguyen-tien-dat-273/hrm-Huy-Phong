@@ -348,6 +348,26 @@ with probe as (
        and not has_table_privilege('authenticated', 'public.payslip_lines', 'INSERT'),
      'Gioi han doc profile, ghi payslip nguyen tu, token cham cong het han')
 
+    ,('20261010110000_m04_project_workflows',
+     to_regclass('public.project_task_requests') is not null
+       and to_regprocedure('public.request_project_task_action(uuid,text,date,text)') is not null
+       and to_regprocedure('public.review_project_task_request(uuid,text,text)') is not null
+       and to_regclass('public.worklog_submissions') is not null
+       and to_regprocedure('public.submit_project_worklog_week(date,text)') is not null
+       and to_regprocedure('public.review_project_worklog_submission(uuid,text,text)') is not null
+       and to_regclass('public.worklog_submission_history') is not null
+       and to_regclass('public.daily_assignment_history') is not null
+       and exists (select 1 from pg_trigger
+                   where tgrelid = to_regclass('public.tasks')
+                     and tgname = 'project_task_workflow_guard' and not tgisinternal)
+       and exists (select 1 from pg_trigger
+                   where tgrelid = to_regclass('public.task_worklogs')
+                     and tgname = 'worklog_submission_guard' and not tgisinternal)
+       and exists (select 1 from pg_trigger
+                   where tgrelid = to_regclass('public.daily_assignments')
+                     and tgname = 'daily_assignment_history_record' and not tgisinternal),
+     'Gia han/nghiem thu task, duyet worklog tuan, lich su giao viec')
+
   ) as t(migration, applied, mo_ta)
 )
 select * from (
