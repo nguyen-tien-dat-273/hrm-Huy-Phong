@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus, FileSpreadsheet, Search, Shield, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Grid2X2, List, Mail, Phone, Building2, Wallet, UserRound } from 'lucide-react';
+import { UserPlus, FileSpreadsheet, Search, Shield, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Grid2X2, List, Mail, Phone, Building2, Wallet, UserRound, Sparkles, UserCheck, CheckCircle2, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -91,6 +91,21 @@ export function AdminUsers() {
   const [accessRoles, setAccessRoles] = useState<AccessRole[]>([]);
   const [organizationUnits, setOrganizationUnits] = useState<{ id: string; code: string; name: string; parent_id: string | null; is_active: boolean }[]>([]);
   const [jobPositions, setJobPositions] = useState<{ id: string; code: string; title: string; unit_id: string; is_active: boolean }[]>([]);
+  const [pendingHandoffs, setPendingHandoffs] = useState<{
+    id: string;
+    candidate_id: string;
+    planned_start_date: string;
+    handoff_note: string | null;
+    status: string;
+    candidate_name: string;
+    candidate_email?: string;
+    candidate_phone?: string;
+    requisition_title?: string;
+    unit_id?: string | null;
+    position_id?: string | null;
+  }[]>([]);
+  const [selectedHandoffId, setSelectedHandoffId] = useState<string | null>(null);
+  const [handoffsOpen, setHandoffsOpen] = useState(true);
   const [form, setForm] = useState({
     name: '',
     identifier: '',
@@ -107,6 +122,61 @@ export function AdminUsers() {
   const [submitting, setSubmitting] = useState(false);
   const fullAdmin = isFullAdmin(currentUser);
   const canAdminister = (user: Profile) => fullAdmin || user.role === 'staff';
+
+  const loadPendingHandoffs = async () => {
+    try {
+      const { data: handoffs, error: handoffsErr } = await supabase
+        .from('recruitment_onboarding_handoffs')
+        .select('id, candidate_id, planned_start_date, handoff_note, status')
+        .eq('status', 'PENDING')
+        .order('planned_start_date', { ascending: true });
+
+      if (handoffsErr || !handoffs || handoffs.length === 0) {
+        setPendingHandoffs([]);
+        return;
+      }
+
+      const candidateIds = handoffs.map((h) => h.candidate_id);
+      const { data: candidates } = await supabase
+        .from('recruitment_candidates')
+        .select('id, full_name, email, phone, requisition_id')
+        .in('id', candidateIds);
+
+      const reqIds = (candidates || []).map((c) => c.requisition_id).filter(Boolean);
+      const { data: requisitions } = reqIds.length > 0
+        ? await supabase.from('recruitment_requisitions').select('id, title, unit_id, position_id').in('id', reqIds)
+        : { data: [] };
+
+      const candidateMap = new Map((candidates || []).map((c) => [c.id, c]));
+      const reqMap = new Map((requisitions || []).map((r) => [r.id, r]));
+
+      const mapped = handoffs.map((h) => {
+        const candidate = candidateMap.get(h.candidate_id);
+        const requisition = candidate ? reqMap.get(candidate.requisition_id) : undefined;
+        return {
+          id: h.id,
+          candidate_id: h.candidate_id,
+          planned_start_date: h.planned_start_date,
+          handoff_note: h.handoff_note,
+          status: h.status,
+          candidate_name: candidate?.full_name || 'Ứng viên',
+          candidate_email: candidate?.email || undefined,
+          candidate_phone: candidate?.phone || undefined,
+          requisition_title: requisition?.title || undefined,
+          unit_id: requisition?.unit_id || null,
+          position_id: requisition?.position_id || null,
+        };
+      });
+
+      setPendingHandoffs(mapped);
+    } catch (err) {
+      console.warn('Lỗi tải danh sách bàn giao onboarding:', err);
+    }
+  };
+
+  useEffect(() => {
+    void loadPendingHandoffs();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -199,8 +269,69 @@ export function AdminUsers() {
 
   const openCreate = () => {
     setEditingUser(null);
+    setSelectedHandoffId(null);
     setForm({ name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '', employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '', education_level: '', school_name: '', major: '', graduation_year: '', unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active', permissions: [] });
     setModalOpen(true);
+  };
+
+  const openCreateFromHandoff = (handoff: typeof pendingHandoffs[number]) => {
+    setEditingUser(null);
+    setSelectedHandoffId(handoff.id);
+    const guessedDept = handoff.unit_id ? unitName(handoff.unit_id) : '';
+    setForm({
+      name: handoff.candidate_name,
+      identifier: handoff.candidate_email || handoff.candidate_phone || '',
+      role: 'staff',
+      access_role_code: 'staff',
+      department: guessedDept === 'Chưa gán đơn vị' ? '' : guessedDept,
+      employee_code: '',
+      phone: handoff.candidate_phone || '',
+      hometown: '',
+      permanent_address: '',
+      current_address: '',
+      education_level: '',
+      school_name: '',
+      major: '',
+      graduation_year: '',
+      unit_id: handoff.unit_id || '',
+      position_id: handoff.position_id || '',
+      manager_id: '',
+      hire_date: handoff.planned_start_date || '',
+      employment_status: 'probation',
+      permissions: [],
+    });
+    setModalOpen(true);
+  };
+
+  const promoteToActive = async (user: Profile) => {
+    const accepted = await confirm({
+      title: `Chuyển ${user.name} sang nhân viên Chính thức?`,
+      message: 'Nhân viên sẽ hoàn tất giai đoạn thử việc/hội nhập và chuyển sang trạng thái làm việc chính thức trong toàn hệ thống.',
+      confirmLabel: 'Xác nhận chuyển chính thức',
+    });
+    if (!accepted) return;
+    try {
+      if (user.unit_id) {
+        const { error: assignErr } = await supabase.rpc('assign_employee_organization', {
+          target_user: user.id,
+          target_employee_code: null,
+          target_unit: user.unit_id,
+          target_position: user.position_id || null,
+          target_manager: user.manager_id || null,
+          target_hire_date: user.hire_date || null,
+          target_employment_status: 'active',
+        });
+        if (assignErr) throw assignErr;
+      } else {
+        const { error: updateErr } = await supabase.from('profiles').update({ employment_status: 'active' }).eq('id', user.id);
+        if (updateErr) throw updateErr;
+      }
+      toast(`Đã chuyển ${user.name} sang nhân viên Chính thức!`, 'success');
+      setViewingUser((prev) => prev ? { ...prev, employment_status: 'active' } : null);
+      await loadUsers();
+    } catch (err) {
+      toast('Không thể cập nhật trạng thái: ' + describeDbError(err as any), 'error');
+    }
   };
 
   const openEdit = (user: Profile) => {
@@ -287,6 +418,35 @@ export function AdminUsers() {
           ? `Mã nhân viên “${nextCode}” đã thuộc về người khác. Mỗi mã chỉ gán được cho một người.`
           : 'Cập nhật thất bại: ' + error, 'error');
       } else {
+        const orgChanged = form.unit_id !== (editingUser.unit_id || '')
+          || form.position_id !== (editingUser.position_id || '')
+          || form.manager_id !== (editingUser.manager_id || '')
+          || form.hire_date !== (editingUser.hire_date || '')
+          || form.employment_status !== (editingUser.employment_status || 'active');
+
+        if (orgChanged) {
+          try {
+            if (form.unit_id) {
+              await supabase.rpc('assign_employee_organization', {
+                target_user: editingUser.id,
+                target_employee_code: null,
+                target_unit: form.unit_id || null,
+                target_position: form.position_id || null,
+                target_manager: form.manager_id || null,
+                target_hire_date: form.hire_date || null,
+                target_employment_status: form.employment_status,
+              });
+            } else {
+              await supabase.from('profiles').update({
+                employment_status: form.employment_status,
+                hire_date: form.hire_date || null,
+              }).eq('id', editingUser.id);
+            }
+            await loadUsers();
+          } catch (assignErr) {
+            console.warn('Lỗi cập nhật phân công cơ cấu:', assignErr);
+          }
+        }
         toast('Cập nhật người dùng thành công!', 'success');
         setModalOpen(false);
       }
@@ -325,6 +485,53 @@ export function AdminUsers() {
         } else if (needsOrganizationAssignment) {
           assignmentError = 'Không nhận được mã hồ sơ để lưu phân công.';
         }
+
+        if (selectedHandoffId && id) {
+          try {
+            await supabase
+              .from('recruitment_onboarding_handoffs')
+              .update({ status: 'ACCOUNT_CREATED', employee_user_id: id })
+              .eq('id', selectedHandoffId);
+
+            const { data: proc } = await supabase
+              .from('employee_lifecycle_processes')
+              .insert({
+                user_id: id,
+                process_type: 'ONBOARDING',
+                title: `Hội nhập & thử việc: ${form.name}`,
+                start_date: form.hire_date || new Date().toISOString().slice(0, 10),
+                target_date: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10),
+                mentor_id: form.manager_id || null,
+                created_by: currentUser?.id,
+              })
+              .select('id')
+              .single();
+
+            if (proc?.id) {
+              const standardTasks = [
+                'Tiếp nhận hồ sơ nhân sự gốc và ký kết hợp đồng thử việc',
+                'Cấp phát tài khoản email nội bộ, máy tính & công cụ làm việc',
+                'Giới thiệu nội quy, chính sách phúc lợi & văn hóa công ty',
+                'Gặp gỡ Trưởng bộ phận và Mentor hướng dẫn chuyên môn',
+                'Đánh giá tiến độ sau 30 ngày thử việc',
+                'Đánh giá hoàn thành 60 ngày thử việc & thẩm định chuyển chính thức',
+              ];
+              await supabase.from('employee_checklist_items').insert(
+                standardTasks.map((title, idx) => ({
+                  process_id: proc.id,
+                  title,
+                  owner_id: form.manager_id || currentUser?.id,
+                  order_index: idx,
+                }))
+              );
+            }
+            setSelectedHandoffId(null);
+            void loadPendingHandoffs();
+          } catch (handoffErr) {
+            console.warn('Lỗi liên kết bàn giao onboarding:', handoffErr);
+          }
+        }
+
         setModalOpen(false);
         if (tempPassword) {
           setCopied(false);
@@ -339,6 +546,8 @@ export function AdminUsers() {
         }
         if (assignmentError) {
           toast(`Đã tạo tài khoản nhưng chưa lưu được phân công: ${assignmentError}`, 'warning');
+        } else if (selectedHandoffId) {
+          toast('Đã tiếp nhận ứng viên thành nhân viên và tự động tạo Lộ trình Hội nhập!', 'success');
         } else {
           toast('Tạo người dùng thành công!', 'success');
         }
@@ -441,6 +650,79 @@ export function AdminUsers() {
         </div>
       </div>
 
+      {pendingHandoffs.length > 0 && (
+        <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-blue-50/80 p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
+                <Sparkles className="h-5 w-5" />
+              </span>
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">
+                  Ứng viên trúng tuyển chờ tiếp nhận vào nhân sự ({pendingHandoffs.length})
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Ứng viên đã chấp nhận offer và được bàn giao sang onboarding từ Tuyển dụng.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHandoffsOpen(!handoffsOpen)}
+              className="rounded-lg p-1 text-slate-400 hover:bg-white/60 hover:text-slate-600"
+              aria-label="Thu gọn hoặc mở rộng danh sách ứng viên"
+            >
+              {handoffsOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </button>
+          </div>
+
+          {handoffsOpen && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {pendingHandoffs.map((handoff) => (
+                <div
+                  key={handoff.id}
+                  className="flex flex-col justify-between rounded-xl border border-indigo-100 bg-white/90 p-3.5 shadow-xs"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-bold text-slate-900">{handoff.candidate_name}</span>
+                      <Badge className="bg-indigo-50 text-indigo-700 text-[10px]">Trúng tuyển</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {handoff.requisition_title || 'Chưa gắn đợt tuyển'} · {handoff.unit_id ? unitName(handoff.unit_id) : 'Chưa gán đơn vị'}
+                    </p>
+                    <div className="mt-2 space-y-0.5 text-xs text-slate-600">
+                      {handoff.candidate_email && <p className="truncate">Email: {handoff.candidate_email}</p>}
+                      {handoff.candidate_phone && <p>SĐT: {handoff.candidate_phone}</p>}
+                      <p className="flex items-center gap-1 text-indigo-700 font-medium mt-1">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        Nhận việc: {handoff.planned_start_date ? new Date(handoff.planned_start_date).toLocaleDateString('vi-VN') : 'Chưa đặt'}
+                      </p>
+                      {handoff.handoff_note && (
+                        <p className="mt-1 text-[11px] text-slate-500 italic">
+                          "{handoff.handoff_note}"
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-slate-100">
+                    <Button
+                      size="sm"
+                      theme="admin"
+                      className="w-full justify-center"
+                      onClick={() => openCreateFromHandoff(handoff)}
+                    >
+                      <UserCheck className="h-4 w-4" />
+                      Tiếp nhận & Tạo hồ sơ
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card space-y-3">
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -538,7 +820,7 @@ export function AdminUsers() {
             <dl className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tài khoản / Email</dt><dd className="mt-1 break-all text-sm font-medium text-slate-800">{displayIdentifier(viewingUser.email)}</dd></div>
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Điện thoại</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.phone || 'Chưa cập nhật'}</dd></div>
-              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Trạng thái</dt><dd className={`mt-1 text-sm font-semibold ${viewingUser.is_active ? 'text-emerald-600' : 'text-slate-500'}`}>{viewingUser.is_active ? 'Đang hoạt động' : 'Đã vô hiệu'}</dd></div>
+              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tài khoản & Trạng thái</dt><div className="mt-1 flex flex-wrap items-center justify-between gap-1"><div><span className={`text-sm font-semibold ${viewingUser.is_active ? 'text-emerald-600' : 'text-slate-500'}`}>{viewingUser.is_active ? 'Hoạt động' : 'Đã vô hiệu'}</span><span className="mx-1 text-slate-300">·</span><Badge className={viewingUser.employment_status === 'probation' || viewingUser.employment_status === 'onboarding' ? 'bg-amber-100 text-amber-800' : viewingUser.employment_status === 'terminated' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}>{employmentStatusOptions[viewingUser.employment_status || 'active'] || viewingUser.employment_status}</Badge></div>{(viewingUser.employment_status === 'probation' || viewingUser.employment_status === 'onboarding') && canAdminister(viewingUser) && (<Button type="button" size="sm" variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs py-1 h-7" onClick={() => void promoteToActive(viewingUser)}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Chuyển chính thức</Button>)}</div></div>
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phép năm</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.annual_leave_quota} ngày</dd></div>
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quê quán</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.hometown || 'Chưa cập nhật'}</dd></div>
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nơi ở hiện tại</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.current_address || 'Chưa cập nhật'}</dd></div>
@@ -660,6 +942,16 @@ export function AdminUsers() {
                 <div className="rounded-xl bg-white/80 p-2.5"><dt className="text-slate-400">Vị trí</dt><dd className="mt-0.5 font-semibold text-slate-700">{positionName(editingUser.position_id)}</dd></div>
                 <div className="rounded-xl bg-white/80 p-2.5"><dt className="text-slate-400">Quản lý trực tiếp</dt><dd className="mt-0.5 font-semibold text-slate-700">{managerName(editingUser.manager_id)}</dd></div>
               </dl>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 pt-3 border-t border-indigo-100">
+                <Input label="Ngày vào làm" type="date" value={form.hire_date} onChange={(event) => setForm({ ...form, hire_date: event.target.value })} />
+                <Select
+                  label="Trạng thái nhân sự"
+                  value={form.employment_status}
+                  onChange={(event) => setForm({ ...form, employment_status: event.target.value as EmploymentStatus })}
+                >
+                  {Object.entries(employmentStatusOptions).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </Select>
+              </div>
               <Button type="button" variant="outline" size="sm" onClick={() => openOrganizationAssignment(editingUser)} className="mt-3">
                 <Building2 className="h-4 w-4" /> Mở phân công trong Cơ cấu tổ chức
               </Button>

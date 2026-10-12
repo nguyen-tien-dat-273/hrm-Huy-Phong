@@ -44,7 +44,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { to: '/admin/attendance', label: 'Duyệt chấm công', description: 'Kiểm tra check-in, check-out và xác nhận ngày công', icon: ClipboardCheck, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'duyet cham cong check in check out ngay cong' },
   { to: '/admin/attendance-devices', label: 'Máy chấm công', description: 'Kết nối Ronald Jack, ánh xạ nhân viên và theo dõi đồng bộ', icon: Cpu, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'ronald jack zkteco van tay thiet bi', fullAdminOnly: true },
-  { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
+  { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance', 'users'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
   { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
   { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
 
