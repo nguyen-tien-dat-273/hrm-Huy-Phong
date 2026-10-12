@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { UserPlus, FileSpreadsheet, Search, Shield, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Grid2X2, List, Mail, Phone, Building2, Wallet, UserRound, Sparkles, UserCheck, CheckCircle2, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
+import { FileSpreadsheet, Search, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Phone, Building2, Wallet, Sparkles, UserCheck, CheckCircle2, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -33,13 +33,6 @@ const employmentStatusOptions: Record<EmploymentStatus, string> = {
   active: 'Chính thức',
   suspended: 'Tạm hoãn',
   terminated: 'Đã nghỉ việc',
-};
-
-const roleConfig: Record<SystemRole, { label: string; color: string }> = {
-  admin: { label: 'Admin', color: 'bg-blue-100 text-blue-700' },
-  ceo: { label: 'CEO', color: 'bg-violet-100 text-violet-700' },
-  teamlead: { label: 'Trưởng nhóm', color: 'bg-amber-100 text-amber-700' },
-  staff: { label: 'Nhân viên', color: 'bg-emerald-100 text-emerald-700' },
 };
 
 const fallbackAccessRoles: AccessRole[] = [
@@ -80,7 +73,6 @@ export function AdminUsers() {
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('Tất cả');
   const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'unassigned'>('all');
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [viewingUser, setViewingUser] = useState<Profile | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
@@ -204,10 +196,6 @@ export function AdminUsers() {
     return () => { active = false; };
   }, []);
 
-  const accessRoleFor = (user: Profile) =>
-    accessRoles.find((role) => role.code === user.access_role_code)
-      ?? accessRoles.find((role) => role.code === user.role);
-  const roleLabel = (user: Profile) => accessRoleFor(user)?.name ?? roleConfig[user.role]?.label ?? user.role;
   const selectedAccessRole = accessRoles.find((role) => role.code === form.access_role_code)
     ?? fallbackAccessRoles.find((role) => role.code === form.access_role_code);
   const selectAccessRole = (code: string) => {
@@ -256,7 +244,7 @@ export function AdminUsers() {
       || (user.employee_code || '').toLowerCase().includes(normalizedSearch)
       || (user.phone || '').toLowerCase().includes(normalizedSearch)
       || (user.hometown || '').toLowerCase().includes(normalizedSearch)
-      || roleLabel(user).toLowerCase().includes(normalizedSearch);
+      || (user.phone || '').toLowerCase().includes(normalizedSearch);
     const matchesDepartment = department === 'Tất cả' || user.department === department;
     const matchesAssignment = assignmentFilter === 'all' || !user.unit_id;
     return matchesSearch && matchesDepartment && matchesAssignment;
@@ -265,13 +253,6 @@ export function AdminUsers() {
 
   const openPayslip = (user: Profile) => {
     navigate(`/admin/payroll?user=${encodeURIComponent(user.id)}`);
-  };
-
-  const openCreate = () => {
-    setEditingUser(null);
-    setSelectedHandoffId(null);
-    setForm({ name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '', employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '', education_level: '', school_name: '', major: '', graduation_year: '', unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active', permissions: [] });
-    setModalOpen(true);
   };
 
   const openCreateFromHandoff = (handoff: typeof pendingHandoffs[number]) => {
@@ -622,31 +603,16 @@ export function AdminUsers() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-display font-bold text-slate-900">Danh bạ nhân sự</h2>
-          <p className="text-sm text-slate-500 mt-1">Quản lý hồ sơ, vai trò, phòng ban và quyền truy cập ({users.length} nhân sự)</p>
+          <h2 className="text-xl font-display font-bold text-slate-900">Hồ sơ nhân sự</h2>
+          <p className="text-sm text-slate-500 mt-1">Tra cứu thông tin cá nhân, tình trạng làm việc và giấy tờ ({users.length} nhân sự)</p>
         </div>
-        {/* `flex-wrap`: ba nut nay cong lai ~390px, rong hon man 375px cua
-            dien thoai. Khong cho xuong dong thi chung day ca trang tran
-            ngang - khung ngoai da co flex-wrap nhung cum nay thi chua. */}
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm" aria-label="Kiểu hiển thị">
-            <button type="button" onClick={() => setViewMode('grid')} aria-label="Xem dạng lưới" className={`p-2 rounded-lg transition-colors ${viewMode === 'grid' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}>
-              <Grid2X2 className="w-4 h-4" />
-            </button>
-            <button type="button" onClick={() => setViewMode('list')} aria-label="Xem dạng danh sách" className={`p-2 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}>
-              <List className="w-4 h-4" />
-            </button>
-          </div>
           {fullAdmin && (
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <FileSpreadsheet className="w-4 h-4" />
               Import Excel
             </Button>
           )}
-          <Button onClick={openCreate} theme="admin">
-            <UserPlus className="w-4 h-4" />
-            Thêm nhân sự
-          </Button>
         </div>
       </div>
 
@@ -723,101 +689,63 @@ export function AdminUsers() {
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card space-y-3">
-        <div className="relative">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_15rem_auto] sm:items-center">
+          <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm theo tên, mã nhân viên, quê quán, phòng ban..." className="w-full h-11 pl-10 pr-3.5 rounded-xl border border-slate-200 bg-slate-50/60 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
-        </div>
-        <div className="flex gap-2 overflow-x-auto pb-1" aria-label="Lọc nhân sự">
-          {['Tất cả', ...departments].map((item) => (
-            <button key={item} type="button" onClick={() => setDepartment(item)} className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors ${department === item ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-200 hover:text-indigo-600'}`}>
-              {item}
-            </button>
-          ))}
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm tên, mã nhân viên, email hoặc số điện thoại" className="w-full h-11 pl-10 pr-3.5 rounded-xl border border-slate-200 bg-slate-50/60 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+          </div>
+          <Select aria-label="Lọc theo phòng ban" value={department} onChange={(event) => setDepartment(event.target.value)}>
+            <option value="Tất cả">Tất cả phòng ban</option>
+            {departments.map((item) => <option key={item} value={item}>{item}</option>)}
+          </Select>
           <button type="button" onClick={() => setAssignmentFilter((current) => current === 'all' ? 'unassigned' : 'all')} aria-pressed={assignmentFilter === 'unassigned'} className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors ${assignmentFilter === 'unassigned' ? 'border-amber-500 bg-amber-500 text-white shadow-sm' : 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300'}`}>
             Chưa phân công ({unassignedCount})
           </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-400">Đang tải danh bạ...</div>
-      ) : filtered.length === 0 ? (
-        <Card><EmptyState title="Không tìm thấy nhân sự" description="Thử thay đổi từ khóa hoặc bộ lọc phòng ban." /></Card>
-      ) : viewMode === 'grid' ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {filtered.map((user) => (
-            <article key={user.id} className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-card transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lifted">
-              <div className="flex items-start gap-3">
-                <Avatar name={user.name} url={user.avatar_url} size="lg" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-sm font-bold text-slate-900">{user.name}</h3>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">{roleLabel(user)}</p>
-                    </div>
-                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold ${user.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${user.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`} />
-                      {user.is_active ? 'Hoạt động' : 'Vô hiệu'}
-                    </span>
-                  </div>
-                  {!user.unit_id && <Badge className="mt-1 bg-amber-50 text-amber-700">Chưa phân công</Badge>}
-                  <p className="mt-1 truncate text-[11px] font-semibold text-indigo-600">{user.department || 'Chưa phân phòng ban'}</p>
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-2 border-t border-slate-100 pt-3">
-                <p className="flex items-center gap-2 truncate text-xs text-slate-500"><Mail className="h-3.5 w-3.5 shrink-0" />{displayIdentifier(user.email)}</p>
-                <p className="flex items-center gap-2 truncate text-xs text-slate-500"><Phone className="h-3.5 w-3.5 shrink-0" />{user.phone || 'Chưa có số điện thoại'}</p>
-              </div>
-
-              <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-                <button type="button" onClick={() => setViewingUser(user)} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100">Xem hồ sơ</button>
-                {isFullAdmin(currentUser) && (
-                  <button type="button" onClick={() => openPayslip(user)} className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition-opacity hover:opacity-90"><Wallet className="h-3.5 w-3.5" /> Phiếu lương</button>
-                )}
-              </div>
-              {!user.unit_id && <Button type="button" variant="outline" size="sm" onClick={() => openOrganizationAssignment(user)} className="mt-2 w-full"><Building2 className="h-4 w-4" />Phân công vào cơ cấu</Button>}
-              <div className="mt-2 flex justify-end gap-1 border-t border-slate-100 pt-2">
-                {canAdminister(user) && <button onClick={() => setResetTarget(user)} title="Cấp mật khẩu tạm mới" className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"><KeyRound className="w-4 h-4" /></button>}
-                {canAdminister(user) && <button onClick={() => openEdit(user)} title="Chỉnh sửa" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"><Edit3 className="w-4 h-4" /></button>}
-                {canAdminister(user) && <button onClick={() => handleDelete(user)} title="Xóa" className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>}
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <Card><CardContent className="p-0"><div className="divide-y divide-slate-100">
-          {filtered.map((user) => (
-            <div key={user.id} className="flex flex-col gap-3 p-4 transition-colors hover:bg-slate-50 sm:flex-row sm:items-center">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <Avatar name={user.name} url={user.avatar_url} size="md" />
-                <div className="min-w-0"><p className="truncate text-sm font-bold text-slate-900">{user.name}</p><p className="truncate text-xs text-slate-500">{displayIdentifier(user.email)}</p></div>
-              </div>
-              <div className="flex items-center gap-2 sm:w-48"><Building2 className="h-4 w-4 text-slate-400" /><span className="truncate text-xs text-slate-600">{user.department || 'Chưa phân phòng ban'}</span></div>
-              <Badge className={roleConfig[user.role]?.color ?? 'bg-slate-100 text-slate-700'}>{user.role === 'admin' && <Shield className="w-3 h-3" />}{roleLabel(user)}</Badge>
-              {!user.unit_id && <Badge className="bg-amber-50 text-amber-700">Chưa phân công</Badge>}
-              <span className={`text-xs font-semibold ${user.is_active ? 'text-emerald-600' : 'text-slate-400'}`}>{user.is_active ? 'Hoạt động' : 'Vô hiệu'}</span>
-              <div className="flex items-center gap-1 sm:justify-end">
-                <button onClick={() => setViewingUser(user)} title="Xem hồ sơ" className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"><UserRound className="w-4 h-4" /></button>
-                {!user.unit_id && <button onClick={() => openOrganizationAssignment(user)} title="Phân công vào cơ cấu" className="p-2 rounded-lg text-amber-600 hover:bg-amber-50"><Building2 className="w-4 h-4" /></button>}
-                {canAdminister(user) && <button onClick={() => setResetTarget(user)} title="Cấp mật khẩu tạm mới" className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"><KeyRound className="w-4 h-4" /></button>}
-                {canAdminister(user) && <button onClick={() => openEdit(user)} title="Chỉnh sửa" className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"><Edit3 className="w-4 h-4" /></button>}
-                {canAdminister(user) && <button onClick={() => handleDelete(user)} title="Xóa" className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>}
-              </div>
+      <Card>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-10 text-center text-sm text-slate-400">Đang tải hồ sơ nhân sự…</div>
+          ) : filtered.length === 0 ? (
+            <EmptyState title="Không tìm thấy nhân sự" description="Thử đổi từ khóa hoặc bộ lọc phòng ban." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[680px] text-left">
+                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                  <tr><th className="px-5 py-3 font-semibold">Nhân sự</th><th className="px-4 py-3 font-semibold">Phòng ban</th><th className="px-4 py-3 font-semibold">Điện thoại</th><th className="px-4 py-3 font-semibold">Tình trạng</th><th className="px-5 py-3 text-right font-semibold">Hồ sơ</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filtered.map((user) => (
+                    <tr key={user.id} className="transition-colors hover:bg-slate-50/80">
+                      <td className="px-5 py-3.5">
+                        <div className="flex min-w-0 items-center gap-3"><Avatar name={user.name} url={user.avatar_url} size="md" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{user.name}</p><p className="truncate text-xs text-slate-500">{displayIdentifier(user.email)}</p></div></div>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm text-slate-600">{user.department || 'Chưa phân phòng ban'}</td>
+                      <td className="px-4 py-3.5 text-sm text-slate-600">{user.phone || '—'}</td>
+                      <td className="px-4 py-3.5"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${user.employment_status === 'terminated' || !user.is_active ? 'bg-slate-100 text-slate-600' : user.employment_status === 'probation' || user.employment_status === 'onboarding' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{employmentStatusOptions[user.employment_status || 'active']}{!user.unit_id ? ' · Chưa xếp phòng ban' : ''}</span></td>
+                      <td className="px-5 py-3.5 text-right"><Button size="sm" variant="outline" onClick={() => setViewingUser(user)}>Xem hồ sơ</Button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          ))}
-        </div></CardContent></Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       <Modal open={!!viewingUser} onClose={() => setViewingUser(null)} title="Hồ sơ nhân sự" size="xl">
         {viewingUser && (
           <div className="space-y-5">
             <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50 p-4">
               <Avatar name={viewingUser.name} url={viewingUser.avatar_url} size="lg" />
-              <div className="min-w-0"><h3 className="truncate text-lg font-bold text-slate-900">{viewingUser.name}</h3><p className="text-sm text-slate-500">{viewingUser.employee_code || 'Đang cấp mã'} · {roleLabel(viewingUser)} · {viewingUser.department || 'Chưa phân phòng ban'}</p></div>
+              <div className="min-w-0"><h3 className="truncate text-lg font-bold text-slate-900">{viewingUser.name}</h3><p className="text-sm text-slate-500">{viewingUser.employee_code || 'Chưa cấp mã'} · {viewingUser.department || 'Chưa phân phòng ban'}</p></div>
             </div>
-            <dl className="grid gap-3 sm:grid-cols-2">
+            <section className="space-y-3">
+              <div><h4 className="text-sm font-bold text-slate-900">Thông tin nhân sự</h4><p className="mt-0.5 text-xs text-slate-500">Thông tin liên hệ, tình trạng làm việc và học vấn.</p></div>
+              <dl className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tài khoản / Email</dt><dd className="mt-1 break-all text-sm font-medium text-slate-800">{displayIdentifier(viewingUser.email)}</dd></div>
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Điện thoại</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.phone || 'Chưa cập nhật'}</dd></div>
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tài khoản & Trạng thái</dt><div className="mt-1 flex flex-wrap items-center justify-between gap-1"><div><span className={`text-sm font-semibold ${viewingUser.is_active ? 'text-emerald-600' : 'text-slate-500'}`}>{viewingUser.is_active ? 'Hoạt động' : 'Đã vô hiệu'}</span><span className="mx-1 text-slate-300">·</span><Badge className={viewingUser.employment_status === 'probation' || viewingUser.employment_status === 'onboarding' ? 'bg-amber-100 text-amber-800' : viewingUser.employment_status === 'terminated' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}>{employmentStatusOptions[viewingUser.employment_status || 'active'] || viewingUser.employment_status}</Badge></div>{(viewingUser.employment_status === 'probation' || viewingUser.employment_status === 'onboarding') && canAdminister(viewingUser) && (<Button type="button" size="sm" variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs py-1 h-7" onClick={() => void promoteToActive(viewingUser)}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Chuyển chính thức</Button>)}</div></div>
@@ -825,22 +753,22 @@ export function AdminUsers() {
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quê quán</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.hometown || 'Chưa cập nhật'}</dd></div>
               <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nơi ở hiện tại</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.current_address || 'Chưa cập nhật'}</dd></div>
               <div className="rounded-xl border border-slate-200 p-3 sm:col-span-2"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Học vấn</dt><dd className="mt-1 text-sm font-medium text-slate-800">{[viewingUser.school_name, viewingUser.major, viewingUser.graduation_year].filter(Boolean).join(' · ') || 'Chưa cập nhật'}</dd></div>
-            </dl>
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4">
-              <p className="text-xs font-bold uppercase tracking-wider text-indigo-700">Cơ cấu tổ chức</p>
-              <div className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
+              </dl>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="text-sm font-bold text-slate-900">Công việc tại tổ chức</h4>
+              <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
                 <div><p className="text-xs text-slate-500">Đơn vị</p><p className="font-semibold text-slate-800">{unitName(viewingUser.unit_id)}</p></div>
                 <div><p className="text-xs text-slate-500">Vị trí</p><p className="font-semibold text-slate-800">{positionName(viewingUser.position_id)}</p></div>
                 <div><p className="text-xs text-slate-500">Quản lý trực tiếp</p><p className="font-semibold text-slate-800">{managerName(viewingUser.manager_id)}</p></div>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => openOrganizationAssignment(viewingUser)} className="mt-3">
-                <Building2 className="h-4 w-4" /> Mở Cơ cấu tổ chức
-              </Button>
-            </div>
+            </section>
             {currentUser && <EmployeeDocumentVault employee={viewingUser} actorId={currentUser.id} canManage={canAdminister(viewingUser)} />}
             <div className="flex flex-wrap justify-end gap-2">
               {isFullAdmin(currentUser) && <Button variant="outline" onClick={() => openPayslip(viewingUser)}><Wallet className="w-4 h-4" />Phiếu lương</Button>}
+              {canAdminister(viewingUser) && <Button variant="outline" onClick={() => { setResetTarget(viewingUser); setViewingUser(null); }}><KeyRound className="w-4 h-4" />Cấp lại mật khẩu</Button>}
               {canAdminister(viewingUser) && <Button onClick={() => { const user = viewingUser; setViewingUser(null); openEdit(user); }}><Edit3 className="w-4 h-4" />Chỉnh sửa hồ sơ</Button>}
+              {canAdminister(viewingUser) && <Button variant="danger" onClick={() => { const user = viewingUser; setViewingUser(null); void handleDelete(user); }}><Trash2 className="w-4 h-4" />Xóa tài khoản</Button>}
             </div>
           </div>
         )}
