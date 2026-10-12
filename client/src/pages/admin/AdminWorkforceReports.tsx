@@ -41,6 +41,12 @@ interface EmploymentEvent {
   department: string | null;
 }
 
+interface DepartmentHeadcount {
+  department: string;
+  count: number;
+  percentage: number;
+}
+
 interface PayrollRun {
   id: string;
   month_start: string;
@@ -96,12 +102,15 @@ export function AdminWorkforceReports() {
   const [units, setUnits] = useState<ReportUnit[]>([]);
   const [people, setPeople] = useState<ReportPerson[]>([]);
   const [events, setEvents] = useState<EmploymentEvent[]>([]);
+  const [eventTrackingStartedOn, setEventTrackingStartedOn] = useState<string | null>(null);
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [payslips, setPayslips] = useState<PayslipReport[]>([]);
   const [reviews, setReviews] = useState<KpiReviewReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const effectiveUnitId = report === 'kpi' && !canViewAllKpi ? profile?.unit_id ?? '' : unitId;
 
   useEffect(() => {
@@ -121,17 +130,22 @@ export function AdminWorkforceReports() {
       setLoadError(null);
       const yearStart = `${year}-01-01`;
       const yearEnd = `${year}-12-31`;
-      const [peopleResult, unitResult, eventResult] = await Promise.all([
+      const [peopleResult, unitResult, eventResult, trackingResult] = await Promise.all([
         supabase.from('profiles_directory')
           .select('id,name,employee_code,department,unit_id,employment_status,hire_date,is_active'),
         supabase.from('organization_units').select('id,name').eq('is_active', true).order('name'),
         supabase.from('employment_status_events')
           .select('user_id,event_type,event_date,unit_id,department')
           .gte('event_date', yearStart)
-          .lte('event_date', yearEnd),
+          .lte('event_date', todayKey),
+        supabase.from('employment_status_events')
+          .select('created_at')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle(),
       ]);
 
-      const firstError = peopleResult.error ?? unitResult.error ?? eventResult.error;
+      const firstError = peopleResult.error ?? unitResult.error ?? eventResult.error ?? trackingResult.error;
       let nextRuns: PayrollRun[] = [];
       let nextPayslips: PayslipReport[] = [];
       let nextReviews: KpiReviewReport[] = [];
@@ -180,6 +194,11 @@ export function AdminWorkforceReports() {
         setPeople((peopleResult.data || []) as ReportPerson[]);
         setUnits((unitResult.data || []) as ReportUnit[]);
         setEvents((eventResult.data || []) as EmploymentEvent[]);
+        setEventTrackingStartedOn(
+          typeof trackingResult.data?.created_at === 'string'
+            ? trackingResult.data.created_at.slice(0, 10)
+            : null,
+        );
         setRuns(nextRuns);
         setPayslips(nextPayslips);
         setReviews(nextReviews);
@@ -189,13 +208,31 @@ export function AdminWorkforceReports() {
 
     void load();
     return () => { active = false; };
-  }, [year, canViewPayroll, canViewKpi, reloadVersion]);
+  }, [year, canViewPayroll, canViewKpi, reloadVersion, todayKey]);
 
   const unitById = useMemo(() => new Map(units.map((unit) => [unit.id, unit.name])), [units]);
   const visibleEvents = useMemo(
     () => events.filter((event) => !unitId || event.unit_id === unitId),
     [events, unitId],
   );
+  const currentHeadcount = useMemo(
+    () => people.filter((person) => person.is_active
+      && person.employment_status !== 'terminated'
+      && (!unitId || person.unit_id === unitId)).length,
+    [people, unitId],
+  );
+  const departmentRows = useMemo<DepartmentHeadcount[]>(() => {
+    const grouped = new Map<string, number>();
+    for (const person of people) {
+      if (!person.is_active || person.employment_status === 'terminated' || (unitId && person.unit_id !== unitId)) continue;
+      const department = person.department?.trim() || 'Chưa phân phòng ban';
+      grouped.set(department, (grouped.get(department) ?? 0) + 1);
+    }
+    const total = [...grouped.values()].reduce((sum, count) => sum + count, 0);
+    return [...grouped.entries()]
+      .map(([department, count]) => ({ department, count, percentage: total ? count / total * 100 : 0 }))
+      .sort((a, b) => b.count - a.count || a.department.localeCompare(b.department));
+  }, [people, unitId]);
   const allowedUserIds = useMemo(
     () => new Set(people
       .filter((person) => effectiveUnitId
@@ -218,6 +255,39 @@ export function AdminWorkforceReports() {
   const movementRows = useMemo(() => MONTHS.map((month) => {
     const key = `${year}-${month}`;
     const inMonth = visibleEvents.filter((event) => monthKey(event.event_date) === key);
+    const monthStart = `${key}-01`;
+    const monthEndDate = new Date(Number(year), Number(month), 0);
+    const monthEnd = `${monthEndDate.getFullYear()}-${String(monthEndDate.getMonth() + 1).padStart(2, '0')}-${String(monthEndDate.getDate()).padStart(2, '0')}`;
+    const trackingStart = eventTrackingStartedOn;
+    const trackedEvents = visibleEvents.filter((event) => trackingStart
+      && event.event_date >= trackingStart
+      && event.event_date <= todayKey);
+    const netChange = (event: EmploymentEvent) => (
+      event.event_type === 'HIRED' || event.event_type === 'REACTIVATED' ? 1
+        : event.event_type === 'TERMINATED' ? -1
+          : 0
+    );
+    const observationStart = trackingStart && trackingStart > monthStart ? trackingStart : monthStart;
+    const observedTerminations = inMonth.filter((event) => event.event_type === 'TERMINATED'
+      && trackingStart != null && event.event_date >= trackingStart).length;
+    // Không tính tỷ lệ tháng đang diễn ra: headcount cuối kỳ và số nghỉ việc
+    // đều chưa đầy đủ, khiến tỷ lệ tạm thời dễ bị hiểu thành kết quả cả tháng.
+    const rateIsAvailable = !!trackingStart
+      && monthEnd >= trackingStart
+      && monthEnd <= todayKey;
+    const endingHeadcount = rateIsAvailable
+      ? currentHeadcount - trackedEvents
+        .filter((event) => event.event_date > monthEnd)
+        .reduce((sum, event) => sum + netChange(event), 0)
+      : null;
+    const startingHeadcount = rateIsAvailable
+      ? currentHeadcount - trackedEvents
+        .filter((event) => event.event_date >= observationStart)
+        .reduce((sum, event) => sum + netChange(event), 0)
+      : null;
+    const averageHeadcount = startingHeadcount == null || endingHeadcount == null
+      ? null
+      : (startingHeadcount + endingHeadcount) / 2;
     const payroll = visiblePayslips.filter((slip) => {
       const run = visibleRuns.get(slip.run_id);
       return run ? monthKey(run.month_start) === key : false;
@@ -227,11 +297,14 @@ export function AdminWorkforceReports() {
       hired: inMonth.filter((event) => event.event_type === 'HIRED').length,
       terminated: inMonth.filter((event) => event.event_type === 'TERMINATED').length,
       activeAgain: inMonth.filter((event) => event.event_type === 'REACTIVATED').length,
+      turnoverRate: averageHeadcount && averageHeadcount > 0
+        ? observedTerminations / averageHeadcount * 100
+        : null,
       gross: payroll.reduce((sum, slip) => sum + amount(slip.gross_pay), 0),
       employerInsurance: payroll.reduce((sum, slip) => sum + amount(slip.insurance_employer), 0),
       employees: payroll.length,
     };
-  }), [year, visibleEvents, visiblePayslips, visibleRuns]);
+  }), [year, visibleEvents, visiblePayslips, visibleRuns, currentHeadcount, eventTrackingStartedOn, todayKey]);
 
   const insuranceRows = useMemo(() => MONTHS.map((month) => {
     const key = `${year}-${month}`;
@@ -271,22 +344,13 @@ export function AdminWorkforceReports() {
       .sort((a, b) => a.month.localeCompare(b.month) || a.unit.localeCompare(b.unit));
   }, [visibleReviews, people, unitById]);
 
-  const currentHeadcount = useMemo(
-    () => people.filter((person) => person.is_active
-      && person.employment_status !== 'terminated'
-      && (effectiveUnitId
-        ? person.unit_id === effectiveUnitId
-        : canViewAllKpi || (report !== 'kpi' && canViewPayroll) || person.id === profile?.id)).length,
-    [people, effectiveUnitId, canViewAllKpi, canViewPayroll, report, profile?.id],
-  );
-
   const exportExcel = async () => {
     try {
       const XLSX = await import('xlsx');
       const rows = report === 'movement'
         ? [
-            ['Tháng', 'Tuyển mới', 'Nghỉ việc ghi nhận từ lúc bật lịch sử', 'Quay lại', 'Số phiếu lương đã duyệt', 'Tổng lương gộp', 'BH doanh nghiệp'],
-            ...movementRows.map((row) => [reportMonthLabel(row.month), row.hired, row.terminated, row.activeAgain, row.employees, row.gross, row.employerInsurance]),
+            ['Tháng', 'Tuyển mới', 'Nghỉ việc ghi nhận từ lúc bật lịch sử', 'Quay lại', 'Tỷ lệ nghỉ việc (%)', 'Số phiếu lương đã duyệt', 'Tổng lương gộp', 'BH doanh nghiệp'],
+            ...movementRows.map((row) => [reportMonthLabel(row.month), row.hired, row.terminated, row.activeAgain, row.turnoverRate == null ? '' : Number(row.turnoverRate.toFixed(2)), row.employees, row.gross, row.employerInsurance]),
           ]
         : report === 'insurance'
           ? [
@@ -299,6 +363,12 @@ export function AdminWorkforceReports() {
             ];
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), 'Báo cáo');
+      if (report === 'movement') {
+        XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+          ['Phòng ban', 'Nhân sự hiện tại', 'Tỷ trọng (%)'],
+          ...departmentRows.map((row) => [row.department, row.count, Number(row.percentage.toFixed(1))]),
+        ]), 'Cơ cấu phòng ban');
+      }
       XLSX.writeFile(workbook, `bao-cao-quan-tri-${report}-${year}.xlsx`);
       toast('Đã xuất báo cáo quản trị.', 'success');
     } catch (error) {
@@ -359,7 +429,12 @@ export function AdminWorkforceReports() {
           </div>
 
           {report === 'movement' && canViewPayroll && (
-            <MovementReport rows={movementRows} currentHeadcount={currentHeadcount} />
+            <MovementReport
+              rows={movementRows}
+              currentHeadcount={currentHeadcount}
+              departmentRows={departmentRows}
+              eventTrackingStartedOn={eventTrackingStartedOn}
+            />
           )}
           {report === 'insurance' && canViewPayroll && <InsuranceReport rows={insuranceRows} />}
           {report === 'kpi' && <KpiReport rows={kpiRows} />}
@@ -369,9 +444,11 @@ export function AdminWorkforceReports() {
   );
 }
 
-function MovementReport({ rows, currentHeadcount }: {
-  rows: Array<{ month: string; hired: number; terminated: number; activeAgain: number; gross: number; employerInsurance: number; employees: number }>;
+function MovementReport({ rows, currentHeadcount, departmentRows, eventTrackingStartedOn }: {
+  rows: Array<{ month: string; hired: number; terminated: number; activeAgain: number; turnoverRate: number | null; gross: number; employerInsurance: number; employees: number }>;
   currentHeadcount: number;
+  departmentRows: DepartmentHeadcount[];
+  eventTrackingStartedOn: string | null;
 }) {
   const hired = rows.reduce((sum, row) => sum + row.hired, 0);
   const terminated = rows.reduce((sum, row) => sum + row.terminated, 0);
@@ -384,12 +461,18 @@ function MovementReport({ rows, currentHeadcount }: {
         <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Tổng lương gộp đã duyệt" value={formatVND(payrollTotal)} />
       </div>
       <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Lịch sử nghỉ việc chỉ được ghi nhận từ ngày chạy migration báo cáo; hệ thống không suy đoán ngày nghỉ cũ từ trạng thái hiện tại.
+        Lịch sử nghỉ việc chỉ được ghi nhận từ {eventTrackingStartedOn ? reportMonthLabel(eventTrackingStartedOn.slice(0, 7)) : 'khi bắt đầu lưu sự kiện'}; hệ thống không suy đoán ngày nghỉ cũ từ trạng thái hiện tại.
+        Tỷ lệ tháng = số nghỉ việc / headcount bình quân đầu-cuối kỳ; chỉ hiện khi tháng đã kết thúc và có đủ lịch sử. Tháng đang diễn ra hiển thị “—”.
         Bảng lương chỉ gồm các kỳ đã duyệt hoặc đã chi trả.
       </p>
       <ReportTable title="Biến động nhân sự & quỹ lương theo tháng">
-        <thead><tr><Th>Tháng</Th><Th>Tuyển mới</Th><Th>Nghỉ việc</Th><Th>Quay lại</Th><Th>Phiếu lương</Th><Th>Tổng lương gộp</Th><Th>BH doanh nghiệp</Th></tr></thead>
-        <tbody>{rows.map((row) => <tr key={row.month}><Td>{reportMonthLabel(row.month)}</Td><Td>{row.hired}</Td><Td>{row.terminated}</Td><Td>{row.activeAgain}</Td><Td>{row.employees}</Td><Td>{formatVND(row.gross)}</Td><Td>{formatVND(row.employerInsurance)}</Td></tr>)}</tbody>
+        <thead><tr><Th>Tháng</Th><Th>Tuyển mới</Th><Th>Nghỉ việc</Th><Th>Quay lại</Th><Th>Tỷ lệ nghỉ việc</Th><Th>Phiếu lương</Th><Th>Tổng lương gộp</Th><Th>BH doanh nghiệp</Th></tr></thead>
+        <tbody>{rows.map((row) => <tr key={row.month}><Td>{reportMonthLabel(row.month)}</Td><Td>{row.hired}</Td><Td>{row.terminated}</Td><Td>{row.activeAgain}</Td><Td>{row.turnoverRate == null ? '—' : `${row.turnoverRate.toFixed(2)}%`}</Td><Td>{row.employees}</Td><Td>{formatVND(row.gross)}</Td><Td>{formatVND(row.employerInsurance)}</Td></tr>)}</tbody>
+      </ReportTable>
+      <ReportTable title="Cơ cấu nhân lực hiện tại theo phòng ban">
+        <thead><tr><Th>Phòng ban</Th><Th>Số nhân sự</Th><Th>Tỷ trọng</Th></tr></thead>
+        <tbody>{departmentRows.map((row) => <tr key={row.department}><Td>{row.department}</Td><Td>{row.count}</Td><Td>{row.percentage.toFixed(1)}%</Td></tr>)}</tbody>
+        {departmentRows.length === 0 && <EmptyTable message="Chưa có nhân sự đang hoạt động trong phạm vi báo cáo." />}
       </ReportTable>
       {terminated > 0 && <Badge className="bg-rose-50 text-rose-700">{terminated} trường hợp nghỉ việc được ghi nhận trong năm</Badge>}
     </div>
