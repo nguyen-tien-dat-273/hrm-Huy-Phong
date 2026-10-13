@@ -5,6 +5,10 @@
   "outputDirectory": "client/dist",
   "rewrites": [
     {
+      "source": "/iclock/(.*)",
+      "destination": "/api/iclock/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
