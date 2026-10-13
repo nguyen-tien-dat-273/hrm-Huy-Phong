@@ -36,6 +36,32 @@ CAI DAT - 3 BUOC
 Xong. Bridge chay ngay, va tu chay lai moi lan may khoi dong.
 
 
+KHONG XIN DUOC QUYEN ADMINISTRATOR THI SAO
+------------------------------------------
+Tren may cua nguoi khac thuong khong xin duoc quyen do. Van chay duoc, bang
+mot trong hai cach:
+
+CACH NHANH NHAT - chay ngay, khong cai gi:
+
+      Bam doi vao file  chay-bridge.cmd
+
+Mot cua so den mo ra va bridge bat dau dong bo. Giu cua so do, dong lai la
+bridge dung. Dung de kiem tra ngay hom nay.
+
+CACH CO DINH - tu chay lai moi lan dang nhap:
+
+      cd C:\hrm-bridge
+      powershell -ExecutionPolicy Bypass -File cai-dat-khong-admin.ps1
+
+Khac ban cai-dat.ps1 o cho: tac vu chay duoi chinh tai khoan dang dang nhap
+va kich hoat luc nguoi do dang nhap, thay vi chay duoi SYSTEM tu luc may bat.
+Windows cho nguoi dung thuong tu tao tac vu cho chinh minh nen khong can xin
+ai.
+
+Danh doi: bridge chi chay khi tai khoan do con dang nhap. May van phong bat
+ca ngay va luon dang nhap san thi khong khac gi.
+
+
 KIEM TRA CHAY DUNG CHUA
 -----------------------
       node --env-file=.env.attendance-bridge kiem-tra.mjs
