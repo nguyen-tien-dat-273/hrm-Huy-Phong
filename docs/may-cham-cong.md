@@ -306,3 +306,91 @@ cập nhật `.env.attendance-bridge`, khởi động lại bridge và xác nh�
 thành công. Sau khi xác nhận, có thể bấm **Thu hồi token** để vô hiệu hóa token cũ ngay.
 HRM chỉ lưu bản băm SHA-256, không lưu token gốc. Số lần xác thực sai được gom theo phút
 trong `attendance_device_auth_failures`; bảng này không lưu token hay địa chỉ thiết bị.
+
+---
+
+# Cách 2 — Máy tự đẩy lên HRM (ADMS), không cần máy tính trong văn phòng
+
+Bridge cần một máy tính bật 24/7 trong cùng mạng LAN. Máy `ZMM510_TFT` đang dùng
+có sẵn **Push Service** (`Ver 3.0.6S`), nghĩa là nó tự gọi ra được một server —
+bỏ hẳn được máy trung gian.
+
+Đảo chiều so với bridge:
+
+```
+Bridge:  máy tính trong LAN  ──đọc cổng 4370──>  máy chấm công
+ADMS:    máy chấm công  ──HTTPS gọi ra──>  /iclock/*  trên HRM
+```
+
+Đổi chiều giải được rào gốc: `192.168.110.197` không gọi vào được từ Internet,
+nhưng từ trong gọi ra thì bình thường.
+
+## Phần HRM đã có sẵn
+
+| Đường | Việc |
+| --- | --- |
+| `GET /iclock/cdata` | Máy xin cấu hình lúc bắt tay |
+| `POST /iclock/cdata?table=ATTLOG` | Máy đẩy các lần quét |
+| `GET /iclock/getrequest` | Máy hỏi lệnh — luôn trả `OK` |
+| `POST /iclock/devicecmd` | Máy báo kết quả lệnh |
+
+Dữ liệu đổ vào đúng `ingest_attendance_device_events` mà bridge dùng, nên toàn
+bộ phần ánh xạ mã nhân viên, chống trùng và dựng ngày công giữ nguyên.
+
+`vercel.json` có luật `/iclock/(.*)` → `/api/iclock/$1` đặt **trước** luật
+bắt-tất-cả. Thiếu thứ tự đó thì máy nhận về trang HTML thay vì gặp hàm, và
+đường dẫn `/iclock/...` là cố định trong firmware nên không đổi được.
+
+## Biến môi trường trên Vercel
+
+| Biến | Giá trị |
+| --- | --- |
+| `ATTENDANCE_DEVICE_SERIALS` | `1313245000324` — danh sách sê-ri được phép, ngăn bằng dấu phẩy |
+| `ATTENDANCE_BRIDGE_TOKEN` | Token tạo trong HRM > Máy chấm công |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Như bridge |
+| `ATTENDANCE_UTC_OFFSET` | Mặc định `+07:00` |
+
+**Biến `VITE_*` được nhúng cứng lúc build, nhưng bốn biến trên thì đọc lúc
+chạy** — đổi xong vẫn phải Redeploy để hàm nhận giá trị mới.
+
+## Cấu hình trên máy
+
+`Menu > Thiết lập liên kết > Cài đặt máy chủ đám mây`:
+
+```
+Kiểu máy chủ        Tự động tải dữ liệu
+Khởi động tên miền  BẬT
+Địa chỉ máy chủ     <tên miền HRM>
+Cổng máy chủ        443            (mặc định đang là 8081)
+```
+
+Nên trỏ vào **tên miền của riêng công ty** chứ không phải `*.vercel.app`: đổi
+hosting sau này chỉ cần sửa DNS, không phải ra tận máy gõ lại. Máy chỉ nhớ được
+một địa chỉ, và quên cập nhật thì dữ liệu ngừng chảy **không báo gì**.
+
+## Kiểm sau khi bật, theo đúng thứ tự
+
+1. HRM > Máy chấm công — "Đồng bộ gần nhất" có nhảy không
+2. `Test-NetConnection 192.168.110.197 -Port 4370 -InformationLevel Quiet` còn `True` không
+3. Ronald Jack Pro còn kết nối tới máy không
+
+Bước 2 và 3 quan trọng: một số firmware ngừng phục vụ cổng SDK khi chuyển sang
+chế độ đẩy. **Bridge cũng đi qua đúng cổng đó**, nên nếu 4370 chết thì bridge
+chết theo — nó không phải lưới an toàn độc lập.
+
+## Lùi lại
+
+Đặt `Địa chỉ máy chủ` về `0.0.0.0`, tắt `Khởi động tên miền`, khởi động lại máy.
+Về đúng trạng thái cũ, cổng 4370 sống lại. Dữ liệu trong máy không mất — ADMS
+chỉ gửi bản sao ra, không dọn bộ nhớ.
+
+## Hai giới hạn phải biết
+
+**Giao thức không có xác thực.** Máy chỉ xưng danh bằng sê-ri trên URL, không
+gửi được token hay header riêng. `ATTENDANCE_DEVICE_SERIALS` chặn được người
+gọi bừa, nhưng ai biết sê-ri vẫn giả mạo được dữ liệu chấm công. Đây là giới
+hạn của giao thức ZKTeco, không phải của phần cài đặt.
+
+**Chưa biết máy có tin chứng chỉ của Vercel không.** Firmware mang kho chứng
+chỉ gốc theo thời điểm xuất xưởng. Nếu kho đó thiếu CA mà Vercel dùng thì bắt
+tay TLS hỏng, và không sửa được từ phía server. Chỉ thử thật mới biết.

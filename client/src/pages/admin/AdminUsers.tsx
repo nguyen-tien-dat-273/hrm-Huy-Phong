@@ -18,9 +18,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { displayIdentifier, isInternalEmail, validateIdentifier } from '@/lib/identity';
 import { describeDbError } from '@/lib/dbError';
 import { supabase } from '@/lib/supabase';
+import { PERMISSION_FUNCTIONS } from '@/config/permissionCoverage';
 import {
   ADMIN_PERMISSIONS,
-  PERMISSION_FUNCTIONS,
   PERMISSION_LABELS,
   isFullAdmin,
   type AdminPermission,

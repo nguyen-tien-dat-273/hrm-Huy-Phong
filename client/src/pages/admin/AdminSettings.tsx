@@ -45,7 +45,8 @@ import { useSettings } from '@/contexts/SettingsContext';
 import { saveSettings, type AppSettings } from '@/lib/settings';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_FUNCTIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
+import { PERMISSION_FUNCTIONS } from '@/config/permissionCoverage';
+import { ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import {
   Bell, CalendarCheck, CheckCircle2, Clock, Loader2, Pencil, Plus, Shield, Trash2,
 } from 'lucide-react';

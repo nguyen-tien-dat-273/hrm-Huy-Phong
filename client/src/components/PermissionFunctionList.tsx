@@ -1,5 +1,6 @@
 import { CheckCircle2, LockKeyhole } from 'lucide-react';
-import { PERMISSION_FUNCTIONS, type AdminPermission } from '@/lib/permissions';
+import { PERMISSION_FUNCTIONS } from '@/config/permissionCoverage';
+import type { AdminPermission } from '@/lib/permissions';
 
 /** Hiển thị các màn hình/nghiệp vụ thực tế nằm trong một quyền module. */
 export function PermissionFunctionList({ permission, compact = false }: { permission: AdminPermission; compact?: boolean }) {
