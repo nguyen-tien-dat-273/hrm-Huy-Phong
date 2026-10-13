@@ -717,6 +717,7 @@ export function StaffKanban() {
               required
             />
             {workflowKind === 'COMPLETION' && (
+              <>
               <Input
                 label="Link minh chứng (bắt buộc)"
                 type="url"
@@ -730,6 +731,7 @@ export function StaffKanban() {
                 <input type="file" className="mt-1 block w-full text-sm font-normal" onChange={(event) => setWorkflowEvidenceFile(event.target.files?.[0] ?? null)} />
                 {workflowEvidenceFile && <span className="mt-1 block text-xs font-normal text-slate-500">{workflowEvidenceFile.name}</span>}
               </label>
+              </>
             )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setWorkflowTarget(null)} disabled={workflowSaving}>Hủy</Button>
