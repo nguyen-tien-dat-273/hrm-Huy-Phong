@@ -8,6 +8,10 @@
 --   supabase/migrations/20260927130000_attendance_device_autoapprove.sql
 --   supabase/migrations/20260930230000_attendance_device_arrival_only.sql
 --
+-- Sau khi chay file nay, tiep tuc chay migration
+-- 20261007113000_security_payroll_attendance_hardening.sql. Neu chay lai file
+-- nay sau do, phai chay lai migration hardening de khoi phuc han token va log auth.
+--
 -- Thu tu quan trong - phan sau thay than ham cua phan truoc:
 --
 --   Thieu phan 2: ngay cong tu may mac o approved_by_lead = false, bang luong
@@ -908,4 +912,3 @@ $$;
 
 revoke all on function public.ingest_attendance_device_events(text, jsonb) from public;
 grant execute on function public.ingest_attendance_device_events(text, jsonb) to anon, authenticated;
-

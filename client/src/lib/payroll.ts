@@ -22,7 +22,10 @@
 
 import type { PayrollParams } from './payrollSettings';
 import { evaluateFormula, FormulaError } from './payrollFormula';
-import { EMPTY_PUNCTUALITY, EMPTY_SCHEDULES, measurePunctuality, type ScheduleSet } from './workSchedule';
+import {
+  dayWeight, EMPTY_PUNCTUALITY, EMPTY_SCHEDULES, measurePunctuality,
+  type PunctualityExceptions, type ScheduleSet,
+} from './workSchedule';
 import type {
   Attendance,
   EmployeePayItem,
@@ -161,6 +164,48 @@ export interface PeriodStats {
 }
 
 /**
+ * Chia giờ tăng ca đã duyệt thành ba rổ theo Điều 98 BLLĐ 2019:
+ * ngày thường 150%, ngày NGHỈ HẰNG TUẦN 200%, ngày lễ 300%.
+ *
+ * "Ngày nghỉ" KHÔNG đồng nghĩa với thứ Bảy + Chủ nhật. Công ty này khai
+ * `saturday_mode` cho từng ca — thứ Bảy có thể là ngày làm đủ, nửa ngày, hoặc
+ * nghỉ hẳn. Gán cứng thứ Bảy vào rổ 200% thì công ty làm thứ Bảy bị trả dư
+ * một phần ba cho mọi giờ tăng ca hôm đó, và không có gì báo ra.
+ *
+ * Nên hỏi đúng câu mà cả hệ thống đang dùng để trả lời "hôm đó có phải ngày
+ * làm không": `dayWeight` bằng 0 mới là ngày nghỉ.
+ */
+export function splitOvertimeHours(
+  requests: ReadonlyArray<{ request_type: string; work_date: string; hours?: number | string | null }>,
+  schedules: ScheduleSet,
+  holidays: ReadonlySet<string>,
+): { weekday: number; weekend: number; holiday: number } {
+  const out = { weekday: 0, weekend: 0, holiday: 0 };
+  for (const request of requests) {
+    if (request.request_type !== 'OVERTIME') continue;
+    const hours = Number(request.hours || 0);
+    if (!Number.isFinite(hours) || hours <= 0) continue;
+
+    if (holidays.has(request.work_date)) {
+      out.holiday += hours;
+      continue;
+    }
+    // Chưa khai ca nào thì không suy được ngày nghỉ của công ty; lùi về quy
+    // ước thứ Bảy + Chủ nhật thay vì dồn hết vào rổ 150%.
+    const restDay = schedules.supported
+      ? dayWeight(schedules, request.work_date, holidays) === 0
+      : [0, 6].includes(new Date(`${request.work_date}T00:00:00`).getDay());
+    if (restDay) out.weekend += hours;
+    else out.weekday += hours;
+  }
+  return {
+    weekday: Math.round(out.weekday * 100) / 100,
+    weekend: Math.round(out.weekend * 100) / 100,
+    holiday: Math.round(out.holiday * 100) / 100,
+  };
+}
+
+/**
  * Gộp chấm công, nghỉ phép và ngày lễ của MỘT người trong MỘT tháng.
  *
  * Ngày phép đếm theo khoảng ngày chứ không lấy thẳng cột `days`: một đơn nghỉ
@@ -186,6 +231,8 @@ export function summarisePeriod(
    * cần bằng 0 — hệ thống KHÔNG đoán giờ vào chuẩn.
    */
   schedules: ScheduleSet = EMPTY_SCHEDULES,
+  /** Đơn đi muộn/về sớm đã duyệt, dùng loại đúng ngày khỏi thống kê phạt. */
+  punctualityExceptions: PunctualityExceptions = {},
 ): PeriodStats {
   const withCheckIn = attendance.filter((record) => record.check_in_time);
   const workedDates = new Set(withCheckIn.map((record) => record.date));
@@ -212,43 +259,56 @@ export function summarisePeriod(
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   let leaveDays = 0;
   const leaveCoveredDates = new Set<string>();
+  const holidaySet = new Set(holidays);
+  // Không có ngày lễ nào: dùng để hỏi "hôm đó ĐÁNG LẼ là ngày làm mấy công",
+  // vì `dayWeight` trả 0 cho mọi ngày lễ — mà ngày lễ vẫn được HƯỞNG lương.
+  const noHolidays: ReadonlySet<string> = new Set<string>();
 
   for (const leave of leaves) {
     for (let day = 1; day <= daysInMonth; day += 1) {
-      const date = new Date(year, month, day);
-      // Nghỉ phép chỉ tính ngày thường; cuối tuần vốn đã không phải ngày công.
-      if (date.getDay() === 0 || date.getDay() === 6) continue;
       const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      if (iso >= leave.start_date && iso <= leave.end_date) {
-        leaveDays += leave.half_day ? 0.5 : 1;
-        leaveCoveredDates.add(iso);
-      }
+      if (iso < leave.start_date || iso > leave.end_date) continue;
+      // Nghỉ phép ăn theo đúng trọng số ngày làm của lịch công ty, KHÔNG phải
+      // "cứ thứ Hai–Sáu là 1". Công ty này khai `saturday_mode`, nên mẫu số
+      // `standardDays` đếm thứ Bảy 0,5 hoặc 1 — tử số bỏ hẳn thứ Bảy thì
+      // người nghỉ phép trọn tháng chỉ được trả 21/23,5 lương.
+      //
+      // Ngày lễ rơi trong kỳ nghỉ trả về 0 ở đây và được `holidayDays` bên
+      // dưới nhặt lại, nên tổng vẫn đúng một lần — và con số "nghỉ phép"
+      // trên phiếu khớp với số ngày thật sự bị trừ quỹ phép.
+      const weight = dayWeight(schedules, iso, holidaySet);
+      if (weight === 0) continue;
+      leaveDays += leave.half_day ? weight / 2 : weight;
+      leaveCoveredDates.add(iso);
     }
   }
 
   // Đo đi muộn / về sớm trên toàn bộ bản ghi chấm công (kể cả ngày thiếu
   // check-out): thiếu giờ RA không làm mất dữ kiện giờ VÀO.
   const punctuality = schedules.supported
-    ? measurePunctuality(schedules, attendance, holidays)
+    ? measurePunctuality(schedules, attendance, holidays, punctualityExceptions)
     : EMPTY_PUNCTUALITY;
 
   const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
   let holidayDays = 0;
-  for (const iso of holidays) {
+  for (const iso of holidaySet) {
     if (!iso.startsWith(monthPrefix)) continue;
-    const weekday = new Date(`${iso}T00:00:00`).getDay();
-    if (weekday === 0 || weekday === 6) continue;
     if (workedDates.has(iso) || leaveCoveredDates.has(iso)) continue;
-    holidayDays += 1;
+    // Hỏi trọng số của ngày đó khi CHƯA tính nó là ngày lễ: lễ rơi vào thứ
+    // Bảy làm nửa ngày thì hưởng 0,5 công, rơi vào Chủ nhật thì 0.
+    holidayDays += dayWeight(schedules, iso, noHolidays);
   }
+  holidayDays = Math.round(holidayDays * 100) / 100;
+  leaveDays = Math.round(leaveDays * 100) / 100;
 
   return {
     workDays,
     holidayDays,
     leaveDays,
     paidDays: workDays + leaveDays + holidayDays,
-    // Người ăn lương tháng không chấm giờ đủ tin cậy thì vẫn cần một con số
-    // giờ để quy đổi tăng ca — lấy ngày công nhân giờ chuẩn khi chưa có giờ.
+    // Không tự bù giờ cho riêng bản ghi thiếu checkout: bản ghi đó phải được
+    // hoàn thiện và duyệt lại. Chỉ lùi về giờ chuẩn với dữ liệu kế thừa khi
+    // toàn tháng hoàn toàn không có một khoảng giờ hợp lệ nào.
     workHours: workHours > 0 ? Math.round(workHours * 100) / 100 : workDays * hoursPerDay,
     ...punctuality,
     missingCheckout,
@@ -362,6 +422,16 @@ export interface PayItemAssignment {
   amount: number | null;
   /** Công thức riêng. NULL = dùng công thức chung của khoản. */
   formula: string | null;
+  /**
+   * Ba cờ khai riêng cho người này. NULL = chưa khai, lấy theo danh mục.
+   *
+   * Danh mục khoản lương chỉ còn là danh sách tên, nên thứ quyết định một
+   * khoản có chịu thuế / tính bảo hiểm / là lương gốc hay không nằm ở đây.
+   * Tuỳ chọn để engine chạy được cả với dữ liệu khai trước khi có ba cột này.
+   */
+  taxable?: boolean | null;
+  insurable?: boolean | null;
+  is_base?: boolean | null;
   effective_from: string;
   effective_to: string | null;
 }
@@ -371,6 +441,70 @@ export interface AssignedPayItem {
   component: PayComponent;
 }
 
+/**
+ * Mã khoản mà một công thức đọc tới.
+ *
+ * Quét thô bằng regex chữ hoa: biến trong công thức luôn là MÃ VIẾT HOA, và
+ * chỉ những mã trùng với khoản đang gán mới được coi là phụ thuộc — tên hàm
+ * hay biến hệ thống như `NGAY_CONG` không nằm trong tập đó nên tự bị loại.
+ */
+function codesReferencedBy(formula: string): string[] {
+  return [...new Set(formula.toUpperCase().match(/[A-Z][A-Z0-9_]*/g) ?? [])];
+}
+
+/**
+ * Sắp các khoản sao cho khoản bị tham chiếu được tính trước.
+ *
+ * Giữ `sort_order` làm thứ tự nền: hai khoản không liên quan nhau thì vẫn ra
+ * đúng thứ tự người dùng đã xếp trong danh mục, bảng lương không tự nhiên đảo
+ * dòng sau khi nâng cấp.
+ *
+ * Vòng tròn phụ thuộc (A đọc B, B đọc A) thì KHÔNG thể sắp được — trả về theo
+ * thứ tự cũ và cảnh báo, chứ không im lặng chọn bừa một bên để tính trước.
+ */
+function orderByDependency<T extends { component: PayComponent; formula?: string | null }>(
+  items: T[],
+  warnings: string[],
+): T[] {
+  const base = [...items].sort((a, b) => a.component.sort_order - b.component.sort_order);
+  const byCode = new Map<string, T>();
+  for (const item of base) {
+    const code = item.component.code?.toUpperCase();
+    if (code) byCode.set(code, item);
+  }
+
+  const out: T[] = [];
+  const done = new Set<T>();
+  const inProgress = new Set<T>();
+
+  const visit = (item: T) => {
+    if (done.has(item)) return;
+    if (inProgress.has(item)) {
+      warnings.push(
+        `Khoản “${item.component.name}” nằm trong một vòng công thức tham chiếu lẫn nhau. `
+        + 'Kết quả tính theo thứ tự trong danh mục — hãy bỏ bớt một tham chiếu.',
+      );
+      return;
+    }
+    inProgress.add(item);
+    const formula = (item.formula?.trim() || item.component.formula?.trim() || '');
+    if (formula) {
+      for (const code of codesReferencedBy(formula)) {
+        const dependency = byCode.get(code);
+        // Chỉ đi theo mã của khoản KHÁC đang gán. Tự tham chiếu chính mình thì
+        // bỏ qua, nếu không mọi khoản đều báo vòng tròn.
+        if (dependency && dependency !== item) visit(dependency);
+      }
+    }
+    inProgress.delete(item);
+    done.add(item);
+    out.push(item);
+  };
+
+  for (const item of base) visit(item);
+  return out;
+}
+
 export interface ComputePayslipArgs {
   profile: Profile;
   payProfile: EmployeePayProfile | null;
@@ -378,6 +512,19 @@ export interface ComputePayslipArgs {
   items: AssignedPayItem[];
   /** Số liệu biến động tháng: mã → số lượng. */
   inputs: Readonly<Record<string, number>>;
+  /**
+   * Tham số lương tự khai: mã → giá trị.
+   *
+   * Đặc tả mục 5: "Danh mục khoản lương + Tham số lương + Dữ liệu đầu vào →
+   * Công thức". Không có chỗ này thì hệ số OT hay đơn giá vận chuyển phải gõ
+   * thẳng con số vào từng công thức của từng người, và đổi chính sách là phải
+   * sửa lại tay từng chỗ.
+   *
+   * Đặt TRƯỚC mã khoản và số liệu tháng trong phạm vi biến, nên một mã trùng
+   * tên sẽ bị hai nguồn kia ghi đè — số liệu của tháng cụ thể sát thực tế hơn
+   * một hằng số cấu hình.
+   */
+  namedParams?: Readonly<Record<string, number>>;
   /**
    * Mã của MỌI khoản trong danh mục, kể cả khoản người này không được gán.
    *
@@ -537,14 +684,35 @@ function computeComponentLine(
   const { component, item } = assigned;
   // Giá trị riêng của người này thắng giá trị mặc định của công ty.
   const amount = item.amount ?? component.default_amount;
-  const formula = item.formula?.trim() || component.formula?.trim() || '';
+  const overrideFormula = item.formula?.trim() || '';
+  const formula = overrideFormula || component.formula?.trim() || '';
 
   let value = 0;
   let quantity: number | null = null;
   let rate: number | null = null;
   let detail = '';
 
-  switch (component.calc_type) {
+  // Công thức khai lúc GÁN khoản luôn thắng cách tính mặc định trong danh mục.
+  // Trước đây UI cho phòng ban/nhân viên nhập công thức riêng cho cả khoản
+  // FIXED, PER_DAY..., nhưng engine chỉ đọc nó nếu bản thân khoản có
+  // `calc_type = FORMULA`. Dữ liệu được lưu thành công rồi âm thầm không có
+  // tác dụng. Quy tắc ưu tiên này vừa sửa lỗi đó, vừa cho HR biến một khoản
+  // thông thường thành khoản linh hoạt theo Công/KPI mà không phải biến màn
+  // Danh mục thành nơi cấu hình kỹ thuật.
+  switch (overrideFormula ? 'OVERRIDE' : component.calc_type) {
+    case 'OVERRIDE': {
+      try {
+        const result = evaluateFormula(overrideFormula, { ...scope, MUC_RIENG: amount });
+        value = result.value;
+        detail = overrideFormula;
+      } catch (error) {
+        const reason = error instanceof FormulaError ? error.message : String(error);
+        warnings.push(`${employeeName}: công thức khoản "${component.name}" lỗi — ${reason}`);
+        return null;
+      }
+      break;
+    }
+
     case 'FIXED': {
       value = amount;
       rate = amount;
@@ -618,7 +786,7 @@ function computeComponentLine(
   // Chia theo ngày công. Chỉ áp cho khoản trả trọn tháng: khoản đã nhân theo
   // giờ/ngày/sản lượng thì bản thân nó đã phản ánh khối lượng làm việc rồi,
   // chia thêm lần nữa là trừ hai lần.
-  if (component.prorate && component.calc_type === 'FIXED' && standardDays > 0) {
+  if (!overrideFormula && component.prorate && component.calc_type === 'FIXED' && standardDays > 0) {
     value = (value / standardDays) * stats.paidDays;
   }
 
@@ -637,8 +805,9 @@ function computeComponentLine(
     quantity,
     rate,
     amount: round(value),
-    taxable: component.taxable,
-    insurable: component.insurable,
+    // Cờ khai riêng cho người này thắng; chưa khai thì theo danh mục.
+    taxable: item.taxable ?? component.taxable,
+    insurable: item.insurable ?? component.insurable,
     otMultiplier: component.ot_multiplier ?? null,
     taxExemptCap: component.tax_exempt_cap ?? null,
     detail,
@@ -654,12 +823,30 @@ function computeComponentLine(
  * không ảnh hưởng nghĩa vụ thuế.
  */
 export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
-  const { profile, payProfile, items, inputs, stats, settings, adjustments = [], catalogCodes = [] } = args;
+  const {
+    profile, payProfile, items, inputs, stats, settings,
+    adjustments = [], catalogCodes = [], namedParams = {},
+  } = args;
   const warnings: string[] = [];
   const lines: ComputedLine[] = [];
 
+  /**
+   * Khoản được đánh dấu LƯƠNG GỐC trong danh mục, nếu người này có gán.
+   *
+   * Khai lương gốc như mọi khoản khác — chọn trong danh mục rồi điền công
+   * thức — thay vì học một mô hình riêng chỉ để khai một con số.
+   *
+   * Không gán khoản nào có cờ đó thì chạy y như cũ theo `pay_basis`. Nhờ vậy
+   * cờ này bật lên không làm đổi lương của bất kỳ ai cho tới khi chính người
+   * dùng gán khoản đó cho một người.
+   */
+  const baseItem = items.find((entry) => entry.item.is_base ?? entry.component.is_base);
+
   const basis: PayBasis = payProfile?.pay_basis ?? 'MONTHLY';
-  const baseAmount = Number(payProfile?.base_amount ?? 0);
+  const baseAmount = baseItem
+    // Mức riêng của người này, không có thì lấy mức chung của danh mục.
+    ? Number(baseItem.item.amount ?? baseItem.component.default_amount ?? 0)
+    : Number(payProfile?.base_amount ?? 0);
   const hoursPerDay = Math.max(settings.hoursPerDay || 8, 1);
   const standardDays = Math.max(
     Number(payProfile?.standard_days_override ?? settings.standardWorkDays) || 26,
@@ -669,7 +856,9 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   if (!payProfile) {
     warnings.push(`${profile.name}: chưa thiết lập cơ chế lương — phiếu đang là 0đ.`);
   } else if (baseAmount <= 0 && basis !== 'PIECE') {
-    warnings.push(`${profile.name}: cơ chế "${payBasisLabel(basis)}" nhưng đơn giá đang là 0.`);
+    warnings.push(baseItem
+      ? `${profile.name}: khoản lương gốc "${baseItem.component.name}" đang là 0đ.`
+      : `${profile.name}: cơ chế "${payBasisLabel(basis)}" nhưng đơn giá đang là 0.`);
   }
 
   // --- Lương gốc ------------------------------------------------------------
@@ -780,9 +969,41 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     EARLY_COUNT: stats.earlyCount,
   };
 
+  // Tham số lương tự khai. Đứng trước mã khoản và số liệu tháng để hai nguồn
+  // kia thắng khi trùng mã.
+  for (const [code, value] of Object.entries(namedParams)) {
+    scope[code.toUpperCase()] = value;
+  }
+
   // Moi khoản trong danh mục đều là một biến, bằng 0 với người không được gán.
   for (const code of catalogCodes) {
     scope[code.toUpperCase()] = 0;
+  }
+
+  /**
+   * Công thức trỏ tới một khoản mà NGƯỜI NÀY không được gán.
+   *
+   * Khoản lương được gán theo TỪNG NGƯỜI, nên `LUONG_CB` trong công thức của
+   * một người chỉ có số khi chính người đó được gán khoản đó. Không gán thì
+   * dòng trên vừa seed nó bằng 0 — công thức vẫn chạy, ra 0đ, và không có gì
+   * nói vì sao. Một người mất nguyên khoản lương mà phiếu trông vẫn bình
+   * thường.
+   *
+   * Seed bằng 0 là đúng (khoản chưa phát sinh thì bằng 0), nhưng im lặng thì
+   * không. Nói thẳng tên khoản còn thiếu.
+   */
+  const assignedCodes = new Set(items.map((entry) => entry.component.code.toUpperCase()));
+  const catalogSet = new Set(catalogCodes.map((code) => code.toUpperCase()));
+  for (const entry of items) {
+    const formula = entry.item.formula ?? entry.component.formula;
+    if (!formula) continue;
+    const missing = codesReferencedBy(formula)
+      .filter((code) => catalogSet.has(code) && !assignedCodes.has(code));
+    if (missing.length === 0) continue;
+    warnings.push(
+      `${profile.name}: khoản "${entry.component.name}" lấy số từ `
+      + `${missing.join(', ')} nhưng người này chưa được gán khoản đó — phần đó tính bằng 0đ.`,
+    );
   }
 
   // Moi so lieu thang da KHAI trong danh muc deu co mat trong pham vi bien,
@@ -812,7 +1033,15 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   scope.INSURANCE_BASE = rawInsuranceBase;
 
   // --- Các khoản cộng -------------------------------------------------------
-  const sorted = [...items].sort((a, b) => a.component.sort_order - b.component.sort_order);
+  //
+  // Sắp theo PHỤ THUỘC chứ không chỉ theo `sort_order`.
+  //
+  // Tổng lương là phép cộng trừ nhân chia giữa các khoản, nên một khoản được
+  // phép tham chiếu mã của khoản khác. Nhưng khoản được tham chiếu phải tính
+  // XONG trước, không thì lúc đọc nó vẫn đang là 0 — và công thức nhìn đúng
+  // vẫn ra số sai, lặng lẽ, không cảnh báo gì. Xếp theo `sort_order` là phó
+  // mặc chuyện đó cho người khai nhớ đánh số đúng thứ tự.
+  const sorted = orderByDependency(items, warnings);
 
   const earningItems = sorted.filter((entry) => entry.component.kind === 'EARNING');
   for (const assigned of earningItems) {
@@ -1156,6 +1385,9 @@ export function sampleFormulaScope(
 
   const scope: Record<string, number> = {
     BASE: monthly,
+    BASE_WORK: monthly,
+    BASE_LEAVE: 0,
+    BASE_HOLIDAY: 0,
     GROSS: monthly,
     HOURLY_RATE: monthly / standardDays / hoursPerDay,
     DAILY_RATE: monthly / standardDays,
@@ -1166,7 +1398,15 @@ export function sampleFormulaScope(
     STANDARD_DAYS: standardDays,
     WORK_HOURS: standardDays * hoursPerDay,
     HOURS_PER_DAY: hoursPerDay,
+    HOLIDAY_DAYS: 0,
     DEPENDENTS: 1,
+    LATE_MINUTES: 0,
+    LATE_COUNT: 0,
+    LATE_AFTER_CUTOFF: 0,
+    EARLY_MINUTES: 0,
+    EARLY_COUNT: 0,
+    KPI_PCT: 100,
+    MUC_RIENG: 1_000_000,
     INSURANCE_BASE: monthly,
     INSURANCE_EMPLOYEE: monthly * 0.105,
     PIT: 0,
@@ -1174,7 +1414,8 @@ export function sampleFormulaScope(
   };
 
   for (const code of extraCodes) {
-    if (scope[code] === undefined) scope[code] = 1;
+    const normalized = code.toUpperCase();
+    if (scope[normalized] === undefined) scope[normalized] = 1;
   }
   return scope;
 }

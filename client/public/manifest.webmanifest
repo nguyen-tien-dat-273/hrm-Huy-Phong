@@ -1,6 +1,6 @@
 {
-  "name": "Huy Phong Wine HRM",
-  "short_name": "Huy Phong Wine",
+  "name": "HRM Huy Phong",
+  "short_name": "HRM Huy Phong",
   "description": "Quản trị nhân sự và vận hành xuất khẩu rượu vang.",
   "lang": "vi",
   "dir": "ltr",
@@ -9,26 +9,26 @@
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "theme_color": "#bf1f2b",
   "categories": [
     "business",
     "productivity"
   ],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/icon-192.png?v=3",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/icon-512.png?v=3",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-maskable-512.png",
+      "src": "/icon-maskable-512.png?v=3",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -48,10 +48,10 @@
       "description": "Xem phiếu lương tháng này."
     },
     {
-      "name": "Nghỉ phép",
-      "short_name": "Nghỉ phép",
+      "name": "Đơn từ của tôi",
+      "short_name": "Đơn từ",
       "url": "/staff/leave",
-      "description": "Gửi đơn nghỉ phép."
+      "description": "Gửi và theo dõi nghỉ phép, đi muộn, về sớm và làm thêm."
     }
   ]
 }

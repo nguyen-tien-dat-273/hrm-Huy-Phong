@@ -64,6 +64,37 @@ self.addEventListener('message', (event) => {
   if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
+// Web Push: payload chỉ chứa nội dung thông báo đã được API xác thực. Luôn
+// hiện thông báo cho người dùng; trình duyệt không cho phép nhận push "âm".
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch { payload = {}; }
+
+  const title = payload.title || 'HRM Huy Phong';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: payload.body || 'Bạn có thông báo mới.',
+    icon: payload.icon || '/icon-192.png',
+    badge: payload.badge || '/icon-192.png',
+    tag: payload.tag,
+    data: payload.data || { url: '/' },
+    vibrate: [150, 80, 150],
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
+      for (const client of clients) {
+        if ('navigate' in client) await client.navigate(target);
+        if ('focus' in client) return client.focus();
+      }
+      return self.clients.openWindow ? self.clients.openWindow(target) : undefined;
+    }),
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 

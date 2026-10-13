@@ -401,6 +401,14 @@ export interface PayComponent {
   ot_multiplier: number | null;
   /** Ngưỡng miễn thuế. Phần vượt vẫn chịu thuế dù `taxable` = false. */
   tax_exempt_cap: number | null;
+  /**
+   * Khoản này là LƯƠNG GỐC.
+   *
+   * Engine lấy nó làm căn cứ suy đơn giá giờ tăng ca và mức đóng bảo hiểm —
+   * nên chỉ một khoản trong danh mục được bật cờ này (database có unique
+   * index chặn).
+   */
+  is_base: boolean;
   /** Trần số tiền của khoản, áp sau khi tính xong. */
   max_amount: number | null;
   sort_order: number;
@@ -440,12 +448,45 @@ export interface EmployeePayProfile {
 }
 
 /** Một khoản lương đã gán cho một người, có thể kèm giá trị/công thức riêng. */
+/**
+ * Tham số lương tự khai — mã của nó dùng được THẲNG trong công thức.
+ *
+ * Đặc tả phân hệ Lương mục 2 liệt kê 18 tham số, trong đó hệ số OT, đơn giá
+ * vận chuyển, hệ số doanh số, định mức KPI là số riêng của công ty. Để chúng
+ * thành bảng chứ không phải cột cố định vì UC-PAY-02 yêu cầu "tuyệt đối không
+ * hard-code các con số" và NFR-MAINT-01 đòi đổi tham số qua giao diện, không
+ * phải sửa code.
+ */
+export interface PayrollNamedParam {
+  id: string;
+  code: string;
+  name: string;
+  value: number;
+  /** Chỉ để hiển thị cho đúng: 'VND' | '%' | 'HE_SO' | 'NGAY' | 'GIO'. */
+  unit: string;
+  note: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EmployeePayItem {
   id: string;
   user_id: string;
   component_id: string;
   amount: number | null;
   formula: string | null;
+  /**
+   * Ba cờ khai RIÊNG cho người này. `null` = chưa khai, lấy theo danh mục.
+   *
+   * Danh mục khoản lương chỉ còn là danh sách tên; mọi thứ quyết định ra tiền
+   * đều khai ở Cơ chế lương của từng người. Giữ `null` chứ không đặt mặc định
+   * cứng, để còn phân biệt "chưa khai" với "cố ý khai bằng giá trị đó".
+   */
+  taxable: boolean | null;
+  insurable: boolean | null;
+  is_base: boolean | null;
   effective_from: string;
   effective_to: string | null;
   note: string | null;
@@ -565,7 +606,7 @@ export interface Attendance {
   approved_at: string | null;
   approved_by_user_id: string | null;
   location_id?: string | null;
-  check_in_method?: 'GPS' | 'WIFI' | 'MANUAL' | null;
+  check_in_method?: 'DEVICE' | 'GPS' | 'WIFI' | 'MANUAL' | null;
   check_in_latitude?: number | null;
   check_in_longitude?: number | null;
   gps_accuracy_meters?: number | null;
@@ -607,6 +648,8 @@ export interface AttendanceDevice {
   last_sync_at: string | null;
   last_sync_status: 'SUCCESS' | 'PARTIAL' | 'ERROR' | null;
   last_sync_message: string | null;
+  /** Khác null = đã bấm "Đồng bộ ngay" mà bridge chưa nhận lệnh. */
+  sync_requested_at: string | null;
   created_at: string;
   location?: { id: string; name: string } | null;
 }
@@ -628,6 +671,19 @@ export interface AttendanceDeviceEvent {
   punched_at: string;
   processing_error: string | null;
   received_at: string;
+}
+
+export interface AttendanceDeviceSyncRun {
+  id: string;
+  device_id: string;
+  started_at: string;
+  finished_at: string | null;
+  status: 'RUNNING' | 'SUCCESS' | 'PARTIAL' | 'ERROR';
+  received_count: number;
+  inserted_count: number;
+  processed_count: number;
+  unmapped_count: number;
+  message: string | null;
 }
 
 export interface LeaveLedgerEntry {

@@ -1,0 +1,74 @@
+services:
+  hrm:
+    build:
+      context: .
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set the public Supabase URL}
+        VITE_SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Set the Supabase anon key}
+    image: huy-phong-hrm:local
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PORT: 8080
+      SUPABASE_URL: ${SUPABASE_INTERNAL_URL:-http://api-gw:8000}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Set the Supabase anon key}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set the Supabase service role key}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      REVERSE_GEOCODING_URL: ${REVERSE_GEOCODING_URL:-https://nominatim.openstreetmap.org}
+      APP_USER_AGENT: "${APP_USER_AGENT:-HuyPhongHRM/1.0 (mailto:admin@example.com)}"
+    ports:
+      - "${HRM_BIND_ADDRESS:-127.0.0.1}:${HRM_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - supabase
+
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    init: true
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PGHOST: db
+      PGPORT: ${POSTGRES_PORT:-5432}
+      PGUSER: postgres
+      PGDATABASE: ${POSTGRES_DB:-postgres}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD from the Supabase self-hosted stack}
+      BACKUP_DIR: /backups
+      RETENTION_DAYS: 30
+    volumes:
+      - ./tools/docker-backup-loop.sh:/backup/backup-loop.sh:ro
+      - ./tools/docker-backup-once.sh:/backup/backup-once.sh:ro
+      - ${SUPABASE_STORAGE_PATH:?Set the host path to the Supabase Storage volume}:/supabase-storage:ro
+      - ${BACKUP_PATH:?Set the host path to the customer backup/NAS directory}:/backups
+    networks:
+      - supabase
+
+networks:
+  supabase:
+    external: true
+    name: ${SUPABASE_DOCKER_NETWORK:-supabase_default}

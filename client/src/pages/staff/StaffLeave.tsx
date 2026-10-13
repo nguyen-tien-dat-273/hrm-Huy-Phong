@@ -19,6 +19,7 @@ import {
   LEAVE_TYPE_CONFIG, leaveStatusLabel, countWorkingDays, calculateLedgerBalance, defaultLeaveDate,
 } from '@/lib/leave';
 import { formatDate } from '@/lib/utils';
+import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from '@/lib/workSchedule';
 import { fetchApproverIds, notifyUsers } from '@/lib/assignments';
 import type { LeaveCancellationRequest, LeaveLedgerEntry, LeaveRequest, LeaveType } from '@/types';
 
@@ -26,6 +27,7 @@ export function StaffLeave() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
+  const [section, setSection] = useState<'attendance' | 'leave'>('attendance');
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [ledger, setLedger] = useState<LeaveLedgerEntry[]>([]);
@@ -36,6 +38,14 @@ export function StaffLeave() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<LeaveRequest | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * Lịch làm việc và ngày lễ — để đếm ngày nghỉ cho đúng.
+   *
+   * Thiếu hai thứ này thì đơn vắt qua Tết bị trừ oan mấy ngày phép cho những
+   * hôm vốn đã nghỉ, còn công ty làm cả thứ Bảy thì đếm thiếu.
+   */
+  const [schedules, setSchedules] = useState<ScheduleSet>(EMPTY_SCHEDULES);
+  const [holidays, setHolidays] = useState<ReadonlySet<string>>(new Set());
   const [cancelTarget, setCancelTarget] = useState<LeaveRequest | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [form, setForm] = useState({
@@ -60,11 +70,19 @@ export function StaffLeave() {
 
   const loadRequests = async (silent = false) => {
     if (!silent) setLoading(true);
-    const [{ data, error }, ledgerResult, cancellationResult] = await Promise.all([
+    const [{ data, error }, ledgerResult, cancellationResult, scheduleSet, holidayResult] = await Promise.all([
       supabase.from('leave_requests').select('*').eq('user_id', profile?.id).order('start_date', { ascending: false }),
       supabase.from('leave_ledger').select('*').eq('user_id', profile?.id).order('created_at', { ascending: false }),
       supabase.from('leave_cancellation_requests').select('*').eq('requested_by', profile?.id).order('created_at', { ascending: false }),
+      fetchWorkSchedules(),
+      // Lấy cả bảng: đơn nghỉ khai được cho ngày bất kỳ, lọc theo tháng hiện
+      // tại sẽ hụt đúng lúc người ta xin nghỉ Tết từ tháng trước.
+      supabase.from('company_holidays').select('holiday_date').eq('is_active', true),
     ]);
+    setSchedules(scheduleSet);
+    setHolidays(new Set(
+      holidayResult.error ? [] : ((holidayResult.data || []) as { holiday_date: string }[]).map((row) => row.holiday_date),
+    ));
 
     setLoadError(error ? describeDbError(error) : null);
     setRequests((data || []) as LeaveRequest[]);
@@ -78,7 +96,13 @@ export function StaffLeave() {
 
   // Nghỉ nửa ngày chỉ có nghĩa khi đơn gói gọn trong một ngày.
   const isSingleDay = form.start_date === form.end_date;
-  const rawDays = countWorkingDays(form.start_date, form.end_date);
+  // Chỉ đếm theo lịch khi đã nạp được ca; chưa có thì `countWorkingDays` rơi
+  // về cách cũ (thứ Hai–Sáu) chứ không coi mọi ngày là ngày nghỉ.
+  const rawDays = countWorkingDays(
+    form.start_date,
+    form.end_date,
+    schedules.supported ? { schedules, holidays } : undefined,
+  );
   const requestedDays = isSingleDay && form.half_day ? 0.5 : rawDays;
 
   const openCreate = () => {
@@ -273,7 +297,34 @@ export function StaffLeave() {
 
   return (
     <div className="space-y-5">
-      <AttendanceRequestPanel mode="mine" />
+      <div>
+        <h1 className="font-display text-2xl font-extrabold text-slate-900">Đơn từ của tôi</h1>
+        <p className="mt-1 text-sm text-slate-500">Gửi và theo dõi tất cả yêu cầu cá nhân tại một nơi.</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setSection('attendance')}
+          className={`rounded-2xl border p-4 text-left transition-all ${section === 'attendance' ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+        >
+          <span className="text-sm font-bold text-slate-900">Đi muộn · Về sớm · Làm thêm</span>
+          <span className="mt-1 block text-xs text-slate-500">Báo thời gian phát sinh và theo dõi kết quả duyệt.</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setSection('leave')}
+          className={`rounded-2xl border p-4 text-left transition-all ${section === 'leave' ? 'border-emerald-300 bg-emerald-50 ring-2 ring-emerald-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+        >
+          <span className="text-sm font-bold text-slate-900">Nghỉ phép · Hủy phép</span>
+          <span className="mt-1 block text-xs text-slate-500">Xem quỹ phép, gửi đơn nghỉ hoặc xin hủy lịch đã duyệt.</span>
+        </button>
+      </div>
+
+      {section === 'attendance' ? (
+        <AttendanceRequestPanel mode="mine" />
+      ) : (
+      <>
 
       {/* ---- Quỹ phép năm ------------------------------------------------- */}
       <Card className="overflow-hidden">
@@ -506,6 +557,8 @@ export function StaffLeave() {
           </div>
         </form>
       </Modal>
+      </>
+      )}
     </div>
   );
 }

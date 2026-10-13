@@ -88,8 +88,8 @@ export function WorkScheduleCard() {
       toast('Chọn ngày bắt đầu áp dụng.', 'warning');
       return;
     }
-    if (draft.end_time <= draft.start_time) {
-      toast('Giờ ra phải sau giờ vào.', 'warning');
+    if (draft.end_time === draft.start_time) {
+      toast('Giờ ra phải khác giờ vào.', 'warning');
       return;
     }
 

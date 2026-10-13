@@ -1,11 +1,9 @@
 // ============================================================================
 // Hồ sơ cá nhân — nhân viên tự sửa thông tin của mình.
 // ----------------------------------------------------------------------------
-// Ghi thẳng vào `profiles` chứ không qua RPC: policy `profiles_update_own` đã
-// cho sửa đúng dòng của mình, còn trigger `prevent_self_privilege_change` chặn
-// mọi cột nhạy cảm (role, permissions, is_active, hạn mức phép,
-// must_change_password, email). Nghĩa là hàng rào nằm ở database — kể cả người
-// gọi thẳng PostgREST trong DevTools cũng không vượt được.
+// Ghi thẳng vào `profiles`: policy giới hạn đúng dòng của mình, còn trigger
+// `profile_privilege_changes_guard` chặn thay đổi vai trò, quyền, trạng thái,
+// vị trí, đơn vị và các trường ảnh hưởng tới phân quyền.
 //
 // Ảnh đại diện nằm ở bucket `avatars`, đường dẫn LUÔN là `<user_id>/<file>` vì
 // policy storage khoá quyền ghi theo đúng thư mục mang id của mình.
@@ -13,6 +11,7 @@
 
 import { supabase } from './supabase';
 import { describeDbError } from './dbError';
+import { normalizeRecoveryPhone } from './auth';
 
 /** Khớp `file_size_limit` của bucket trong migration 20260811160000. */
 export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
@@ -55,6 +54,43 @@ export async function updateOwnProfile(
     .eq('id', userId);
 
   return { error: error ? describeDbError(error) : null };
+}
+
+export async function isOwnPhoneVerified(profilePhone: string): Promise<boolean> {
+  const normalized = normalizeRecoveryPhone(profilePhone);
+  if (!normalized) return false;
+  const { data } = await supabase.auth.getUser();
+  return !!data.user?.phone_confirmed_at && normalizeRecoveryPhone(data.user.phone ?? '') === normalized;
+}
+
+/** Gửi OTP tới số mới; Supabase chỉ đổi Auth phone sau khi nhập đúng mã. */
+export async function requestOwnPhoneVerification(profilePhone: string): Promise<{ error: string | null }> {
+  const normalized = normalizeRecoveryPhone(profilePhone);
+  if (!normalized) return { error: 'Số điện thoại không hợp lệ. Ví dụ: 0862577958.' };
+  const { error } = await supabase.auth.updateUser({ phone: normalized });
+  if (!error) return { error: null };
+  if (/provider.*not enabled|phone.*disabled|sms/i.test(error.message)) {
+    return { error: 'Kênh SMS chưa được bật trong Supabase Auth. Vui lòng liên hệ quản trị viên.' };
+  }
+  if (/rate limit|security purposes|too many requests/i.test(error.message)) {
+    return { error: 'Bạn vừa yêu cầu quá nhiều lần. Vui lòng đợi vài phút rồi thử lại.' };
+  }
+  return { error: describeDbError(error) };
+}
+
+export async function confirmOwnPhoneVerification(
+  profilePhone: string,
+  token: string,
+): Promise<{ error: string | null }> {
+  const normalized = normalizeRecoveryPhone(profilePhone);
+  if (!normalized) return { error: 'Số điện thoại không hợp lệ.' };
+  const { error } = await supabase.auth.verifyOtp({ phone: normalized, token: token.trim(), type: 'phone_change' });
+  if (!error) return { error: null };
+  return {
+    error: /expired|invalid|token/i.test(error.message)
+      ? 'Mã không đúng hoặc đã hết hạn. Vui lòng gửi lại mã.'
+      : describeDbError(error),
+  };
 }
 
 /**

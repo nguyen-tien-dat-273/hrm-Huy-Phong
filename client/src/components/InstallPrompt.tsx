@@ -69,12 +69,13 @@ export function InstallPrompt() {
           <p className="text-xs text-slate-500 leading-tight mt-0.5">Mở nhanh, chấm công tiện như một ứng dụng.</p>
         </div>
         <button
+          type="button"
           onClick={install}
-          className="flex-shrink-0 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg px-3.5 py-2 transition-colors"
+          className="min-h-11 flex-shrink-0 rounded-lg bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
         >
           Cài đặt
         </button>
-        <button onClick={dismiss} aria-label="Đóng" className="flex-shrink-0 p-1 text-slate-400 hover:text-slate-600 transition-colors">
+        <button type="button" onClick={dismiss} aria-label="Đóng" className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
           <X className="w-4 h-4" />
         </button>
       </div>

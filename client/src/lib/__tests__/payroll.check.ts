@@ -1,7 +1,7 @@
 // Kiểm chứng engine lương. Chạy: npm run check:payroll
 import { evaluateFormula } from '../payrollFormula';
 import {
-  computePayslip, mergeUnitAndEmployeeItems, progressiveIncomeTax, summarisePeriod,
+  computePayslip, mergeUnitAndEmployeeItems, progressiveIncomeTax, splitOvertimeHours, summarisePeriod,
   type PayrollAdjustment,
 } from '../payroll';
 import {
@@ -327,13 +327,21 @@ check('chưa truyền ngày lễ thì holidayDays = 0', summary.holidayDays, 0);
 
 // --- Ngày nghỉ lễ (L03) -------------------------------------------------------
 // 2026-09-01 (Thứ 3): đã đi làm thật -> KHÔNG tính là ngày lễ (tránh trả 2 lần).
-// 2026-09-03 (Thứ 5): không đi làm, không nghỉ phép -> ĐÚNG 1 ngày lễ.
+// 2026-09-03 (Thứ 5): không đi làm, không nghỉ phép -> ngày lễ.
 // 2026-09-06 (Chủ nhật): cuối tuần vốn không phải ngày công -> không tính.
-// 2026-09-07 (Thứ 2): đã nằm trong đơn nghỉ phép đã duyệt -> không đếm 2 lần.
+// 2026-09-07 (Thứ 2): rơi trong đơn nghỉ phép -> tính là NGÀY LỄ, không phải
+//   ngày phép. Người lao động không bị trừ quỹ phép cho một ngày vốn đã nghỉ,
+//   đúng như `countWorkingDays` bên `leave.ts` đang tính quỹ.
 const holidays = ['2026-09-01', '2026-09-03', '2026-09-06', '2026-09-07'];
 const withHolidays = summarisePeriod(att, leaveReqs, new Date(2026, 8, 1), 8, holidays);
-check('ngày lễ không đè lên ngày đã đi làm/đã nghỉ phép', withHolidays.holidayDays, 1);
-check('paidDays cộng cả ngày lễ', withHolidays.paidDays, withHolidays.workDays + withHolidays.leaveDays + 1);
+check('ngày lễ không đè lên ngày đã đi làm', withHolidays.holidayDays, 2);
+check('ngày lễ trong kỳ nghỉ không bị tính là ngày phép', withHolidays.leaveDays, 1);
+// Điều PHẢI giữ nguyên là TỔNG — đổi cách quy kết giữa phép và lễ không được
+// làm đổi số tiền. Trước khi sửa: 2 công + 2 phép + 1 lễ. Sau: 2 + 1 + 2.
+check('đổi cách quy kết không làm đổi tổng ngày hưởng lương', withHolidays.paidDays, 5);
+check('tổng luôn bằng ba thành phần cộng lại',
+  withHolidays.paidDays,
+  withHolidays.workDays + withHolidays.leaveDays + withHolidays.holidayDays);
 
 // Tách 3 dòng lương gốc (L01/L02/L03) — tổng 3 dòng phải bằng ĐÚNG số tiền
 // của một dòng gộp cũ (base.rate không đổi, chỉ đổi cách chia hiển thị).
@@ -405,6 +413,23 @@ check('số lần muộn', punctual.lateCount, 2);
 check('số lần vào sau 9h', punctual.lateAfterCutoffCount, 1);
 check('phút về sớm', punctual.earlyMinutes, 30);
 check('chủ nhật không tính muộn', punctual.lateCount, 2);
+
+const excused = measurePunctuality(
+  schedules,
+  [
+    { date: '2026-08-04', check_in_time: '2026-08-04T08:20:00', check_out_time: '2026-08-04T17:00:00' },
+  ],
+  [],
+  { lateDates: new Set(['2026-08-04']), earlyDates: new Set(['2026-08-04']) },
+);
+check('đơn đi muộn đã duyệt loại ngày khỏi phạt muộn', excused.lateMinutes, 0);
+check('đơn về sớm đã duyệt loại ngày khỏi phạt về sớm', excused.earlyMinutes, 0);
+
+const overnight = measurePunctuality(
+  { supported: true, schedules: [{ ...schedules.schedules[0], start_time: '22:00', end_time: '06:00' }] },
+  [{ date: '2026-08-03', check_in_time: '2026-08-03T22:00:00', check_out_time: '2026-08-04T05:45:00' }],
+);
+check('ca qua đêm checkout 05:45 chỉ về sớm 15 phút', overnight.earlyMinutes, 15);
 
 // Phút ân hạn: muộn 12 phút với ân hạn 15 phút thì không tính là muộn.
 const withGrace = measurePunctuality(
@@ -704,7 +729,6 @@ check('phát hiện được lỗ hổng giữa hai mức',
 check('thang liền mạch không báo lỗi',
   describeLevelIssues(errorLevels).length, 0);
 
-
 // --- Nghỉ không lương từ 14 ngày: tháng đó không đóng bảo hiểm ------------
 // Điều 85 khoản 3 Luật BHXH 2014. Trước khi có nhánh này, người nghỉ gần hết
 // tháng vẫn bị trừ đủ bảo hiểm trên mức lương đóng BH trong khi lương thực tế
@@ -790,6 +814,234 @@ const kpiOverride = computePayslip({
 });
 check('MUC_RIENG lấy mức gán riêng của từng người',
   kpiOverride.lines.find((l) => l.code === 'LUONG_KPI')?.amount, 6_400_000);
+
+// Công thức khai lúc gán phải ghi đè được cả khoản FIXED. UI trước đây cho
+// nhập trường này nhưng engine bỏ qua, khiến người dùng lưu thành công mà số
+// tiền vẫn giữ nguyên mức cố định.
+const flexibleBonus = component({
+  id: 'cFlexible', code: 'THUONG_LINH_HOAT', name: 'Thưởng linh hoạt',
+  calc_type: 'FIXED', default_amount: 2_000_000, sort_order: 350,
+});
+const flexibleResult = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [{
+    item: item('cFlexible', { amount: 5_000_000, formula: 'MUC_RIENG * KPI_PCT / 100' }),
+    component: flexibleBonus,
+  }],
+  inputs: { KPI_PCT: 80 }, stats, settings,
+});
+check('công thức riêng ghi đè cách tính FIXED',
+  flexibleResult.lines.find((l) => l.code === 'THUONG_LINH_HOAT')?.amount, 4_000_000);
+
+// ---------------------------------------------------------------------------
+// Tổng lương ghép từ nhiều khoản: khoản này đọc được mã của khoản kia.
+// ---------------------------------------------------------------------------
+// Đây là cách người dùng mô tả cơ chế lương: khai sẵn các khoản trong danh
+// mục, rồi tổng là phép cộng trừ nhân chia giữa chúng.
+//
+// Phần dễ sai: khoản bị tham chiếu phải tính XONG trước. Cố ý cho khoản phụ
+// thuộc một `sort_order` NHỎ HƠN khoản nó đọc tới — sắp theo sort_order thì
+// nó chạy trước và đọc ra 0, ra 0đ thay vì 1.650.000đ.
+const phuCapXang = component({
+  id: 'cXang', code: 'PC_XANG', name: 'Phụ cấp xăng xe',
+  calc_type: 'FIXED', default_amount: 500_000, sort_order: 900,
+});
+const phuCapAn = component({
+  id: 'cAn', code: 'PC_AN', name: 'Phụ cấp ăn ca',
+  calc_type: 'FIXED', default_amount: 1_000_000, sort_order: 910,
+});
+// Thưởng = 10% của (xăng + ăn ca). Khai sort_order 100 để nó đứng TRƯỚC.
+const thuongGhep = component({
+  id: 'cGhep', code: 'THUONG_GHEP', name: 'Thưởng ghép',
+  calc_type: 'FORMULA', formula: '(PC_XANG + PC_AN) * 0.1', sort_order: 100,
+});
+const ghepResult = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [
+    { item: item('cGhep'), component: thuongGhep },
+    { item: item('cXang'), component: phuCapXang },
+    { item: item('cAn'), component: phuCapAn },
+  ],
+  inputs: {}, stats, settings,
+});
+check('khoản ghép đọc được mã của khoản xếp sau nó',
+  ghepResult.lines.find((l) => l.code === 'THUONG_GHEP')?.amount, 150_000);
+
+// ---------------------------------------------------------------------------
+// Lương gốc khai bằng một KHOẢN trong danh mục, thay cho pay_basis/base_amount.
+// ---------------------------------------------------------------------------
+// Cố ý để `base_amount` của hồ sơ là một số KHÁC (5 triệu). Engine còn đọc
+// trường cũ thì đơn giá giờ ra 5tr/26/8 chứ không phải 26tr/26/8 — bài kiểm
+// bắt được ngay, chứ không chỉ chạy cho có.
+const luongGoc = component({
+  id: 'cBase', code: 'LUONG_CO_BAN', name: 'Lương cơ bản',
+  calc_type: 'FIXED', is_base: true, default_amount: 0, sort_order: 10,
+});
+const baseByComponent = computePayslip({
+  profile,
+  payProfile: payProfile({ pay_basis: 'MONTHLY', base_amount: 5_000_000 }),
+  items: [{ item: item('cBase', { amount: 26_000_000 }), component: luongGoc }],
+  inputs: {}, stats, settings,
+});
+check('đơn giá giờ suy từ khoản được đánh dấu lương gốc',
+  baseByComponent.hourlyRate, 26_000_000 / 26 / 8);
+check('mức đóng bảo hiểm cũng theo khoản lương gốc',
+  baseByComponent.insuranceBase, 26_000_000);
+
+// --- Chia giờ tăng ca theo Điều 98 BLLĐ 2019 --------------------------------
+//
+// "Ngày nghỉ" (200%) KHÔNG đồng nghĩa thứ Bảy + Chủ nhật. Công ty khai
+// `saturday_mode` cho từng ca, nên thứ Bảy có thể là ngày làm. Gán cứng thứ
+// Bảy vào rổ 200% là trả dư một phần ba cho mọi giờ tăng ca hôm đó.
+const caThuBayLam: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'FULL' }],
+};
+const caThuBayNghi: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'OFF' }],
+};
+// 2026-08-08 là thứ Bảy, 2026-08-09 là Chủ nhật, 2026-08-07 là thứ Sáu.
+const donOt = [
+  { request_type: 'OVERTIME', work_date: '2026-08-07', hours: 2 },
+  { request_type: 'OVERTIME', work_date: '2026-08-08', hours: 3 },
+  { request_type: 'OVERTIME', work_date: '2026-08-09', hours: 4 },
+];
+check('công ty LÀM thứ Bảy: OT thứ Bảy vào rổ 150%',
+  splitOvertimeHours(donOt, caThuBayLam, new Set()), { weekday: 5, weekend: 4, holiday: 0 });
+check('công ty NGHỈ thứ Bảy: OT thứ Bảy vào rổ 200%',
+  splitOvertimeHours(donOt, caThuBayNghi, new Set()), { weekday: 2, weekend: 7, holiday: 0 });
+check('ngày lễ thắng tất cả, kể cả ngày thường',
+  splitOvertimeHours(donOt, caThuBayLam, new Set(['2026-08-07'])), { weekday: 3, weekend: 4, holiday: 2 });
+check('chưa khai ca nào thì lùi về quy ước T7+CN',
+  splitOvertimeHours(donOt, EMPTY_SCHEDULES, new Set()), { weekday: 2, weekend: 7, holiday: 0 });
+check('đơn không phải tăng ca thì bỏ qua',
+  splitOvertimeHours([{ request_type: 'LATE_ARRIVAL', work_date: '2026-08-07', hours: 9 }], caThuBayLam, new Set()),
+  { weekday: 0, weekend: 0, holiday: 0 });
+check('giờ âm hoặc rỗng không được cộng vào',
+  splitOvertimeHours([
+    { request_type: 'OVERTIME', work_date: '2026-08-07', hours: -3 },
+    { request_type: 'OVERTIME', work_date: '2026-08-07', hours: null },
+  ], caThuBayLam, new Set()), { weekday: 0, weekend: 0, holiday: 0 });
+
+// --- Ngày hưởng lương phải đếm cùng quyển lịch với công chuẩn ---------------
+//
+// `standardDays` lấy từ `monthStandardDays`, đếm thứ Bảy 0,5 hoặc 1 theo
+// `saturday_mode`. Nếu `paidDays` lại bỏ hẳn thứ Bảy thì hai vế của phép chia
+// `base / standardDays * paidDays` dùng hai quyển lịch khác nhau, và người
+// nghỉ phép trọn tháng bị trả thiếu — không có gì báo ra.
+const lichT7Nua: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'HALF' }],
+};
+// 2026-08-08 là thứ Bảy. Đơn nghỉ phủ đúng thứ Sáu 07 và thứ Bảy 08.
+const nghiQuaThuBay = [{
+  user_id: 'u1', start_date: '2026-08-07', end_date: '2026-08-08',
+  half_day: false, status: 'approved', leave_type: 'annual', days: 2,
+} as unknown as LeaveRequest];
+
+check('thứ Bảy nửa ngày: nghỉ phép hưởng 1,5 công chứ không phải 1',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8, [], lichT7Nua).leaveDays, 1.5);
+const lichT7Nghi: ScheduleSet = {
+  supported: true,
+  schedules: [{ ...schedules.schedules[0], saturday_mode: 'OFF' }],
+};
+check('công ty nghỉ hẳn thứ Bảy thì chỉ 1 công',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8, [], lichT7Nghi).leaveDays, 1);
+check('công ty làm đủ thứ Bảy thì hưởng 2 công',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8, [], {
+    supported: true, schedules: [{ ...schedules.schedules[0], saturday_mode: 'FULL' }],
+  }).leaveDays, 2);
+check('chưa khai ca nào thì giữ nguyên nếp cũ (T7 không tính)',
+  summarisePeriod([], nghiQuaThuBay, new Date(2026, 7, 1), 8).leaveDays, 1);
+check('lễ rơi vào thứ Bảy nửa ngày vẫn hưởng 0,5 công',
+  summarisePeriod([], [], new Date(2026, 7, 1), 8, ['2026-08-08'], lichT7Nua).holidayDays, 0.5);
+check('lễ rơi vào Chủ nhật không hưởng công nào',
+  summarisePeriod([], [], new Date(2026, 7, 1), 8, ['2026-08-09'], lichT7Nua).holidayDays, 0);
+
+// --- Công thức của một người chỉ đọc số liệu CỦA CHÍNH NGƯỜI ĐÓ ------------
+//
+// Một khoản tham chiếu mã của khoản khác (`LUONG_CB * PAID_DAYS`). Cùng một
+// khoản đó được gán cho nhiều người với mức khác nhau, nên nếu phạm vi biến
+// bị dùng chung thì người này sẽ ăn mức của người kia — sai tiền hàng loạt,
+// và sai một cách im lặng vì công thức vẫn chạy ra số.
+const luongCoBan = component({
+  id: 'cb', code: 'LUONG_CB', name: 'Lương cơ bản', calc_type: 'FIXED', sort_order: 10,
+});
+const luongCong = component({
+  id: 'cc', code: 'LUONG_CONG', name: 'Lương công', calc_type: 'FORMULA',
+  formula: '(LUONG_CB / STANDARD_DAYS) * PAID_DAYS', sort_order: 20,
+});
+
+/** Cùng bộ khoản, khác mức khai riêng. */
+const slipFor = (muc: number) => computePayslip({
+  profile,
+  payProfile: payProfile({ base_amount: 0 }),
+  items: [
+    { item: item('cb', { amount: muc }), component: luongCoBan },
+    { item: item('cc'), component: luongCong },
+  ],
+  inputs: {},
+  stats: { ...stats, paidDays: 24.5 },
+  settings,
+});
+
+const nguoiA = slipFor(8_000_000);
+const nguoiB = slipFor(20_000_000);
+const dong = (slip: ReturnType<typeof computePayslip>, code: string) =>
+  slip.lines.find((line) => line.code === code)?.amount ?? null;
+
+// Khẳng định TỶ LỆ chứ không phải con số tuyệt đối: con số còn phụ thuộc ngày
+// công chuẩn của kỳ, nhưng tỷ lệ giữa hai người thì chỉ phụ thuộc mức riêng
+// của họ. B khai gấp 2,5 lần A thì lương công phải gấp đúng 2,5 lần.
+const a = dong(nguoiA, 'LUONG_CONG') ?? 0;
+const b = dong(nguoiB, 'LUONG_CONG') ?? 0;
+check('mỗi người ra một con số khác nhau', a !== b && a > 0, true);
+// Làm tròn về đồng nên tỷ lệ không khớp tuyệt đối; sai số một phần nghìn là
+// của phép làm tròn, không phải của phạm vi biến.
+check('tỷ lệ đúng bằng tỷ lệ mức riêng của hai người',
+  Math.round((b / a) * 1000) / 1000, 2.5);
+
+// Tính A trước rồi tính B, xong tính lại A: nếu phạm vi biến rò rỉ giữa hai
+// lần chạy thì lần sau A sẽ mang số của B.
+check('tính lại A sau khi tính B vẫn ra đúng số của A',
+  dong(slipFor(8_000_000), 'LUONG_CONG'), a);
+
+// Công thức trỏ tới khoản mà NGƯỜI NÀY không được gán.
+//
+// Khoản gán theo từng người, nên mã khoản trong công thức chỉ có số khi
+// chính người đó được gán khoản đó. Không gán thì nó bằng 0 — công thức vẫn
+// chạy, ra 0đ. Đúng về số, nhưng im lặng thì một người mất nguyên khoản
+// lương mà phiếu trông vẫn bình thường.
+const thieuNguon = computePayslip({
+  profile,
+  payProfile: payProfile({ base_amount: 0 }),
+  items: [{ item: item('cc'), component: luongCong }],
+  inputs: {},
+  stats,
+  settings,
+  catalogCodes: ['LUONG_CB', 'LUONG_CONG'],
+});
+check('khoản thiếu nguồn vẫn ra 0đ, không ném lỗi',
+  thieuNguon.lines.find((line) => line.code === 'LUONG_CONG')?.amount ?? 0, 0);
+check('nhưng PHẢI cảnh báo, và gọi đúng tên khoản còn thiếu',
+  thieuNguon.warnings.some((w) => w.includes('LUONG_CB') && w.includes('Lương công')), true);
+
+// Người ĐƯỢC gán đủ cả hai thì không cảnh báo gì về chuyện này.
+const duNguon = computePayslip({
+  profile,
+  payProfile: payProfile({ base_amount: 0 }),
+  items: [
+    { item: item('cb', { amount: 8_000_000 }), component: luongCoBan },
+    { item: item('cc'), component: luongCong },
+  ],
+  inputs: {},
+  stats,
+  settings,
+  catalogCodes: ['LUONG_CB', 'LUONG_CONG'],
+});
+check('gán đủ thì không cảnh báo thiếu nguồn',
+  duNguon.warnings.some((w) => w.includes('chưa được gán khoản đó')), false);
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

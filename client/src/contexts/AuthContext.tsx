@@ -23,8 +23,8 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   /** Admin cấp tài khoản. Trả về mật khẩu tạm để bàn giao cho nhân viên. */
-  createUser: (data: { name: string; identifier: string; role: SystemRole; access_role_code?: string; department?: string; permissions?: string[] }) => Promise<{ error: string | null; tempPassword?: string; email?: string }>;
-  updateUser: (id: string, updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year'>>) => Promise<{ error: string | null }>;
+  createUser: (data: { name: string; identifier: string; role: SystemRole; access_role_code?: string; department?: string; permissions?: string[] }) => Promise<{ error: string | null; id?: string; tempPassword?: string; email?: string }>;
+  updateUser: (id: string, updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code'>>) => Promise<{ error: string | null }>;
   /** `partial` = chỉ xóa được hồ sơ, bản ghi đăng nhập trong auth.users vẫn còn. */
   deleteUser: (id: string) => Promise<{ error: string | null; partial?: boolean }>;
   /** Admin cấp lại mật khẩu tạm mới. */
@@ -66,6 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (event === 'SIGNED_OUT') {
         setProfile(null);
         setUsers([]);
+      }
+      if (event === 'PASSWORD_RECOVERY') {
+        sessionStorage.setItem('hrm:password-recovery', '1');
       }
     });
 
@@ -209,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await adminCreateUser(data);
     if (result.error) return { error: result.error };
     await loadUsers();
-    return { error: null, tempPassword: result.tempPassword, email: result.email };
+    return { error: null, id: result.id, tempPassword: result.tempPassword, email: result.email };
   };
 
   const resetUserPassword = async (id: string) => {
@@ -227,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
-  const updateUser = async (id: string, updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year'>>) => {
+  const updateUser = async (id: string, updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code'>>) => {
     const result = await updateProfile(id, updates);
     if (result.error) return { error: result.error };
     await loadUsers();

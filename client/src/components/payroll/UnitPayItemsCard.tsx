@@ -10,9 +10,11 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Plus, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, Building2, ChevronRight, Plus, Trash2, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Avatar } from '@/components/ui/Avatar';
+import { PayrollFormulaBuilder } from '@/components/payroll/PayrollFormulaBuilder';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
@@ -20,17 +22,38 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatVND } from '@/lib/utils';
+import { sampleFormulaScope } from '@/lib/payroll';
+import { validateFormula } from '@/lib/payrollFormula';
 import { deleteUnitPayItem, saveUnitPayItem } from '@/lib/payrollData';
+import type { PayrollParams } from '@/lib/payrollSettings';
 import type { OrganizationUnit, PayComponent, Profile, UnitPayItem } from '@/types';
 
 interface UnitPayItemsCardProps {
   components: PayComponent[];
   unitItems: UnitPayItem[];
   profiles: Profile[];
+  params: PayrollParams;
   /** Ngày đầu tháng đang xem — mặc định cho ngày hiệu lực. */
   defaultEffectiveFrom: string;
   actorId: string | null;
   onChanged: () => void;
+  onEditEmployee: (profile: Profile) => void;
+  /**
+   * Id của những người ĐÃ có cơ chế lương.
+   *
+   * Không có tập này thì hai danh sách trên cùng màn nói hai điều khác nhau
+   * về cùng một người: danh sách dưới ghi đỏ "Chưa thiết lập cơ chế lương",
+   * danh sách trên không ghi gì — người dùng không biết tin cái nào.
+   */
+  schemedUserIds: ReadonlySet<string>;
+  /**
+   * Báo ra ngoài đang đứng ở phòng nào.
+   *
+   * Danh sách "chưa thiết lập" nằm BÊN NGOÀI card này. Không báo ra thì vào
+   * một phòng xong, danh sách dưới vẫn liệt kê cả công ty — màn nói nửa trên
+   * đang xem một phòng, nửa dưới đang xem tất cả.
+   */
+  onSelectUnit?: (unitId: string | null) => void;
 }
 
 interface Draft {
@@ -44,7 +67,7 @@ interface Draft {
 }
 
 export function UnitPayItemsCard({
-  components, unitItems, profiles, defaultEffectiveFrom, actorId, onChanged,
+  components, unitItems, profiles, params, defaultEffectiveFrom, actorId, onChanged, onEditEmployee, schemedUserIds, onSelectUnit,
 }: UnitPayItemsCardProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -53,6 +76,12 @@ export function UnitPayItemsCard({
   const [unitsSupported, setUnitsSupported] = useState(true);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+
+  // Báo ra ngoài mỗi lần đổi phòng. Dùng effect chứ không gọi trong onClick:
+  // chỗ đặt `setSelectedUnitId` có vài nơi, gọi tay từng chỗ thì sớm muộn có
+  // một nhánh quên gọi và hai nửa màn lại lệch nhau.
+  useEffect(() => { onSelectUnit?.(selectedUnitId); }, [selectedUnitId]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -71,6 +100,15 @@ export function UnitPayItemsCard({
     () => new Map(components.map((component) => [component.id, component])),
     [components],
   );
+
+  const formulaScope = useMemo(() => sampleFormulaScope(
+    params,
+    components.flatMap((component) => [component.code, component.input_code ?? '']).filter(Boolean),
+  ), [components, params]);
+
+  const formulaError = draft?.formula.trim()
+    ? validateFormula(draft.formula, formulaScope)
+    : null;
 
   // Đếm người mỗi đơn vị: con số này cho thấy ngay một lần gán ảnh hưởng bao
   // nhiêu người, thứ mà gán từng người không bao giờ nói được.
@@ -95,10 +133,20 @@ export function UnitPayItemsCard({
 
   const unassignedCount = profiles.filter((person) => !person.unit_id).length;
 
+  const openAssign = (unitId: string) => setDraft({
+    unit_id: unitId,
+    component_id: components.find((component) => component.is_active)?.id ?? '',
+    amount: '', formula: '', effective_from: defaultEffectiveFrom, note: '',
+  });
+
   const save = async () => {
     if (!draft) return;
     if (!draft.unit_id || !draft.component_id) {
       toast('Chọn đơn vị và khoản lương.', 'warning');
+      return;
+    }
+    if (formulaError) {
+      toast('Công thức chưa hợp lệ — sửa trước khi lưu.', 'warning');
       return;
     }
 
@@ -159,27 +207,22 @@ export function UnitPayItemsCard({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
         <div>
-          <h3 className="text-base font-bold text-slate-800">Khoản lương theo đơn vị</h3>
-          <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
-            Chọn khoản từ danh mục cho cả đơn vị — mọi người trong đơn vị thừa hưởng, kể cả
-            người mới vào sau. Ai cần mức khác thì gán riêng ở Cơ chế lương, bản riêng sẽ thắng.
-          </p>
+          <h3 className="text-base font-bold text-slate-800">Phòng ban và nhân viên</h3>
+          {!selectedUnitId && (
+            <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
+              Chọn một phòng ban để đi vào danh sách nhân viên và thiết lập cơ chế lương cho từng người.
+            </p>
+          )}
         </div>
-        <Button
-          onClick={() => setDraft({
-            unit_id: units[0]?.id ?? '',
-            component_id: components.find((component) => component.is_active)?.id ?? '',
-            amount: '', formula: '', effective_from: defaultEffectiveFrom, note: '',
-          })}
-          disabled={units.length === 0 || components.length === 0}
-        >
-          <Plus className="h-4 w-4" /> Gán khoản cho đơn vị
-        </Button>
       </div>
 
-      {unassignedCount > 0 && (
+      {/* Canh bao nay noi ve nhung nguoi KHONG thuoc don vi nao - tuc khong
+          thuoc phong dang mo. Dang dung trong mot phong ma van bay con so cua
+          ca cong ty la bat nguoi dung doc mot viec khong lien quan toi thu
+          truoc mat, va de tuong 29 nguoi do nam trong phong nay. */}
+      {!selectedUnitId && unassignedCount > 0 && (
         <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-800">
           {unassignedCount} nhân sự chưa thuộc đơn vị nào nên <strong>không thừa hưởng</strong> khoản
           nào theo phòng ban. Gán đơn vị cho họ ở trang Cơ cấu tổ chức, hoặc gán khoản riêng
@@ -194,63 +237,183 @@ export function UnitPayItemsCard({
           </CardContent>
         </Card>
       ) : (
-        units.map((unit) => {
+        (selectedUnitId ? units.filter((unit) => unit.id === selectedUnitId) : units).map((unit) => {
           const items = itemsByUnit.get(unit.id) ?? [];
           const people = headcount.get(unit.id) ?? 0;
+          const peopleInUnit = profiles
+            .filter((person) => person.unit_id === unit.id)
+            .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+          const isSelected = selectedUnitId === unit.id;
           return (
-            <Card key={unit.id}>
+            <Card key={unit.id} className={`overflow-hidden transition-colors ${isSelected ? 'border-indigo-200' : ''}`}>
               <CardContent className="p-0">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-5 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <Building2 className="h-4 w-4 text-slate-400" />
-                    <span className="text-sm font-bold text-slate-800">{unit.name}</span>
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
-                      <Users className="h-3.5 w-3.5" /> {people} người
-                    </span>
+                {isSelected ? (
+                  <div className="border-b border-indigo-100 bg-indigo-50/60 px-5 py-4">
+                    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUnitId(null)}
+                        className="inline-flex items-center gap-1.5 font-semibold text-indigo-600 transition hover:text-indigo-800"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" /> Tất cả phòng ban
+                      </button>
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+                      <span className="font-semibold text-slate-600">{unit.name}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                          <Building2 className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-base font-bold text-slate-900">{unit.name}</span>
+                          <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                            <Users className="h-3.5 w-3.5" /> {people} nhân viên
+                            {items.length > 0 && ` · ${items.length} khoản chung`}
+                          </span>
+                        </span>
+                      </div>
+                      {items.length > 0 && (
+                        <Button size="sm" variant="outline" onClick={() => openAssign(unit.id)}>
+                          <Plus className="h-3.5 w-3.5" /> Gán thêm khoản chung
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-400">{items.length} khoản</span>
-                </div>
-
-                {items.length === 0 ? (
-                  <p className="px-5 py-5 text-sm text-slate-400">
-                    Chưa gán khoản nào. Người trong đơn vị chỉ nhận lương gốc và khoản gán riêng.
-                  </p>
                 ) : (
-                  <ul className="divide-y divide-slate-50">
-                    {items.map((item) => {
-                      const component = componentById.get(item.component_id);
-                      const amount = item.amount ?? component?.default_amount ?? 0;
-                      return (
-                        <li key={item.id} className="flex items-start justify-between gap-3 px-5 py-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-800">
-                              {component?.name ?? 'Khoản đã bị xóa'}
-                            </p>
-                            <p className="mt-0.5 text-xs text-slate-500">
-                              {component?.calc_type === 'PERCENT'
-                                ? `${Number(amount)}% của ${component.base_code}`
-                                : formatVND(Number(amount))}
-                              {item.amount == null && ' (theo mức mặc định của danh mục)'}
-                              {' · từ '}{item.effective_from}
-                            </p>
-                            {item.formula && (
-                              <p className="mt-0.5 font-mono text-xs text-slate-400">{item.formula}</p>
-                            )}
-                            {item.note && (
-                              <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{item.note}</p>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => remove(item)}
-                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                            aria-label="Bỏ khoản khỏi đơn vị"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedUnitId(unit.id)}
+                    className="group flex w-full flex-wrap items-center justify-between gap-2 bg-slate-50 px-5 py-4 text-left transition-colors hover:bg-indigo-50/60"
+                  >
+                    <span className="flex min-w-0 items-center gap-2.5">
+                      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors group-hover:bg-white group-hover:text-indigo-600 group-hover:shadow-sm">
+                        <Building2 className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-slate-800">{unit.name}</span>
+                        <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+                          <Users className="h-3.5 w-3.5" /> {people} người
+                        </span>
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="text-xs text-slate-400">{items.length} khoản</span>
+                      <ChevronRight className="h-4 w-4 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600" />
+                    </span>
+                  </button>
+                )}
+
+                {isSelected && (
+                  <div id={`unit-pay-items-${unit.id}`}>
+                    <div className="border-b border-slate-100">
+                      <div className="flex items-center justify-between bg-white px-5 py-2.5">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                          Nhân viên trong phòng
+                        </p>
+                        <span className="text-xs text-slate-400">{peopleInUnit.length} người</span>
+                      </div>
+                      {peopleInUnit.length === 0 ? (
+                        <p className="px-5 py-5 text-sm italic text-slate-400">
+                          Phòng ban này chưa có nhân viên.
+                        </p>
+                      ) : (
+                        <ul className="divide-y divide-slate-50">
+                          {peopleInUnit.map((person) => (
+                            <li key={person.id}>
+                              <button
+                                type="button"
+                                onClick={() => onEditEmployee(person)}
+                                className="group flex w-full items-center gap-3 px-5 py-3 text-left transition-colors hover:bg-indigo-50/50"
+                                aria-label={`Thiết lập cơ chế lương của ${person.name}`}
+                              >
+                                <Avatar name={person.name} url={person.avatar_url} size="sm" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-semibold text-slate-800">{person.name}</span>
+                                  <span className="mt-0.5 block truncate text-xs">
+                                    {schemedUserIds.has(person.id)
+                                      ? <span className="text-slate-400">{person.employee_code || person.email}</span>
+                                      : <span className="font-bold text-red-500">Chưa thiết lập cơ chế lương</span>}
+                                  </span>
+                                </span>
+                                {/* Cùng một nhãn với danh sách dưới: hai nút
+                                    này mở ĐÚNG một thứ, đặt hai tên khác nhau
+                                    là mời người dùng đi tìm sự khác biệt không
+                                    tồn tại. */}
+                                <span className="hidden text-xs font-semibold text-indigo-600 sm:block">
+                                  {schemedUserIds.has(person.id) ? 'Sửa' : 'Thiết lập'}
+                                </span>
+                                <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:text-indigo-600" />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+
+                    {/* Khoan ap cho CA PHONG chi hien khi phong do THUC SU dang
+                        co khoan.
+                        Luong khai theo TUNG NGUOI o "Co che luong"; bay them
+                        mot nut "Gan khoan" rong ben canh lam nguoi dung tuong
+                        phai lam ca hai moi xong. Nhung da co khoan thi KHONG
+                        duoc giau: cac khoan nay dang cong tien vao phieu luong
+                        cua moi nguoi trong phong, giau di la tien chay ma
+                        khong ai nhin thay o dau ra. */}
+                    {items.length > 0 && (
+                      <>
+                        <div className="flex items-center justify-between bg-slate-50/60 px-5 py-2.5">
+                          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            Khoản áp cho CẢ PHÒNG
+                          </p>
+                          <span className="text-xs text-slate-400">{items.length} khoản</span>
+                        </div>
+                        <p className="px-5 pt-2 text-xs leading-relaxed text-slate-400">
+                          Mọi người trong phòng cùng nhận các khoản này, cộng thêm vào cơ chế lương
+                          riêng của từng người.
+                        </p>
+                        <ul className="divide-y divide-slate-50">
+                          {items.map((item) => {
+                            const component = componentById.get(item.component_id);
+                            const amount = item.amount ?? component?.default_amount ?? 0;
+                            return (
+                              <li key={item.id} className="flex items-start justify-between gap-3 px-5 py-3">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-slate-800">
+                                    {component?.name ?? 'Khoản đã bị xóa'}
+                                  </p>
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {component?.calc_type === 'PERCENT'
+                                      ? `${Number(amount)}% của ${component.base_code}`
+                                      : formatVND(Number(amount))}
+                                    {item.amount == null && ' (theo mức mặc định của danh mục)'}
+                                    {' · từ '}{item.effective_from}
+                                  </p>
+                                  {item.formula && (
+                                    <p className="mt-0.5 font-mono text-xs text-slate-400">{item.formula}</p>
+                                  )}
+                                  {item.note && (
+                                    <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{item.note}</p>
+                                  )}
+                                </div>
+                                <button
+                                  onClick={() => remove(item)}
+                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                                  aria-label="Bỏ khoản khỏi đơn vị"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        <div className="border-t border-slate-100 px-5 py-3">
+                          <Button size="sm" variant="outline" onClick={() => openAssign(unit.id)}>
+                            <Plus className="h-3.5 w-3.5" /> Gán thêm khoản cho cả phòng
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -311,12 +474,13 @@ export function UnitPayItemsCard({
               />
             </div>
 
-            <Input
-              label="Công thức riêng của đơn vị (không bắt buộc)"
-              placeholder={componentById.get(draft.component_id)?.formula ?? 'Để trống nếu dùng công thức chung'}
+            <PayrollFormulaBuilder
+              label="Công thức chung của phòng ban (không bắt buộc)"
               value={draft.formula}
-              onChange={(e) => setDraft({ ...draft, formula: e.target.value })}
-              className="font-mono text-xs"
+              onChange={(formula) => setDraft({ ...draft, formula })}
+              sampleScope={formulaScope}
+              components={components}
+              defaultFormula={componentById.get(draft.component_id)?.formula}
             />
 
             <Textarea
@@ -330,7 +494,7 @@ export function UnitPayItemsCard({
               <Button variant="outline" onClick={() => setDraft(null)} className="flex-1" disabled={saving}>
                 Hủy
               </Button>
-              <Button onClick={save} className="flex-1" disabled={saving}>
+              <Button onClick={save} className="flex-1" disabled={saving || !!formulaError}>
                 {saving ? 'Đang lưu…' : 'Lưu'}
               </Button>
             </div>

@@ -222,7 +222,7 @@ const mList = (memberships || []) as { project_id: string }[];
           to="/staff/attendance"
           icon={<Fingerprint className="h-5 w-5" />}
           title="Chấm công"
-          desc="Check-in / Check-out hôm nay"
+          desc="Giờ vào từ máy và checkout"
         />
       </div>
 
@@ -275,9 +275,9 @@ const mList = (memberships || []) as { project_id: string }[];
           </CardHeader>
           <CardContent>
             {attendance.length === 0 ? (
-              <EmptyHint icon={<Fingerprint className="h-5 w-5" />} title="Chưa chấm công lần nào"
-                description="Bấm Chấm công ở trên để check-in ca hôm nay."
-                to="/staff/attendance" action="Chấm công ngay" />
+              <EmptyHint icon={<Fingerprint className="h-5 w-5" />} title="Chưa có dữ liệu chấm công"
+                description="Dữ liệu sẽ xuất hiện sau khi bạn quét tại máy và hệ thống đồng bộ."
+                to="/staff/attendance" action="Xem chấm công" />
             ) : (
               <div className="space-y-2">
                 {attendance.map((a) => (
@@ -291,8 +291,8 @@ const mList = (memberships || []) as { project_id: string }[];
                         <p className="text-xs text-slate-400">{formatTime(a.check_in_time)} → {formatTime(a.check_out_time)}</p>
                       </div>
                     </div>
-                    <Badge className={a.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'}>
-                      {a.status === 'completed' ? 'Hoàn thành' : 'Đang làm'}
+                    <Badge className={a.check_out_time ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
+                      {a.check_out_time ? 'Đã checkout' : 'Chưa checkout'}
                     </Badge>
                   </div>
                 ))}

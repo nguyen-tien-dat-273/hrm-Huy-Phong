@@ -5,8 +5,8 @@ Toàn bộ mã đã có sẵn trong repo. Tài liệu này là thứ tự các b
 ## Vì sao phải có "bridge" chứ không nối trực tiếp
 
 Máy chấm công nói giao thức nhị phân ZKTeco trên cổng 4370 và chỉ tồn tại ở IP nội bộ
-(`192.168.x.x`). Website chạy trên Vercel không thể với tới IP đó, và cũng không nên: mở
-máy chấm công ra Internet là mở luôn một thiết bị firmware cũ, không HTTPS, cho cả thế giới.
+(`192.168.x.x`). Không đưa kết nối trực tiếp tới máy chấm công ra Internet: mở thiết bị
+firmware cũ, không HTTPS, cho cả thế giới là rủi ro bảo mật.
 
 Nên đường đi là:
 
@@ -37,20 +37,39 @@ IP máy và comm key **chỉ nằm trên máy tính chạy bridge**, không bao 
 
 ## Bước 1 — Nạp phần máy chấm công vào database
 
-Tính đến 30/09/2026, Supabase của dự án **chưa có** bảng và RPC của máy chấm công — hai
-migration dưới đây chưa được chạy. Đây là điểm chặn đầu tiên, làm xong mới đi tiếp được.
+Trước khi cấu hình bridge, xác nhận các migration chấm công đã được triển khai trên đúng
+Supabase project. Không suy ra trạng thái production từ file SQL trong repo.
 
-Mở Supabase > SQL Editor, dán cả file **`supabase/paste-attendance-devices.sql`** rồi Run.
-File này là hai migration gộp lại, comment đã chuyển hết sang ASCII để dán không lỗi
-encoding, và mọi câu lệnh đều chạy lại được nhiều lần:
+Ưu tiên triển khai các migration trong `supabase/migrations` theo thứ tự. Nếu môi trường
+vẫn dùng SQL Editor, `supabase/paste-attendance-devices.sql` cài phần tích hợp thiết bị,
+sau đó chạy các migration chấm công mới hơn theo thứ tự:
 
 | gộp từ | làm gì |
 | --- | --- |
 | `20260926100000_attendance_devices` | Bảng thiết bị, ánh xạ nhân viên, token bridge, log thô, RPC nạp sự kiện. |
 | `20260927130000_attendance_device_autoapprove` | Ngày công từ máy tự động duyệt, không cần ai duyệt tay. |
 | `20260930230000_attendance_device_arrival_only` | Máy chỉ ghi giờ vào: một lần quét = một ngày công, `check_out_time` để NULL. |
+| `20261007113000_security_payroll_attendance_hardening` | Token hết hạn, luân chuyển token có thời gian chuyển tiếp, và log tổng hợp lần xác thực sai. |
 
 Thứ tự trong file là cố ý — phần sau thay thân hàm của phần trước.
+
+Hai migration sau nằm ở file khác, **`supabase/paste-cap-nhat-dong-bo.sql`**:
+
+| migration | làm gì |
+| --- | --- |
+| `20261007140000_fix_ingest_variable_conflict` | Sửa hai lỗi chặn mọi lần đồng bộ (xem bên dưới). |
+| `20261007130000_attendance_sync_on_demand` | Nút "Đồng bộ ngay" trên HRM, và mốc báo danh của bridge. |
+
+**Thiếu `20261007140000`:** mọi lời gọi đồng bộ đều văng exception, không bản ghi nào vào
+được. Hàm gốc hỏng hai lớp và lớp sau chỉ lộ ra sau khi vá lớp trước:
+
+- `column reference "unmapped_count" is ambiguous` — bảng `attendance_device_sync_runs`
+  có cột trùng tên biến plpgsql.
+- `missing FROM-clause entry for table "ingest_attendance_device_events"` — bản gốc định
+  danh biến bằng tên hàm, PostgreSQL hiểu đó là tên bảng.
+
+Bản vá đổi tên biến thành `v_received`, `v_inserted`, `v_processed`, `v_unmapped` cho khác
+hẳn tên cột. Chạy riêng phần này thì dùng `supabase/paste-sua-ingest.sql`.
 
 **Thiếu phần 2:** ngày công mắc ở `approved_by_lead = false`, mà màn "Duyệt chấm công" đã bị
 bỏ khỏi menu nên không còn cách nào đặt cờ đó thành true — bảng lương ra ~0 ngày công cho
@@ -69,6 +88,9 @@ ra `✅ ĐÃ CHẠY`. Hoặc chạy `pnpm attendance:doctor` — bước 6 của
 1. Vào HRM > **Máy chấm công** (`/admin/attendance-devices`).
 2. **Thêm máy**: tên, model, chọn địa điểm làm việc. Serial để trống được, bước 4 sẽ đọc ra.
 3. Bấm **Tạo token bridge**. Token dạng `rj_...` **chỉ hiện đúng một lần** — copy ngay.
+   Token mới hết hạn sau 90 ngày. Khi tạo token thay thế, token cũ còn hiệu lực tối đa
+   7 ngày để cập nhật cấu hình; hãy dán token mới vào máy bridge và khởi động lại trong
+   khoảng thời gian này. Không dùng lại token/hash cố định từ script SQL.
 
 Gắn địa điểm có tác dụng thật: ngày công do máy tạo ra sẽ mang `location_id` đó, và
 trigger kiểm tra toạ độ GPS được bỏ qua cho nguồn `DEVICE` (máy vật lý đã cố định chỗ
@@ -132,13 +154,30 @@ pnpm attendance:doctor -- --users --logs=20
 `--users` in hết danh sách người trên máy (mặc định chỉ 15 dòng đầu), `--logs=20` in 20
 lần chấm gần nhất kèm mã `status` mà máy này thực dùng.
 
+### Khi không biết máy đang ở IP nào
+
+```bash
+pnpm attendance:find
+```
+
+Máy lấy IP qua DHCP nên địa chỉ sẽ trôi. Script quét cả dải mạng, lọc theo OUI `00:17:61`
+của ZKTeco rồi **bắt tay thật** để xác nhận — một host mở cổng 4370 chưa chắc là máy chấm
+công. Cuối cùng nó đối chiếu với `RJ_DEVICE_IP` trong env và báo nếu đã lệch.
+
+**Dòng đầu ra luôn in máy tính đang ở mạng nào.** Nhìn dòng đó trước: nếu nó không phải
+dải của máy chấm công thì vấn đề nằm ở máy tính, không phải ở thiết bị.
+
 ## Bước 5 — Ánh xạ mã nhân viên
 
 Bridge cần biết mã trên máy ứng với ai trong HRM. Có hai đường:
 
 - **Tự nhận**: mã trên máy trùng `employee_code` trong HRM thì khớp luôn, không cần khai gì.
-  Đây là cách nên nhắm tới — đặt User ID trên máy đúng bằng mã nhân viên.
+  Khớp chính xác từng ký tự, không phân biệt hoa thường — `1` không khớp `01` hay `NV001`.
+  Sửa mã tại HRM > **Hồ sơ & tài khoản** (`/admin/users`) > Sửa > **Mã nhân viên**; ô này **chỉ Admin/CEO**
+  sửa được, vai trò khác vẫn chỉ xem.
 - **Khai tay**: HRM > Máy chấm công > **Ánh xạ nhân viên**, nhập mã máy và chọn người.
+  Bảng này được ưu tiên **trước** `employee_code` (`coalesce(m.profile_id, p.id)`), nên
+  dùng nó khi hệ mã nhân viên hiện có đang mang ý nghĩa riêng và không muốn đổi.
 
 Dùng bảng ở bước 4 để đối chiếu. Người nào trên máy không có User ID thì bản ghi của họ
 bị bỏ qua hoàn toàn — phải đặt mã cho họ ngay trên máy chấm công.
@@ -163,6 +202,24 @@ pnpm attendance:bridge
 
 Kiểm tra trên HRM: trang Máy chấm công phải đổi trạng thái thành **Ổn định**, kèm mốc
 "Đồng bộ gần nhất". Ngày công xuất hiện ở trang chấm công với `check_in_method = DEVICE`.
+
+### Đồng bộ từ HRM, không cần terminal
+
+Khi bridge đang chạy liên tục, bấm **Đồng bộ ngay** trên trang Máy chấm công là đủ.
+
+Vercel không với tới `192.168.x.x`, nên HRM không gọi xuống máy. Nó chỉ đặt cờ
+`sync_requested_at`; bridge trong LAN hỏi cờ đó mỗi 20 giây (`RJ_COMMAND_POLL_SECONDS`)
+rồi đọc máy. Nhận lệnh và xoá cờ nằm trong cùng một câu `UPDATE`, nên hai bridge chạy song
+song thì chỉ một cái lấy được — máy chấm công chỉ phục vụ một kết nối.
+
+Nút này **chỉ có tác dụng khi bridge đang chạy**. Chạy `attendance:sync` một lần rồi tắt
+thì không ai nghe lệnh cả — xem bước 7.
+
+Trang còn hai thứ để tự chẩn đoán:
+
+- **Bridge báo danh** — cập nhật mỗi lần bridge hỏi lệnh, phân biệt "bridge chết" với
+  "máy chấm công tắt". Trước đây hai trường hợp này nhìn giống hệt nhau.
+- **Lịch sử đồng bộ** — 8 lượt gần nhất kèm số nhận/mới/xử lý, và thông điệp lỗi in đỏ.
 
 ## Bước 7 — Cho bridge tự chạy lại sau khi khởi động máy
 
@@ -244,6 +301,8 @@ lấy lần chấm muộn nhất khi ngày đó có từ hai lần.
 | Giờ vào/ra lệch đều nhau | Đồng hồ máy chấm công sai. Doctor bước 3 báo rõ lệch bao nhiêu phút. |
 | Lương ra 0 ngày công | Migration `20260927130000_attendance_device_autoapprove` chưa chạy. |
 
-Đổi token khi nghi bị lộ: HRM > Máy chấm công > **Thu hồi token**, tạo token mới, dán lại
-vào `.env.attendance-bridge`, khởi động lại bridge. Token cũ chết ngay lập tức — HRM chỉ
-lưu bản băm SHA-256, không lưu token gốc.
+Đổi token định kỳ trước hạn 90 ngày, hoặc ngay khi nghi bị lộ: tạo token mới trong HRM,
+cập nhật `.env.attendance-bridge`, khởi động lại bridge và xác nhận doctor/đồng bộ chạy
+thành công. Sau khi xác nhận, có thể bấm **Thu hồi token** để vô hiệu hóa token cũ ngay.
+HRM chỉ lưu bản băm SHA-256, không lưu token gốc. Số lần xác thực sai được gom theo phút
+trong `attendance_device_auth_failures`; bảng này không lưu token hay địa chỉ thiết bị.

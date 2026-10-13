@@ -9,6 +9,7 @@ import { SettingsProvider } from '@/contexts/SettingsContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { CommandPalette } from '@/components/CommandPalette';
 import { InstallPrompt } from '@/components/InstallPrompt';
+import { PhoneNotificationPrompt } from '@/components/PhoneNotificationPrompt';
 import { hasAdminFunction, hasAnyAdminPermission, hasPermission, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import { AdminLayout } from '@/components/layouts/AdminLayout';
 import { StaffLayout } from '@/components/layouts/StaffLayout';
@@ -17,6 +18,8 @@ import { ADMIN_NAV_ITEMS } from '@/config/navigation';
 // Mỗi module được tải khi người dùng thực sự mở tới. Việc này giữ lần tải đầu
 // nhẹ dù hệ thống tiếp tục mở rộng thêm nghiệp vụ và vai trò.
 const LoginPage = lazyRoute('LoginPage', () => import('@/pages/auth/LoginPage').then((m) => ({ default: m.LoginPage })));
+const ForgotPasswordPage = lazyRoute('ForgotPasswordPage', () => import('@/pages/auth/ForgotPasswordFlow').then((m) => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazyRoute('ResetPasswordPage', () => import('@/pages/auth/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const ChangePasswordPage = lazyRoute('ChangePasswordPage', () => import('@/pages/auth/ChangePasswordPage').then((m) => ({ default: m.ChangePasswordPage })));
 const SetupPage = lazyRoute('SetupPage', () => import('@/pages/auth/SetupPage').then((m) => ({ default: m.SetupPage })));
 const AdminOverview = lazyRoute('AdminOverview', () => import('@/pages/admin/AdminOverview').then((m) => ({ default: m.AdminOverview })));
@@ -45,7 +48,7 @@ const ProfilePage = lazyRoute('ProfilePage', () => import('@/pages/ProfilePage')
 const StaffDashboard = lazyRoute('StaffDashboard', () => import('@/pages/staff/StaffDashboard').then((m) => ({ default: m.StaffDashboard })));
 const StaffProjects = lazyRoute('StaffProjects', () => import('@/pages/staff/StaffProjects').then((m) => ({ default: m.StaffProjects })));
 const StaffKanban = lazyRoute('StaffKanban', () => import('@/pages/staff/StaffKanban').then((m) => ({ default: m.StaffKanban })));
-const StaffAttendance = lazyRoute('StaffAttendance', () => import('@/pages/staff/StaffAttendance').then((m) => ({ default: m.StaffAttendance })));
+const StaffAttendance = lazyRoute('StaffDeviceAttendance', () => import('@/pages/staff/StaffDeviceAttendance').then((m) => ({ default: m.StaffDeviceAttendance })));
 const StaffWorklog = lazyRoute('StaffWorklog', () => import('@/pages/staff/StaffWorklog').then((m) => ({ default: m.StaffWorklog })));
 const StaffLeave = lazyRoute('StaffLeave', () => import('@/pages/staff/StaffLeave').then((m) => ({ default: m.StaffLeave })));
 const StaffReports = lazyRoute('StaffReports', () => import('@/pages/staff/StaffReports').then((m) => ({ default: m.StaffReports })));
@@ -108,6 +111,10 @@ function PublicRoute({ children }: { children: ReactNode }) {
     if (profile.must_change_password) return <Navigate to="/change-password" replace />;
     if (profile.role === 'staff' && !hasAnyAdminPermission(profile)) return <Navigate to="/staff/dashboard" replace />;
     if (profile.role === 'teamlead') return <Navigate to="/admin/assignments" replace />;
+    // Vai trò tùy chỉnh có thể chỉ được cấp một module quản trị và không có
+    // quyền xem Tổng quan. Đi qua /admin để chọn đúng trang đầu tiên họ được
+    // phép mở, tránh vòng chuyển hướng thừa qua một trang bị chặn.
+    if (profile.role !== 'admin' && profile.role !== 'ceo') return <Navigate to="/admin" replace />;
     return <Navigate to="/admin/overview" replace />;
   }
 
@@ -150,8 +157,12 @@ function AdminHomeRedirect() {
   if (profile?.role === 'admin' || profile?.role === 'ceo') return <Navigate to="/admin/overview" replace />;
   // Trưởng nhóm: mục chính là Giao việc.
   if (profile?.role === 'teamlead') return <Navigate to="/admin/assignments" replace />;
-  const target = ADMIN_NAV_ITEMS.find(({ permission, fullAdminOnly, functionCode }) =>
-    !fullAdminOnly && hasPermission(profile, permission) && (!functionCode || hasAdminFunction(profile, functionCode)),
+  const target = ADMIN_NAV_ITEMS.find(({ permission, anyPermissions, fullAdminOnly, functionCode }) =>
+    !fullAdminOnly
+    && (anyPermissions
+      ? anyPermissions.some((item) => hasPermission(profile, item))
+      : hasPermission(profile, permission))
+    && (!functionCode || hasAdminFunction(profile, functionCode)),
   );
   return <Navigate to={target ? target.to : '/staff/dashboard'} replace />;
 }
@@ -165,6 +176,8 @@ function AppRoutes() {
 
       <Route path="/" element={<AuthRedirect />} />
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/change-password" element={<ProtectedRoute allowPasswordChange><ChangePasswordPage /></ProtectedRoute>} />
 
@@ -181,9 +194,11 @@ function AppRoutes() {
       <Route path="/admin/projects/:id" element={admin('projects', <AdminProjectDetail />)} />
       <Route path="/admin/reports" element={admin('reports', <AdminReports />)} />
       <Route path="/admin/assignments" element={admin('attendance', <AdminAssignments />)} />
+      <Route path="/admin/attendance" element={admin('attendance', <AdminAttendance />)} />
       <Route path="/admin/attendance-devices" element={admin('attendance', <AdminAttendanceDevices />, { fullAdminOnly: true })} />
       <Route path="/admin/timesheet" element={admin('attendance', <AdminTimesheet />, { denyTeamlead: true })} />
       <Route path="/admin/attendance-settings" element={admin('attendance', <AdminAttendanceSettings />, { denyTeamlead: true })} />
+      <Route path="/admin/work-locations" element={<Navigate to="/admin/attendance-devices" replace />} />
       {/* Lương gắn route theo quyền attendance nhưng TRANG tự chặn thêm bằng
           isFullAdmin — lead có quyền chấm công vào chỉ thấy thông báo khóa.
           RLS phía database mới là hàng rào thật. */}
@@ -192,9 +207,8 @@ function AppRoutes() {
       <Route path="/admin/payroll/inputs" element={admin('attendance', <AdminPayroll section="inputs" />, { functionCode: 'admin.payroll_inputs' })} />
       <Route path="/admin/payroll/adjustments" element={admin('attendance', <AdminPayroll section="adjustments" />, { functionCode: 'admin.payroll_adjustments' })} />
       <Route path="/admin/payroll/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
-      <Route path="/admin/payroll/kpi" element={admin('attendance', <AdminPayroll section="kpiPay" />, { functionCode: 'admin.payroll_components' })} />
       <Route path="/admin/payroll/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
-      <Route path="/admin/leave" element={admin('leave', <AdminLeave />)} />
+      <Route path="/admin/leave" element={adminAny(['leave', 'attendance'], <AdminLeave />)} />
       <Route path="/admin/training" element={admin('training', <AdminTraining />)} />
       <Route path="/admin/process-library" element={admin('training', <AdminProcessLibrary />)} />
       <Route path="/admin/recruitment" element={adminAny(['users', 'projects'], <AdminRecruitment />)} />
@@ -202,13 +216,12 @@ function AppRoutes() {
       <Route path="/admin/worker-documents" element={admin('users', <AdminWorkforceCenter section="documents" />, { functionCode: 'admin.worker_documents' })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/performance" element={admin('reports', <AdminNexusCenter section="performance" />, { functionCode: 'admin.performance_manage' })} />
-      {/* Hai dia chi cu cua "Gan KPI" va "Cham diem": gio la hai buoc
-          trong cung mot man. Giu lai duong dan de link da gui di, bookmark va
-          lich su trinh duyet khong rot vao trang trong. */}
-      <Route path="/admin/performance/schemes" element={<Navigate to="/admin/performance?buoc=nhan-su" replace />} />
-      <Route path="/admin/performance/review" element={<Navigate to="/admin/performance?buoc=cham-diem" replace />} />
-      {/* Trang cờ tính năng đã gỡ: không mã nào đọc `feature_flags` để
-          bật/tắt chức năng, nên nó chỉ là công tắc không nối vào đâu. */}
+      {/* Dia chi cu cua "Gan KPI": gio nam ngay trong man bo KPI nhan su. */}
+      <Route path="/admin/performance/schemes" element={<Navigate to="/admin/performance" replace />} />
+      <Route path="/admin/performance/review" element={admin('reports', <AdminNexusCenter section="kpiReview" />, { functionCode: 'admin.performance_manage' })} />
+      <Route path="/admin/performance/report" element={admin('reports', <AdminNexusCenter section="kpiReport" />, { functionCode: 'admin.performance_manage' })} />
+      {/* Cờ GPS được quản lý ngay trong Địa điểm chấm công. Các cờ kỹ thuật
+          cũ không còn là module người dùng độc lập. */}
       <Route path="/admin/feature-flags" element={<Navigate to="/admin/settings" replace />} />
       <Route path="/admin/worklog" element={admin('reports', <AdminWorklog />)} />
       <Route path="/admin/settings" element={admin('settings', <AdminSettings />)} />
@@ -260,6 +273,9 @@ export default function App() {
                 <CommandPalette />
                 {/* Dải mời cài app — chỉ hiện khi trình duyệt thực sự cài được. */}
                 <InstallPrompt />
+                {/* Xin quyền bằng thao tác rõ ràng của người dùng; trình duyệt
+                    không cho phép hệ thống tự bật thông báo. */}
+                <PhoneNotificationPrompt />
               </ViewModeProvider>
             </SettingsProvider>
           </AuthProvider>

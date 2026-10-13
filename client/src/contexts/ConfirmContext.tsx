@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { TriangleAlert, Info } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
@@ -28,6 +28,10 @@ const ConfirmContext = createContext<ConfirmFn | undefined>(undefined);
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [options, setOptions] = useState<ConfirmOptions | null>(null);
   const resolverRef = useRef<((value: boolean) => void) | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   const confirm = useCallback<ConfirmFn>((opts) => {
     setOptions(opts);
@@ -42,6 +46,42 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     setOptions(null);
   };
 
+  useEffect(() => {
+    if (!options) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    requestAnimationFrame(() => cancelRef.current?.focus());
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus();
+    };
+  }, [options]);
+
+  const handleDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      settle(false);
+      return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable?.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   const danger = options?.danger ?? false;
 
   return (
@@ -53,11 +93,13 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
-          onKeyDown={(e) => { if (e.key === 'Escape') settle(false); }}
+          aria-labelledby={titleId}
+          aria-describedby={options.message ? descriptionId : undefined}
+          onKeyDown={handleDialogKeyDown}
         >
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" onClick={() => settle(false)} />
 
-          <div className="modal-in relative bg-white rounded-3xl shadow-2xl ring-1 ring-slate-900/5 w-full max-w-md overflow-hidden">
+          <div ref={dialogRef} className="modal-in relative bg-white rounded-3xl shadow-2xl ring-1 ring-slate-900/5 w-full max-w-md overflow-hidden">
             <div className="p-6">
               <div className="flex items-start gap-4">
                 <div
@@ -68,21 +110,20 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                   {danger ? <TriangleAlert className="w-5 h-5" /> : <Info className="w-5 h-5" />}
                 </div>
                 <div className="min-w-0 pt-0.5">
-                  <h2 className="font-display text-lg font-bold tracking-tight text-slate-900">{options.title}</h2>
+                  <h2 id={titleId} className="font-display text-lg font-bold tracking-tight text-slate-900">{options.title}</h2>
                   {options.message && (
-                    <div className="text-sm text-slate-500 mt-1.5 leading-relaxed">{options.message}</div>
+                    <div id={descriptionId} className="text-sm text-slate-500 mt-1.5 leading-relaxed">{options.message}</div>
                   )}
                 </div>
               </div>
             </div>
 
             <div className="flex gap-3 px-6 py-4 bg-slate-50 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => settle(false)} className="flex-1">
+              <Button ref={cancelRef} type="button" variant="outline" onClick={() => settle(false)} className="flex-1">
                 {options.cancelLabel ?? 'Hủy'}
               </Button>
               <button
                 type="button"
-                autoFocus
                 onClick={() => settle(true)}
                 className={`flex-1 h-11 rounded-xl text-sm font-semibold text-white shadow-sm transition-all active:translate-y-px ${
                   danger

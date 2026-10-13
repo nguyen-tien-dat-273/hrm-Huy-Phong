@@ -1,43 +1,59 @@
 // ============================================================================
-// Cơ chế KPI: đi xuống theo cây tổ chức rồi mới đặt cho từng người.
+// KPI của từng người: đi xuống cây tổ chức tới đúng một nhân sự.
 // ----------------------------------------------------------------------------
-//   Khối / doanh nghiệp  ->  phòng ban  ->  bộ phận  ->  nhân viên  ->  gán bộ KPI
+//   Khối / doanh nghiệp  ->  phòng ban  ->  bộ phận  ->  NHÂN VIÊN  ->  bộ KPI
 //
 // Đơn vị lấy thẳng từ Cơ cấu tổ chức, không khai lại. Phòng ban nào chưa dựng
 // ở đó thì ở đây cũng không có — đúng như vậy: một nơi khai, mọi nơi đọc.
 //
-// Danh sách phẳng của bản trước đổ hết mọi phòng ban ra cùng lúc. Công ty vài
-// chục đơn vị thì màn đó dài vô tận và không cho thấy cái gì thuộc cái gì.
-// Đi xuống từng cấp giữ đúng hình dạng bộ máy mà người dùng đã dựng.
+// KPI thuộc về NGƯỜI, không phải một bộ dùng chung rồi gán xuống. Mỗi người
+// một bộ thì tiêu chí bám đúng việc họ làm, và sửa cho một người không động
+// tới ai khác. Đó là lý do màn này không còn danh sách bộ dùng chung, cũng
+// không còn nút gán cho cả phòng.
+//
+// Những bộ cũ gán theo đơn vị hoặc theo vị trí VẪN có hiệu lực dưới database
+// (`kpi_scheme_for` giữ nguyên thứ tự ưu tiên) — khu riêng của mỗi người nói
+// rõ họ đang thừa hưởng bộ nào, và tạo bộ riêng sẽ thay thế nó.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, ChevronRight, Target, TriangleAlert, Users } from 'lucide-react';
+import { ArrowLeft, Building2, ChevronRight, Search, Target, TriangleAlert, Users } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Modal } from '@/components/ui/Modal';
-import { Input, Select } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
+import { KpiTemplateEditor } from '@/components/kpi/KpiTemplateEditor';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatDate, getTodayString } from '@/lib/utils';
+import { kpiSchemeFor } from '@/lib/kpiSchemeFor';
 import type { Profile } from '@/types';
 
-interface Unit { id: string; name: string; unit_type: string; parent_id: string | null }
-interface Template { id: string; code: string; name: string; is_active: boolean; position_id: string | null }
+interface Unit { id: string; code: string | null; name: string; unit_type: string; parent_id: string | null }
+interface Template { id: string; code: string; name: string; is_active: boolean; position_id: string | null; unit_id: string | null; created_at: string | null }
 interface Scheme { id: string; user_id: string; template_id: string; effective_from: string }
 interface UnitScheme { id: string; unit_id: string; template_id: string; effective_from: string }
+interface Criterion { id: string; template_id: string; name: string; weight_percent: number; is_active: boolean }
 
-export function KpiSchemeBoard({ onCreateTemplate }: {
-  /** Bam mot nhan su chua co bo KPI -> sang buoc tao bo cho phong cua ho. */
-  onCreateTemplate?: (unitId: string | null) => void;
-} = {}) {
+/**
+ * Bỏ dấu để gõ "hue" tìm ra "Huệ".
+ *
+ * Người dùng gõ tiếng Việt không dấu khi tìm nhanh, và tên trong hệ thống thì
+ * luôn có dấu. So khớp nguyên văn sẽ không ra gì, trông như người đó không có
+ * trong hệ thống.
+ */
+const stripTone = (text: string) => text
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd')
+  .toLowerCase().trim();
+
+export function KpiSchemeBoard({ actorId }: { actorId: string | null }) {
   const { users } = useAuth();
   const { toast } = useToast();
+  const confirm = useConfirm();
 
   const [units, setUnits] = useState<Unit[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -45,11 +61,49 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
   const [loading, setLoading] = useState(true);
   const [supported, setSupported] = useState(true);
 
+  /**
+   * Hai cách tìm tới cùng một thứ: KPI của một người.
+   *
+   *   'people' — gõ tên, ra thẳng người đó. Dùng khi đã biết tìm ai.
+   *   'units'  — mở một phòng, thấy cả phòng. Dùng khi soát theo phòng xem
+   *              ai còn thiếu, và khi khai một lượt cho cả phòng.
+   *
+   * Trước đây hai thứ này chồng lên nhau trong một màn: danh sách phòng ban
+   * nằm trên, danh sách người chưa gán đơn vị nằm dưới. Mà phần lớn nhân sự
+   * đang chưa gán đơn vị, nên cái khối "dưới" mới là chỗ hay dùng — phải cuộn
+   * qua hết phòng ban mới tới, và không tìm kiếm được.
+   *
+   * Mặc định mở ở 'people': bộ KPI thuộc về NGƯỜI, phòng ban chỉ là đường đi.
+   */
+  const [tab, setTab] = useState<'people' | 'units'>('people');
+
+  /** Ô tìm của tab nhân sự. */
+  const [query, setQuery] = useState('');
+
+  /**
+   * Có hiện cả phòng chưa có nhân sự hay không.
+   *
+   * Mặc định ẩn. Phòng rỗng bấm vào chỉ ra một màn hình báo "chưa có ai" —
+   * không khai KPI cho ai được, nên nó chỉ làm danh sách dài ra. Công ty có
+   * hơn chục phòng mà chỉ năm phòng có người: ẩn đi là danh sách ngắn đi một
+   * nửa mà không mất gì dùng được.
+   *
+   * Vẫn mở ra được, vì "phòng này rỗng" cũng là một câu trả lời người dùng
+   * cần — nhất là khi họ đang đi tìm xem đã gán nhân sự vào đâu chưa.
+   */
+  const [showEmpty, setShowEmpty] = useState(false);
+
   /** Đường đi hiện tại, từ gốc xuống. Rỗng = đang ở danh sách khối. */
   const [path, setPath] = useState<Unit[]>([]);
 
-  const [target, setTarget] = useState<Profile | null>(null);
-  const [draft, setDraft] = useState({ template_id: '', effective_from: getTodayString() });
+  /**
+   * Nhân sự đang mở — một cấp nữa của đường đi, sau phòng ban.
+   *
+   * Danh sách người trong phòng chỉ nói được "có bộ hay chưa". Mở hẳn một
+   * người ra mới trả lời được câu tiếp theo: bộ nào, tiêu chí gì, đến từ đâu,
+   * và muốn làm riêng cho họ thì bấm vào đâu.
+   */
+  const [focusPerson, setFocusPerson] = useState<Profile | null>(null);
   const [saving, setSaving] = useState(false);
 
   /**
@@ -62,18 +116,22 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
    */
   const [unitSchemes, setUnitSchemes] = useState<UnitScheme[]>([]);
   const [unitSchemesSupported, setUnitSchemesSupported] = useState(true);
-  const [unitTarget, setUnitTarget] = useState<Unit | null>(null);
+  const [criteria, setCriteria] = useState<Criterion[]>([]);
 
   const load = async () => {
     if (!supabase) return;
     setLoading(true);
-    const [unitRes, tplRes, schemeRes, unitSchemeRes] = await Promise.all([
-      supabase.from('organization_units').select('id, name, unit_type, parent_id').eq('is_active', true).order('name'),
-      supabase.from('kpi_position_templates').select('id, code, name, is_active, position_id').order('name'),
+    const [unitRes, tplRes, schemeRes, unitSchemeRes, criteriaRes] = await Promise.all([
+      supabase.from('organization_units').select('id, code, name, unit_type, parent_id').eq('is_active', true).order('name'),
+      supabase.from('kpi_position_templates').select('id, code, name, is_active, position_id, unit_id, created_at').order('name'),
       supabase.from('employee_kpi_schemes').select('*').order('effective_from', { ascending: false }),
       supabase.from('unit_kpi_schemes').select('*').order('effective_from', { ascending: false }),
+      // Tiêu chí chỉ dùng để xem trước trong khu nhân sự: thấy ngay bộ này
+      // chấm những gì, thay vì phải nhớ tên bộ rồi sang bước 1 tra lại.
+      supabase.from('kpi_template_criteria').select('id, template_id, name, weight_percent, is_active').order('sort_order'),
     ]);
     if (schemeRes.error) { setSupported(false); setLoading(false); return; }
+    setCriteria(((criteriaRes.data || []) as Criterion[]).filter((item) => item.is_active));
     setUnits((unitRes.data || []) as Unit[]);
     setTemplates((tplRes.data || []) as Template[]);
     setSchemes((schemeRes.data || []) as Scheme[]);
@@ -102,10 +160,31 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
     + childrenOf(unitId).reduce((sum, child) => sum + headcount(child.id), 0);
 
   const ownScheme = (userId: string) => schemes.find((s) => s.user_id === userId);
-  const byPosition = (person: Profile) =>
-    templates.find((t) => t.is_active && t.position_id && t.position_id === person.position_id);
-
   const unitById = useMemo(() => new Map(units.map((u) => [u.id, u])), [units]);
+
+  /**
+   * Toàn bộ phòng ban, xếp phẳng theo thứ tự cây, thụt đầu dòng để thấy cấp.
+   *
+   * Bản cũ bắt đi từng cấp: Toàn công ty → Huy Phong Group → Ban Giám đốc →
+   * phòng. Mỗi lần muốn khai KPI cho một phòng là ba bốn lần bấm, và muốn đổi
+   * sang phòng khác phải lùi ra rồi đi lại từ đầu. Cơ cấu của khách chỉ sâu
+   * ba cấp — bày hết ra chọn thẳng nhanh hơn đi từng nấc.
+   *
+   * PHẢI nằm trên mọi lệnh return sớm bên dưới. Để nó dưới `if (loading)` thì
+   * lần render đầu hook này không chạy, lần sau mới chạy — React đếm được
+   * nhiều hook hơn lần trước và throw, trắng cả app chứ không riêng trang này.
+   */
+  const allUnits = useMemo(() => {
+    const rows: { unit: Unit; depth: number }[] = [];
+    const walk = (parentId: string | null, depth: number) => {
+      for (const unit of units.filter((item) => (item.parent_id ?? null) === parentId)) {
+        rows.push({ unit, depth });
+        walk(unit.id, depth + 1);
+      }
+    };
+    walk(null, 0);
+    return rows;
+  }, [units]);
 
   /** Bộ gán cho chính đơn vị này, không xét cấp trên. */
   const ownUnitScheme = (unitId: string) => unitSchemes.find((s) => s.unit_id === unitId);
@@ -127,57 +206,230 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
     return null;
   };
 
-  /** Bộ đang áp cho một người, đủ ba lớp — giống hàm dưới database. */
+  /**
+   * Bộ đang áp cho một người — đủ BỐN lớp, gọi chung bộ giải với màn chấm
+   * điểm. Bản cũ ở đây chỉ xét ba lớp, thiếu lớp "bộ khai thẳng cho đơn vị"
+   * (`kpi_position_templates.unit_id`), nên có người màn này báo "chưa có bộ"
+   * mà phiếu chấm vẫn ra bộ. Xem đầu `lib/kpiSchemeFor.ts`.
+   */
   const effectiveFor = (person: Profile) => {
-    const own = ownScheme(person.id);
-    if (own) return { tpl: tplById.get(own.template_id), source: 'Gán riêng' };
-    const inherited = inheritedUnitScheme(person.unit_id ?? null);
-    if (inherited) {
-      return {
-        tpl: tplById.get(inherited.scheme.template_id),
-        source: `Theo đơn vị ${inherited.from.name}`,
-      };
-    }
-    const fallback = byPosition(person);
-    if (fallback) return { tpl: fallback, source: 'Theo vị trí' };
-    return { tpl: undefined, source: '' };
+    const found = kpiSchemeFor(
+      { id: person.id, unit_id: person.unit_id, position_id: person.position_id },
+      { personalSchemes: schemes, unitSchemes, templates, unitById },
+    );
+    return { tpl: found.template ?? undefined, source: found.label };
   };
 
-  const saveUnit = async () => {
-    if (!supabase || !unitTarget || !draft.template_id) return;
-    setSaving(true);
-    const { error } = await supabase.from('unit_kpi_schemes').upsert({
-      unit_id: unitTarget.id,
-      template_id: draft.template_id,
-      effective_from: draft.effective_from,
-    }, { onConflict: 'unit_id,effective_from' });
-    setSaving(false);
-    if (error) return toast(describeDbError(error), 'error');
-    toast(`Đã gán bộ KPI cho ${unitTarget.name}.`, 'success');
-    setUnitTarget(null);
-    await load();
-  };
-
-  const clearUnit = async (unitId: string) => {
+  /**
+   * Tạo bộ KPI của riêng một người rồi gán luôn cho họ.
+   *
+   * Hai bước này phải đi liền: tạo xong mà quên gán thì bộ nằm đó không ai
+   * dùng, còn người kia vẫn "chưa có bộ KPI" — đúng cái màn hình này sinh ra
+   * để tránh.
+   */
+  const createPersonalTemplate = async (person: Profile) => {
     if (!supabase) return;
-    const { error } = await supabase.from('unit_kpi_schemes').delete().eq('unit_id', unitId);
-    if (error) return toast(describeDbError(error), 'error');
-    toast('Đã bỏ bộ KPI của đơn vị.', 'success');
-    await load();
-  };
-
-  const save = async () => {
-    if (!supabase || !target || !draft.template_id) return;
     setSaving(true);
-    const { error } = await supabase.from('employee_kpi_schemes').upsert({
-      user_id: target.id,
-      template_id: draft.template_id,
-      effective_from: draft.effective_from,
+    // Mã phải duy nhất trong toàn bảng. Lấy mã nhân viên nếu có, không thì
+    // bỏ dấu tên rồi gắn đuôi từ id — tên trùng nhau là chuyện thường.
+    const slug = (person.employee_code || person.name)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/\u0111/g, 'd').replace(/\u0110/g, 'D')
+      .toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'NV';
+    const { data, error } = await supabase.from('kpi_position_templates').insert({
+      code: `KPI-${slug}-${person.id.slice(0, 4).toUpperCase()}`,
+      name: `KPI ${person.name}`,
+      block_code: 'VAN_PHONG',
+      // KHÔNG khai unit_id: khai vào là bộ này tự áp cho cả phòng, trong khi
+      // nó là bộ của riêng một người.
+      unit_id: null,
+      default_kpi_amount: 0,
+      score_method: 'WEIGHTED_PERCENT',
+      result_floor_percent: 0,
+      created_by: actorId,
+    }).select('id').single();
+
+    if (error || !data) {
+      setSaving(false);
+      return toast('Không tạo được bộ KPI: ' + describeDbError(error), 'error');
+    }
+
+    const { error: assignError } = await supabase.from('employee_kpi_schemes').upsert({
+      user_id: person.id,
+      template_id: data.id,
+      effective_from: getTodayString(),
     }, { onConflict: 'user_id,effective_from' });
     setSaving(false);
-    if (error) return toast(describeDbError(error), 'error');
-    toast(`Đã gán bộ KPI cho ${target.name}.`, 'success');
-    setTarget(null);
+    if (assignError) {
+      return toast('Đã tạo bộ nhưng không gán được: ' + describeDbError(assignError), 'error');
+    }
+    toast(`Đã tạo bộ KPI riêng cho ${person.name}. Thêm tiêu chí cho đủ 100% rồi bật lên.`, 'success');
+    await load();
+  };
+
+  /**
+   * Bỏ bộ KPI riêng của một người, rồi dọn luôn cái bộ nếu nó chỉ của họ.
+   *
+   * Không dọn thì mỗi lần bỏ lại để lại một bộ mồ côi kèm nguyên đám tiêu
+   * chí — vài tháng là bảng đầy những bộ không ai dùng mà không ai dám xoá
+   * vì không biết nó của ai.
+   *
+   * Bộ đã từng dùng để chấm thì KHÔNG xoá, chỉ tắt: phiếu chấm cũ trỏ vào
+   * nó, xoá đi là lịch sử mất chỗ dựa.
+   */
+  /**
+   * Tạo một bộ KPI THUỘC VỀ PHÒNG BAN.
+   *
+   * Khác hẳn bản trước. Bản trước tạo một bộ rồi ghi N dòng gán riêng cho N
+   * người đang có mặt trong phòng — nên người vào phòng sau đó không có gì
+   * cả, phải nhớ quay lại chạy lại mà không có gì nhắc; còn người chuyển đi
+   * phòng khác thì vẫn ôm theo bộ của phòng cũ.
+   *
+   * Giờ ghi MỘT dòng vào `unit_kpi_schemes`. Ai đang thuộc phòng thì chấm
+   * theo bộ đó, kể cả người vào sau; rời phòng là thôi theo. Không phải chạy
+   * lại lần nào.
+   *
+   * Ai cần tiêu chí khác thì vẫn khai bộ riêng — gán riêng vẫn thắng gán theo
+   * phòng, đúng thứ tự `kpi_scheme_for()` dưới database dùng.
+   */
+  const createUnitTemplate = async (unit: Unit) => {
+    if (!supabase) return;
+    const accepted = await confirm({
+      title: `Tạo bộ KPI chung cho ${unit.name}?`,
+      message: 'Mọi người trong phòng sẽ chấm theo bộ này, kể cả người vào sau. '
+        + 'Ai cần tiêu chí khác thì vẫn khai được bộ riêng cho họ.',
+      confirmLabel: 'Tạo bộ cho phòng',
+    });
+    if (!accepted) return;
+
+    setSaving(true);
+    const slug = unit.code || unit.name;
+    const { data, error } = await supabase.from('kpi_position_templates').insert({
+      code: `KPI-${slug.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\u0111/g, 'd').replace(/\u0110/g, 'D')
+        .toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'PHONG'}`
+        + `-${unit.id.slice(0, 4).toUpperCase()}`,
+      name: `KPI ${unit.name}`,
+      block_code: 'VAN_PHONG',
+      // Khai unit_id để sau này nhìn ra bộ này sinh ra cho phòng nào; việc áp
+      // cho ai vẫn do employee_kpi_schemes quyết, không phải cột này.
+      unit_id: unit.id,
+      default_kpi_amount: 0,
+      score_method: 'WEIGHTED_PERCENT',
+      result_floor_percent: 0,
+      created_by: actorId,
+    }).select('id').single();
+
+    if (error || !data) {
+      setSaving(false);
+      return toast('Không tạo được bộ KPI: ' + describeDbError(error), 'error');
+    }
+
+    const { error: assignError } = await supabase.from('unit_kpi_schemes').upsert(
+      { unit_id: unit.id, template_id: data.id, effective_from: getTodayString(), created_by: actorId },
+      { onConflict: 'unit_id,effective_from' },
+    );
+    setSaving(false);
+    if (assignError) {
+      return toast('Đã tạo bộ nhưng không gán được cho phòng: ' + describeDbError(assignError), 'error');
+    }
+    toast(`Đã tạo bộ KPI chung cho ${unit.name}. Thêm tiêu chí cho đủ 100% rồi bật lên.`, 'success');
+    await load();
+  };
+
+  /**
+   * Gỡ bộ KPI chung của một phòng.
+   *
+   * Nói thẳng trong hộp xác nhận phòng sẽ rơi về đâu: bộ của cấp trên, hoặc
+   * không còn bộ nào. Vế thứ hai nghĩa là tới kỳ chấm sẽ không chấm được ai
+   * trong phòng — người bấm cần biết điều đó trước khi bấm, không phải lúc
+   * mở kỳ chấm mới phát hiện.
+   */
+  const clearUnitScheme = async (unit: Unit, templateId: string) => {
+    if (!supabase) return;
+    const upper = unit.parent_id ? inheritedUnitScheme(unit.parent_id) : null;
+    const fallbackName = upper ? tplById.get(upper.scheme.template_id)?.name : undefined;
+
+    const accepted = await confirm({
+      title: `Gỡ bộ KPI chung của ${unit.name}?`,
+      message: fallbackName
+        ? `Phòng sẽ quay về dùng ${fallbackName} (bộ của ${upper?.from.name}). `
+          + 'Tiêu chí đã khai riêng cho phòng này sẽ mất theo.'
+        : 'Phòng sẽ KHÔNG còn bộ KPI nào — tới kỳ chấm sẽ không chấm được ai trong phòng, '
+          + 'trừ người đã có bộ riêng. Tiêu chí đã khai sẽ mất theo.',
+      confirmLabel: 'Gỡ bộ của phòng',
+      danger: true,
+    });
+    if (!accepted) return;
+
+    setSaving(true);
+    const { error } = await supabase.from('unit_kpi_schemes')
+      .delete().eq('unit_id', unit.id).eq('template_id', templateId);
+    if (error) {
+      setSaving(false);
+      return toast(describeDbError(error), 'error');
+    }
+
+    // Chỉ dọn bộ không còn ai dùng — cùng cách xét như khi bỏ bộ riêng của một
+    // người, để không xoá nhầm bộ mà phòng khác hay một cá nhân đang dùng.
+    const template = tplById.get(templateId);
+    const shared = !!template?.position_id
+      || schemes.some((row) => row.template_id === templateId)
+      || unitSchemes.some((row) => row.template_id === templateId && row.unit_id !== unit.id);
+
+    if (!shared) {
+      const { count } = await supabase.from('performance_reviews')
+        .select('id', { count: 'exact', head: true }).eq('template_id', templateId);
+      if ((count || 0) > 0) {
+        await supabase.from('kpi_position_templates').update({ is_active: false }).eq('id', templateId);
+      } else {
+        await supabase.from('kpi_position_templates').delete().eq('id', templateId);
+      }
+    }
+
+    setSaving(false);
+    toast(`Đã gỡ bộ KPI chung của ${unit.name}.`, 'success');
+    await load();
+  };
+
+  const clearPersonal = async (person: Profile, templateId: string) => {
+    if (!supabase) return;
+    const accepted = await confirm({
+      title: `Bỏ bộ KPI riêng của ${person.name}?`,
+      message: 'Tiêu chí đã khai sẽ mất theo. Nếu họ còn thuộc đơn vị hay vị trí có bộ KPI thì '
+        + 'sẽ quay về dùng bộ đó.',
+      confirmLabel: 'Bỏ bộ riêng',
+      danger: true,
+    });
+    if (!accepted) return;
+
+    setSaving(true);
+    const { error } = await supabase.from('employee_kpi_schemes')
+      .delete().eq('user_id', person.id).eq('template_id', templateId);
+    if (error) {
+      setSaving(false);
+      return toast(describeDbError(error), 'error');
+    }
+
+    // Chỉ dọn bộ KHÔNG gắn phòng ban hay vị trí và không còn ai dùng — bộ
+    // dùng chung thì để nguyên, người này chỉ thôi dùng nó.
+    const template = tplById.get(templateId);
+    const shared = !!template?.position_id
+      || schemes.some((row) => row.template_id === templateId && row.user_id !== person.id)
+      || unitSchemes.some((row) => row.template_id === templateId);
+
+    if (!shared) {
+      const { count } = await supabase.from('performance_reviews')
+        .select('id', { count: 'exact', head: true }).eq('template_id', templateId);
+      if ((count || 0) > 0) {
+        await supabase.from('kpi_position_templates').update({ is_active: false }).eq('id', templateId);
+      } else {
+        await supabase.from('kpi_position_templates').delete().eq('id', templateId);
+      }
+    }
+
+    setSaving(false);
+    toast(`Đã bỏ bộ KPI riêng của ${person.name}.`, 'success');
     await load();
   };
 
@@ -199,166 +451,440 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
 
   const subUnits = childrenOf(current?.id ?? null);
   const people = current ? peopleIn(current.id) : peopleIn(null);
-  const activeTemplates = templates.filter((t) => t.is_active);
+
+  /**
+   * Toàn bộ nhân sự đang làm việc, xếp theo tên — nguồn của tab 'people'.
+   *
+   * Cố ý liệt kê CẢ người đã có bộ KPI chứ không chỉ người còn thiếu: vào đây
+   * còn để sửa bộ của người đã có, không riêng để khai cho người mới.
+   *
+   * Không dùng useMemo: vài chục người, lọc một lượt là xong — và mọi hook ở
+   * file này phải nằm trên các lệnh return sớm phía trên, thêm hook ở đây là
+   * đúng cái bẫy đã làm trắng màn hình một lần rồi.
+   */
+  const everyone = users
+    .filter((person) => person.is_active)
+    .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+
+  const keyword = stripTone(query);
+  const matchedPeople = keyword
+    ? everyone.filter((person) => stripTone(person.name).includes(keyword)
+      || stripTone(person.employee_code || '').includes(keyword))
+    : everyone;
+
+  /** Đếm trên TOÀN BỘ nhân sự, không theo kết quả tìm — gõ tìm một người mà
+      con số tồn đọng đổi theo thì nó không còn là con số tồn đọng nữa. */
+  const missingCount = everyone.filter((person) => !effectiveFor(person).tpl).length;
 
   return (
     <Card>
       <CardContent className="space-y-4">
+        {/* ---- Hai tab ----
+             Chuyển tab là về đầu: giữ lại đường đi hay người đang mở của tab
+             cũ sẽ cho ra màn hình nửa nọ nửa kia, không ai đoán được đang
+             đứng ở đâu. */}
+        <div className="inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Cách tìm tới bộ KPI">
+          {([['people', 'Nhân sự'], ['units', 'Phòng ban']] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={tab === value}
+              onClick={() => { setTab(value); setPath([]); setFocusPerson(null); setQuery(''); }}
+              className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
+                tab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* ---- Đường đi ---- */}
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          {/* Nút lùi một cấp.
+              Đường đi bên cạnh cũng bấm được, nhưng nó là chữ — người dùng
+              đọc nó là "đang ở đâu", không phải "bấm vào để ra". Vào sâu rồi
+              mà không thấy nút quay lại thì phản xạ là bấm Back của trình
+              duyệt, và cái đó văng hẳn ra khỏi trang này.
+
+              Lùi ĐÚNG MỘT CẤP chứ không về thẳng đầu: ở tab Phòng ban, mở một
+              người trong phòng rồi quay lại là phải về danh sách phòng đó —
+              về đầu thì muốn xem người kế tiếp phải đi lại từ đầu. */}
+          {(focusPerson || path.length > 0) && (
+            <button
+              type="button"
+              onClick={() => (focusPerson ? setFocusPerson(null) : setPath(path.slice(0, -1)))}
+              className="mr-1 inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              Quay lại
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setPath([])}
-            className={`font-semibold transition ${path.length === 0 ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
+            onClick={() => { setPath([]); setFocusPerson(null); }}
+            className={`font-semibold transition ${path.length === 0 && !focusPerson ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
           >
-            Toàn công ty
+            {tab === 'people' ? 'Tất cả nhân sự' : 'Tất cả phòng ban'}
           </button>
           {path.map((unit, index) => (
             <span key={unit.id} className="flex items-center gap-1.5">
               <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
               <button
                 type="button"
-                onClick={() => setPath(path.slice(0, index + 1))}
-                className={`font-semibold transition ${index === path.length - 1 ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
+                onClick={() => { setPath(path.slice(0, index + 1)); setFocusPerson(null); }}
+                className={`font-semibold transition ${index === path.length - 1 && !focusPerson ? 'text-slate-800' : 'text-indigo-600 hover:text-indigo-700'}`}
               >
                 {unit.name}
               </button>
             </span>
           ))}
+          {/* Nhân sự là một cấp của đường đi, không phải một modal bật lên:
+              đứng trong đó vẫn phải biết mình đang ở phòng nào. */}
+          {focusPerson && (
+            <span className="flex items-center gap-1.5">
+              <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
+              <span className="font-semibold text-slate-800">{focusPerson.name}</span>
+            </span>
+          )}
         </div>
 
-        {path.length === 0 && (
+        {!focusPerson && path.length === 0 && (
           <p className="text-xs leading-relaxed text-slate-500">
-            Đơn vị lấy từ <strong>Cơ cấu tổ chức</strong>. Bấm xuống tới phòng ban, gán một bộ KPI
-            cho <strong>cả phòng</strong>, rồi chỉ gán riêng cho ai cần khác. Thứ tự ưu tiên khi
-            chấm: gán riêng → theo đơn vị (cấp gần nhất) → mẫu khớp vị trí.
+            {tab === 'people'
+              ? <>Bộ KPI thuộc về <strong>từng người</strong>. Chọn một nhân sự để xem và khai bộ của họ.</>
+              : <>Danh sách phòng ban lấy từ <strong>Cơ cấu tổ chức</strong>, không khai lại ở đây.
+                  Mở một phòng để khai <strong>một bộ KPI dùng chung</strong> cho cả phòng.</>}
           </p>
         )}
 
-        {/* ---- Bộ KPI của chính đơn vị đang đứng ---- */}
-        {unitSchemesSupported && current && (() => {
-          const own = ownUnitScheme(current.id);
-          const inherited = own ? null : inheritedUnitScheme(current.parent_id);
-          const tpl = own ? tplById.get(own.template_id) : (inherited ? tplById.get(inherited.scheme.template_id) : undefined);
+        {/* ---- Bộ KPI CHUNG của phòng ----
+             Cả phòng dùng chung một bộ thì khai một bộ thuộc về phòng, không
+             phải khai cho từng người rồi nhân lên. Người vào phòng sau tự
+             theo bộ này; ai cần tiêu chí khác thì khai bộ riêng đè lên. */}
+        {!focusPerson && current && unitSchemesSupported && (() => {
+          const ownUnit = ownUnitScheme(current.id);
+          const unitTpl = ownUnit ? tplById.get(ownUnit.template_id) : undefined;
+          // Thừa hưởng tính từ CẤP TRÊN trở lên: bộ của chính phòng này đã
+          // xét ở trên rồi, xét lại sẽ luôn tự trỏ về chính nó.
+          const upper = !ownUnit && current.parent_id ? inheritedUnitScheme(current.parent_id) : null;
+          const upperTpl = upper ? tplById.get(upper.scheme.template_id) : undefined;
+          // Người có bộ riêng KHÔNG theo bộ của phòng — nói ra con số này để
+          // không ai sửa tiêu chí của phòng rồi tưởng cả phòng đã đổi theo.
+          const overriding = people.filter((person) => ownScheme(person.id)).length;
+          const rows = unitTpl ? criteria.filter((item) => item.template_id === unitTpl.id) : [];
+          const total = rows.reduce((sum, item) => sum + Number(item.weight_percent || 0), 0);
+
           return (
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600">
-                <Target className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-slate-800">Bộ KPI của {current.name}</p>
-                <p className="mt-0.5 truncate text-[11px] text-slate-600">
-                  {tpl
-                    ? <>{tpl.name}{own ? ` · từ ${formatDate(own.effective_from)}` : ` · thừa hưởng từ ${inherited?.from.name}`}</>
-                    : 'Chưa gán — mỗi người trong phòng sẽ tự rơi về mẫu theo vị trí của họ.'}
-                </p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600">
+                  <Target className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  {unitTpl ? (
+                    <>
+                      <p className="text-xs font-bold text-slate-800">
+                        Bộ KPI chung của {current.name}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-600">
+                        {unitTpl.name} · {rows.length} tiêu chí · tổng {total.toFixed(0)}%
+                        {' · '}
+                        {people.length - overriding}/{people.length} người trong phòng chấm theo bộ này
+                        {overriding > 0 && ` (${overriding} người dùng bộ riêng)`}
+                      </p>
+                    </>
+                  ) : upperTpl ? (
+                    <>
+                      <p className="text-xs font-bold text-slate-800">
+                        {current.name} đang dùng bộ của {upper?.from.name}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-slate-600">
+                        {upperTpl.name} — tạo bộ riêng cho phòng này sẽ thay thế nó.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-xs font-bold text-slate-800">
+                        {current.name} chưa có bộ KPI chung
+                      </p>
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-slate-600">
+                        Khai một bộ dùng cho cả phòng — người vào sau tự theo bộ này, không phải
+                        khai lại từng người.
+                      </p>
+                    </>
+                  )}
+                </div>
+                {unitTpl && ownUnit ? (
+                  <Button size="sm" variant="ghost" disabled={saving}
+                    onClick={() => void clearUnitScheme(current, ownUnit.template_id)}>
+                    Gỡ bộ của phòng
+                  </Button>
+                ) : (
+                  <Button size="sm" disabled={saving} onClick={() => void createUnitTemplate(current)}>
+                    <Target className="h-3.5 w-3.5" />
+                    {saving ? 'Đang tạo…' : upperTpl ? 'Tạo bộ riêng cho phòng' : 'Tạo bộ KPI cho cả phòng'}
+                  </Button>
+                )}
               </div>
-              {own && (
-                <Button size="sm" variant="ghost" onClick={() => void clearUnit(current.id)}>
-                  Bỏ gán
-                </Button>
-              )}
-              <Button size="sm" variant={own ? 'outline' : 'primary'} onClick={() => {
-                setUnitTarget(current);
-                setDraft({ template_id: own?.template_id ?? '', effective_from: getTodayString() });
-              }}>
-                {own ? 'Đổi bộ cho cả phòng' : 'Gán cho cả phòng'}
-              </Button>
+
+              {/* Khai tiêu chí ngay tại đây, giống khu riêng của một người:
+                  bật sang màn khác để khai rồi quay lại là làm đứt mạch giữa
+                  "phòng nào" và "chấm cái gì". */}
+              {unitTpl && <KpiTemplateEditor actorId={actorId} scopeTemplateId={unitTpl.id} />}
             </div>
           );
         })()}
 
-        {/* ---- Đơn vị con ---- */}
-        {subUnits.length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {subUnits.map((unit) => {
-              const inside = headcount(unit.id);
-              return (
-                <button
-                  key={unit.id}
-                  type="button"
-                  onClick={() => setPath([...path, unit])}
-                  className="flex items-center gap-2.5 rounded-xl border-2 border-slate-200 px-3.5 py-3 text-left transition hover:border-indigo-400 hover:shadow-md"
-                >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-                    <Building2 className="h-4 w-4" />
+        {/* ---- Khu riêng của một nhân sự ----
+             KPI ở đây là của RIÊNG người này, không phải một bộ dùng chung
+             rồi gán xuống. Mỗi người một bộ thì tiêu chí bám đúng việc họ
+             làm — đó là lý do màn này không còn danh sách bộ dùng chung nữa. */}
+        {focusPerson && (() => {
+          const own = ownScheme(focusPerson.id);
+          const tpl = own ? tplById.get(own.template_id) : undefined;
+          const rows = tpl ? criteria.filter((item) => item.template_id === tpl.id) : [];
+          const total = rows.reduce((sum, item) => sum + Number(item.weight_percent || 0), 0);
+          const inheritedOnly = !own ? effectiveFor(focusPerson) : null;
+
+          return (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-indigo-100 bg-indigo-50/50 px-4 py-3">
+                <Avatar name={focusPerson.name} url={focusPerson.avatar_url} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-slate-800">{focusPerson.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-slate-600">
+                    {tpl
+                      ? <>{tpl.name} · {rows.length} tiêu chí · tổng {total.toFixed(0)}%</>
+                      : inheritedOnly?.tpl
+                        ? <>Đang dùng <strong>{inheritedOnly.tpl.name}</strong> ({inheritedOnly.source}) — tạo bộ riêng sẽ thay thế</>
+                        : 'Chưa có bộ KPI nào'}
+                  </p>
+                </div>
+                {own ? (
+                  <Button size="sm" variant="ghost" disabled={saving}
+                    onClick={() => void clearPersonal(focusPerson, own.template_id)}>
+                    Xoá bộ riêng
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={() => void createPersonalTemplate(focusPerson)} disabled={saving}>
+                    <Target className="h-3.5 w-3.5" /> {saving ? 'Đang tạo…' : 'Tạo bộ KPI riêng'}
+                  </Button>
+                )}
+              </div>
+
+              {/* Khai tiêu chí ngay tại đây, khoanh vào đúng bộ của người này.
+                  Bật sang màn khác để khai rồi quay lại là làm đứt mạch giữa
+                  "ai" và "chấm cái gì". */}
+              {tpl ? (
+                <KpiTemplateEditor actorId={actorId} scopeTemplateId={tpl.id} />
+              ) : (
+                <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-200 py-10 text-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+                    <Target className="h-5 w-5" />
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-bold text-slate-800">{unit.name}</span>
-                    <span className="block text-[11px] text-slate-500">
-                      {inside} nhân sự
-                      {childrenOf(unit.id).length > 0 && ` · ${childrenOf(unit.id).length} đơn vị con`}
-                    </span>
-                    {unitSchemesSupported && (() => {
-                      const applied = inheritedUnitScheme(unit.id);
-                      if (!applied) return null;
-                      const tpl = tplById.get(applied.scheme.template_id);
-                      if (!tpl) return null;
-                      return (
-                        <span className="mt-0.5 block truncate text-[11px] font-semibold text-indigo-600">
-                          {tpl.name}
-                          {applied.from.id !== unit.id && ` (từ ${applied.from.name})`}
+                  <p className="text-sm font-semibold text-slate-600">
+                    {focusPerson.name} chưa có bộ KPI riêng
+                  </p>
+                  <p className="max-w-sm text-xs leading-relaxed text-slate-400">
+                    Bấm <strong>Tạo bộ KPI riêng</strong> để mở một bộ của riêng họ, rồi khai tiêu
+                    chí cho đủ 100% trọng số là chấm được.
+                  </p>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ================= TAB NHÂN SỰ =================
+             Gõ tên ra thẳng người cần. Danh sách này là toàn bộ nhân sự đang
+             làm việc, kể cả người chưa gán đơn vị — trước đây muốn tới họ
+             phải cuộn qua hết danh sách phòng ban. */}
+        {!focusPerson && tab === 'people' && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative min-w-[220px] flex-1">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Tìm theo tên hoặc mã nhân viên..."
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+              {missingCount > 0 && (
+                <Badge className="bg-amber-50 text-amber-700">
+                  {missingCount}/{everyone.length} người chưa có bộ KPI
+                </Badge>
+              )}
+            </div>
+
+            {matchedPeople.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+                  <Users className="h-5 w-5" />
+                </span>
+                <p className="text-sm font-semibold text-slate-600">
+                  {query ? `Không có ai khớp "${query}"` : 'Chưa có nhân sự nào đang làm việc'}
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-50 rounded-xl border border-slate-200">
+                {matchedPeople.map((person) => {
+                  const own = ownScheme(person.id);
+                  const { tpl, source } = effectiveFor(person);
+                  const unit = person.unit_id ? unitById.get(person.unit_id) : null;
+                  return (
+                    <li key={person.id}>
+                      <button
+                        type="button"
+                        onClick={() => setFocusPerson(person)}
+                        className="flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition hover:bg-indigo-50/60"
+                      >
+                        <Avatar name={person.name} url={person.avatar_url} size="sm" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-baseline gap-2">
+                            <span className="truncate text-sm font-bold text-slate-800">{person.name}</span>
+                            {/* Ô tìm khớp cả theo mã nhân viên. Không hiện mã
+                                ra thì gõ một mã sẽ cho ra những dòng trông
+                                như chẳng liên quan gì tới từ vừa gõ — người
+                                dùng thôi tin vào ô tìm từ lúc đó. */}
+                            {person.employee_code && (
+                              <span className="shrink-0 font-mono text-[11px] text-slate-400">{person.employee_code}</span>
+                            )}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {/* Phòng ban đứng cạnh tên: cùng tên thì đây là
+                                thứ phân biệt được hai người. */}
+                            {unit ? unit.name : <span className="text-slate-400">Chưa gán đơn vị</span>}
+                            {' · '}
+                            {tpl ? tpl.name : <span className="font-bold text-amber-600">Chưa có bộ KPI</span>}
+                            {own && ` · từ ${formatDate(own.effective_from)}`}
+                          </span>
                         </span>
-                      );
-                    })()}
-                  </span>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                </button>
-              );
-            })}
+                        {tpl && (
+                          <Badge className={own ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}>
+                            {source}
+                          </Badge>
+                        )}
+                        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         )}
 
-        {/* ---- Nhân sự tại cấp này ---- */}
-        {people.length > 0 && (
+        {/* ================= TAB PHÒNG BAN ================= */}
+        {!focusPerson && tab === 'units' && !current && allUnits.length > 0 && (() => {
+          /* Phòng có người — và tổ tiên của chúng, để cây không bị đứt mạch:
+             ẩn "Khối Văn Phòng" đi thì "Bộ phận Dự án" nằm thụt vào mà không
+             rõ thụt vào dưới cái gì. Tổ tiên hiện mờ, vẫn bấm được. */
+          const keep = new Set<string>();
+          for (const { unit } of allUnits) {
+            if (peopleIn(unit.id).length === 0) continue;
+            keep.add(unit.id);
+            let cursor = unit.parent_id ? unitById.get(unit.parent_id) : undefined;
+            // `seen` chặn vòng lặp vô hạn nếu dữ liệu có vòng cha-con.
+            const seen = new Set<string>();
+            while (cursor && !seen.has(cursor.id)) {
+              seen.add(cursor.id);
+              keep.add(cursor.id);
+              cursor = cursor.parent_id ? unitById.get(cursor.parent_id) : undefined;
+            }
+          }
+          const hidden = allUnits.length - keep.size;
+          const rows = showEmpty ? allUnits : allUnits.filter(({ unit }) => keep.has(unit.id));
+
+          return (
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              {/* Chưa gán ai vào phòng nào thì danh sách lọc ra rỗng. Không
+                  nói gì thì nó là một cái khung trống trơn trông như hỏng,
+                  trong khi việc cần làm rất rõ: sang tab Nhân sự mà khai. */}
+              {rows.length === 0 && (
+                <p className="px-4 py-6 text-center text-xs leading-relaxed text-slate-500">
+                  Chưa có phòng nào được gán nhân sự. Khai KPI theo từng người ở tab{' '}
+                  <strong>Nhân sự</strong>, hoặc gán nhân sự vào phòng ở <strong>Cơ cấu tổ chức</strong>.
+                </p>
+              )}
+              <div className="divide-y divide-slate-50">
+                {rows.map(({ unit, depth }) => {
+                  /* Đếm người treo THẲNG vào đơn vị này, không gộp đơn vị con:
+                     bấm vào đây là để khai KPI cho đúng những người sẽ hiện ra
+                     bên dưới, nên con số phải khớp với danh sách đó. */
+                  const inside = peopleIn(unit.id).length;
+                  return (
+                    <button
+                      key={unit.id}
+                      type="button"
+                      onClick={() => setPath([unit])}
+                      className="flex w-full items-center gap-2 py-2 pr-3 text-left transition hover:bg-indigo-50/60"
+                      style={{ paddingLeft: `${12 + depth * 16}px` }}
+                    >
+                      <Building2 className={`h-4 w-4 shrink-0 ${inside > 0 ? 'text-indigo-500' : 'text-slate-300'}`} />
+                      {/* Phòng rỗng để mờ: vẫn thấy cơ cấu, nhưng mắt đi thẳng
+                          tới những phòng thật sự có việc để làm. */}
+                      <span className={`min-w-0 flex-1 truncate text-sm ${inside > 0 ? 'font-bold text-slate-800' : 'font-semibold text-slate-400'}`}>
+                        {unit.name}
+                      </span>
+                      {inside > 0 && (
+                        <span className="shrink-0 text-[11px] font-semibold text-slate-500">{inside} nhân sự</span>
+                      )}
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                    </button>
+                  );
+                })}
+              </div>
+              {hidden > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowEmpty(!showEmpty)}
+                  className="w-full border-t border-slate-100 bg-slate-50/60 py-2 text-[11px] font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  {showEmpty ? 'Ẩn phòng chưa có nhân sự' : `Hiện ${hidden} phòng chưa có nhân sự`}
+                </button>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* ---- Nhân sự trong phòng đang mở ---- */}
+        {!focusPerson && tab === 'units' && current && people.length > 0 && (
           <div className="rounded-xl border border-slate-200">
             <p className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-xs font-bold text-slate-700">
               <Users className="h-3.5 w-3.5" />
-              {current ? `Nhân sự thuộc ${current.name}` : 'Chưa gán đơn vị'}
+              Nhân sự thuộc {current.name}
               <span className="font-normal text-slate-400">({people.length})</span>
             </p>
             <ul className="divide-y divide-slate-50">
               {people.map((person) => {
                 const own = ownScheme(person.id);
-                const fallback = byPosition(person);
                 const { tpl, source } = effectiveFor(person);
                 return (
                   <li key={person.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                     <Avatar name={person.name} url={person.avatar_url} size="sm" />
-                    {/* Bam vao nguoi -> tao bo KPI cho phong cua ho, voi phong
-                        dien san. Thuong gap nhat o day la nhin thay "Chua co
-                        bo KPI" roi muon lam mot bo ngay. */}
+                    {/* Bấm vào người → mở khu riêng của họ, thêm một cấp nữa
+                        trong đường đi. */}
                     <button
                       type="button"
-                      onClick={() => onCreateTemplate?.(person.unit_id ?? null)}
-                      disabled={!onCreateTemplate}
-                      className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition enabled:hover:bg-slate-50 disabled:cursor-default"
+                      onClick={() => setFocusPerson(person)}
+                      className="min-w-0 flex-1 rounded-lg px-1 py-0.5 text-left transition hover:bg-slate-50"
                     >
                       <p className="truncate text-sm font-bold text-slate-800">{person.name}</p>
                       <p className="truncate text-xs text-slate-500">
                         {tpl ? tpl.name : <span className="font-bold text-amber-600">Chưa có bộ KPI</span>}
                         {own && ` · từ ${formatDate(own.effective_from)}`}
                       </p>
-                      {onCreateTemplate && !tpl && (
-                        <p className="truncate text-[11px] font-semibold text-indigo-600">
-                          Bấm để tạo bộ KPI cho {current?.name ?? 'phòng ban của họ'}
-                        </p>
-                      )}
                     </button>
                     {tpl && (
                       <Badge className={own ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}>
                         {source}
                       </Badge>
                     )}
-                    <Button size="sm" variant="outline" onClick={() => {
-                      setTarget(person);
-                      setDraft({
-                        template_id: own?.template_id ?? fallback?.id ?? '',
-                        effective_from: getTodayString(),
-                      });
-                    }}>
-                      <Target className="h-3.5 w-3.5" /> {own ? 'Đổi bộ' : 'Gán riêng'}
-                    </Button>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
                   </li>
                 );
               })}
@@ -366,77 +892,27 @@ export function KpiSchemeBoard({ onCreateTemplate }: {
           </div>
         )}
 
-        {subUnits.length === 0 && people.length === 0 && (
+        {/* Màn rỗng của tab phòng ban. Tab nhân sự có màn rỗng riêng ở trên
+            vì việc cần làm khác hẳn: ở đây là đi dựng cơ cấu, ở kia là gõ lại
+            từ khoá khác. */}
+        {!focusPerson && tab === 'units' && (current ? people.length === 0 : allUnits.length === 0) && (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
             <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
               <Building2 className="h-5 w-5" />
             </span>
             <p className="text-sm font-semibold text-slate-600">
-              {current ? `${current.name} chưa có đơn vị con hay nhân sự nào` : 'Chưa dựng cơ cấu tổ chức'}
+              {current ? `${current.name} chưa có nhân sự nào` : 'Chưa dựng cơ cấu tổ chức'}
             </p>
             <p className="max-w-sm text-xs leading-relaxed text-slate-400">
-              Dựng phòng ban và gán nhân sự ở <strong>Cơ cấu tổ chức</strong>, rồi quay lại đây.
+              {current
+                ? <>Gán nhân sự vào phòng này ở <strong>Cơ cấu tổ chức</strong>, hoặc khai KPI cho
+                    từng người ở tab <strong>Nhân sự</strong>.</>
+                : <>Dựng phòng ban và gán nhân sự ở <strong>Cơ cấu tổ chức</strong>, rồi quay lại đây.</>}
             </p>
           </div>
         )}
       </CardContent>
 
-      <Modal open={!!target} onClose={() => setTarget(null)} title={`Bộ KPI cho ${target?.name ?? ''}`} size="md">
-        <div className="space-y-4">
-          <Select label="Bộ KPI" value={draft.template_id}
-            onChange={(e) => setDraft({ ...draft, template_id: e.target.value })}>
-            <option value="">Chọn bộ KPI…</option>
-            {activeTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-
-          <Input label="Áp dụng từ ngày" type="date" value={draft.effective_from}
-            onChange={(e) => setDraft({ ...draft, effective_from: e.target.value })} />
-
-          <p className="rounded-lg bg-blue-50 px-3.5 py-2.5 text-xs leading-relaxed text-blue-800">
-            Đây là tạo bản ghi mới theo ngày hiệu lực, không sửa đè. Các kỳ đã chấm trước ngày này
-            giữ nguyên bộ cũ.
-          </p>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setTarget(null)} disabled={saving}>Hủy</Button>
-            <Button theme="admin" onClick={() => void save()} disabled={saving || !draft.template_id}>
-              {saving ? 'Đang lưu…' : 'Gán bộ KPI'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ---- Gán cho cả đơn vị ---- */}
-      <Modal
-        open={!!unitTarget}
-        onClose={() => setUnitTarget(null)}
-        title={`Bộ KPI cho cả ${unitTarget?.name ?? ''}`}
-        size="md"
-      >
-        <div className="space-y-4">
-          <Select label="Bộ KPI" value={draft.template_id}
-            onChange={(e) => setDraft({ ...draft, template_id: e.target.value })}>
-            <option value="">Chọn bộ KPI…</option>
-            {activeTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </Select>
-
-          <Input label="Áp dụng từ ngày" type="date" value={draft.effective_from}
-            onChange={(e) => setDraft({ ...draft, effective_from: e.target.value })} />
-
-          <p className="rounded-lg bg-blue-50 px-3.5 py-2.5 text-xs leading-relaxed text-blue-800">
-            Áp cho <strong>{unitTarget ? headcount(unitTarget.id) : 0} người</strong> trong
-            {' '}{unitTarget?.name} và các đơn vị con chưa gán bộ riêng. Người đã được
-            {' '}<strong>gán riêng</strong> vẫn giữ bộ của họ — gán riêng luôn thắng gán theo đơn vị.
-          </p>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => setUnitTarget(null)} disabled={saving}>Hủy</Button>
-            <Button theme="admin" onClick={() => void saveUnit()} disabled={saving || !draft.template_id}>
-              {saving ? 'Đang lưu…' : 'Gán cho cả phòng'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </Card>
   );
 }

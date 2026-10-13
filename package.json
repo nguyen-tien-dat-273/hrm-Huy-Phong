@@ -6,13 +6,18 @@
   "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node tools/stamp-sw.mjs",
+    "build": "eslint . --quiet && tsc -b && vite build && node tools/stamp-sw.mjs && tsc -p api/tsconfig.json --noEmit false --outDir server/dist/api",
     "preview": "vite preview",
+    "bridge:bundle": "esbuild tools/attendance-bridge.mjs --bundle --platform=node --format=esm --target=node20 --outfile=dist-bridge/attendance-bridge.mjs --log-level=warning && esbuild tools/attendance-doctor.mjs --bundle --platform=node --format=esm --target=node20 --outfile=dist-bridge/kiem-tra.mjs --log-level=warning && esbuild tools/attendance-find.mjs --bundle --platform=node --format=esm --target=node20 --outfile=dist-bridge/tim-may.mjs --log-level=warning && node -e \"const fs=require('fs');fs.mkdirSync('dist-bridge',{recursive:true});for(const f of ['chay-bridge.cmd','cai-dat.ps1','HUONG-DAN.txt'])fs.copyFileSync('tools/bridge-pack/'+f,'dist-bridge/'+f)\"",
     "attendance:find": "node --env-file=.env.attendance-bridge tools/attendance-find.mjs",
     "attendance:doctor": "node --env-file=.env.attendance-bridge tools/attendance-doctor.mjs",
     "attendance:sync": "node --env-file=.env.attendance-bridge tools/attendance-bridge.mjs --once",
     "attendance:bridge": "node --env-file=.env.attendance-bridge tools/attendance-bridge.mjs",
-    "check:payroll": "esbuild client/src/lib/__tests__/payroll.check.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/payroll.check.cjs --log-level=error --define:import.meta.env={} && node node_modules/.cache/payroll.check.cjs"
+    "supabase:local:check": "node tools/validate-supabase-migrations.mjs",
+    "check:payroll": "esbuild client/src/lib/__tests__/payroll.check.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/payroll.check.cjs --log-level=error --define:import.meta.env={} && node node_modules/.cache/payroll.check.cjs",
+    "lint": "eslint .",
+    "check:all": "npm run check:payroll && npm run check:flows",
+    "check:flows": "esbuild client/src/lib/__tests__/flows.check.ts --bundle --platform=node --format=cjs --outfile=node_modules/.cache/flows.check.cjs --log-level=error --define:import.meta.env={} && node node_modules/.cache/flows.check.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -25,20 +30,27 @@
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "recharts": "^3.10.1",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5",
     "zkteco-protocol": "^0.6.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.1",
     "@types/react": "~19.2.18",
     "@types/react-dom": "~19.2.4",
+    "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^6.0.5",
     "bcryptjs": "^3.0.3",
     "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
     "pg": "^8.22.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0",
     "vite": "^8.2.0",
     "vite-tsconfig-paths": "^6.1.1"
   }

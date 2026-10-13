@@ -1,9 +1,9 @@
 import { type ReactNode, useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Briefcase, KanbanSquare, Fingerprint, CalendarOff,
-  FileBarChart, NotebookPen, Bell, ChevronDown, Building2, Menu, X, ArrowLeft, Eye, KeyRound, LogOut, ShieldCheck,
-  UserCircle, BookOpen, Target, WalletCards, Clock, LayoutGrid, ClipboardList,
+  LayoutDashboard, KanbanSquare,
+  Bell, ChevronDown, Building2, Menu, X, ArrowLeft, Eye, KeyRound, LogOut, ShieldCheck,
+  UserCircle, BookOpen, Target, WalletCards, Clock, LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useViewMode } from '@/contexts/ViewModeContext';
@@ -12,7 +12,11 @@ import { supabase } from '@/lib/supabase';
 import { hasAnyAdminPermission } from '@/lib/permissions';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import { getGreeting } from '@/lib/utils';
+import { useRealtimeSync } from '@/hooks/useRealtimeSync';
+import { notificationRoute } from '@/lib/notificationRoutes';
 import type { Notification } from '@/types';
+import { STAFF_NAV_ITEMS } from '@/config/navigation';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
  * Cum chuc nang cua khu nhan vien.
@@ -42,7 +46,7 @@ const navGroups: {
     chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
   },
   {
-    name: 'Thời gian & Lịch', icon: Clock, hint: 'Chấm công và nghỉ phép',
+    name: 'Thời gian & Lịch', icon: Clock, hint: 'Chấm công và các loại đơn từ',
     iconIdle: 'bg-amber-50 text-amber-600', iconOn: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
     tileOn: 'bg-amber-50', textOn: 'text-amber-700',
     chip: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 hover:bg-amber-600',
@@ -54,10 +58,12 @@ const navGroups: {
     chip: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700',
   },
   {
+    // Fuchsia, trung voi cum KPI ben khu quan tri: mau chinh gio la do thuong
+    // hieu nen rose (do nhat) se trong y het cum "Tong quan".
     name: 'KPI', icon: Target, hint: 'Kết quả chấm điểm của bạn',
-    iconIdle: 'bg-rose-50 text-rose-600', iconOn: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30',
-    tileOn: 'bg-rose-50', textOn: 'text-rose-700',
-    chip: 'bg-rose-600 text-white shadow-sm shadow-rose-600/30 hover:bg-rose-700',
+    iconIdle: 'bg-fuchsia-50 text-fuchsia-600', iconOn: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30',
+    tileOn: 'bg-fuchsia-50', textOn: 'text-fuchsia-700',
+    chip: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30 hover:bg-fuchsia-700',
   },
   {
     // Teal, khong phai rose: KPI da tach ra thanh module rieng nen hai cum
@@ -68,26 +74,6 @@ const navGroups: {
     tileOn: 'bg-teal-50', textOn: 'text-teal-700',
     chip: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30 hover:bg-teal-700',
   },
-];
-
-const navItems = [
-  { to: '/staff/dashboard', label: 'Trang chủ', description: 'Tổng quan công việc và lịch cá nhân hôm nay', icon: LayoutDashboard, group: 'Tổng quan' },
-  { to: '/staff/reports', label: 'Báo cáo cá nhân', description: 'Ngày công, thời gian và kết quả của bạn', icon: FileBarChart, group: 'Tổng quan' },
-
-  { to: '/staff/assignments', label: 'Việc được giao', description: 'Việc quản lý giao theo ngày, gửi lại khi xong', icon: ClipboardList, group: 'Công việc' },
-  { to: '/staff/projects', label: 'Dự án của tôi', description: 'Các dự án và thành viên đang cộng tác', icon: Briefcase, group: 'Công việc' },
-  { to: '/staff/kanban', label: 'Tác vụ Kanban', description: 'Theo dõi và cập nhật trạng thái tác vụ', icon: KanbanSquare, group: 'Công việc' },
-  { to: '/staff/worklog', label: 'Nhật ký giờ', description: 'Ghi nhận thời gian thực tế cho từng công việc', icon: NotebookPen, group: 'Công việc' },
-
-  { to: '/staff/attendance', label: 'Chấm công', description: 'Xem dữ liệu từ máy chấm công và hoàn tất check-out', icon: Fingerprint, group: 'Thời gian & Lịch' },
-  { to: '/staff/leave', label: 'Nghỉ phép', description: 'Theo dõi quỹ phép và gửi yêu cầu nghỉ', icon: CalendarOff, group: 'Thời gian & Lịch' },
-
-  { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ' },
-
-  { to: '/staff/kpi', label: 'KPI của tôi', description: 'Kết quả chấm điểm và điểm từng tiêu chí', icon: Target, group: 'KPI' },
-  { to: '/staff/training', label: 'Đào tạo của tôi', description: 'Khóa học được giao và tiến độ hoàn thành', icon: BookOpen, group: 'Phát triển' },
-  { to: '/staff/processes', label: 'Quy trình & biểu mẫu', description: 'Tài liệu đang hiệu lực của công ty', icon: BookOpen, group: 'Phát triển' },
-  { to: '/staff/growth', label: 'Lộ trình phát triển', description: 'Checklist hội nhập và bàn giao của tôi', icon: Target, group: 'Phát triển' },
 ];
 
 export function StaffLayout({ children }: { children: ReactNode }) {
@@ -114,17 +100,24 @@ export function StaffLayout({ children }: { children: ReactNode }) {
     (profile?.role === 'admin' || profile?.role === 'ceo')
     && location.pathname.startsWith('/staff');
 
-  useEffect(() => {
-    if (profile) {
-      supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(10)
-        .then(({ data }) => { if (data) setNotifications(data); });
-    }
-  }, [profile, location.pathname]);
+  const loadNotifications = async () => {
+    if (!profile) return;
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (data) setNotifications(data);
+  };
+
+  useEffect(() => { void loadNotifications(); }, [profile, location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useRealtimeSync(
+    profile ? [{ table: 'notifications', filter: `user_id=eq.${profile.id}` }] : [],
+    loadNotifications,
+    { enabled: !!profile, channelKey: `staff-notifications-${profile?.id ?? 'anonymous'}` },
+  );
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -164,10 +157,16 @@ export function StaffLayout({ children }: { children: ReactNode }) {
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
   };
 
-  const currentPage = navItems.find((item) => location.pathname.startsWith(item.to));
+  const openNotification = async (notification: Notification) => {
+    await markNotificationRead(notification.id);
+    setNotifOpen(false);
+    navigate(notificationRoute(notification.type));
+  };
+
+  const currentPage = STAFF_NAV_ITEMS.find((item) => location.pathname.startsWith(item.to));
 
   const groupsWithItems = navGroups
-    .map((group) => ({ ...group, items: navItems.filter((item) => item.group === group.name) }))
+    .map((group) => ({ ...group, items: STAFF_NAV_ITEMS.filter((item) => item.group === group.name) }))
     .filter((group) => group.items.length > 0);
 
   // Lay duong dan KHOP DAI NHAT, giong khu quan tri.
@@ -201,17 +200,18 @@ export function StaffLayout({ children }: { children: ReactNode }) {
       <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[18.5rem] border-r border-slate-200 bg-white text-slate-700 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="min-h-20 flex items-center px-5 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-indigo-600 rounded-lg flex flex-col items-center justify-center gap-0.5">
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-              <div className="w-4 h-0.5 bg-white rounded-full" />
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-            </div>
+            <img
+              src="/logo-mark.png?v=3"
+              alt=""
+              aria-hidden="true"
+              className="h-9 w-9 flex-shrink-0 object-contain"
+            />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-900">{orgName || 'HRM Huy Phong'}</p>
               <p className="mt-0.5 text-[11px] text-slate-500">Cổng thông tin nhân viên</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-slate-400">
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Đóng menu điều hướng" className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -253,11 +253,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                           }`}>
                             {item.label}
                           </span>
-                          <span className={`mt-0.5 block text-[11px] leading-snug ${
-                            isActive ? 'text-indigo-100' : 'text-slate-500'
-                          }`}>
-                            {item.description}
-                          </span>
                         </span>
                       </>
                     )}
@@ -283,7 +278,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
               duoc duoi kich thuoc noi dung - thieu no thi header phinh ra va
               day ca trang tran ngang, dung loi da gap ben khu quan tri. */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden text-slate-600 p-2 rounded-lg hover:bg-slate-100">
+            <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở menu điều hướng" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex min-w-0 flex-col">
@@ -304,7 +299,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
             <div className="relative hidden md:block" ref={launcherRef}>
               <button
                 onClick={() => { setLauncherOpen(!launcherOpen); setNotifOpen(false); setAvatarOpen(false); }}
-                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
+                className={`flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
                   activeGroup ? activeGroup.chip : 'bg-slate-800 text-white hover:bg-slate-900'
                 }`}
                 aria-label="Mở bảng chức năng"
@@ -361,7 +356,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={handleBackToAdmin}
                 title="Kết thúc chế độ xem nhân viên và quay lại trang quản trị trước đó"
-                className="group inline-flex h-9 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-100 sm:px-3"
+                className="group inline-flex h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-100 sm:px-3"
               >
                 <Eye className="h-4 w-4" />
                 <span className="hidden lg:inline">Đang xem nhân viên</span>
@@ -399,7 +394,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                       <p className="text-sm text-slate-400 text-center py-10">Không có thông báo mới</p>
                     ) : (
                       unreadNotifications.map((n) => (
-                        <button type="button" key={n.id} onClick={() => void markNotificationRead(n.id)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-emerald-50/40">
+                        <button type="button" key={n.id} onClick={() => void openNotification(n)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-emerald-50/40">
                           <div className="flex items-center gap-2">
                             {!n.is_read && <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />}
                             <p className="text-sm font-medium text-slate-800">{n.title}</p>
@@ -435,7 +430,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                       onClick={handleBackToAdmin}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center"><ArrowLeft className="w-4 h-4 text-blue-600" /></span>
+                      <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><ArrowLeft className="w-4 h-4 text-indigo-600" /></span>
                       Về trang quản trị trước đó
                     </button>
                   ) : hasAnyAdminPermission(profile) && (
@@ -445,7 +440,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                       onClick={() => { setAvatarOpen(false); navigate('/admin'); }}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-blue-600" /></span>
+                      <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-indigo-600" /></span>
                       Khu quản trị
                     </button>
                   )}
@@ -478,7 +473,10 @@ export function StaffLayout({ children }: { children: ReactNode }) {
 
         {/* Page content — chừa chỗ cho thanh điều hướng đáy trên điện thoại */}
         <main id="main-content" data-bottom-launcher tabIndex={-1} className="page-content flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
-          {children}
+          {/* Lưới an toàn: một trang ném lỗi thì chỉ trang đó hiện báo lỗi,
+              thanh điều hướng và đầu trang vẫn còn để đi chỗ khác. Không có
+              nó thì React gỡ cả cây và màn hình trắng trơn. */}
+          <PageErrorBoundary>{children}</PageErrorBoundary>
         </main>
       </div>
       {/* ================================================================

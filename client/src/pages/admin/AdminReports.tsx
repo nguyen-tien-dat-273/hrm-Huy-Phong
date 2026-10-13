@@ -14,8 +14,10 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { toDateString } from '@/lib/utils';
 import type { DailyAssignment, Project, Task, Profile, Attendance } from '@/types';
+import { AdminWorkforceReports } from '@/pages/admin/AdminWorkforceReports';
 
 /** Một dòng trong bảng xếp hạng hoàn thành công việc của tháng. */
 interface MemberMonthStats {
@@ -29,7 +31,7 @@ interface MemberMonthStats {
   rate: number;
 }
 
-export function AdminReports() {
+function OperationalReports() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [projectStatusData, setProjectStatusData] = useState<{ name: string; value: number; color: string }[]>([]);
@@ -69,11 +71,14 @@ export function AdminReports() {
     if (!silent) setMonthLoading(true);
     const { data, error } = await supabase
       .from('daily_assignments')
-      .select('*, profile:profiles!daily_assignments_user_id_fkey(id,name,avatar_url,department)')
+      .select('*')
       .gte('work_date', toDateString(monthStart))
       .lte('work_date', toDateString(endOfMonth(monthStart)));
     setMonthError(error ? describeDbError(error) : null);
-    setMonthAsg((data || []) as DailyAssignment[]);
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
+    const rows = (data || []) as DailyAssignment[];
+    const people = await fetchProfileMap(rows.map((row) => row.user_id));
+    setMonthAsg(rows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) })));
     setMonthLoading(false);
   };
 
@@ -422,6 +427,35 @@ export function AdminReports() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+export function AdminReports() {
+  const [section, setSection] = useState<'workforce' | 'operations'>('workforce');
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Phân hệ báo cáo">
+        {[
+          { key: 'workforce', label: 'Báo cáo nhân sự & lương' },
+          { key: 'operations', label: 'Báo cáo vận hành hiện có' },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={section === tab.key}
+            onClick={() => setSection(tab.key as 'workforce' | 'operations')}
+            className={`min-h-10 rounded-xl px-4 text-sm font-semibold transition ${
+              section === tab.key ? 'bg-indigo-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      {section === 'workforce' ? <AdminWorkforceReports /> : <OperationalReports />}
     </div>
   );
 }

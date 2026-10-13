@@ -1,23 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Clock, XCircle, Calendar, Trash2, CheckCheck, ClipboardList, Table, MapPin, ExternalLink } from 'lucide-react';
+import { CheckCheck, Clock, LogOut, Table, Trash2 } from 'lucide-react';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
+import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasAdminFunction } from '@/lib/permissions';
+import { isTeamlead } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { formatTime, formatDateTime, getTodayString } from '@/lib/utils';
-import { notifyUser } from '@/lib/assignments';
-import type { Attendance, Profile } from '@/types';
+import { fetchProfileMap } from '@/lib/profileDirectory';
+import { formatTime, getTodayString } from '@/lib/utils';
+import type { Attendance } from '@/types';
+
+const THU_TRONG_TUAN = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+function dayLabel(iso: string): string {
+  const parsed = new Date(iso + 'T00:00:00');
+  if (Number.isNaN(parsed.getTime())) return iso;
+  const d = String(parsed.getDate()).padStart(2, '0');
+  const m = String(parsed.getMonth() + 1).padStart(2, '0');
+  return THU_TRONG_TUAN[parsed.getDay()] + ', ' + d + '/' + m + '/' + parsed.getFullYear();
+}
 
 export function AdminAttendance() {
   const { profile } = useAuth();
@@ -28,15 +40,28 @@ export function AdminAttendance() {
   const [asgProgress, setAsgProgress] = useState<Record<string, { approved: number; total: number }>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
-  // Màn "Thiết lập công & chấm công" đã bị bỏ khỏi menu/route (chỉ còn dùng
-  // dữ liệu từ máy chấm công) — trang này (Duyệt chấm công) cũng không còn
-  // route trỏ tới nữa, giữ lại làm mã orphan phòng khi cần khôi phục sau.
-  const canConfigureAttendance = false;
+  // Dem rieng ban ghi KHONG phai tu may ma con cho duyet. Loc man hinh ve
+  // mot nguon la dung y do, nhung giau luon nhung dong do thi chung khong
+  // bao gio duoc duyet va khong bao gio vao bang luong - mat im lang.
+  const [legacyPending, setLegacyPending] = useState(0);
+  // Máy chấm công này chỉ ghi giờ vào, nên giờ ra phải nhập tay ở đây.
+  // `checkoutTarget` là một bản ghi, hoặc 'bulk' cho toàn bộ dòng đang hiển thị.
+  const [checkoutTarget, setCheckoutTarget] = useState<Attendance | 'bulk' | null>(null);
+  const [checkoutTime, setCheckoutTime] = useState('17:30');
+  const [savingCheckout, setSavingCheckout] = useState(false);
+  // Chấm công là dữ liệu theo ngày, nên bộ lọc cũng đi theo ngày. Ba nút cũ
+  // ("Hôm nay / Cần xử lý / Tất cả") không trả lời được câu hỏi hay gặp nhất là
+  // "ngày 03 ai đi làm", và "Tất cả" thì đổ hàng nghìn dòng không mốc thời gian.
+  const [scope, setScope] = useState<'day' | 'month'>('day');
+  const [day, setDay] = useState(getTodayString());
+  const [month, setMonth] = useState(getTodayString().slice(0, 7));
+  // Trưởng nhóm duyệt được ngày công của phạm vi mình quản lý nhưng không đổi
+  // quy tắc giờ làm dùng chung toàn công ty — khớp với guard của route cài đặt.
+  const canConfigureAttendance = !isTeamlead(profile);
 
   useEffect(() => {
     loadAttendance();
-  }, [filter]);
+  }, [scope, day, month]);
 
   // Nghe cả daily_assignments: quản lý xác nhận việc xong là cột "Công việc"
   // ở đây phải nhảy số theo.
@@ -45,28 +70,58 @@ export function AdminAttendance() {
     () => loadAttendance(true),
   );
 
+  useEffect(() => {
+    // Giờ tan ca theo ca đang áp dụng; không có ca nào thì giữ 17:30 mặc định.
+    void (async () => {
+      const today = getTodayString();
+      const { data } = await supabase
+        .from('work_schedules')
+        .select('end_time,effective_from,effective_to')
+        .lte('effective_from', today)
+        .order('effective_from', { ascending: false })
+        .limit(5);
+      const current = (data || []).find((s) => !s.effective_to || s.effective_to >= today);
+      if (current?.end_time) setCheckoutTime(String(current.end_time).slice(0, 5));
+    })();
+  }, []);
+
   const loadAttendance = async (silent = false) => {
     if (!silent) setLoading(true);
     // `attendance` có HAI khóa ngoại trỏ về `profiles` (user_id và
     // approved_by_user_id), nên `profiles(*)` là mơ hồ và PostgREST trả lỗi
     // PGRST201. Phải chỉ rõ khóa.
+    // Cham cong o day CHI den tu may cham cong vat ly. Luong tu khai bang GPS
+    // khong con dung; don tu (nghi phep, di muon, ve som, lam them) xu ly ben
+    // /admin/leave chu khong phai man nay.
     let query = supabase
       .from('attendance')
-      .select('*, profile:profiles!user_id(*), location:work_locations(id,name,address,latitude,longitude,radius_meters)')
+      .select('*')
+      .eq('check_in_method', 'DEVICE')
       .order('date', { ascending: false });
-    if (filter === 'today') {
-      query = query.eq('date', getTodayString());
-    } else if (filter === 'pending') {
-      // Hàng chờ duyệt chỉ gồm ngày công đã kết thúc. Bản ghi đang làm việc
-      // không được xuất hiện ở đây để tránh quản lý duyệt nhầm trước checkout.
-      query = query
-        .eq('approved_by_lead', false)
-        .eq('status', 'completed')
-        .not('check_out_time', 'is', null);
+    if (scope === 'day') {
+      query = query.eq('date', day);
+    } else {
+      // Ngày cuối tháng lấy bằng cách lùi một ngày từ mùng 1 tháng sau, để khỏi
+      // phải tự đếm 28/29/30/31.
+      const [y, m] = month.split('-').map(Number);
+      const last = new Date(y, m, 0);
+      const lastStr = `${month}-${String(last.getDate()).padStart(2, '0')}`;
+      query = query.gte('date', `${month}-01`).lte('date', lastStr);
     }
     const { data, error } = await query;
     setLoadError(error ? describeDbError(error) : null);
-    const list = (data || []) as Attendance[];
+
+    const legacy = await supabase
+      .from('attendance')
+      .select('id', { head: true, count: 'exact' })
+      .neq('check_in_method', 'DEVICE')
+      .eq('approved_by_lead', false);
+    setLegacyPending(legacy.error ? 0 : (legacy.count ?? 0));
+    const rows = (data || []) as Attendance[];
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
+    // Nạp hồ sơ rời theo đúng những người đang hiển thị rồi ghép tại chỗ.
+    const people = await fetchProfileMap(rows.map((row) => row.user_id));
+    const list = rows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) }));
     setRecords(list);
 
     // Ghép tiến độ công việc của đúng những ngày đang hiển thị — để người
@@ -91,13 +146,79 @@ export function AdminAttendance() {
     setLoading(false);
   };
 
-  const handleApprove = async (record: Attendance) => {
-    // Không cho phép duyệt khi nhân viên chưa checkout
-    if (record.status !== 'completed' || !record.check_out_time) {
-      toast('Không thể duyệt: Nhân viên chưa Check-out.', 'warning');
-      return;
-    }
+  const missingCheckout = records.filter((r) => r.check_in_time && !r.check_out_time);
+  // Xac nhan duoc = da co ca hai moc gio ma chua tinh cong. Thuc te la nhung
+  // dong check-in tu HRM; dong tu may da tu tinh cong khi co gio ra.
+  const needConfirm = records.filter((r) => r.check_out_time && !r.approved_by_lead);
 
+  // Gom theo ngay, moi nhat len truoc. Cham cong la du lieu theo ngay nen bang
+  // doc theo ngay moi de doi chieu voi bang cong; de phang thi mot thang hon
+  // nghin dong khong co moc nao.
+  const groupedByDay = useMemo(() => {
+    const buckets = new Map<string, Attendance[]>();
+    for (const record of records) {
+      const bucket = buckets.get(record.date);
+      if (bucket) bucket.push(record);
+      else buckets.set(record.date, [record]);
+    }
+    return [...buckets.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
+  }, [records]);
+
+  // Dựng mốc giờ ra từ ngày công + giờ người dùng gõ, theo múi giờ của TRÌNH
+  // DUYỆT. Cố ý: cột giờ vào trên màn này cũng hiển thị theo giờ trình duyệt,
+  // nên gõ "17:30" là ra đúng 17:30 như mắt nhìn thấy. Ghép cứng +07:00 ở đây
+  // thì máy đặt sai múi giờ sẽ ghi lệch mà không ai thấy.
+  const buildCheckout = (record: Attendance, hhmm: string) => {
+    const stamp = new Date(`${record.date}T${hhmm}:00`);
+    if (Number.isNaN(stamp.getTime())) return null;
+    const checkIn = record.check_in_time ? new Date(record.check_in_time).getTime() : 0;
+    if (stamp.getTime() <= checkIn) return 'BEFORE_CHECKIN' as const;
+    return stamp.toISOString();
+  };
+
+  const saveCheckout = async () => {
+    if (!checkoutTarget) return;
+    const targets = checkoutTarget === 'bulk' ? missingCheckout : [checkoutTarget];
+    if (targets.length === 0) return;
+
+    setSavingCheckout(true);
+    let done = 0;
+    let tooEarly = 0;
+    let failed: string | null = null;
+
+    for (const record of targets) {
+      const value = buildCheckout(record, checkoutTime);
+      if (value === null) { failed = 'Giờ không hợp lệ.'; break; }
+      if (value === 'BEFORE_CHECKIN') { tooEarly += 1; continue; }
+      const { error } = await supabase
+        .from('attendance')
+        .update({ check_out_time: value, status: 'completed' })
+        .eq('id', record.id);
+      if (error) { failed = describeDbError(error); break; }
+      done += 1;
+    }
+    setSavingCheckout(false);
+
+    if (failed) {
+      toast(`Ghi giờ ra thất bại: ${failed}`, 'error');
+    } else if (done === 0 && tooEarly > 0) {
+      toast(`Giờ ra phải sau giờ vào. ${tooEarly} bản ghi bị bỏ qua.`, 'error');
+    } else {
+      toast(
+        tooEarly > 0
+          ? `Đã ghi giờ ra cho ${done} bản ghi; bỏ qua ${tooEarly} bản ghi có giờ vào muộn hơn.`
+          : `Đã ghi giờ ra cho ${done} bản ghi.`,
+        'success',
+      );
+      setCheckoutTarget(null);
+      loadAttendance();
+    }
+  };
+
+  const handleApprove = async (record: Attendance) => {
+    // Cố ý KHÔNG đòi có giờ ra: máy này chỉ ghi giờ vào, đòi giờ ra thì không
+    // dòng nào tính công được. Trigger guard_attendance_approval dưới database
+    // cũng đã nới đúng cho nguồn DEVICE.
     const { data: updated, error } = await supabase.from('attendance').update({
       approved_by_lead: true,
       approved_at: new Date().toISOString(),
@@ -105,8 +226,6 @@ export function AdminAttendance() {
     })
       .eq('id', record.id)
       .eq('approved_by_lead', false)
-      .eq('status', 'completed')
-      .not('check_out_time', 'is', null)
       .select('id')
       .maybeSingle();
 
@@ -116,38 +235,7 @@ export function AdminAttendance() {
       toast('Bản ghi đã thay đổi hoặc chưa đủ điều kiện duyệt. Danh sách sẽ được cập nhật lại.', 'warning');
       loadAttendance();
     } else {
-      await notifyUser(
-        record.user_id,
-        'Chấm công đã được duyệt',
-        `Quản lý đã xác nhận ngày làm việc ${record.date} của bạn.`,
-        'attendance_approved',
-      );
-      toast('Đã duyệt chấm công', 'success');
-      loadAttendance();
-    }
-  };
-
-  const handleUnapprove = async (record: Attendance) => {
-    const ok = await confirm({
-      title: 'Bỏ duyệt chấm công?',
-      message: `Bạn muốn bỏ duyệt ngày công ${record.date} của ${record.profile?.name || 'nhân viên này'}?`,
-      confirmLabel: 'Bỏ duyệt',
-    });
-    if (!ok) return;
-
-    const { data: updated, error } = await supabase.from('attendance').update({
-      approved_by_lead: false,
-      approved_at: null,
-      approved_by_user_id: null,
-    }).eq('id', record.id).eq('approved_by_lead', true).select('id').maybeSingle();
-
-    if (error) {
-      toast('Thao tác thất bại', 'error');
-    } else if (!updated) {
-      toast('Bản ghi đã thay đổi hoặc không còn ở trạng thái đã duyệt.', 'warning');
-      loadAttendance(true);
-    } else {
-      toast('Đã bỏ duyệt chấm công', 'success');
+      toast('Đã tính công cho ngày này', 'success');
       loadAttendance();
     }
   };
@@ -170,17 +258,15 @@ export function AdminAttendance() {
   };
 
   const handleApproveAllPending = async () => {
-    const pending = records.filter(
-      (r) => !r.approved_by_lead && r.status === 'completed' && Boolean(r.check_out_time),
-    );
+    const pending = needConfirm;
     if (pending.length === 0) {
-      toast('Không có bản ghi nào cần duyệt.', 'warning');
+      toast('Không có ngày công nào cần xác nhận.', 'warning');
       return;
     }
     const ok = await confirm({
-      title: `Duyệt tất cả ${pending.length} bản ghi?`,
-      message: 'Mỗi nhân viên liên quan sẽ nhận được một thông báo xác nhận.',
-      confirmLabel: 'Duyệt tất cả',
+      title: `Xác nhận ${pending.length} ngày công?`,
+      message: 'Đây là những ngày đã có đủ giờ vào và giờ ra nhưng chưa vào bảng lương — thường là check-in tự khai trên HRM. Xác nhận xong chúng mới được tính công.',
+      confirmLabel: 'Xác nhận',
     });
     if (!ok) return;
     let success = 0;
@@ -192,30 +278,37 @@ export function AdminAttendance() {
       })
         .eq('id', r.id)
         .eq('approved_by_lead', false)
-        .eq('status', 'completed')
-        .not('check_out_time', 'is', null)
         .select('id')
         .maybeSingle();
-      if (!error && updated) {
-        success++;
-        await notifyUser(
-          r.user_id,
-          'Chấm công đã được duyệt',
-          `Quản lý đã xác nhận ngày làm việc ${r.date} của bạn.`,
-          'attendance_approved',
-        );
-      }
+      if (!error && updated) success++;
     }
     if (success > 0) {
-      toast(`Đã duyệt ${success} bản ghi chấm công`, 'success');
+      toast(`Đã tính công cho ${success} ngày công`, 'success');
       loadAttendance();
     } else {
-      toast('Duyệt thất bại', 'error');
+      toast('Tính công thất bại', 'error');
     }
   };
 
   return (
     <div className="space-y-5">
+      <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
+        <p className="text-sm font-semibold text-slate-800">Chấm công từ máy chấm công</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Chỉ hiển thị ngày công do máy vân tay/khuôn mặt ghi lại. Đơn nghỉ phép, đi muộn,
+          về sớm và làm thêm xử lý ở <Link to="/admin/leave" className="font-semibold text-indigo-700 hover:underline">Trung tâm đơn từ</Link>.
+        </p>
+      </div>
+
+      {legacyPending > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+          <p className="text-xs text-amber-900">
+            Còn <strong>{legacyPending}</strong> ngày công cũ không đến từ máy và chưa được duyệt.
+            Màn này đã lọc bỏ chúng, nên chúng sẽ không bao giờ được duyệt và không vào bảng lương.
+          </p>
+        </div>
+      )}
+
       {canConfigureAttendance && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
           <p className="text-xs text-slate-500">
@@ -230,30 +323,58 @@ export function AdminAttendance() {
         </div>
       )}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {([
-            { key: 'today', label: 'Hôm nay' },
-            { key: 'pending', label: 'Chờ duyệt' },
-            { key: 'all', label: 'Tất cả' },
-] as { key: typeof filter; label: string }[]).map((f) => (
+            { key: 'day', label: 'Theo ngày' },
+            { key: 'month', label: 'Theo tháng' },
+          ] as { key: typeof scope; label: string }[]).map((item) => (
             <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
+              key={item.key}
+              onClick={() => setScope(item.key)}
               className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all duration-200 ${
-                filter === f.key
+                scope === item.key
                   ? 'bg-indigo-600 text-white shadow-sm'
                   : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
               }`}
             >
-              {f.label}
+              {item.label}
             </button>
           ))}
+
+          {scope === 'day' ? (
+            <>
+              <input
+                type="date"
+                value={day}
+                onChange={(event) => setDay(event.target.value)}
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
+              />
+              {day !== getTodayString() && (
+                <button onClick={() => setDay(getTodayString())} className="text-xs font-semibold text-indigo-700 hover:underline">
+                  Về hôm nay
+                </button>
+              )}
+            </>
+          ) : (
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
+            />
+          )}
         </div>
         <div className="flex items-center gap-2">
-          {filter === 'pending' && (
+          {missingCheckout.length > 0 && (
+            <Button variant="outline" theme="admin" size="sm" onClick={() => setCheckoutTarget('bulk')}>
+              <LogOut className="w-4 h-4" />
+              Ghi giờ ra ({missingCheckout.length})
+            </Button>
+          )}
+          {needConfirm.length > 0 && (
             <Button variant="outline" theme="admin" size="sm" onClick={handleApproveAllPending}>
               <CheckCheck className="w-4 h-4" />
-              Duyệt tất cả
+              Xác nhận {needConfirm.length} dòng
             </Button>
           )}
           <Link to="/admin/timesheet">
@@ -279,128 +400,140 @@ export function AdminAttendance() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-[#FCFAF8]">
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Nhân viên</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thời gian</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Vận hành</th>
+                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ vào</th>
+                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ ra</th>
                     <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Công việc</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Kiểm soát</th>
                     <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {records.map((r) => (
-                    <tr key={r.id} className="hover:bg-[#FCFAF8] transition-colors group">
-                      <td data-label="" className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar name={r.profile?.name || ''} url={r.profile?.avatar_url} size="sm" />
-                          <div className="flex flex-col">
-                            <span className="text-sm font-bold text-slate-800">{r.profile?.name}</span>
-                            <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{r.profile?.department || 'OPS STAFF'}</span>
+                {groupedByDay.map(([date, rows]) => {
+                  const thieuGioRa = rows.filter((item) => !item.check_out_time).length;
+                  return (
+                    <tbody key={date} className="divide-y divide-slate-50">
+                      <tr className="bg-slate-50/80">
+                        <td colSpan={5} className="px-6 py-2.5">
+                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                            <span className="text-sm font-bold text-slate-800">{dayLabel(date)}</span>
+                            <span className="text-xs text-slate-500">{rows.length} người</span>
+                            {thieuGioRa > 0 && (
+                              <span className="text-xs font-semibold text-amber-700">{thieuGioRa} chưa có giờ ra</span>
+                            )}
                           </div>
-                        </div>
-                      </td>
-                      <td data-label="Thời gian" className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-xs font-bold text-slate-700 uppercase tracking-tight">{r.date}</span>
-                          <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{formatTime(r.check_in_time)} — {formatTime(r.check_out_time) || '...'}</span>
-                        </div>
-                      </td>
-                      <td data-label="Vận hành" className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
-                          <span className={`text-[10px] font-bold flex items-center gap-1.5 uppercase tracking-tighter ${r.check_in_latitude != null && r.check_in_longitude != null ? 'text-emerald-600' : 'text-slate-500'}`}>
-                            <MapPin className="h-3 w-3" />
-                            {r.check_in_method || 'Không xác định'}
-                          </span>
-                          <span className="text-[11px] text-slate-600 font-semibold truncate max-w-[180px]" title={r.location?.address || undefined}>
-                            {r.location?.name || 'Ngoài danh sách địa điểm'}
-                          </span>
-                          {r.gps_accuracy_meters != null && (
-                            <span className="text-[10px] text-slate-500">GPS ±{Math.round(r.gps_accuracy_meters)} m</span>
-                          )}
-                          {r.anomaly_flags && r.anomaly_flags.length > 0 && (
-                            <Badge className="w-fit bg-amber-50 text-amber-700 border-amber-200">
-                              Cần đối soát
-                            </Badge>
-                          )}
-                          {r.check_in_latitude != null && r.check_in_longitude != null && (
-                            <a
-                              href={`https://www.google.com/maps?q=${r.check_in_latitude},${r.check_in_longitude}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 hover:text-indigo-800"
-                            >
-                              Xem vị trí <ExternalLink className="h-3 w-3" />
-                            </a>
-                          )}
-                        </div>
-                      </td>
-                      <td data-label="Công việc" className="px-6 py-4">
-                        {(() => {
-                          const p = asgProgress[`${r.user_id}|${r.date}`];
-                          if (!p) return <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">NO TASKS</span>;
-                          const done = p.approved === p.total;
-                          return (
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[10px] font-bold uppercase tracking-widest ${done ? 'text-emerald-600' : 'text-amber-600'}`}>
-                                {p.approved}/{p.total} DONE
-                              </span>
-                              <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                <div className={`h-full ${done ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${(p.approved/p.total)*100}%` }} />
+                        </td>
+                      </tr>
+                      {rows.map((r) => (
+                        <tr key={r.id} className="hover:bg-[#FCFAF8] transition-colors group">
+                          <td data-label="" className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <Avatar name={r.profile?.name || ''} url={r.profile?.avatar_url} size="sm" />
+                              <div className="flex flex-col">
+                                <span className="text-sm font-bold text-slate-800">{r.profile?.name || 'Chưa rõ nhân viên'}</span>
+                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{r.profile?.department || '—'}</span>
                               </div>
                             </div>
-                          );
-                        })()}
-                      </td>
-                      <td data-label="Kiểm soát" className="px-6 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <Badge className={r.status === 'completed' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'}>
-                            {r.status === 'completed' ? 'DONE' : 'ACTIVE'}
-                          </Badge>
-	                          {r.approved_by_lead && (
-	                            <Badge className="bg-slate-900 text-white border-slate-900">
-	                              VERIFIED
-	                            </Badge>
-	                          )}
-                        </div>
-                      </td>
-                      <td data-label="" className="px-5 py-3.5">
-                        <div className="flex items-center justify-end gap-2">
-	                          {!r.approved_by_lead ? (
-	                            <button
-	                              onClick={() => handleApprove(r)}
-	                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-	                                r.status === 'completed' 
-	                                  ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' 
-	                                  : 'bg-slate-50 text-slate-400 cursor-not-allowed'
-	                              }`}
-	                              title={r.status !== 'completed' ? 'Chờ nhân viên Check-out' : 'Duyệt ngày công'}
-	                            >
-	                              Duyệt
-	                            </button>
-	                          ) : (
-	                            <button
-	                              onClick={() => handleUnapprove(r)}
-	                              className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-xs font-medium hover:bg-amber-100 transition-colors"
-	                            >
-	                              Bỏ duyệt
-	                            </button>
-	                          )}
-                          <button
-                            onClick={() => handleDelete(r)}
-                            title="Xóa bản ghi"
-                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
+                          </td>
+                          <td data-label="Giờ vào" className="px-6 py-4">
+                            <span className="text-sm font-semibold text-slate-800">{formatTime(r.check_in_time)}</span>
+                          </td>
+                          <td data-label="Giờ ra" className="px-6 py-4">
+                            {r.check_out_time ? (
+                              <span className="text-sm font-semibold text-slate-800">{formatTime(r.check_out_time)}</span>
+                            ) : (
+                              <button
+                                onClick={() => setCheckoutTarget(r)}
+                                className="text-sm font-semibold text-indigo-700 hover:underline"
+                                title="Nhập giờ ra cho ngày công này"
+                              >
+                                Ghi giờ ra
+                              </button>
+                            )}
+                          </td>
+                          <td data-label="Công việc" className="px-6 py-4">
+                            {(() => {
+                              const p = asgProgress[r.user_id + '|' + r.date];
+                              if (!p) return <span className="text-xs text-slate-400">—</span>;
+                              const done = p.approved === p.total;
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className={done ? 'text-[10px] font-bold uppercase tracking-widest text-emerald-600' : 'text-[10px] font-bold uppercase tracking-widest text-amber-600'}>
+                                    {p.approved}/{p.total} hoàn thành
+                                  </span>
+                                  <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                    <div className={done ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'} style={{ width: ((p.approved / p.total) * 100) + '%' }} />
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td data-label="" className="px-5 py-3.5">
+                            <div className="flex items-center justify-end gap-2">
+                              {r.check_out_time && !r.approved_by_lead && (
+                                <button
+                                  onClick={() => handleApprove(r)}
+                                  className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
+                                  title="Check-in từ HRM cần quản lý xác nhận mới vào bảng lương"
+                                >
+                                  Xác nhận
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDelete(r)}
+                                title="Xóa bản ghi"
+                                className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  );
+                })}
               </table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Modal
+        open={checkoutTarget !== null}
+        onClose={() => setCheckoutTarget(null)}
+        title={checkoutTarget === 'bulk' ? `Ghi giờ ra cho ${missingCheckout.length} bản ghi` : 'Ghi giờ ra'}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            {checkoutTarget === 'bulk' ? (
+              <>Áp dụng cùng một giờ ra cho tất cả ngày công đang hiển thị mà chưa có giờ ra.</>
+            ) : checkoutTarget ? (
+              <>
+                <strong>{checkoutTarget.profile?.name || 'Nhân viên'}</strong> · ngày {checkoutTarget.date} ·
+                vào lúc {formatTime(checkoutTarget.check_in_time)}
+              </>
+            ) : null}
+          </p>
+
+          <Input
+            label="Giờ ra"
+            type="time"
+            value={checkoutTime}
+            onChange={(e) => setCheckoutTime(e.target.value)}
+          />
+
+          <p className="text-xs text-slate-500">
+            Máy chấm công chỉ ghi giờ vào, nên giờ ra nhập ở đây. Giá trị mặc định lấy từ ca
+            làm việc đang áp dụng. Bản ghi nào có giờ vào muộn hơn giờ này sẽ được bỏ qua chứ
+            không ghi đè thành số âm.
+          </p>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCheckoutTarget(null)}>Hủy</Button>
+            <Button onClick={saveCheckout} disabled={savingCheckout || !checkoutTime}>
+              {savingCheckout ? 'Đang ghi...' : 'Ghi giờ ra'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

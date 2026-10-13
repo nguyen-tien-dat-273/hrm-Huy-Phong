@@ -11,7 +11,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CheckCircle2, Info, Save, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, Info, Plus, Save, Trash2, TriangleAlert } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -19,6 +19,8 @@ import { useToast } from '@/contexts/ToastContext';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import { formatVND } from '@/lib/utils';
 import { savePitBrackets, type PitBracket } from '@/lib/payrollSettings';
+import { deleteNamedParam, saveNamedParam } from '@/lib/payrollData';
+import type { PayrollNamedParam } from '@/types';
 import { savePayrollSettings, type PayrollSettings } from '@/lib/payrollSettings';
 import { Select } from '@/components/ui/Input';
 
@@ -32,13 +34,93 @@ const REGION_HINT: Record<string, string> = {
 interface PayrollParamsTabProps {
   settings: PayrollSettings;
   brackets: PitBracket[];
+  /**
+   * Tham số tự khai, mã của chúng dùng được trong công thức.
+   *
+   * Tách khỏi `settings` vì khác bản chất: `settings` là các con số engine hiểu
+   * theo NGHĨA RIÊNG (trần đóng bảo hiểm, biểu thuế luỹ tiến), còn đây chỉ là
+   * một giá trị có tên để công thức gọi tới.
+   */
+  namedParams: PayrollNamedParam[];
   actorId: string | null;
   /** Kỳ đã duyệt vẫn sửa được tham số — chỉ kỳ sau mới chịu ảnh hưởng. */
   onSaved: () => void;
 }
 
-export function PayrollParamsTab({ settings, brackets, actorId, onSaved }: PayrollParamsTabProps) {
+interface ParamDraft {
+  id?: string;
+  code: string;
+  name: string;
+  value: string;
+  unit: string;
+}
+
+export function PayrollParamsTab({
+  settings, brackets, namedParams, actorId, onSaved,
+}: PayrollParamsTabProps) {
   const { toast } = useToast();
+
+  // --- Tham số tự khai ------------------------------------------------------
+  const [paramDrafts, setParamDrafts] = useState<ParamDraft[]>([]);
+  const [savingParams, setSavingParams] = useState(false);
+  useEffect(() => {
+    setParamDrafts(namedParams.map((row) => ({
+      id: row.id, code: row.code, name: row.name,
+      value: String(Number(row.value)), unit: row.unit,
+    })));
+  }, [namedParams]);
+
+  const updateParam = (index: number, patch: Partial<ParamDraft>) => {
+    setParamDrafts((list) => list.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  };
+  const addParam = () => setParamDrafts((list) => [...list, { code: '', name: '', value: '0', unit: 'VND' }]);
+
+  /**
+   * Xoá khỏi màn hình, và xoá luôn dưới database nếu đã lưu.
+   *
+   * Chỉ gỡ khỏi màn hình thì lần mở sau nó hiện lại như chưa có gì xảy ra.
+   */
+  const removeParam = async (index: number) => {
+    const row = paramDrafts[index];
+    setParamDrafts((list) => list.filter((_, i) => i !== index));
+    if (!row.id) return;
+    const error = await deleteNamedParam(row.id);
+    if (error) toast('Xoá tham số thất bại: ' + error, 'error');
+    else onSaved();
+  };
+
+  const saveParams = async () => {
+    const rows = paramDrafts.filter((row) => row.code.trim() || row.name.trim());
+    const sai = rows.find((row) => !/^[A-Z][A-Z0-9_]*$/.test(row.code.trim()));
+    if (sai) {
+      toast(`Mã "${sai.code || '(trống)'}" không hợp lệ. Viết hoa không dấu, bắt đầu bằng chữ.`, 'warning');
+      return;
+    }
+    const trung = rows.find((row, i) => rows.findIndex((o) => o.code === row.code) !== i);
+    if (trung) {
+      toast(`Mã "${trung.code}" bị khai hai lần.`, 'warning');
+      return;
+    }
+
+    setSavingParams(true);
+    for (const row of rows) {
+      const error = await saveNamedParam({
+        ...(row.id ? { id: row.id } : {}),
+        code: row.code.trim(),
+        name: row.name.trim() || row.code.trim(),
+        value: Number(row.value) || 0,
+        unit: row.unit,
+      });
+      if (error) {
+        setSavingParams(false);
+        toast(`Lưu tham số "${row.code}" thất bại: ` + error, 'error');
+        return;
+      }
+    }
+    setSavingParams(false);
+    toast('Đã lưu tham số công thức.', 'success');
+    onSaved();
+  };
   const app = useAppSettings();
 
   const [draft, setDraft] = useState<PayrollSettings>(settings);
@@ -418,6 +500,86 @@ export function PayrollParamsTab({ settings, brackets, actorId, onSaved }: Payro
           </div>
         </div>
       )}
+      {/* --- Tham số tự khai, dùng được trong công thức --------------------- */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Tham số dùng trong công thức</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm leading-relaxed text-slate-500">
+            Mỗi dòng có một <span className="font-mono font-semibold">MÃ</span>. Gõ mã đó vào ô
+            &ldquo;số liệu&rdquo; hoặc ô &ldquo;hệ số&rdquo; ở Cơ chế lương là công thức lấy đúng
+            giá trị khai tại đây — đổi chính sách chỉ sửa một chỗ.
+          </p>
+
+          <div className="space-y-2">
+            {paramDrafts.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+                Chưa khai tham số nào. Hệ số OT, đơn giá vận chuyển, định mức KPI… khai ở đây
+                thay vì gõ cứng vào từng công thức.
+              </p>
+            ) : paramDrafts.map((row, index) => (
+              <div
+                key={row.id ?? `moi-${index}`}
+                className="grid gap-2 rounded-xl border border-slate-200 p-3 sm:grid-cols-[1fr_auto_auto_auto]"
+              >
+                <div className="min-w-0 space-y-1">
+                  <input
+                    value={row.name}
+                    onChange={(e) => updateParam(index, { name: e.target.value })}
+                    placeholder="Tên tham số"
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-semibold outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <input
+                    value={row.code}
+                    onChange={(e) => updateParam(index, {
+                      code: e.target.value.replace(/[^A-Za-z0-9_]/g, '').toUpperCase(),
+                    })}
+                    placeholder="MA_THAM_SO"
+                    className="w-full rounded-lg border border-slate-200 px-2.5 py-1 font-mono text-[11px] text-indigo-700 outline-none transition focus:border-indigo-500"
+                  />
+                </div>
+                <input
+                  inputMode="decimal"
+                  value={row.value}
+                  onChange={(e) => updateParam(index, { value: e.target.value.replace(/[^\d.]/g, '') })}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-right font-mono text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 sm:w-32"
+                />
+                <Select
+                  value={row.unit}
+                  onChange={(e) => updateParam(index, { unit: e.target.value })}
+                  className="sm:w-28"
+                >
+                  <option value="VND">đồng</option>
+                  <option value="%">%</option>
+                  <option value="HE_SO">hệ số</option>
+                  <option value="NGAY">ngày</option>
+                  <option value="GIO">giờ</option>
+                </Select>
+                <button
+                  type="button"
+                  onClick={() => void removeParam(index)}
+                  className="justify-self-end rounded-lg p-2 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                  aria-label={`Xoá ${row.name || 'tham số'}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={addParam}>
+              <Plus className="h-3.5 w-3.5" /> Thêm tham số
+            </Button>
+            <Button size="sm" onClick={() => void saveParams()} disabled={savingParams}>
+              <Save className="h-3.5 w-3.5" />
+              {savingParams ? 'Đang lưu…' : 'Lưu tham số công thức'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

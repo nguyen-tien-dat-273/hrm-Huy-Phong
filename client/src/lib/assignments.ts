@@ -78,9 +78,46 @@ export async function notifyUsers(
 ): Promise<void> {
   if (userIds.length === 0) return;
   if (!getCachedSettings().autoNotify) return;
-  await supabase
+  const { data: sessionData } = await supabase.auth.getSession();
+  const session = sessionData.session;
+  const creatorId = session?.user.id;
+  const notices = [...new Set(userIds)].map((user_id) => ({
+    id: crypto.randomUUID(),
+    user_id,
+    type,
+    title,
+    message,
+    created_by: creatorId,
+  }));
+
+  let { error } = await supabase
     .from('notifications')
-    .insert(userIds.map((user_id) => ({ user_id, type, title, message })));
+    .insert(notices);
+
+  // Giữ tương thích trong vài giây deploy lệch nhịp giữa frontend và migration:
+  // thông báo trong app vẫn phải được tạo, chỉ push điện thoại tạm thời chưa có.
+  if (error && /created_by|schema cache|column .* does not exist/i.test(error.message || '')) {
+    ({ error } = await supabase
+      .from('notifications')
+      .insert(notices.map(({ created_by: _createdBy, ...notice }) => notice)));
+    return;
+  }
+  if (error || !session?.access_token || !creatorId) return;
+
+  // Push là kênh phụ: lỗi mạng hoặc thiết bị hết hạn không được làm hỏng thao
+  // tác chính vừa tạo thông báo trong hệ thống.
+  try {
+    await fetch('/api/push-notifications', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ notificationIds: notices.map((notice) => notice.id) }),
+    });
+  } catch {
+    // Người dùng vẫn thấy thông báo trong chuông khi mở HRM.
+  }
 }
 
 /**
@@ -120,16 +157,15 @@ export async function notifyUser(
  * 'attendance' nên không tái sử dụng được cho module khác.
  */
 export async function fetchManagerIds(permission: AdminPermission = 'attendance'): Promise<string[]> {
-  const { data } = await supabase
-    .from('profiles')
-    .select('id, role, permissions')
-    .eq('is_active', true);
-  return (data || [])
-    .filter(
-      (p) =>
-        p.role === 'admin' ||
-        p.role === 'ceo' ||
-        ((p.permissions as string[] | null) ?? []).includes(permission),
-    )
-    .map((p) => p.id);
+  const { data, error } = await supabase.rpc('get_profile_approver_ids', {
+    target_permission: permission,
+  });
+  if (error) throw new Error(`Không tải được danh sách người duyệt: ${error.message}`);
+  if (!Array.isArray(data)) throw new Error('Danh sách người duyệt trả về sai định dạng.');
+  return data.map((row: unknown) => {
+    if (typeof row !== 'object' || row === null || !('user_id' in row) || typeof row.user_id !== 'string') {
+      throw new Error('Danh sách người duyệt có bản ghi không hợp lệ.');
+    }
+    return row.user_id;
+  });
 }

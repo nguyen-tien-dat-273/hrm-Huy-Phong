@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Building2, AtSign, Lock, Eye, EyeOff, ArrowRight, Sparkles, BarChart3, Clock3, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -12,6 +12,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const fromPath = (location.state as { from?: { pathname?: string } })?.from?.pathname ?? '/';
+  const resetComplete = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true;
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -52,7 +53,7 @@ export function LoginPage() {
     `peer w-full h-12 pl-11 pr-11 rounded-xl bg-slate-50/80 border text-sm text-slate-800 placeholder:text-slate-400 transition-all duration-200 focus:outline-none focus:ring-4 ${
       hasError
         ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
-        : 'border-slate-200 focus:border-blue-500 focus:ring-blue-100 focus:bg-white'
+        : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-100 focus:bg-white'
     }`;
 
   const features = [
@@ -96,11 +97,10 @@ export function LoginPage() {
 
         <div className="relative z-10 flex flex-col justify-between py-16 px-14 w-full">
           <div className="flex items-center gap-3 fade-up">
-            <div className="w-10 h-10 bg-indigo-600 rounded-lg flex flex-col items-center justify-center gap-0.5 shadow-lg shadow-indigo-950/30">
-              <div className="w-5 h-1 bg-white/30 rounded-full" />
-              <div className="w-5 h-1 bg-white rounded-full" />
-              <div className="w-5 h-1 bg-white/30 rounded-full" />
-            </div>
+            {/* Nen panel trai mau toi, logo do phai dat tren o trang moi ro net. */}
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-lg shadow-indigo-950/30">
+              <img src="/logo-mark.png?v=3" alt="" aria-hidden="true" className="h-full w-full object-contain" />
+            </span>
             <div>
               <p className="text-xl font-bold tracking-tight text-white">HRM Huy Phong</p>
               <p className="text-xs text-slate-400 mt-0.5">Hệ thống quản lý nhân sự</p>
@@ -145,11 +145,7 @@ export function LoginPage() {
         <div className="pointer-events-none absolute -bottom-32 -left-24 h-80 w-80 rounded-full bg-emerald-100/50 blur-3xl lg:hidden" />
         <div className="relative w-full max-w-md rounded-3xl border border-white/80 bg-white/90 p-6 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-10 lg:max-w-sm lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
           <div className="flex items-center gap-3 mb-9 lg:hidden">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl shadow-lg shadow-indigo-600/20 flex flex-col items-center justify-center gap-0.5">
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-              <div className="w-4 h-0.5 bg-white rounded-full" />
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-            </div>
+            <img src="/logo-mark.png?v=3" alt="" aria-hidden="true" className="h-10 w-10 flex-shrink-0 object-contain" />
             <div><p className="text-lg font-bold text-slate-900">HRM Huy Phong</p><p className="text-xs text-slate-500">Không gian làm việc tập trung</p></div>
           </div>
 
@@ -160,6 +156,11 @@ export function LoginPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6 fade-up delay-1">
+            {resetComplete && (
+              <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-medium text-emerald-700">
+                Mật khẩu đã được cập nhật. Bạn có thể đăng nhập bằng mật khẩu mới.
+              </div>
+            )}
             <div className="space-y-1.5">
               <label htmlFor="login-identifier" className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Tên đăng nhập</label>
               <div className="relative">
@@ -182,7 +183,12 @@ export function LoginPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="login-password" className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Mật khẩu</label>
+              <div className="flex items-center justify-between gap-3">
+                <label htmlFor="login-password" className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Mật khẩu</label>
+                <Link to="/forgot-password" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 hover:underline">
+                  Quên mật khẩu?
+                </Link>
+              </div>
               <div className="relative">
                 <Lock className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${focused === 'password' ? 'text-indigo-600' : 'text-slate-400'}`} />
                 <input
@@ -200,7 +206,7 @@ export function LoginPage() {
                   type="button"
                   aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>

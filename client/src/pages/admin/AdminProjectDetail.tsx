@@ -23,8 +23,11 @@ import { isFullAdmin, isTeamlead, hasPermission } from '@/lib/permissions';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { ProjectDocuments } from '@/components/ProjectDocuments';
 import { ProjectEventsPanel } from '@/components/ProjectEventsPanel';
+import { ProjectTaskWorkflowPanel } from '@/components/ProjectTaskWorkflowPanel';
+import { WorklogApprovalQueue } from '@/pages/admin/AdminWorklog';
 import { GanttChart } from '@/components/GanttChart';
 import { estimateRatio, fetchTaskTotals, formatHours as formatWorkHours } from '@/lib/worklog';
+import { notifyUser } from '@/lib/assignments';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { KANBAN_COLUMNS, PRIORITY_CONFIG, TASK_STATUSES, PROJECT_STATUS_CONFIG, MEMBER_ROLE_CONFIG, formatDate, isOverdue, getTodayString } from '@/lib/utils';
@@ -93,8 +96,8 @@ export function AdminProjectDetail() {
     ] = await Promise.all([
       supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
       supabase.from('tasks').select('*').eq('project_id', projectId).order('order_index', { ascending: true }),
-      supabase.from('project_members').select('*, profile:profiles(*)').eq('project_id', projectId),
-      supabase.from('profiles').select('*').eq('is_active', true),
+      supabase.from('project_members').select('*').eq('project_id', projectId),
+      supabase.from('profiles_directory').select('*').eq('is_active', true),
       supabase.from('project_role_definitions').select('*').eq('is_active', true).order('sort_order'),
     ]);
 
@@ -105,7 +108,13 @@ export function AdminProjectDetail() {
 
     setProject(proj as Project | null);
     setTasks((tks || []) as Task[]);
-    setMembers((mems || []) as ProjectMember[]);
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200);
+    // ghép tại chỗ bằng danh sách nhân sự trang này vốn đã nạp ở ngay trên.
+    const people = new Map(((profiles || []) as Profile[]).map((item) => [item.id, item]));
+    setMembers(((mems || []) as ProjectMember[]).map((item) => ({
+      ...item,
+      profile: item.profile ?? people.get(item.user_id),
+    })));
     setProjectRoles((roles || []) as ProjectRoleDefinition[]);
     setAllProfiles((profiles || []) as Profile[]);
     setLoading(false);
@@ -159,6 +168,14 @@ export function AdminProjectDetail() {
       if (error) {
         toast('Cập nhật tác vụ thất bại', 'error');
       } else {
+        if (taskForm.assignee_id && taskForm.assignee_id !== editingTask.assignee_id && taskForm.assignee_id !== profile?.id) {
+          await notifyUser(
+            taskForm.assignee_id,
+            'Bạn được giao một tác vụ dự án',
+            `${taskForm.title}${project?.name ? ` · ${project.name}` : ''}`,
+            'project_task_assigned',
+          );
+        }
         toast('Cập nhật tác vụ thành công!', 'success');
         setTaskModalOpen(false);
         loadData(id!);
@@ -173,6 +190,14 @@ export function AdminProjectDetail() {
       if (error) {
         toast('Tạo tác vụ thất bại', 'error');
       } else {
+        if (taskForm.assignee_id && taskForm.assignee_id !== profile?.id) {
+          await notifyUser(
+            taskForm.assignee_id,
+            'Bạn có tác vụ dự án mới',
+            `${taskForm.title}${project?.name ? ` · ${project.name}` : ''}`,
+            'project_task_assigned',
+          );
+        }
         toast('Tạo tác vụ thành công!', 'success');
         setTaskModalOpen(false);
         loadData(id!);
@@ -199,6 +224,11 @@ export function AdminProjectDetail() {
   };
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
+    const task = tasks.find((item) => item.id === taskId);
+    if (status === 'done' && task?.status !== 'done') {
+      toast('Người được giao cần gửi yêu cầu nghiệm thu; Project lead duyệt tại tab Tác vụ.', 'warning');
+      return;
+    }
     const { error } = await supabase.from('tasks').update({ status }).eq('id', taskId);
     if (error) {
       toast('Cập nhật thất bại', 'error');
@@ -238,6 +268,10 @@ export function AdminProjectDetail() {
 
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
+    if (newStatus === 'done') {
+      toast('Người được giao cần gửi yêu cầu nghiệm thu; Project lead duyệt tại tab Tác vụ.', 'warning');
+      return;
+    }
 
     // Cập nhật UI ngay lập tức (Optimistic Update)
     setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, status: newStatus! } : t));
@@ -470,6 +504,13 @@ export function AdminProjectDetail() {
       {/* Tasks tab */}
 	      {tab === 'tasks' && (
 	        <div className="space-y-4">
+	          <ProjectTaskWorkflowPanel
+	            projectId={id!}
+	            canReview={!!project && (project.lead_id === profile?.id || isFullAdmin(profile))}
+	          />
+	          {project && (project.lead_id === profile?.id || isFullAdmin(profile)) && (
+	            <WorklogApprovalQueue projectId={project.id} />
+	          )}
 	          <div className="flex justify-end">
 	            <Button onClick={openCreateTask} theme="admin" size="sm">
 	              <Plus className="w-4 h-4" />
@@ -532,6 +573,7 @@ export function AdminProjectDetail() {
 	                          className="w-36 h-9 text-xs"
 	                        >
 	                          {TASK_STATUSES.map((s) => (
+	                            (s.value !== 'done' || task.status === 'done') &&
 	                            <option key={s.value} value={s.value}>{s.label}</option>
 	                          ))}
 	                        </Select>
@@ -643,7 +685,7 @@ export function AdminProjectDetail() {
                       <Avatar name={m.profile?.name || ''} url={m.profile?.avatar_url} size="md" />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">{m.profile?.name}</p>
-                        <p className="text-xs text-slate-500">{m.profile?.email}</p>
+                        <p className="text-xs text-slate-500">{m.profile?.employee_code || m.profile?.department || 'Thành viên dự án'}</p>
                       </div>
                       <Badge className={getMemberRoleView(m).color}>
                         {getMemberRoleView(m).label}
@@ -722,9 +764,15 @@ export function AdminProjectDetail() {
               type="date"
               value={taskForm.due_date}
               min={taskForm.start_date || undefined}
+              disabled={!!editingTask}
               onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })}
             />
           </div>
+          {editingTask && (
+            <p className="text-xs text-slate-500">
+              Muốn đổi hạn chót, người được giao gửi yêu cầu gia hạn. Project lead duyệt trong tab Tác vụ.
+            </p>
+          )}
           <Select
             label="Mức ưu tiên"
             value={taskForm.priority}
@@ -756,14 +804,14 @@ export function AdminProjectDetail() {
             >
               <option value="">— Chọn —</option>
               {availableProfiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.name} ({p.email})</option>
+                <option key={p.id} value={p.id}>{p.name}{p.employee_code ? ` (${p.employee_code})` : ''}</option>
               ))}
             </Select>
           )}
           {editingMember && (
             <div className="p-3 rounded-lg bg-slate-50">
               <p className="text-sm font-medium text-slate-800">{editingMember.profile?.name}</p>
-              <p className="text-xs text-slate-500">{editingMember.profile?.email}</p>
+              <p className="text-xs text-slate-500">{editingMember.profile?.employee_code || editingMember.profile?.department || 'Thành viên dự án'}</p>
             </div>
           )}
           <Select

@@ -43,7 +43,7 @@ import {
 } from '@/lib/payroll';
 import type {
   Attendance, EmployeePayItem, EmployeePayProfile, LeaveRequest,
-  PayComponent, PayrollInput, Payslip, PayslipLine, UnitPayItem,
+  PayComponent, PayrollInput, PayrollNamedParam, Payslip, PayslipLine, UnitPayItem,
 } from '@/types';
 
 type PeriodStatus = 'OPEN' | 'REVIEW' | 'LOCKED' | null;
@@ -60,6 +60,7 @@ export function StaffPayroll() {
   const [unitItems, setUnitItems] = useState<UnitPayItem[]>([]);
   const [adjustments, setAdjustments] = useState<PayrollAdjustment[]>([]);
   const [components, setComponents] = useState<PayComponent[]>([]);
+  const [namedParams, setNamedParams] = useState<PayrollNamedParam[]>([]);
   const [inputs, setInputs] = useState<PayrollInput[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
@@ -101,7 +102,7 @@ export function StaffPayroll() {
     }
 
     const [
-      payProfileRes, itemRes, unitItemRes, componentRes, inputRes, attendanceRes, leaveRes, periodRes,
+      payProfileRes, itemRes, unitItemRes, componentRes, namedParamRes, inputRes, attendanceRes, leaveRes, periodRes,
       adjustmentRes, payrollParams, workSchedules, taxBrackets,
     ] = await Promise.all([
       supabase.from('employee_pay_profiles').select('*').eq('user_id', profile.id).lte('effective_from', monthEndStr),
@@ -110,6 +111,7 @@ export function StaffPayroll() {
         ? supabase.from('unit_pay_items').select('*').eq('unit_id', profile.unit_id)
         : Promise.resolve({ data: [], error: null }),
       supabase.from('payroll_components').select('*').order('sort_order'),
+      supabase.from('payroll_named_params').select('*').eq('is_active', true),
       supabase.from('payroll_inputs').select('*').eq('user_id', profile.id).eq('month_start', monthStartStr),
       supabase
         .from('attendance')
@@ -151,6 +153,9 @@ export function StaffPayroll() {
     // Nhân viên KHÔNG đọc được `payroll_components` (RLS chỉ mở cho admin), nên
     // lỗi ở đây là bình thường — bản tạm tính khi đó chỉ có lương gốc.
     setComponents((componentRes.data || []) as PayComponent[]);
+    // Bảng có thể chưa tồn tại (migration chưa chạy) — khi đó công thức dùng
+    // mã tham số sẽ báo thiếu biến, chứ trang không chết.
+    setNamedParams(namedParamRes.error ? [] : (namedParamRes.data || []) as PayrollNamedParam[]);
     setInputs((inputRes.data || []) as PayrollInput[]);
     setAttendance((attendanceRes.data || []) as Attendance[]);
     setLeaves(((leaveRes.data || []) as LeaveRequest[]).filter((leave) => !leave.is_cancelled));
@@ -240,6 +245,7 @@ export function StaffPayroll() {
       stats,
       settings: params,
       catalogCodes: components.map((component) => component.code),
+      namedParams: Object.fromEntries(namedParams.map((p) => [p.code, Number(p.value)])),
       adjustments,
     });
 

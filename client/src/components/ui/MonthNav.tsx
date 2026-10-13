@@ -21,8 +21,9 @@ export function MonthNav({ value, onChange, theme = 'admin' }: MonthNavProps) {
   return (
     <div className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm" aria-label="Điều hướng tháng">
       <button
+        type="button"
         onClick={() => onChange(startOfMonth(addMonths(value, -1)))}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         aria-label="Tháng trước"
       >
         <ChevronLeft className="w-4 h-4" />
@@ -31,8 +32,9 @@ export function MonthNav({ value, onChange, theme = 'admin' }: MonthNavProps) {
         {format(value, 'MM/yyyy')}
       </span>
       <button
+        type="button"
         onClick={() => onChange(startOfMonth(addMonths(value, 1)))}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-35"
+        className="flex h-11 w-11 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-35"
         disabled={isCurrentMonth}
         aria-label="Tháng sau"
       >

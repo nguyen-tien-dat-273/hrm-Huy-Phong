@@ -18,8 +18,14 @@ import { useSearchParams } from 'react-router-dom';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import {
   BookOpenCheck, Calculator, CheckCircle2, FileSpreadsheet, LockKeyhole, Pencil,
-  RotateCcw, ShieldAlert, TriangleAlert, Users, Wallet,
+  RotateCcw, Search, ShieldAlert, TriangleAlert, Users, Wallet,
 } from 'lucide-react';
+
+/** Bo dau tieng Viet de o tim go "ha" van ra "Ha". */
+const stripTone = (text: string) => text
+  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+  .toLowerCase().trim();
 import { Card, CardContent } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -29,7 +35,6 @@ import { MonthNav } from '@/components/ui/MonthNav';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { PaySchemeModal } from '@/components/payroll/PaySchemeModal';
 import { ComponentCatalog } from '@/components/payroll/ComponentCatalog';
-import { KpiPayMethods } from '@/components/payroll/KpiPayMethods';
 import { PayslipBreakdown } from '@/components/payroll/PayslipBreakdown';
 import { MonthlyInputsTab } from '@/components/payroll/MonthlyInputsTab';
 import { useToast } from '@/contexts/ToastContext';
@@ -40,8 +45,8 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { hasAdminFunction } from '@/lib/permissions';
 import { formatVND, toDateString } from '@/lib/utils';
 import {
-  computePayslip, itemsForPeriod, mergeUnitAndEmployeeItems, payBasisLabel,
-  payProfileForPeriod, summarisePeriod,
+  computePayslip, itemsForPeriod, mergeUnitAndEmployeeItems,
+  payProfileForPeriod, splitOvertimeHours, summarisePeriod,
   type AssignedPayItem, type ComputedPayslip,
 } from '@/lib/payroll';
 import {
@@ -58,7 +63,7 @@ import { UnitPayItemsCard } from '@/components/payroll/UnitPayItemsCard';
 import { BulkSchemeModal } from '@/components/payroll/BulkSchemeModal';
 import type { Profile } from '@/types';
 
-type Tab = 'register' | 'schemes' | 'inputs' | 'adjustments' | 'catalog' | 'kpiPay' | 'params';
+type Tab = 'register' | 'schemes' | 'inputs' | 'adjustments' | 'catalog' | 'params';
 
 /**
  * Mỗi mục là một ROUTE riêng, đã hiện thành module con trên sidebar.
@@ -94,12 +99,7 @@ const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: bool
   },
   catalog: {
     title: 'Danh mục khoản lương',
-    hint: 'Định nghĩa CÁCH tính của từng khoản. Khai một lần ở đây rồi đơn vị và nhân sự chọn lại.',
-    monthScoped: false,
-  },
-  kpiPay: {
-    title: 'Cách tính lương KPI',
-    hint: 'Quy KPI% do module KPI chấm ra thành tiền. Mỗi bộ phận có thể quy một kiểu khác nhau.',
+    hint: 'Liệt kê các khoản lương dùng trong công ty kèm ghi chú để đơn vị và nhân sự chọn đúng.',
     monthScoped: false,
   },
   params: {
@@ -152,6 +152,9 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [schemeTarget, setSchemeTarget] = useState<Profile | null>(null);
+  const [rowQuery, setRowQuery] = useState('');
+  /** Phòng đang mở ở khối trên — danh sách "chưa thiết lập" bám theo. */
+  const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
 
   const monthStartStr = toDateString(monthStart);
@@ -205,6 +208,12 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   // --------------------------------------------------------------------------
   // Tính bảng lương
   // --------------------------------------------------------------------------
+  /** Tham số tự khai, dạng mã → giá trị để ném thẳng vào phạm vi biến. */
+  const paramValues = useMemo(
+    () => Object.fromEntries((data?.namedParams ?? []).map((p) => [p.code, Number(p.value)])),
+    [data],
+  );
+
   const rows: PayrollRow[] = useMemo(() => {
     if (!data) return [];
 
@@ -296,6 +305,21 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         if (input.user_id === person.id) inputs[input.code] = Number(input.quantity);
       }
 
+      const approvedRequests = data.attendanceRequests.filter((request) => request.user_id === person.id);
+      const lateDates = new Set(
+        approvedRequests.filter((request) => request.request_type === 'LATE_ARRIVAL').map((request) => request.work_date),
+      );
+      const earlyDates = new Set(
+        approvedRequests.filter((request) => request.request_type === 'EARLY_LEAVE').map((request) => request.work_date),
+      );
+
+      // Đơn OT đã duyệt tự chảy vào ba biến chuẩn. Số kế toán nhập tay vẫn
+      // được ưu tiên để họ có thể điều chỉnh khi cần đối soát.
+      const ot = splitOvertimeHours(approvedRequests, data.schedules, new Set(data.holidays));
+      if (inputs.OT_WEEKDAY_HOURS == null && ot.weekday > 0) inputs.OT_WEEKDAY_HOURS = ot.weekday;
+      if (inputs.OT_WEEKEND_HOURS == null && ot.weekend > 0) inputs.OT_WEEKEND_HOURS = ot.weekend;
+      if (inputs.OT_HOLIDAY_HOURS == null && ot.holiday > 0) inputs.OT_HOLIDAY_HOURS = ot.holiday;
+
       const stats = summarisePeriod(
         data.attendance.filter((record) => record.user_id === person.id),
         data.leaves.filter((leave) => leave.user_id === person.id),
@@ -303,6 +327,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         params.hoursPerDay,
         data.holidays,
         data.schedules,
+        { lateDates, earlyDates },
       );
 
       return {
@@ -317,6 +342,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           stats,
           settings: params,
           catalogCodes: data.components.map((component) => component.code),
+          namedParams: paramValues,
           adjustments: data.adjustments.filter((adjustment) => adjustment.user_id === person.id),
         }),
       };
@@ -324,9 +350,20 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   }, [data, monthStartStr, monthEndStr, settings]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedUserId = searchParams.get('user');
+  /**
+   * Lọc bảng lương theo tên hoặc mã nhân viên.
+   *
+   * Công ty ba chục người là đã phải cuộn cả trang để tìm một dòng, mà việc
+   * hay làm nhất ở màn này lại là mở đúng phiếu của một người để đối chiếu.
+   * Bỏ dấu luôn: gõ "ha" phải ra "Hà".
+   */
+  const keyword = stripTone(rowQuery);
   const visibleRows = selectedUserId
     ? rows.filter((row) => row.profile.id === selectedUserId)
-    : rows;
+    : keyword
+      ? rows.filter((row) => stripTone(row.profile.name).includes(keyword)
+        || stripTone(row.profile.employee_code || '').includes(keyword))
+      : rows;
 
   const totals = useMemo(() => ({
     gross: visibleRows.reduce((sum, row) => sum + row.computed.gross, 0),
@@ -509,7 +546,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       const nameOf = (key: string) => key.split('|')[2];
 
       const header = [
-        'STT', 'Mã NV', 'Họ tên', 'Bộ phận', 'Cơ chế', 'Ngày công', 'Ngày phép', 'Giờ làm',
+        'STT', 'Mã NV', 'Họ tên', 'Bộ phận', 'Ngày công', 'Ngày phép', 'Giờ làm',
         ...earningCols.map(nameOf),
         'TỔNG THU NHẬP',
         ...deductionCols.map(nameOf),
@@ -536,7 +573,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           row.profile.employee_code ?? '',
           row.profile.name,
           row.profile.department ?? '',
-          payBasisLabel(row.computed.payBasis),
           row.computed.stats.workDays,
           row.computed.stats.leaveDays,
           row.computed.stats.workHours,
@@ -548,7 +584,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         ]),
         [],
         [
-          '', '', 'TỔNG CỘNG', '', '', '', '', '',
+          '', '', 'TỔNG CỘNG', '', '', '', '',
           ...earningCols.map((key) => visibleRows.reduce((sum, row) => sum + amountFor(row, key), 0)),
           totals.gross,
           ...deductionCols.map((key) => visibleRows.reduce((sum, row) => sum + amountFor(row, key), 0)),
@@ -636,7 +672,12 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       {/* --- Thanh hành động theo trạng thái kỳ, chỉ ở trang Bảng lương --- */}
       {tab === 'register' && (
         <>
-          <div className="flex flex-wrap items-center gap-2 no-print">
+          {/* Buoc tiep theo ben TRAI, xuat file ben PHAI.
+              Sau nut cung mot trong luong thi khong nhin ra viec phai lam
+              tiep la gi - "Xuat Excel" va "Duyet bang luong" khong phai hai
+              lua chon ngang hang. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 no-print">
+            <div className="flex flex-wrap items-center gap-2">
             {!isFrozen && (
               <Button onClick={handleCalculate} disabled={busy || rows.length === 0}>
                 <Calculator className="h-4 w-4" />
@@ -658,6 +699,9 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
                 <RotateCcw className="h-4 w-4" /> Mở lại kỳ
               </Button>
             )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={handleExport} disabled={exporting || visibleRows.length === 0}>
               <FileSpreadsheet className="h-4 w-4" />
               {exporting ? 'Đang xuất…' : 'Xuất Excel'}
@@ -672,6 +716,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
             >
               <BookOpenCheck className="h-4 w-4" /> Bút toán kết chuyển
             </Button>
+            </div>
           </div>
 
           {runStatus === 'CALCULATED' && !data?.timesheetLocked && (
@@ -685,14 +730,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
 
       {tab === 'catalog' && data && (
         <ComponentCatalog
-          components={data.components}
-          params={params}
-          onChanged={() => loadData(true)}
-        />
-      )}
-
-      {tab === 'kpiPay' && data && (
-        <KpiPayMethods
           components={data.components}
           onChanged={() => loadData(true)}
         />
@@ -714,6 +751,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         <PayrollParamsTab
           settings={data.payrollSettings}
           brackets={data.pitBrackets}
+          namedParams={data.namedParams}
           actorId={profile?.id ?? null}
           onSaved={() => loadData(true)}
         />
@@ -723,6 +761,8 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         <MonthlyInputsTab
           profiles={data.profiles}
           components={data.components}
+          employeeItems={data.items}
+          unitItems={data.unitItems}
           inputs={data.inputs}
           monthStart={monthStartStr}
           actorId={profile?.id ?? null}
@@ -739,16 +779,28 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
             components={data.components}
             unitItems={data.unitItems}
             profiles={data.profiles}
+            params={params}
             defaultEffectiveFrom={monthStartStr}
             actorId={profile?.id ?? null}
             onChanged={() => loadData(true)}
+            onEditEmployee={setSchemeTarget}
+            schemedUserIds={new Set(rows.filter((row) => row.hasScheme).map((row) => row.profile.id))}
+            onSelectUnit={setFocusedUnitId}
           />
-          <SchemesTab
-            rows={rows}
-            unitNameById={unitNames}
-            onEdit={setSchemeTarget}
-            onBulk={setBulkTargets}
-          />
+          {/* Dang dung trong mot phong thi KHOI TREN da liet ke dung nhung
+              nguoi do, kem trang thai va nut Thiet lap. Bay them danh sach
+              nay nua la cung mot nhom nguoi hien hai lan, cung mot thao tac
+              hai cho.
+              Danh sach toan cong ty chi co nghia khi chua chon phong nao -
+              luc do no la danh sach viec con ton. */}
+          {!focusedUnitId && (
+            <SchemesTab
+              rows={rows}
+              unitNameById={unitNames}
+              onEdit={setSchemeTarget}
+              onBulk={setBulkTargets}
+            />
+          )}
         </div>
       )}
 
@@ -798,12 +850,28 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
 
           <Card>
             <CardContent className="p-0">
+              {!selectedUserId && (
+                <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-6 py-3 no-print">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={rowQuery}
+                      onChange={(event) => setRowQuery(event.target.value)}
+                      placeholder="Tìm theo tên hoặc mã nhân viên…"
+                      className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-500">
+                    {visibleRows.length}/{rows.length} nhân sự
+                  </span>
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[920px]">
                   <thead>
                     <tr className="border-b border-slate-100 bg-[#FCFAF8]">
                       <Th align="left" className="px-6">Nhân sự</Th>
-                      <Th align="left">Cơ chế</Th>
+                      <Th align="left">Khoản lương</Th>
                       <Th align="center">Công</Th>
                       <Th align="right">Thu nhập</Th>
                       <Th align="right">Khấu trừ</Th>
@@ -834,8 +902,11 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
                           </td>
                           <td className="px-4 py-4">
                             {row.hasScheme ? (
+                              /* Số khoản đã gán thay cho "cơ chế lương": giờ mọi
+                                 người đều là MONTHLY nên cột cũ không phân biệt
+                                 được ai với ai. */
                               <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                                {payBasisLabel(row.computed.payBasis)}
+                                {row.computed.lines.filter((line) => line.kind === 'EARNING').length} khoản
                               </span>
                             ) : (
                               <span className="text-[10px] font-bold uppercase text-red-400">CHƯA THIẾT LẬP</span>
@@ -902,6 +973,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           ? payProfileForPeriod(data.payProfiles.filter((item) => item.user_id === schemeTarget.id), monthEndStr)
           : null}
         components={data?.components ?? []}
+        namedParams={data?.namedParams ?? []}
         assignedItems={data?.items.filter((item) => item.user_id === schemeTarget?.id) ?? []}
         params={params}
         defaultEffectiveFrom={monthStartStr}
@@ -913,6 +985,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       <BulkSchemeModal
         open={!!bulkTargets && bulkTargets.length > 0}
         targets={bulkTargets ?? []}
+        components={data?.components ?? []}
         params={params}
         defaultEffectiveFrom={monthStartStr}
         actorId={profile?.id ?? null}
@@ -929,7 +1002,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         {detailRow && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <MiniStat label="Cơ chế" value={payBasisLabel(detailRow.computed.payBasis)} />
               <MiniStat label="Ngày công" value={`${detailRow.computed.stats.workDays} ngày`} />
               <MiniStat label="Ngày phép" value={`${detailRow.computed.stats.leaveDays} ngày`} />
               <MiniStat label="Giờ làm" value={`${detailRow.computed.stats.workHours} giờ`} />
@@ -1011,8 +1083,8 @@ function SchemesTab({
     <div className="space-y-4">
       {withoutScheme.length > 0 && (
         <Banner tone="amber" icon={<TriangleAlert className="mt-0.5 h-4.5 w-4.5 flex-shrink-0" />}>
-          {withoutScheme.length} nhân sự chưa có cơ chế lương. Họ sẽ không xuất hiện trong bảng lương
-          đã chốt cho tới khi được thiết lập. Tích chọn nhiều người rồi bấm{' '}
+          {withoutScheme.length} nhân sự chưa có cơ chế lương. Họ sẽ không xuất hiện trong bảng
+          lương đã chốt cho tới khi được thiết lập. Tích chọn nhiều người rồi bấm{' '}
           <strong>Thiết lập hàng loạt</strong> nếu họ cùng một mức.
         </Banner>
       )}
@@ -1062,8 +1134,9 @@ function SchemesTab({
                         <p className="text-xs text-slate-500">
                           {row.hasScheme ? (
                             <>
-                              {payBasisLabel(scheme.payBasis)}
-                              {scheme.gross > 0 && ` · thu nhập ${formatVND(scheme.gross)}`}
+                              {scheme.gross > 0
+                                ? `Thu nhập ${formatVND(scheme.gross)}`
+                                : 'Chưa khai mức'}
                             </>
                           ) : (
                             <span className="font-bold text-red-500">Chưa thiết lập cơ chế lương</span>
@@ -1106,17 +1179,38 @@ function SchemesTab({
 // ---------------------------------------------------------------------------
 // Mảnh giao diện nhỏ
 // ---------------------------------------------------------------------------
+/**
+ * Vòng đời của một kỳ lương, vẽ thành bốn chặng thay vì một cái nhãn.
+ *
+ * Nhãn "Đã tính" nói kỳ đang ở đâu nhưng không nói đã qua những gì và còn
+ * phải làm gì — mà đây là quy trình bốn bước một chiều, duyệt xong là đóng
+ * băng số liệu. Người làm lương cần thấy cả đường đi, không chỉ một điểm.
+ */
 function RunStatusBadge({ status }: { status: keyof typeof RUN_STATUS_LABEL }) {
-  const tones = {
-    DRAFT: 'bg-slate-100 text-slate-600',
-    CALCULATED: 'bg-blue-50 text-blue-700',
-    APPROVED: 'bg-emerald-50 text-emerald-700',
-    PAID: 'bg-indigo-50 text-indigo-700',
-  };
+  const order: (keyof typeof RUN_STATUS_LABEL)[] = ['DRAFT', 'CALCULATED', 'APPROVED', 'PAID'];
+  const current = order.indexOf(status);
+
   return (
-    <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${tones[status]}`}>
-      {RUN_STATUS_LABEL[status]}
-    </span>
+    <div className="flex items-center gap-1" role="status" aria-label={`Trạng thái kỳ: ${RUN_STATUS_LABEL[status]}`}>
+      {order.map((step, index) => {
+        const done = index < current;
+        const here = index === current;
+        return (
+          <span key={step} className="flex items-center gap-1">
+            {index > 0 && (
+              <span className={`h-px w-3 ${index <= current ? 'bg-indigo-300' : 'bg-slate-200'}`} />
+            )}
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${here
+                ? 'bg-indigo-600 text-white'
+                : done ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}
+            >
+              {RUN_STATUS_LABEL[step]}
+            </span>
+          </span>
+        );
+      })}
+    </div>
   );
 }
 

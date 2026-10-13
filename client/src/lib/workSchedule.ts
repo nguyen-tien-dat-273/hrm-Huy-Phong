@@ -132,9 +132,9 @@ export function monthStandardDays(
 /** Giờ công chuẩn mỗi ngày, suy từ ca trừ nghỉ trưa. */
 export function hoursPerDay(schedule: WorkSchedule | null): number | null {
   if (!schedule) return null;
-  const minutes = clockMinutes(schedule.end_time)
-    - clockMinutes(schedule.start_time)
-    - schedule.break_minutes;
+  const start = clockMinutes(schedule.start_time);
+  const end = clockMinutes(schedule.end_time);
+  const minutes = (end > start ? end - start : end + 24 * 60 - start) - schedule.break_minutes;
   return minutes > 0 ? Math.round((minutes / 60) * 100) / 100 : null;
 }
 
@@ -160,6 +160,12 @@ export const EMPTY_PUNCTUALITY: PunctualityStats = {
   lateMinutes: 0, lateCount: 0, earlyMinutes: 0, earlyCount: 0, lateAfterCutoffCount: 0,
 };
 
+/** Các ngày đã có đơn đi muộn/về sớm được duyệt nên không tính vi phạm. */
+export interface PunctualityExceptions {
+  lateDates?: ReadonlySet<string>;
+  earlyDates?: ReadonlySet<string>;
+}
+
 /** Giờ mốc "muộn quá thì trừ nửa công" trong đặc tả L16. */
 export const LATE_CUTOFF_HOUR = 9;
 
@@ -184,6 +190,7 @@ export function measurePunctuality(
   set: ScheduleSet,
   records: ReadonlyArray<{ date: string; check_in_time: string | null; check_out_time: string | null }>,
   holidays: readonly string[] = [],
+  exceptions: PunctualityExceptions = {},
 ): PunctualityStats {
   if (!set.supported) return EMPTY_PUNCTUALITY;
 
@@ -196,7 +203,7 @@ export function measurePunctuality(
     // Ngày nghỉ và ngày lễ không có khái niệm đi muộn.
     if (dayWeight(set, record.date, holidaySet) === 0) continue;
 
-    if (record.check_in_time) {
+    if (record.check_in_time && !exceptions.lateDates?.has(record.date)) {
       const actual = minutesOfDay(record.check_in_time);
       if (Number.isFinite(actual)) {
         const late = actual - clockMinutes(schedule.start_time) - schedule.grace_minutes;
@@ -208,10 +215,16 @@ export function measurePunctuality(
       }
     }
 
-    if (record.check_out_time) {
-      const actual = minutesOfDay(record.check_out_time);
+    if (record.check_out_time && !exceptions.earlyDates?.has(record.date)) {
+      let actual = minutesOfDay(record.check_out_time);
       if (Number.isFinite(actual)) {
-        const early = clockMinutes(schedule.end_time) - actual;
+        const start = clockMinutes(schedule.start_time);
+        let scheduledEnd = clockMinutes(schedule.end_time);
+        // Ca qua đêm: 22:00–06:00 được biểu diễn thành 22:00–30:00 để
+        // checkout lúc 05:45 chỉ bị tính về sớm 15 phút, không phải 16 giờ.
+        if (scheduledEnd <= start) scheduledEnd += 24 * 60;
+        if (actual < start && scheduledEnd > 24 * 60) actual += 24 * 60;
+        const early = scheduledEnd - actual;
         if (early > 0) {
           stats.earlyMinutes += early;
           stats.earlyCount += 1;

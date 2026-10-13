@@ -59,9 +59,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             {icons[t.type]}
             <span className="flex-1 text-sm font-medium leading-5 text-slate-700">{t.message}</span>
             <button
+              type="button"
               onClick={() => removeToast(t.id)}
               aria-label="Đóng thông báo"
-              className="-mr-1 -mt-1 rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+              className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               <X className="w-4 h-4" />
             </button>

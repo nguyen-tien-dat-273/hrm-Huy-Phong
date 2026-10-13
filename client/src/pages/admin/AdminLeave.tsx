@@ -15,15 +15,19 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { fetchProfileMap } from '@/lib/profileDirectory';
 import { LEAVE_TYPE_CONFIG, leaveStatusLabel } from '@/lib/leave';
 import { notifyUser } from '@/lib/assignments';
 import { LeaveQuotaPanel } from '@/components/LeaveQuotaPanel';
 import { formatDate } from '@/lib/utils';
+import { hasPermission } from '@/lib/permissions';
 import type { LeaveCancellationRequest, LeaveRequest, LeaveStatus } from '@/types';
 
 export function AdminLeave() {
   const { profile } = useAuth();
   const { toast } = useToast();
+  const canReviewAttendance = hasPermission(profile, 'attendance');
+  const canReviewLeave = hasPermission(profile, 'leave');
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [cancellations, setCancellations] = useState<LeaveCancellationRequest[]>([]);
@@ -37,8 +41,15 @@ export function AdminLeave() {
   const [cancelRejectTarget, setCancelRejectTarget] = useState<LeaveCancellationRequest | null>(null);
   const [cancelReviewNote, setCancelReviewNote] = useState('');
 
-  /** 'requests' = duyệt đơn · 'quota' = đặt hạn mức phép năm từng người. */
-  const [tab, setTab] = useState<'requests' | 'cancellations' | 'quota'>('requests');
+  /** Một trung tâm cho mọi loại đơn đã có nghiệp vụ xử lý phía sau. */
+  const [tab, setTab] = useState<'attendance' | 'requests' | 'cancellations' | 'quota'>(
+    canReviewAttendance ? 'attendance' : 'requests',
+  );
+
+  useEffect(() => {
+    if (tab === 'attendance' && !canReviewAttendance && canReviewLeave) setTab('requests');
+    if (tab !== 'attendance' && !canReviewLeave && canReviewAttendance) setTab('attendance');
+  }, [tab, canReviewAttendance, canReviewLeave]);
 
   useEffect(() => {
     loadRequests();
@@ -59,7 +70,7 @@ export function AdminLeave() {
     // bảng shifts và attendance.
     let query = supabase
       .from('leave_requests')
-      .select('*, profile:profiles!user_id(*)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (filter !== 'all') query = query.eq('status', filter);
@@ -67,11 +78,25 @@ export function AdminLeave() {
     const { data, error } = await query;
     const cancellationResult = await supabase
       .from('leave_cancellation_requests')
-      .select('*, leave:leave_requests!leave_request_id(*, profile:profiles!user_id(*))')
+      .select('*, leave:leave_requests!leave_request_id(*)')
       .order('created_at', { ascending: false });
     setLoadError(error ? describeDbError(error) : null);
-    setRequests((data || []) as LeaveRequest[]);
-    setCancellations(cancellationResult.error ? [] : (cancellationResult.data || []) as unknown as LeaveCancellationRequest[]);
+
+    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200);
+    // nạp hồ sơ rời rồi ghép tại chỗ, cho cả đơn nghỉ lẫn đơn xin hủy phép.
+    const requestRows = (data || []) as LeaveRequest[];
+    const cancelRows = cancellationResult.error
+      ? []
+      : ((cancellationResult.data || []) as unknown as LeaveCancellationRequest[]);
+    const people = await fetchProfileMap([
+      ...requestRows.map((row) => row.user_id),
+      ...cancelRows.map((row) => row.leave?.user_id),
+    ]);
+
+    setRequests(requestRows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) })));
+    setCancellations(cancelRows.map((row) => (row.leave
+      ? { ...row, leave: { ...row.leave, profile: row.leave.profile ?? people.get(row.leave.user_id) } }
+      : row)));
     setCancellationSupported(!cancellationResult.error);
     setLoading(false);
   };
@@ -184,19 +209,22 @@ export function AdminLeave() {
 
   return (
     <div className="space-y-5">
-      <AttendanceRequestPanel mode="review" />
+      <div>
+        <h1 className="font-display text-2xl font-extrabold text-slate-900">Trung tâm đơn từ</h1>
+        <p className="mt-1 text-sm text-slate-500">Duyệt tập trung đơn nghỉ phép, đi muộn, về sớm, làm thêm giờ và yêu cầu hủy phép.</p>
+      </div>
 
-      {/* Hai mảng việc của quyền `leave`: duyệt đơn, và đặt hạn mức phép năm. */}
-      <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-fit">
+      <div className="flex max-w-full gap-1 overflow-x-auto p-1 bg-slate-100 rounded-xl w-fit">
         {([
-          { key: 'requests', label: 'Đơn nghỉ phép' },
-          ...(cancellationSupported ? [{ key: 'cancellations' as const, label: 'Yêu cầu hủy' }] : []),
-          { key: 'quota', label: 'Hạn mức phép năm' },
+          ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đi muộn · Về sớm · Làm thêm' }] : []),
+          ...(canReviewLeave ? [{ key: 'requests' as const, label: 'Nghỉ phép' }] : []),
+          ...(canReviewLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép' }] : []),
+          ...(canReviewLeave ? [{ key: 'quota' as const, label: 'Quỹ phép' }] : []),
         ] as const).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`h-9 px-4 rounded-lg text-sm font-medium transition-colors ${
+            className={`h-9 shrink-0 px-4 rounded-lg text-sm font-medium transition-colors ${
               tab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
             }`}
           >
@@ -205,7 +233,9 @@ export function AdminLeave() {
         ))}
       </div>
 
-      {tab === 'quota' ? (
+      {tab === 'attendance' ? (
+        <AttendanceRequestPanel mode="review" />
+      ) : tab === 'quota' ? (
         <LeaveQuotaPanel />
       ) : tab === 'cancellations' ? (
         <Card>

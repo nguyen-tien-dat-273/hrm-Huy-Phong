@@ -1,8 +1,8 @@
 // ============================================================================
-// Lớp xác thực: Supabase Auth (mật khẩu, phiên) + backend admin trên Vercel.
+// Lớp xác thực: Supabase Auth (mật khẩu, phiên) + backend admin.
 // ----------------------------------------------------------------------------
 // - Đăng nhập / đổi mật khẩu: gọi thẳng Supabase Auth từ trình duyệt.
-// - Tạo / xóa user, cấp mật khẩu tạm: gọi `/api/admin-users` (Vercel Function),
+// - Tạo / xóa user, cấp mật khẩu tạm: gọi `/api/admin-users`,
 //   nơi duy nhất giữ service_role key. Không bao giờ gọi `supabase.auth.admin.*`
 //   từ trình duyệt vì API đó đòi service_role key.
 // ============================================================================
@@ -13,9 +13,7 @@ import { describeDbError } from './dbError';
 import { toAuthEmail } from './identity';
 
 /**
- * Gốc của API admin. Mặc định cùng origin (bản deploy trên Vercel).
- * Khi chạy `npm run dev` bằng Vite thuần thì `/api/*` KHÔNG tồn tại — dùng
- * `vercel dev`, hoặc đặt VITE_ADMIN_API_BASE trỏ sang bản đã deploy.
+ * Gốc của API admin. Mặc định cùng origin; có thể đặt URL riêng khi phát triển.
  */
 const ADMIN_API_BASE = (import.meta.env.VITE_ADMIN_API_BASE as string | undefined)?.replace(/\/$/, '') ?? '';
 
@@ -141,6 +139,123 @@ export async function signOut(): Promise<void> {
 }
 
 // ----------------------------------------------------------------------------
+// Quên mật khẩu / khôi phục bằng email
+// ----------------------------------------------------------------------------
+
+/** Giữ `username` trong type để tương thích màn cũ; luồng mới chỉ dùng hai kênh giao nhận. */
+export type RecoveryChannel = 'email' | 'phone' | 'username';
+export type RecoveryDeliveryChannel = Exclude<RecoveryChannel, 'username'>;
+export interface RecoveryMethod {
+  channel: RecoveryDeliveryChannel;
+  /** Email/số điện thoại đã che; địa chỉ đầy đủ không bao giờ về client. */
+  hint: string;
+}
+
+export function normalizeRecoveryPhone(value: string): string | null {
+  const digits = value.replace(/\D/g, '');
+  if (/^0\d{9}$/.test(digits)) return `+84${digits.slice(1)}`;
+  if (/^84\d{9}$/.test(digits)) return `+${digits}`;
+  if (/^\d{10,15}$/.test(digits) && value.trim().startsWith('+')) return `+${digits}`;
+  return null;
+}
+
+async function recoveryRequest(payload: Record<string, string>): Promise<{
+  error?: string;
+  hint?: string;
+  via?: RecoveryDeliveryChannel;
+  methods?: RecoveryMethod[];
+  access_token?: string;
+  refresh_token?: string;
+}> {
+  let response: Response;
+  try {
+    response = await fetch(`${ADMIN_API_BASE}/api/password-recovery-v2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    return { error: 'Không kết nối được tới dịch vụ khôi phục mật khẩu.' };
+  }
+  const result = await response.json().catch(() => null) as
+    {
+      error?: string; hint?: string; via?: RecoveryDeliveryChannel; methods?: RecoveryMethod[];
+      access_token?: string; refresh_token?: string;
+    } | null;
+  if (!response.ok) return { error: result?.error ?? `Lỗi máy chủ (${response.status}).` };
+  if (result?.error) return { error: result.error };
+  return result ?? {};
+}
+
+/** Bước 1: username chỉ để xác định tài khoản và đọc các kênh đã che. */
+export async function identifyPasswordRecovery(
+  username: string,
+): Promise<{ error?: string; methods: RecoveryMethod[] }> {
+  const result = await recoveryRequest({ action: 'identify', username: username.trim() });
+  return { error: result.error, methods: result.methods ?? [] };
+}
+
+/** Bước 2: server gửi mã tới kênh đã xác minh; client không truyền địa chỉ. */
+export async function requestPasswordReset(
+  username: string,
+  channel: RecoveryDeliveryChannel | string,
+): Promise<{ error?: string; hint?: string; via?: RecoveryDeliveryChannel }> {
+  const result = await recoveryRequest({ action: 'send', username: username.trim(), channel });
+  return { error: result.error, hint: result.hint, via: result.via };
+}
+
+/** Bước 3: server tự tra lại đích nhận và đổi OTP thành phiên recovery. */
+export async function verifyPasswordResetCode(
+  username: string,
+  channel: RecoveryDeliveryChannel | string,
+  token: string,
+): Promise<{ error?: string }> {
+  const result = await recoveryRequest({
+    action: 'verify', username: username.trim(), channel, code: token.trim(),
+  });
+  if (result.error || !result.access_token || !result.refresh_token) {
+    return { error: result.error ?? 'Mã không đúng hoặc đã hết hạn.' };
+  }
+  const { error } = await supabase.auth.setSession({
+    access_token: result.access_token,
+    refresh_token: result.refresh_token,
+  });
+  if (error) {
+    return { error: describeDbError(error) };
+  }
+  sessionStorage.setItem('hrm:password-recovery', '1');
+  return {};
+}
+
+export async function completePasswordRecovery(newPassword: string): Promise<{ error?: string }> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return { error: 'Liên kết khôi phục không hợp lệ hoặc đã hết hạn.' };
+
+  const { data, error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) {
+    return {
+      error: /expired|invalid|session/i.test(error.message)
+        ? 'Liên kết khôi phục không hợp lệ hoặc đã hết hạn. Hãy yêu cầu một liên kết mới.'
+        : describeDbError(error),
+    };
+  }
+
+  if (data.user?.id) {
+    const { error: flagError } = await supabase
+      .from('profiles')
+      .update({ must_change_password: false })
+      .eq('id', data.user.id);
+    if (flagError) {
+      return { error: `Mật khẩu đã được đổi nhưng chưa cập nhật được trạng thái tài khoản: ${describeDbError(flagError)}` };
+    }
+  }
+
+  sessionStorage.removeItem('hrm:password-recovery');
+  await supabase.auth.signOut();
+  return {};
+}
+
+// ----------------------------------------------------------------------------
 // Đổi mật khẩu (bắt buộc nhập mật khẩu cũ)
 // ----------------------------------------------------------------------------
 
@@ -193,7 +308,7 @@ export async function changeOwnPassword(
 }
 
 // ----------------------------------------------------------------------------
-// Quản trị người dùng (qua /api/admin-users trên Vercel)
+// Quản trị người dùng (qua /api/admin-users)
 // ----------------------------------------------------------------------------
 
 async function callAdminApi<T>(payload: Record<string, unknown>): Promise<{ data?: T; error?: string }> {
@@ -226,7 +341,7 @@ async function callAdminApi<T>(payload: Record<string, unknown>): Promise<{ data
     if (res.status === 404) {
       return {
         error:
-          'Không tìm thấy /api/admin-users. Chạy bằng `vercel dev` hoặc deploy lên Vercel — Vite thuần không phục vụ thư mục api/.',
+          'Không tìm thấy /api/admin-users. Hãy chạy backend API cùng ứng dụng hoặc kiểm tra cấu hình máy chủ.',
       };
     }
     return { error: json?.error ?? `Lỗi máy chủ (${res.status}).` };
@@ -243,8 +358,8 @@ export async function adminCreateUser(input: {
   access_role_code?: string;
   department?: string;
   permissions?: string[];
-}): Promise<{ tempPassword?: string; email?: string; error?: string }> {
-  const { data, error } = await callAdminApi<{ tempPassword: string; email: string }>({
+}): Promise<{ id?: string; tempPassword?: string; email?: string; error?: string }> {
+  const { data, error } = await callAdminApi<{ id: string; tempPassword: string; email: string }>({
     action: 'create',
     name: input.name,
     identifier: input.identifier,
@@ -254,7 +369,7 @@ export async function adminCreateUser(input: {
     permissions: input.permissions ?? [],
   });
   if (error) return { error };
-  return { tempPassword: data?.tempPassword, email: data?.email };
+  return { id: data?.id, tempPassword: data?.tempPassword, email: data?.email };
 }
 
 export async function adminResetPassword(userId: string): Promise<{ tempPassword?: string; error?: string }> {
@@ -280,7 +395,7 @@ export async function adminDeleteUser(userId: string): Promise<{ error?: string;
 /** Cập nhật hồ sơ (không đụng tới mật khẩu) — đi thẳng qua RLS. */
 export async function updateProfile(
   id: string,
-  updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year'>>,
+  updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code'>>,
 ): Promise<{ error?: string }> {
   let { error } = await supabase.from('profiles').update(updates).eq('id', id);
   // Frontend có thể được deploy trước migration vai trò mở rộng. Trong thời
@@ -291,9 +406,17 @@ export async function updateProfile(
     ({ error } = await supabase.from('profiles').update(legacyUpdates).eq('id', id));
   }
   if (error) {
-    // Trigger prevent_self_privilege_change chặn tự đổi quyền của chính mình.
-    const msg = /tự thay đổi quyền/i.test(error.message)
-      ? 'Không thể tự thay đổi vai trò hoặc quyền của chính mình. Nhờ một quản trị viên khác thực hiện.'
+    // Trigger profile_privilege_changes_guard chặn tự đổi quyền của chính mình.
+    //
+    // Nhận diện bằng CẢ HAI cách viết: bản cũ raise "tự thay đổi quyền", bản
+    // 20261007113000 raise "tự thay đổi vai trò, quyền hoặc thông tin phân
+    // quyền". Chuỗi mới không chứa "tự thay đổi quyền" (có "vai trò," chen
+    // giữa), nên regex cũ trượt và câu này rơi xuống nhánh 42501 chung —
+    // "Nhờ quản trị viên cấp quyền", lời khuyên sai hướng với một Admin đang
+    // sửa chính hồ sơ mình: họ ĐÃ là admin, vấn đề là không ai được tự sửa
+    // trường phân quyền của bản thân.
+    const msg = /tự thay đổi (vai trò|quyền)/i.test(error.message)
+      ? 'Không thể tự sửa vai trò, quyền hay mã nhân viên của chính mình. Nhờ một quản trị viên khác thực hiện.'
       : describeDbError(error);
     return { error: msg };
   }

@@ -8,14 +8,17 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Trash2, TriangleAlert, Wallet } from 'lucide-react';
+import { Save, Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Input, Textarea } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
+import { PayrollFormulaBuilder } from '@/components/payroll/PayrollFormulaBuilder';
+import { PayItemFormulaPicker } from '@/components/payroll/PayItemFormulaPicker';
+import { parsePayFormula } from '@/lib/payItemFormula';
 import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
-import { payBasisLabel, progressiveIncomeTax, sampleFormulaScope, toTaxBrackets } from '@/lib/payroll';
+import { sampleFormulaScope } from '@/lib/payroll';
 import { validateFormula } from '@/lib/payrollFormula';
 import { deletePayItem, savePayItem, savePayProfile } from '@/lib/payrollData';
 import type {
@@ -23,35 +26,32 @@ import type {
   EmployeePayProfile,
   PayBasis,
   PayComponent,
+  PayrollNamedParam,
   Profile,
   TaxMode,
 } from '@/types';
 import type { PayrollParams } from '@/lib/payrollSettings';
 
-const PAY_BASES: Array<{ value: PayBasis; hint: string; who: string }> = [
-  { value: 'MONTHLY', hint: 'Lương tháng ÷ ngày công chuẩn × ngày công thực tế.', who: 'Nhân viên chính thức' },
-  { value: 'HOURLY', hint: 'Đơn giá giờ × giờ làm lấy từ chấm công.', who: 'Part-time, thời vụ' },
-  { value: 'DAILY', hint: 'Đơn giá ngày × số ngày công.', who: 'Lao động công nhật' },
-  { value: 'PIECE', hint: 'Không có lương cứng. Thu nhập hoàn toàn từ khoản khoán sản phẩm.', who: 'Thợ ăn theo sản lượng' },
-  { value: 'COMMISSION', hint: 'Lương cứng thấp + hoa hồng doanh số.', who: 'Nhân viên kinh doanh' },
-];
-
-/** Chỉ lương tháng mới có mẫu số "ngày công chuẩn" để chia. */
-const USES_STANDARD_DAYS: ReadonlyArray<PayBasis> = ['MONTHLY'];
-
-const BASE_AMOUNT_LABEL: Record<PayBasis, string> = {
-  MONTHLY: 'Lương tháng (VND)',
-  HOURLY: 'Đơn giá một giờ (VND)',
-  DAILY: 'Đơn giá một ngày công (VND)',
-  PIECE: 'Lương cứng tối thiểu, để 0 nếu ăn khoán hoàn toàn (VND)',
-  COMMISSION: 'Lương cứng hằng tháng (VND)',
-};
-
-const TAX_MODES: Array<{ value: TaxMode; label: string; hint: string }> = [
-  { value: 'PROGRESSIVE', label: 'Lũy tiến 7 bậc', hint: 'Hợp đồng từ 3 tháng trở lên.' },
-  { value: 'FLAT', label: 'Khấu trừ thẳng theo %', hint: 'Hợp đồng dưới 3 tháng, cộng tác viên.' },
-  { value: 'NONE', label: 'Không khấu trừ', hint: 'Người đã tự quyết toán hoặc được miễn.' },
-];
+/**
+ * `pay_basis` và `base_amount` không còn khai trên màn này.
+ *
+ * Trước đây lương gốc là một mô hình RIÊNG: chọn một trong năm cơ chế
+ * (tháng / giờ / ngày / khoán / hoa hồng) rồi nhập một con số. Người khai phải
+ * học hai cách cho cùng một việc — lương gốc một kiểu, mọi khoản khác một kiểu.
+ *
+ * Giờ lương gốc cũng chỉ là một khoản trong danh mục, khai y như mọi khoản
+ * khác: chọn khoản, chọn cách tính. Năm cơ chế cũ diễn đạt lại được hết bằng
+ * cách tính của khoản —
+ *
+ *     lương tháng   -> mức ÷ công chuẩn × số công
+ *     lương ngày    -> mức × số công
+ *     lương giờ     -> công thức riêng với biến WORK_HOURS
+ *     khoán/hoa hồng-> không có khoản lương gốc, chỉ có khoản khoán
+ *
+ * Cột dưới database giữ nguyên để không phải viết migration và để các bản ghi
+ * cũ vẫn đọc được; màn này luôn ghi 'MONTHLY' và 0.
+ */
+const LEGACY_PAY_BASIS: PayBasis = 'MONTHLY';
 
 interface PaySchemeModalProps {
   /** Tham số lương, dùng dựng bộ biến mẫu khi kiểm tra công thức. */
@@ -61,6 +61,8 @@ interface PaySchemeModalProps {
   /** Bản ghi cơ chế đang áp dụng cho kỳ đang xem, nếu có. */
   current: EmployeePayProfile | null;
   components: PayComponent[];
+  /** Tham số lương tự khai — dùng làm số liệu hoặc hệ số trong công thức. */
+  namedParams?: PayrollNamedParam[];
   assignedItems: EmployeePayItem[];
   /** Ngày đầu tháng đang xem — mặc định cho ngày hiệu lực. */
   defaultEffectiveFrom: string;
@@ -69,25 +71,64 @@ interface PaySchemeModalProps {
   onSaved: () => void;
 }
 
+/**
+ * Cách tính khi người này KHÔNG khai công thức riêng.
+ *
+ * Lúc đó engine dùng `calc_type` của khoản trong Danh mục, không phải không
+ * tính gì. Nói ra để người khai biết mình đang để khoản đó chạy theo cái gì.
+ */
+const CACH_TINH_MAC_DINH: Record<string, string> = {
+  FIXED: 'số tiền cố định',
+  PER_DAY: 'số tiền × ngày hưởng lương',
+  PER_HOUR: 'số tiền × số giờ nhập hằng tháng',
+  PER_UNIT: 'số tiền × sản lượng nhập hằng tháng',
+  PERCENT: '% trên khoản gốc khai ở Danh mục',
+  FORMULA: 'công thức khai ở Danh mục',
+};
+
 interface ItemDraft {
   id?: string;
   componentId: string;
   amount: string;
   formula: string;
-  effectiveFrom: string;
   note: string;
+  /**
+   * Ba tính chất của khoản, khai RIÊNG cho người này.
+   *
+   * Danh mục khoản lương chỉ còn là danh sách tên. Nạp lần đầu thì lấy theo
+   * danh mục nên không ai phải khai lại từ đầu; lưu một lần là nó thành giá
+   * trị riêng của người này, từ đó danh mục đổi cũng không kéo theo.
+   */
+  taxable: boolean;
+  insurable: boolean;
+  isBase: boolean;
+  /**
+   * Đang khai bằng ô công thức tự do thay vì các ô chọn.
+   *
+   * KHÔNG còn nút bật/tắt — cờ này chỉ do hệ thống đặt lúc MỞ, khi công thức
+   * đã lưu không đọc được bằng các ô chọn. Giữ nó là bắt buộc: bỏ đi thì mở
+   * một cơ chế viết tay ra là màn hình diễn giải lại sai rồi ghi đè mất.
+   *
+   * Tính MỘT LẦN lúc mở, không suy lại mỗi lần render: đang gõ dở một biểu
+   * thức mà màn hình nhảy về ô chọn giữa chừng là mất hết cái vừa gõ.
+   */
+  handWritten: boolean;
 }
 
 const digitsOnly = (value: string) => value.replace(/[^\d]/g, '');
 
+/** Bỏ dấu để gõ "xang" tìm ra "Phụ cấp xăng xe". */
+const stripTone = (text: string) => text
+  .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
+  .toLowerCase().trim();
+
 export function PaySchemeModal({
   open, target, current, components, assignedItems, params,
-  defaultEffectiveFrom, actorId, onClose, onSaved,
+  defaultEffectiveFrom, actorId, onClose, onSaved, namedParams = [],
 }: PaySchemeModalProps) {
   const { toast } = useToast();
 
-  const [basis, setBasis] = useState<PayBasis>('MONTHLY');
-  const [baseAmount, setBaseAmount] = useState('');
+  /** Khoản được đánh dấu lương gốc trong danh mục, nếu đã khai. */
   const [effectiveFrom, setEffectiveFrom] = useState(defaultEffectiveFrom);
   const [insuranceEnabled, setInsuranceEnabled] = useState(true);
   const [insuranceBase, setInsuranceBase] = useState('');
@@ -98,14 +139,15 @@ export function PaySchemeModal({
   const [note, setNote] = useState('');
   const [drafts, setDrafts] = useState<ItemDraft[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
+  const [componentQuery, setComponentQuery] = useState('');
+  /** Dòng đang được lưu lẻ, để chỉ khoá đúng nút đó. */
+  const [savingOne, setSavingOne] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Nạp lại mỗi lần mở cho người khác. Không dùng `key` ở phía cha vì modal
   // cần giữ trạng thái khi người dùng cuộn trong lúc đang sửa.
   useEffect(() => {
     if (!open) return;
-    setBasis(current?.pay_basis ?? 'MONTHLY');
-    setBaseAmount(current ? String(Number(current.base_amount)) : '');
     setEffectiveFrom(current?.effective_from ?? defaultEffectiveFrom);
     setInsuranceEnabled(current?.insurance_enabled ?? true);
     setInsuranceBase(current?.insurance_base != null ? String(Number(current.insurance_base)) : '');
@@ -119,7 +161,20 @@ export function PaySchemeModal({
       componentId: item.component_id,
       amount: item.amount != null ? String(Number(item.amount)) : '',
       formula: item.formula ?? '',
-      effectiveFrom: item.effective_from,
+      taxable: item.taxable ?? componentById.get(item.component_id)?.taxable ?? true,
+      insurable: item.insurable ?? componentById.get(item.component_id)?.insurable ?? false,
+      isBase: item.is_base ?? componentById.get(item.component_id)?.is_base ?? false,
+      // Công thức đã lưu mà các ô chọn không đọc nổi thì mở thẳng ô tự do —
+      // hiện ô chọn rồi bấm Lưu là ghi đè mất công thức người ta viết tay.
+      handWritten: !!item.formula
+        && !parsePayFormula(
+          item.formula,
+          components.map((c) => c.code),
+          // PHẢI truyền cả mã số liệu tháng. Không có nó thì `MUC_RIENG *
+          // SO_CHUYEN` bị coi là mã gõ sai, và gần như mọi khoản của công ty
+          // mở ra đều rơi về ô viết tay — đúng cái mà bộ ô chọn để tránh.
+          components.map((c) => c.input_code).filter((code): code is string => !!code),
+        ),
       note: item.note ?? '',
     })));
     setRemovedIds([]);
@@ -140,27 +195,141 @@ export function PaySchemeModal({
     return sampleFormulaScope(params, [...inputCodes, ...componentCodes]);
   }, [components, params]);
 
-  const availableComponents = components.filter(
-    (component) => component.is_active && !drafts.some((draft) => draft.componentId === component.id),
-  );
+  /**
+   * Danh mục để tick chọn, lọc theo ô tìm.
+   *
+   * Danh mục thật có gần 40 khoản. Bản cũ bắt bấm "Thêm khoản" rồi dò trong
+   * một dropdown dài bằng đó — mỗi khoản một lần, và không lúc nào thấy được
+   * mình đã chọn những gì. Bày cả danh mục ra, tick một lượt, rồi mới khai
+   * công thức cho từng khoản đã tick.
+   */
+  const pickable = useMemo(() => {
+    const keyword = stripTone(componentQuery);
+    return components
+      .filter((item) => item.is_active)
+      .filter((item) => !keyword
+        || stripTone(item.name).includes(keyword)
+        || stripTone(item.code || '').includes(keyword));
+  }, [components, componentQuery]);
 
-  const addDraft = () => {
-    const next = availableComponents[0];
-    if (!next) {
-      toast('Đã gán hết các khoản đang hoạt động.', 'warning');
+  const chosen = (componentId: string) => drafts.some((draft) => draft.componentId === componentId);
+
+  /**
+   * Mã các khoản khác đã khai cho CHÍNH người này.
+   *
+   * Khoản lương gán theo từng người: công thức trỏ tới một khoản mà người này
+   * chưa được khai thì engine tính phần đó bằng 0đ. Đưa danh sách này xuống để
+   * ô chọn nguồn tách được "đã khai cho người này" với phần còn lại.
+   */
+  /**
+   * Gom khoản theo nhóm, mỗi nhóm MỘT khung.
+   *
+   * Trước đây mỗi khoản một khung riêng, và chữ "KHOẢN CỘNG" lặp lại trên
+   * từng khung — mười khoản cộng là mười lần cùng một chữ. Nhóm chỉ cần nói
+   * một lần ở đầu khung.
+   *
+   * Giữ `index` GỐC trong mảng `drafts` chứ không đánh số lại theo nhóm: mọi
+   * hàm sửa/xoá đều chạy theo chỉ số của mảng gốc, đánh lại là sửa nhầm dòng.
+   */
+  const groups = useMemo(() => {
+    const order: Array<PayComponent['kind']> = ['EARNING', 'DEDUCTION', 'EMPLOYER_COST'];
+    const label: Record<string, string> = {
+      EARNING: 'Khoản cộng', DEDUCTION: 'Khoản trừ', EMPLOYER_COST: 'Chi phí doanh nghiệp',
+    };
+    return order
+      .map((kind) => ({
+        kind,
+        label: label[kind],
+        rows: drafts
+          .map((draft, index) => ({ draft, index }))
+          .filter((row) => (componentById.get(row.draft.componentId)?.kind ?? 'EARNING') === kind),
+      }))
+      .filter((group) => group.rows.length > 0);
+  }, [drafts, componentById]);
+
+  const assignedCodes = (skipIndex: number) => drafts
+    .filter((_, index) => index !== skipIndex)
+    .map((draft) => componentById.get(draft.componentId)?.code)
+    .filter((code): code is string => !!code);
+
+  /**
+   * Tick vào thì thêm một dòng khai; bỏ tick thì gỡ dòng đó.
+   *
+   * Khoản ĐÃ LƯU mà bỏ tick phải đưa id vào `removedIds` để lúc lưu còn xoá
+   * dưới database — chỉ gỡ khỏi màn hình thì lần mở sau nó hiện lại như chưa
+   * có gì xảy ra.
+   */
+  const toggleComponent = (componentId: string) => {
+    setDrafts((list) => {
+      const existing = list.find((draft) => draft.componentId === componentId);
+      if (!existing) {
+        const chon = componentById.get(componentId);
+        return [...list, {
+          componentId,
+          amount: '',
+          formula: '',
+          handWritten: false,
+          note: '',
+          taxable: chon?.taxable ?? true,
+          insurable: chon?.insurable ?? false,
+          isBase: chon?.is_base ?? false,
+        }];
+      }
+      if (existing.id) setRemovedIds((ids) => [...ids, existing.id as string]);
+      return list.filter((draft) => draft.componentId !== componentId);
+    });
+  };
+
+  /**
+   * Lưu RIÊNG một khoản, không chờ lưu cả cơ chế.
+   *
+   * Dùng khi khai xong một khoản rồi muốn chốt nó lại trước khi khai tiếp.
+   *
+   * Phải ghi `id` trả về vào draft: không giữ id thì lần lưu tổng sau đó coi
+   * khoản này là mới và CHÈN THÊM một dòng nữa cho cùng một khoản — người đó
+   * ăn khoản lương hai lần.
+   */
+  const saveOne = async (index: number) => {
+    if (!target) return;
+    const draft = drafts[index];
+    if (!draft?.componentId) return;
+    if (formulaErrors[index]) {
+      toast('Công thức khoản này chưa hợp lệ — sửa trước khi lưu.', 'warning');
       return;
     }
-    setDrafts((list) => [...list, {
-      componentId: next.id,
-      amount: '',
-      formula: '',
-      effectiveFrom: effectiveFrom,
-      note: '',
-    }]);
+    setSavingOne(index);
+    const { error, id } = await savePayItem({
+      ...(draft.id ? { id: draft.id } : {}),
+      user_id: target.id,
+      component_id: draft.componentId,
+      amount: draft.amount ? Number(draft.amount) : null,
+      formula: draft.formula.trim() || null,
+      taxable: draft.taxable,
+      insurable: draft.insurable,
+      is_base: draft.isBase,
+      effective_from: effectiveFrom,
+      note: draft.note.trim() || null,
+      created_by: actorId,
+    });
+    setSavingOne(null);
+    if (error) return toast('Không lưu được khoản này: ' + error, 'error');
+    if (id) updateDraft(index, { id });
+    toast(`Đã lưu ${componentById.get(draft.componentId)?.name ?? 'khoản'}.`, 'success');
   };
 
   const updateDraft = (index: number, patch: Partial<ItemDraft>) => {
     setDrafts((list) => list.map((draft, i) => (i === index ? { ...draft, ...patch } : draft)));
+  };
+
+  /**
+   * Bật lương gốc cho một khoản, TẮT các khoản còn lại.
+   *
+   * Database có unique index chặn hai khoản cùng là lương gốc của một người.
+   * Không tắt ở đây thì người dùng bật cái thứ hai, bấm Lưu, và nhận một lỗi
+   * ràng buộc khó hiểu — trong khi ý họ rõ ràng là đổi khoản lương gốc.
+   */
+  const setBase = (index: number, on: boolean) => {
+    setDrafts((list) => list.map((draft, i) => ({ ...draft, isBase: on && i === index })));
   };
 
   const removeDraft = (index: number) => {
@@ -179,65 +348,14 @@ export function PaySchemeModal({
   });
   const hasFormulaError = formulaErrors.some(Boolean);
 
-  const parsedBase = Number(baseAmount || '0');
-  const preview = useMemo(() => {
-    const days = Number(standardDays) || params.standardWorkDays || 26;
-    const hours = params.hoursPerDay || 8;
-    switch (basis) {
-      case 'HOURLY': return `${formatVND(parsedBase)}/giờ`;
-      case 'DAILY': return `${formatVND(parsedBase)}/ngày · ${formatVND(parsedBase / hours)}/giờ`;
-      case 'PIECE': return 'Thu nhập theo sản lượng nghiệm thu';
-      default:
-        return `${formatVND(parsedBase / days)}/ngày · ${formatVND(parsedBase / days / hours)}/giờ`;
-    }
-  }, [basis, parsedBase, standardDays, params]);
-
-  // Mức lương thực dùng để đóng bảo hiểm. Bỏ trống thì engine lấy lương gốc,
-  // nên hiện ra đây luôn — "trống = theo lương hợp đồng" là câu mà người đọc
-  // vẫn phải tự suy ra con số.
-  const effectiveInsuranceBase = Number(insuranceBase || '0') || parsedBase;
-
-  /**
-   * Ước tính một tháng đi ĐỦ công, CHƯA tính phụ cấp, tăng ca hay khoán.
-   *
-   * Không cố tính chính xác: số thật phụ thuộc chấm công và số liệu tháng chưa
-   * tồn tại lúc đang setup. Mục đích là để người khai thấy ngay mình vừa tạo ra
-   * mức thực nhận cỡ nào, thay vì phải lưu rồi chạy bảng lương mới biết.
-   */
-  const estimate = useMemo(() => {
-    const gross = basis === 'PIECE' ? 0 : parsedBase;
-    const insuranceSalary = insuranceEnabled
-      ? Math.min(effectiveInsuranceBase, params.insuranceSalaryCap)
-      : 0;
-    const unemploymentSalary = insuranceEnabled
-      ? Math.min(effectiveInsuranceBase, params.unemploymentSalaryCap)
-      : 0;
-    const insurance = Math.round(
-      (insuranceSalary * (params.socialInsuranceRate + params.healthInsuranceRate)) / 100
-        + (unemploymentSalary * params.unemploymentInsuranceRate) / 100,
-    );
-
-    const deduction = params.taxPersonalDeduction + Number(dependents || '0') * params.taxDependentDeduction;
-    let tax = 0;
-    if (taxMode === 'PROGRESSIVE') {
-      tax = Math.round(progressiveIncomeTax(
-        Math.max(0, gross - insurance - deduction),
-        toTaxBrackets(params.brackets),
-      ).tax);
-    } else if (taxMode === 'FLAT') {
-      tax = Math.round((gross * (Number(flatRate) || 0)) / 100);
-    }
-
-    return { gross, insurance, deduction, tax, net: gross - insurance - tax };
-  }, [
-    basis, parsedBase, insuranceEnabled, effectiveInsuranceBase, dependents,
-    taxMode, flatRate, params,
-  ]);
-
   const handleSave = async () => {
     if (!target) return;
-    if (basis !== 'PIECE' && parsedBase <= 0) {
-      toast('Nhập đơn giá lương hợp lệ.', 'warning');
+    if (drafts.length === 0) {
+      toast('Chưa chọn khoản lương nào. Thêm ít nhất một khoản.', 'warning');
+      return;
+    }
+    if (drafts.some((item) => !item.componentId)) {
+      toast('Còn dòng chưa chọn khoản lương.', 'warning');
       return;
     }
     if (hasFormulaError) {
@@ -249,8 +367,14 @@ export function PaySchemeModal({
     const profileError = await savePayProfile({
       user_id: target.id,
       effective_from: effectiveFrom,
-      pay_basis: basis,
-      base_amount: parsedBase,
+      // Hai cột vestigial: xem chú thích ở LEGACY_PAY_BASIS đầu file. Lương
+      // gốc thật nằm ở khoản được đánh dấu trong danh mục.
+      pay_basis: LEGACY_PAY_BASIS,
+      base_amount: 0,
+      // Bốn trường dưới KHÔNG còn ô nhập trên màn. State của chúng nạp từ bản
+      // ghi hiện có ở `useEffect` khởi tạo, nên lưu lại là ghi đúng giá trị cũ
+      // chứ không phải mặc định — bỏ ô nhập mà ghi mặc định là âm thầm xoá
+      // thiết lập bảo hiểm/thuế của người ta.
       insurance_base: insuranceBase ? Number(insuranceBase) : null,
       insurance_enabled: insuranceEnabled,
       dependents: Number(dependents) || 0,
@@ -277,13 +401,18 @@ export function PaySchemeModal({
     }
 
     for (const draft of drafts) {
-      const error = await savePayItem({
+      const { error } = await savePayItem({
         ...(draft.id ? { id: draft.id } : {}),
         user_id: target.id,
         component_id: draft.componentId,
         amount: draft.amount ? Number(draft.amount) : null,
         formula: draft.formula.trim() || null,
-        effective_from: draft.effectiveFrom,
+        taxable: draft.taxable,
+        insurable: draft.insurable,
+        is_base: draft.isBase,
+        // Dùng chung ngày của cả cơ chế: ô "Áp dụng từ" giờ nằm ngoài, mỗi
+        // khoản không còn ngày riêng.
+        effective_from: effectiveFrom,
         note: draft.note.trim() || null,
         created_by: actorId,
       });
@@ -313,340 +442,230 @@ export function PaySchemeModal({
             </div>
           </div>
 
-          {/* --- Lương gốc --- */}
+          {/* Màn này hiện CHỈ còn danh mục khoản. Hiệu lực, ngày công chuẩn,
+              bảo hiểm và thuế đã bỏ khỏi giao diện theo yêu cầu — nhưng state
+              của chúng GIỮ NGUYÊN và vẫn được ghi xuống khi lưu, lấy từ bản
+              ghi hiện có. Bỏ ô nhập mà ghi giá trị mặc định là âm thầm xoá
+              thiết lập bảo hiểm/thuế của người ta. */}
           <section className="space-y-3">
             <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Bước 1 · Người này ăn lương kiểu gì
+              Các khoản lương ({drafts.length})
             </h3>
-            {/* Đây là quyết định chi phối mọi thứ phía sau, nên bày hết ra cho
-                so sánh được. Trong dropdown thì phải mở ra mới thấy có gì. */}
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {PAY_BASES.map((entry) => (
-                <button
-                  key={entry.value}
-                  type="button"
-                  onClick={() => setBasis(entry.value)}
-                  aria-pressed={basis === entry.value}
-                  className={`rounded-xl border-2 px-3 py-2.5 text-left transition ${
-                    basis === entry.value
-                      ? 'border-indigo-600 bg-indigo-50'
-                      : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <span className="block text-sm font-bold text-slate-800">{payBasisLabel(entry.value)}</span>
-                  <span className="mt-0.5 block text-[11px] font-semibold text-indigo-600">{entry.who}</span>
-                  <span className="mt-1 block text-[11px] leading-relaxed text-slate-500">{entry.hint}</span>
-                </button>
-              ))}
-            </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Input
-                  label={BASE_AMOUNT_LABEL[basis]}
-                  inputMode="numeric"
-                  placeholder="VD: 15000000"
-                  value={baseAmount}
-                  onChange={(e) => setBaseAmount(digitsOnly(e.target.value))}
+            {/* Một ngày hiệu lực cho CẢ cơ chế, không phải mỗi khoản một ngày.
+                Đổi lương là một quyết định có một mốc; để mỗi khoản một ngày
+                thì sửa vài khoản xong sẽ có người mang ba mốc khác nhau, và
+                đối chiếu bảng lương không ra vì sao. */}
+            <Input
+              label="Áp dụng từ ngày"
+              type="date"
+              value={effectiveFrom}
+              onChange={(event) => setEffectiveFrom(event.target.value)}
+            />
+            {/* --- Chọn khoản từ danh mục --- */}
+            <div className="rounded-xl border border-slate-200 p-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={componentQuery}
+                  onChange={(event) => setComponentQuery(event.target.value)}
+                  placeholder="Tìm khoản trong danh mục..."
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/60 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 />
-                {parsedBase > 0 && (
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    {formatVND(parsedBase)} — quy đổi {preview}
-                  </p>
-                )}
               </div>
-              <Input
-                label="Áp dụng từ ngày"
-                type="date"
-                value={effectiveFrom}
-                onChange={(e) => setEffectiveFrom(e.target.value)}
-              />
-            </div>
-
-            {/* Ngày công chuẩn chỉ là mẫu số của lương THÁNG. Hiện nó khi trả
-                theo giờ hay theo sản lượng chỉ khiến người khai tưởng nó có
-                ảnh hưởng. */}
-            {USES_STANDARD_DAYS.includes(basis) && (
-              <Input
-                label={`Ngày công chuẩn riêng (trống = ${params.standardWorkDays} theo công ty)`}
-                inputMode="numeric"
-                placeholder={String(params.standardWorkDays)}
-                value={standardDays}
-                onChange={(e) => setStandardDays(digitsOnly(e.target.value))}
-              />
-            )}
-            <p className="rounded-lg bg-blue-50 px-3 py-2 text-xs leading-relaxed text-blue-800">
-              Đổi lương là tạo bản ghi mới theo ngày hiệu lực. Các tháng đã chạy lương trước
-              ngày này giữ nguyên mức cũ.
-            </p>
-          </section>
-
-          {/* --- Bảo hiểm & thuế --- */}
-          <section className="space-y-3">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Bước 2 · Bảo hiểm và thuế
-            </h3>
-            <label className="flex items-start gap-2.5 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={insuranceEnabled}
-                onChange={(e) => setInsuranceEnabled(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300"
-              />
-              <span>
-                Tham gia bảo hiểm bắt buộc
-                <span className="block text-xs text-slate-500">
-                  BHXH {params.socialInsuranceRate}% + BHYT {params.healthInsuranceRate}% +
-                  BHTN {params.unemploymentInsuranceRate}% = {(
-                    params.socialInsuranceRate + params.healthInsuranceRate + params.unemploymentInsuranceRate
-                  ).toFixed(1)}% phần người lao động đóng.
-                </span>
-              </span>
-            </label>
-            {insuranceEnabled && (
-              <div>
-                <Input
-                  label="Mức lương đóng bảo hiểm"
-                  inputMode="numeric"
-                  placeholder={parsedBase > 0 ? String(parsedBase) : 'VD: 8000000'}
-                  value={insuranceBase}
-                  onChange={(e) => setInsuranceBase(digitsOnly(e.target.value))}
-                />
-                {effectiveInsuranceBase > 0 ? (
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Sẽ đóng trên <strong className="text-slate-700">{formatVND(effectiveInsuranceBase)}</strong>
-                    {!insuranceBase && ' (lấy theo lương gốc vì đang để trống)'}
-                    {effectiveInsuranceBase > params.insuranceSalaryCap
-                      && ` — vượt trần, chỉ đóng BHXH/BHYT trên ${formatVND(params.insuranceSalaryCap)}`}
+              <div className="mt-2 max-h-48 overflow-y-auto">
+                {pickable.length === 0 ? (
+                  <p className="py-4 text-center text-xs text-slate-500">
+                    Không có khoản nào khớp &ldquo;{componentQuery}&rdquo;.
                   </p>
                 ) : (
-                  /* Lương khoán không có mức cứng để suy ra, để trống là đóng
-                     bảo hiểm trên 0đ — sai mà không có gì báo. */
-                  <p className="mt-1.5 flex items-start gap-1.5 text-xs text-amber-700">
-                    <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                    Chưa xác định được mức đóng. Hình thức trả lương này không có mức cứng để suy ra,
-                    phải nhập tay — bỏ trống là đóng bảo hiểm trên 0 đồng.
-                  </p>
+                  <div className="grid gap-1 sm:grid-cols-2">
+                    {pickable.map((item) => (
+                      <label
+                        key={item.id}
+                        className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition hover:bg-slate-50"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={chosen(item.id)}
+                          onChange={() => toggleComponent(item.id)}
+                          className="mt-0.5 h-4 w-4 flex-shrink-0 accent-indigo-600"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-semibold text-slate-800">
+                            {/* Dấu +/−/◦ cho thấy ngay khoản này cộng vào hay
+                                trừ đi, không phải đọc tên mới đoán ra. */}
+                            {item.kind === 'DEDUCTION' ? '− ' : item.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}
+                            {item.name}
+                          </span>
+                          {item.is_base && (
+                            <span className="text-[10px] font-bold text-indigo-600">LƯƠNG GỐC</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 )}
               </div>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Select label="Cách tính thuế TNCN" value={taxMode} onChange={(e) => setTaxMode(e.target.value as TaxMode)}>
-                  {TAX_MODES.map((mode) => (
-                    <option key={mode.value} value={mode.value}>{mode.label}</option>
-                  ))}
-                </Select>
-                <p className="mt-1.5 text-xs text-slate-500">
-                  {TAX_MODES.find((mode) => mode.value === taxMode)?.hint}
-                </p>
-              </div>
-              {taxMode === 'FLAT' ? (
-                <Input
-                  label="Tỷ lệ khấu trừ (%)"
-                  inputMode="decimal"
-                  value={flatRate}
-                  onChange={(e) => setFlatRate(e.target.value.replace(/[^\d.]/g, ''))}
-                />
-              ) : (
-                <div>
-                  <Input
-                    label="Số người phụ thuộc"
-                    inputMode="numeric"
-                    value={dependents}
-                    onChange={(e) => setDependents(digitsOnly(e.target.value))}
-                  />
-                  <p className="mt-1.5 text-xs text-slate-500">
-                    Giảm trừ {formatVND(params.taxDependentDeduction)}/người, cộng với{' '}
-                    {formatVND(params.taxPersonalDeduction)} cho bản thân.
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* --- Ước tính --- */}
-          {estimate.gross > 0 && (
-            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Ước tính một tháng đi đủ công
-              </p>
-              <dl className="mt-3 space-y-1.5 text-sm">
-                <EstimateRow label="Lương gốc" value={estimate.gross} />
-                {estimate.insurance > 0 && (
-                  <EstimateRow label="Bảo hiểm người lao động đóng" value={-estimate.insurance} />
-                )}
-                {taxMode === 'PROGRESSIVE' && (
-                  <EstimateRow
-                    label={`Giảm trừ gia cảnh (bản thân${Number(dependents) > 0 ? ` + ${dependents} người phụ thuộc` : ''})`}
-                    value={estimate.deduction}
-                    muted
-                  />
-                )}
-                <EstimateRow
-                  label={taxMode === 'NONE' ? 'Thuế TNCN (không khấu trừ)' : 'Thuế TNCN'}
-                  value={-estimate.tax}
-                />
-                <div className="flex items-baseline justify-between border-t border-slate-200 pt-2">
-                  <dt className="text-sm font-bold text-slate-700">Thực nhận ước tính</dt>
-                  <dd className="text-base font-extrabold tabular-nums text-indigo-700">
-                    {formatVND(estimate.net)}
-                  </dd>
-                </div>
-              </dl>
-              <p className="mt-2.5 text-[11px] leading-relaxed text-slate-500">
-                Chỉ tính lương gốc — <strong>chưa</strong> gồm phụ cấp, tăng ca, khoán sản phẩm hay
-                khoản trừ. Số thật phụ thuộc chấm công và số liệu của từng tháng.
-              </p>
-            </section>
-          )}
-
-          {/* --- Khoản riêng --- */}
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Bước 3 · Khoản cộng / trừ riêng ({drafts.length})
-              </h3>
-              <Button variant="outline" size="sm" onClick={addDraft} disabled={availableComponents.length === 0}>
-                <Plus className="h-3.5 w-3.5" /> Thêm khoản
-              </Button>
             </div>
 
             {drafts.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
-                Chưa gán khoản nào. Người này chỉ nhận lương gốc, bảo hiểm và thuế.
+                {/* Không còn "lương gốc" ngoài danh mục nữa: không khoản nào
+                    thì phiếu lương thật sự ra 0đ, phải nói đúng như vậy. */}
+                Chưa chọn khoản nào — phiếu lương của người này sẽ ra 0đ. Tick ít nhất khoản
+                lương gốc ở trên.
               </p>
             ) : (
-              <div className="space-y-3">
-                {drafts.map((draft, index) => {
-                  const component = componentById.get(draft.componentId);
-                  const error = formulaErrors[index];
-                  // Engine chỉ đánh giá `formula` ở nhánh FORMULA, và chỉ đọc
-                  // `amount` ở các nhánh còn lại. Hiện đúng ô được dùng.
-                  const usesOwnFormula = component?.calc_type === 'FORMULA';
-                  return (
-                    <div key={draft.id ?? `new-${index}`} className="rounded-xl border border-slate-200 p-3">
-                      <div className="flex items-start gap-2">
-                        <div className="min-w-0 flex-1">
-                          <Select
-                            value={draft.componentId}
-                            onChange={(e) => updateDraft(index, { componentId: e.target.value })}
-                          >
-                            {components
-                              .filter((item) => item.is_active || item.id === draft.componentId)
-                              .map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.kind === 'DEDUCTION' ? '− ' : item.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}
-                                  {item.name}
-                                </option>
-                              ))}
-                          </Select>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeDraft(index)}
-                          className="mt-1 rounded p-2 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
-                          aria-label="Bỏ khoản này"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+              <div className="space-y-4">
+                {groups.map((group) => (
+                  <div key={group.kind} className="rounded-xl border border-slate-200">
+                    <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                      {group.label} ({group.rows.length})
+                    </p>
+                    <div className="divide-y divide-slate-100">
+                      {group.rows.map(({ draft, index }) => {
+                        const component = componentById.get(draft.componentId);
+                        return (
+                          <div key={draft.id ?? `new-${index}`} className="p-3">
+                            {/* Hàng thao tác đứng TRÊN CÙNG và giống nhau ở mọi
+                                khoản: công thức sinh ra, lưu lẻ, xoá. Để rải
+                                mỗi thứ một chỗ thì mỗi khoản phải tìm lại từ
+                                đầu. */}
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              {/* Bỏ trống KHÔNG có nghĩa là không tính gì:
+                                  engine quay về dùng công thức / cách tính của
+                                  khoản trong Danh mục (payroll.ts:665). Hiện
+                                  "—" ở đây là màn hình nói sai — người khai
+                                  tưởng khoản này im, trong khi nó vẫn trừ tiền
+                                  theo một công thức họ không thấy. */}
+                              {draft.formula.trim() ? (
+                                <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-indigo-700">
+                                  {draft.formula.trim()}
+                                </code>
+                              ) : (
+                                <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-amber-700">
+                                  {component?.formula?.trim() || CACH_TINH_MAC_DINH[component?.calc_type ?? 'FIXED']}
+                                  <span className="ml-1.5 font-sans text-[10px] font-bold text-amber-600">
+                                    ← lấy từ Danh mục, chưa khai riêng
+                                  </span>
+                                </code>
+                              )}
+                              {component?.is_base && (
+                                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                                  LƯƠNG GỐC
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void saveOne(index)}
+                                disabled={savingOne !== null}
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-bold text-slate-400 transition hover:text-emerald-700 disabled:opacity-40"
+                              >
+                                <Save className="h-3 w-3" /> {savingOne === index ? 'Đang lưu…' : 'Lưu'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeDraft(index)}
+                                className="rounded p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+                                aria-label="Bỏ khoản này"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
 
-                      {component && (
-                        <p className="mt-2 text-xs text-slate-500">
-                          {describeCalcType(component)}
-                          {component.note ? ` — ${component.note}` : ''}
-                        </p>
-                      )}
+                            <div className="flex items-start gap-2">
+                              <div className="min-w-0 flex-1">
 
-                      {/* Chọn khoản là ĐỦ — hai ô dưới chỉ dành cho người có
-                          mức khác mặt bằng chung, và engine chỉ đọc đúng một
-                          trong hai tuỳ cách tính của khoản. Bày cả hai ra cho
-                          mọi khoản khiến người dùng tưởng bắt buộc phải điền,
-                          và ô không được đọc tới thì nhập vào cũng vô ích. */}
-                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        {usesOwnFormula ? (
-                          <Input
-                            label="Công thức riêng cho người này"
-                            placeholder={component?.formula || 'Trống = dùng công thức chung'}
-                            value={draft.formula}
-                            onChange={(e) => updateDraft(index, { formula: e.target.value })}
-                            error={error ?? undefined}
-                            className="font-mono text-xs"
-                          />
-                        ) : (
-                          <Input
-                            label={component?.calc_type === 'PERCENT'
-                              ? 'Tỷ lệ riêng cho người này (%)'
-                              : 'Mức riêng cho người này (VND)'}
-                            inputMode="decimal"
-                            placeholder={
-                              component ? `Trống = ${formatComponentDefault(component)} theo danh mục` : 'Theo danh mục'
-                            }
-                            value={draft.amount}
-                            onChange={(e) => updateDraft(index, {
-                              amount: component?.calc_type === 'PERCENT'
-                                ? e.target.value.replace(/[^\d.]/g, '')
-                                : digitsOnly(e.target.value),
-                            })}
-                          />
-                        )}
-                        <Input
-                          label="Áp dụng từ"
-                          type="date"
-                          value={draft.effectiveFrom}
-                          onChange={(e) => updateDraft(index, { effectiveFrom: e.target.value })}
-                        />
-                      </div>
+                                {/* Khoản tính theo % thì "× số công" vô nghĩa — tỷ lệ
+                                    nhân vào một khoản khác, không nhân vào ngày công.
+                                    Giữ ô nhập tỷ lệ như cũ cho nhóm đó. */}
+                                {component?.calc_type === 'PERCENT' && (
+                                  <div className="mb-3">
+                                    <Input
+                                      label="Tỷ lệ riêng (%)"
+                                      inputMode="decimal"
+                                      placeholder={`Trống = ${formatComponentDefault(component)} theo danh mục`}
+                                      value={draft.amount}
+                                      onChange={(e) => updateDraft(index, { amount: e.target.value.replace(/[^\d.]/g, '') })}
+                                    />
+                                  </div>
+                                )}
 
-                      {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
-                          xong vẫn ra 0đ — trông như đã làm xong nhưng thực tế
-                          không cộng gì vào lương. */}
-                      {component && !usesOwnFormula && !draft.amount
-                        && Number(component.default_amount) === 0 && (
-                        <p className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-amber-700">
-                          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                          Khoản này trong danh mục đang để mức 0đ. Không khai mức riêng thì gán xong
-                          vẫn cộng 0đ vào lương — nhập mức ở ô bên trái, hoặc sửa mức chung ở
-                          Danh mục khoản lương.
-                        </p>
-                      )}
+                                {draft.handWritten || component?.calc_type === 'PERCENT' ? (
+                                  <PayrollFormulaBuilder
+                                    label={`Công thức ${component?.name ?? ''}`}
+                                    value={draft.formula}
+                                    onChange={(formula) => updateDraft(index, { formula })}
+                                    sampleScope={formulaScope}
+                                    components={components}
+                                    defaultFormula={component?.formula}
+                                  />
+                                ) : (
+                                  <PayItemFormulaPicker
+                                    componentName={component?.name ?? 'Khoản'}
+                                    assignedCodes={assignedCodes(index)}
+                                    formula={draft.formula}
+                                    onFormulaChange={(formula) => updateDraft(index, { formula })}
+                                    amount={draft.amount}
+                                    onAmountChange={(amount) => updateDraft(index, { amount: digitsOnly(amount) })}
+                                    components={components}
+                                    namedParams={namedParams}
+                                    selfCode={component?.code ?? null}
+                                    sampleScope={formulaScope}
+                                  />
+                                )}
+
+                                {/* Ba tính chất của khoản, khai cho CHÍNH NGƯỜI NÀY.
+                                    Danh mục chỉ còn là danh sách tên, nên đây là nơi
+                                    duy nhất quyết định khoản có vào thu nhập chịu thuế,
+                                    vào mức đóng bảo hiểm, và khoản nào là lương gốc. */}
+                                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                  {([
+                                    ['Chịu thuế TNCN', draft.taxable,
+                                      () => updateDraft(index, { taxable: !draft.taxable })],
+                                    ['Tính bảo hiểm', draft.insurable,
+                                      () => updateDraft(index, { insurable: !draft.insurable })],
+                                    ['Lương gốc', draft.isBase,
+                                      () => setBase(index, !draft.isBase)],
+                                  ] as const).map(([label, on, toggle]) => (
+                                    <button
+                                      key={label}
+                                      type="button"
+                                      onClick={toggle}
+                                      aria-pressed={on}
+                                      className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+                                        on
+                                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                                          : 'border-slate-200 text-slate-400 hover:border-indigo-300'
+                                      }`}
+                                    >
+                                      {on ? '✓ ' : '○ '}{label}
+                                    </button>
+                                  ))}
+                                </div>
+
+                                {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
+                                    xong vẫn ra 0đ — trông như đã làm xong nhưng thực tế
+                                    không cộng gì vào lương. */}
+                                {component && !draft.formula.trim() && !draft.amount
+                                  && Number(component.default_amount) === 0 && (
+                                  <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                                    <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
+                                    Chưa có mức — khoản này sẽ cộng 0đ.
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
 
-            <details className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <summary className="cursor-pointer text-xs font-bold text-slate-600">
-                Biến dùng được trong công thức
-              </summary>
-              <div className="mt-2.5 grid gap-x-4 gap-y-1 text-xs text-slate-600 sm:grid-cols-2">
-                <VariableHint name="BASE" desc="Lương gốc đã tính theo ngày công" />
-                <VariableHint name="GROSS" desc="Tổng thu nhập tới khoản đang tính" />
-                <VariableHint name="HOURLY_RATE" desc="Đơn giá một giờ" />
-                <VariableHint name="DAILY_RATE" desc="Đơn giá một ngày" />
-                <VariableHint name="PAID_DAYS" desc="Ngày công + ngày phép hưởng lương" />
-                <VariableHint name="WORK_HOURS" desc="Giờ làm thực tế trong tháng" />
-                <VariableHint name="STANDARD_DAYS" desc="Ngày công chuẩn" />
-                <VariableHint name="INSURANCE_BASE" desc="Mức lương đóng bảo hiểm" />
-                <VariableHint name="DEPENDENTS" desc="Số người phụ thuộc" />
-                {components
-                  .filter((component) => component.input_code)
-                  .map((component) => (
-                    <VariableHint
-                      key={component.id}
-                      name={component.input_code as string}
-                      desc={`Số liệu tháng cho "${component.name}"`}
-                    />
-                  ))}
-              </div>
-              <p className="mt-2.5 text-xs leading-relaxed text-slate-500">
-                Hàm dùng được: <code className="font-mono">MIN, MAX, ROUND, FLOOR, CEIL, ABS, IF</code>.
-                Ví dụ hoa hồng bậc thang:{' '}
-                <code className="font-mono text-slate-700">IF(REVENUE &gt; 500000000, REVENUE * 0.05, REVENUE * 0.03)</code>
-              </p>
-            </details>
           </section>
 
           <Textarea
@@ -677,41 +696,9 @@ export function PaySchemeModal({
   );
 }
 
-function VariableHint({ name, desc }: { name: string; desc: string }) {
-  return (
-    <p>
-      <code className="font-mono font-bold text-slate-700">{name}</code>
-      <span className="text-slate-400"> — {desc}</span>
-    </p>
-  );
-}
-
 function formatComponentDefault(component: PayComponent): string {
   const amount = Number(component.default_amount);
   return component.calc_type === 'PERCENT' ? `${amount}%` : formatVND(amount);
 }
 
-function describeCalcType(component: PayComponent): string {
-  switch (component.calc_type) {
-    case 'FIXED':
-      return component.prorate ? 'Số tiền cố định, chia theo ngày công' : 'Số tiền cố định trọn tháng';
-    case 'PER_DAY': return 'Đơn giá × số ngày công';
-    case 'PER_HOUR': return `Đơn giá × số giờ nhập ở mã ${component.input_code}`;
-    case 'PER_UNIT': return `Đơn giá × sản lượng nhập ở mã ${component.input_code}`;
-    case 'PERCENT': return `Phần trăm trên ${component.base_code}`;
-    case 'FORMULA': return `Công thức: ${component.formula}`;
-    default: return '';
-  }
-}
-
 /** Một dòng trong bảng ước tính. `muted` cho dòng chỉ để tham khảo, không cộng trừ. */
-function EstimateRow({ label, value, muted }: { label: string; value: number; muted?: boolean }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className={`text-xs ${muted ? 'text-slate-400' : 'text-slate-600'}`}>{label}</dt>
-      <dd className={`text-sm tabular-nums ${muted ? 'text-slate-400' : 'font-semibold text-slate-800'}`}>
-        {value < 0 ? `− ${formatVND(-value)}` : formatVND(value)}
-      </dd>
-    </div>
-  );
-}

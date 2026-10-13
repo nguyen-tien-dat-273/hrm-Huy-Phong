@@ -13,6 +13,8 @@ import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead, type AdminPer
 import { useAppSettings } from '@/contexts/SettingsContext';
 import type { Notification } from '@/types';
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
+import { notificationRoute } from '@/lib/notificationRoutes';
+import { PageErrorBoundary } from '@/components/PageErrorBoundary';
 
 /**
  * Menu đã vượt 12 mục — chia 3 cụm theo mạch công việc để quét mắt nhanh:
@@ -24,15 +26,20 @@ import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
  * trang chủ nhân viên thay vì đoán một đích không liên quan.
  */
 const staffPreviewRoutes: Array<[adminPath: string, staffPath: string]> = [
+  ['/admin/assignments', '/staff/assignments'],
   ['/admin/projects', '/staff/projects'],
   ['/admin/worklog', '/staff/worklog'],
   ['/admin/attendance', '/staff/attendance'],
   ['/admin/timesheet', '/staff/attendance'],
   ['/admin/leave', '/staff/leave'],
-  ['/admin/training', '/staff/training'],
-  ['/admin/performance', '/staff/growth'],
-  ['/admin/reports', '/staff/reports'],
   ['/admin/payroll', '/staff/payroll'],
+  ['/admin/performance', '/staff/kpi'],
+  ['/admin/training', '/staff/training'],
+  ['/admin/process-library', '/staff/processes'],
+  ['/admin/employee-lifecycle', '/staff/growth'],
+  ['/admin/workforce', '/profile'],
+  ['/admin/worker-documents', '/profile'],
+  ['/admin/reports', '/staff/reports'],
 ];
 
 const getStaffPreviewPath = (adminPath: string) =>
@@ -57,17 +64,24 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
   const canReviewAssignments = hasPermission(profile, 'attendance');
 
-  useEffect(() => {
-    if (profile) {
-      supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', profile.id)
-        .order('created_at', { ascending: false })
-        .limit(10)
-        .then(({ data }) => { if (data) setNotifications(data); });
-    }
-  }, [profile, location.pathname]);
+  const loadNotifications = async () => {
+    if (!profile) return;
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', profile.id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (data) setNotifications(data);
+  };
+
+  useEffect(() => { void loadNotifications(); }, [profile, location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useRealtimeSync(
+    profile ? [{ table: 'notifications', filter: `user_id=eq.${profile.id}` }] : [],
+    loadNotifications,
+    { enabled: !!profile, channelKey: `admin-notifications-${profile?.id ?? 'anonymous'}` },
+  );
 
   const loadPendingAssignments = async () => {
     const { count } = await supabase
@@ -196,6 +210,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, is_read: true } : n));
   };
 
+  const openNotification = async (notification: Notification) => {
+    await markNotificationRead(notification.id);
+    setNotifOpen(false);
+    navigate(notificationRoute(notification.type));
+  };
+
   const currentPage = navItems
     .filter((item) => location.pathname.startsWith(item.to.split(/[?#]/, 1)[0]))
     .sort((a, b) => b.to.length - a.to.length)[0];
@@ -222,17 +242,18 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <aside className={`app-sidebar fixed md:sticky top-0 left-0 z-40 h-screen w-[18.5rem] border-r border-slate-200 bg-white text-slate-700 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
         <div className="min-h-20 flex items-center px-5 border-b border-slate-200">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-indigo-600 rounded-lg flex flex-col items-center justify-center gap-0.5">
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-              <div className="w-4 h-0.5 bg-white rounded-full" />
-              <div className="w-4 h-0.5 bg-white/30 rounded-full" />
-            </div>
+            <img
+              src="/logo-mark.png?v=3"
+              alt=""
+              aria-hidden="true"
+              className="h-9 w-9 flex-shrink-0 object-contain"
+            />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-900">{orgName || 'HRM Huy Phong'}</p>
               <p className="mt-0.5 text-[11px] text-slate-500">Hệ thống quản lý nhân sự</p>
             </div>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="md:hidden ml-auto text-slate-400 hover:text-slate-600">
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Đóng menu điều hướng" className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -283,15 +304,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                           }`}>
                             {item.label}
                           </span>
-                          {/* Cau mo ta cua tung chuc nang: nhan khong noi
-                              duoc "Co che luong" khac "Tham so luong" cho
-                              nao, ma do la thu nguoi dung can biet truoc khi
-                              bam chu khong phai sau. */}
-                          <span className={`mt-0.5 block text-[11px] leading-snug ${
-                            isActive ? 'text-indigo-100' : 'text-slate-500'
-                          }`}>
-                            {item.description}
-                          </span>
                         </span>
                         {item.to === '/admin/assignments' && pendingAssignments > 0 && (
                           <span className={`mt-0.5 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
@@ -335,7 +347,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               cha khong co thi phep co khong bao gio truyen xuong - header
               phinh ra 751px trong khung 553px va day ca trang tran ngang. */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden text-slate-600 p-2 rounded-lg hover:bg-slate-100">
+            <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở menu điều hướng" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex min-w-0 flex-col">
@@ -365,7 +377,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   nguyen mau cua module dang mo. */}
               <button
                 onClick={() => { setLauncherOpen(!launcherOpen); setNotifOpen(false); setAvatarOpen(false); }}
-                className={`flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
+                className={`flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold transition-colors ${
                   activeGroup
                     ? activeGroup.chip
                     : 'bg-slate-800 text-white hover:bg-slate-900'
@@ -431,8 +443,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             {/* Gợi ý command palette — người dùng không tự đoán ra phím tắt nếu
                 không được nhắc ở đâu đó. */}
             <button
+              type="button"
               onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-              className="hidden md:flex items-center gap-2 h-9 pl-3 pr-2 rounded-xl border border-slate-200 text-slate-400 hover:text-slate-600 hover:border-slate-300 transition-colors"
+              className="hidden h-11 items-center gap-2 rounded-xl border border-slate-200 pl-3 pr-2 text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-600 md:flex"
               aria-label="Mở tìm nhanh"
             >
               <Search className="w-4 h-4" />
@@ -460,7 +473,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white">
                     <span className="font-display font-semibold text-sm text-slate-800">Thông báo</span>
                     {unreadCount > 0 && (
-                      <button onClick={markAllRead} className="text-xs font-medium text-blue-600 hover:text-blue-700">Đánh dấu đã đọc</button>
+                      <button onClick={markAllRead} className="text-xs font-medium text-indigo-600 hover:text-indigo-700">Đánh dấu đã đọc</button>
                     )}
                   </div>
                   <div className="max-h-80 overflow-y-auto">
@@ -468,9 +481,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                       <p className="text-sm text-slate-400 text-center py-10">Không có thông báo mới</p>
                     ) : (
                       unreadNotifications.map((n) => (
-                        <button type="button" key={n.id} onClick={() => void markNotificationRead(n.id)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-blue-50/40">
+                        <button type="button" key={n.id} onClick={() => void openNotification(n)} className="block w-full px-4 py-3 border-b border-slate-50 text-left cursor-pointer hover:bg-slate-50 transition-colors bg-indigo-50/40">
                           <div className="flex items-center gap-2">
-                            {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />}
+                            {!n.is_read && <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />}
                             <p className="text-sm font-medium text-slate-800">{n.title}</p>
                           </div>
                           <p className="text-xs text-slate-500 mt-0.5 ml-4">{n.message}</p>
@@ -510,7 +523,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     onClick={handleSwitchToStaff}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center"><Eye className="w-4 h-4 text-blue-600" /></span>
+                    <span className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center"><Eye className="w-4 h-4 text-indigo-600" /></span>
                     {isFullAdmin(profile) ? 'Xem với tư cách Nhân viên' : 'Về khu nhân viên'}
                   </button>
                   <button
@@ -535,7 +548,10 @@ export function AdminLayout({ children }: { children: ReactNode }) {
 
         {/* Page content */}
         <main id="main-content" tabIndex={-1} className="page-content flex-1 p-4 sm:p-6 lg:p-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
-          {children}
+          {/* Lưới an toàn: một trang ném lỗi thì chỉ trang đó hiện báo lỗi,
+              thanh điều hướng và đầu trang vẫn còn để đi chỗ khác. Không có
+              nó thì React gỡ cả cây và màn hình trắng trơn. */}
+          <PageErrorBoundary>{children}</PageErrorBoundary>
         </main>
       </div>
     </div>

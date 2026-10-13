@@ -1,5 +1,23 @@
 import { ADMIN_FUNCTIONS, ADMIN_FUNCTION_CODES, type AdminFunctionCode } from '@/lib/permissions';
 
+/**
+ * Hai quyền không còn cấp lẻ nữa, chỉ Admin/CEO giữ.
+ *
+ * `admin.work_locations`: màn Địa điểm chấm công đã gộp vào Máy chấm công
+ * (route cũ giờ chuyển hướng sang đó).
+ * `admin.feature_flags`: bật/tắt tính năng thử nghiệm là việc của quản trị hệ
+ * thống, không phải quyền nghiệp vụ.
+ *
+ * Giữ chúng trong `ADMIN_FUNCTION_CODES` chứ không xoá: `AdminNexusCenter` vẫn
+ * kiểm hai mã này, và ai đã được cấp từ trước thì vẫn dùng được.
+ *
+ * Hệ quả cần biết: quyền đã cấp từ trước sẽ KHÔNG thu hồi được qua màn này nữa
+ * (ô tích không còn để bỏ tích). Chấp nhận được vì `toggle` chỉ thêm/bớt đúng
+ * mã được bấm, nên lưu lại không làm mất quyền cũ. Muốn thu hồi thì sửa thẳng
+ * `profiles.function_permissions` dưới database.
+ */
+const HIDDEN_LEGACY_FUNCTIONS = new Set<AdminFunctionCode>(['admin.work_locations', 'admin.feature_flags']);
+
 /** Chọn quyền chức năng nhạy cảm theo vai trò/vị trí, tách khỏi 8 quyền module. */
 export function FunctionPermissionPicker({
   selected,
@@ -22,7 +40,7 @@ export function FunctionPermissionPicker({
       <legend className="px-1 text-sm font-semibold text-slate-700">Chức năng nâng cao có thể cấp riêng</legend>
       <p className="mb-2 text-xs text-slate-500">Admin/CEO luôn có sẵn. {hint}</p>
       <div className="grid gap-2 sm:grid-cols-2">
-        {ADMIN_FUNCTION_CODES.map((code) => {
+        {ADMIN_FUNCTION_CODES.filter((code) => !HIDDEN_LEGACY_FUNCTIONS.has(code)).map((code) => {
           const item = ADMIN_FUNCTIONS[code];
           const checked = selected.includes(code);
           return (

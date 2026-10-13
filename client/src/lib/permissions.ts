@@ -20,7 +20,7 @@ export const ADMIN_FUNCTION_CODES = [
   'admin.overview', 'admin.employee_lifecycle', 'admin.workforce', 'admin.worker_documents',
   'admin.payroll', 'admin.payroll_schemes', 'admin.payroll_inputs',
   'admin.payroll_components', 'admin.payroll_settings', 'admin.payroll_adjustments',
-  'admin.timesheet_lock', 'admin.performance_manage', 'admin.feature_flags', 'admin.audit',
+  'admin.timesheet_lock', 'admin.performance_manage', 'admin.work_locations', 'admin.feature_flags', 'admin.audit',
 ] as const;
 export type AdminFunctionCode = (typeof ADMIN_FUNCTION_CODES)[number];
 
@@ -32,11 +32,12 @@ export const ADMIN_FUNCTIONS: Record<AdminFunctionCode, { label: string; descrip
   'admin.payroll': { label: 'Bảng lương', description: 'Tính, duyệt và khóa bảng lương; xem phiếu lương từng người.', module: 'attendance' },
   'admin.payroll_schemes': { label: 'Cơ chế lương', description: 'Đặt cách tính lương và các khoản riêng của từng nhân sự.', module: 'attendance' },
   'admin.payroll_inputs': { label: 'Số liệu lương tháng', description: 'Nhập giờ tăng ca, sản lượng, doanh số cho kỳ lương.', module: 'attendance' },
-  'admin.payroll_components': { label: 'Danh mục khoản lương', description: 'Định nghĩa các khoản cộng, trừ và công thức tính.', module: 'attendance' },
+  'admin.payroll_components': { label: 'Danh mục khoản lương', description: 'Quản lý các khoản cộng, trừ và mô tả sử dụng.', module: 'attendance' },
   'admin.payroll_settings': { label: 'Tham số lương', description: 'Ngày công chuẩn, tỷ lệ bảo hiểm và giảm trừ thuế.', module: 'attendance' },
   'admin.payroll_adjustments': { label: 'Điều chỉnh lương', description: 'Truy lĩnh, truy thu cho sai sót của kỳ đã khóa.', module: 'attendance' },
   'admin.timesheet_lock': { label: 'Khóa/mở kỳ bảng công', description: 'Mở kỳ duyệt, khóa kỳ và chốt dữ liệu bảng công.', module: 'attendance' },
   'admin.performance_manage': { label: 'Quản lý KPI & đánh giá', description: 'Tạo chu kỳ, mục tiêu và kết quả hiệu suất.', module: 'reports' },
+  'admin.work_locations': { label: 'Địa điểm chấm công', description: 'Quản lý điểm GPS, bán kính, Wi-Fi và đơn vị áp dụng.', module: 'settings' },
   'admin.feature_flags': { label: 'Tính năng thử nghiệm', description: 'Bật/tắt có kiểm soát các chức năng mới.', module: 'settings' },
   'admin.audit': { label: 'Nhật ký hệ thống', description: 'Truy vết thao tác quản trị và thay đổi dữ liệu.', module: 'settings' },
 };
@@ -46,7 +47,7 @@ export const PERMISSION_LABELS: Record<AdminPermission, { label: string; desc: s
   projects:   { label: 'Quản lý Dự án',   desc: 'Tạo/sửa/xóa dự án, tác vụ và thành viên' },
   reports:    { label: 'Báo cáo',         desc: 'Xem báo cáo tổng hợp toàn công ty' },
   attendance: { label: 'Chấm công',       desc: 'Quản lý máy chấm công, bảng công và giờ làm chuẩn' },
-  leave:      { label: 'Nghỉ phép',       desc: 'Xem và duyệt đơn nghỉ phép, đặt hạn mức phép năm' },
+  leave:      { label: 'Nghỉ phép',         desc: 'Xem và duyệt nghỉ phép, hủy phép và quản lý quỹ phép năm' },
   training:   { label: 'Đào tạo',         desc: 'Quản lý khóa học và tiến độ đào tạo nhân viên' },
   settings:   { label: 'Cấu hình',        desc: 'Thay đổi cấu hình hệ thống' },
 };
@@ -63,7 +64,7 @@ export const STAFF_FUNCTIONS = [
   'Dự án của tôi và tác vụ Kanban',
   'Nhật ký giờ cá nhân',
   'Chấm công từ máy và lịch sử vào/ra',
-  'Nghỉ phép và quỹ phép cá nhân',
+  'Đơn từ cá nhân: nghỉ phép, đi muộn, về sớm và làm thêm',
   'Lương của tôi và phiếu lương',
   'Đào tạo của tôi',
   'Lộ trình, KPI và mục tiêu cá nhân',

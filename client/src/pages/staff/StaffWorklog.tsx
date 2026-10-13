@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { describeDbErrorOrNull } from '@/lib/dbError';
-import { ChevronLeft, ChevronRight, CalendarDays, NotebookPen, Save, TriangleAlert, CheckCircle2 } from 'lucide-react';
+import { describeDbError, describeDbErrorOrNull } from '@/lib/dbError';
+import { ChevronLeft, ChevronRight, CalendarDays, NotebookPen, Save, TriangleAlert, CheckCircle2, Send } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -12,10 +12,29 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import {
-  addDays, UNLOGGED_TOLERANCE_HOURS, attendanceHours, fetchDayEntries, formatHours, saveDayEntries, type WorklogEntry,
+  addDays, startOfWeek, UNLOGGED_TOLERANCE_HOURS, attendanceHours, fetchDayEntries, formatHours, saveDayEntries, type WorklogEntry,
 } from '@/lib/worklog';
 import { getTodayString, toDateString } from '@/lib/utils';
+import { notifyUser } from '@/lib/assignments';
 import type { Attendance } from '@/types';
+
+interface WorklogSubmission {
+  id: string;
+  project_id: string;
+  status: 'SUBMITTED' | 'APPROVED' | 'RETURNED';
+  review_note: string | null;
+}
+
+interface WorklogWeekTask {
+  task_id: string;
+  task: Array<{
+    project_id: string;
+    project: Array<{ name: string; lead_id: string | null }> | { name: string; lead_id: string | null } | null;
+  }> | {
+    project_id: string;
+    project: Array<{ name: string; lead_id: string | null }> | { name: string; lead_id: string | null } | null;
+  } | null;
+}
 
 export function StaffWorklog() {
   const { profile } = useAuth();
@@ -28,6 +47,17 @@ export function StaffWorklog() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [attendance, setAttendance] = useState<Attendance | null>(null);
+  const [weekSubmissions, setWeekSubmissions] = useState<WorklogSubmission[]>([]);
+  const [weekProjectDetails, setWeekProjectDetails] = useState<Map<string, { name: string; leadId: string | null }>>(new Map());
+  const [weekLogProjectIds, setWeekLogProjectIds] = useState<string[]>([]);
+  const [submittingWeek, setSubmittingWeek] = useState(false);
+  const weekStart = toDateString(startOfWeek(new Date(`${date}T00:00:00`)));
+  const weekEnd = toDateString(addDays(new Date(`${weekStart}T00:00:00`), 6));
+  const weekEnded = weekEnd < getTodayString();
+  const submissionByProject = new Map(weekSubmissions.map((submission) => [submission.project_id, submission]));
+  const lockedProjectIds = new Set(weekSubmissions
+    .filter((submission) => submission.status === 'SUBMITTED' || submission.status === 'APPROVED')
+    .map((submission) => submission.project_id));
 
   useEffect(() => {
     if (profile) load();
@@ -42,6 +72,7 @@ export function StaffWorklog() {
       ? [
           { table: 'task_worklogs', filter: `user_id=eq.${profile.id}` },
           { table: 'attendance', filter: `user_id=eq.${profile.id}` },
+          { table: 'worklog_submissions', filter: `user_id=eq.${profile.id}` },
         ]
       : [],
     () => { if (!dirty) load(true); },
@@ -53,7 +84,7 @@ export function StaffWorklog() {
     if (!silent) setLoading(true);
     setDirty(false);
 
-    const [entryResult, attResult] = await Promise.all([
+    const [entryResult, attResult, submissionResult, logsResult] = await Promise.all([
       fetchDayEntries(profile.id, date),
       // KHONG dung `maybeSingle()`: no nem loi khi co nhieu hon mot dong.
       //
@@ -63,12 +94,37 @@ export function StaffWorklog() {
       // lam hai ca se thay trang nhat ky gio bao loi, khong vao duoc.
       supabase.from('attendance').select('*').eq('user_id', profile.id).eq('date', date)
         .order('check_in_time', { ascending: true }),
+      supabase.from('worklog_submissions').select('id,project_id,status,review_note')
+        .eq('user_id', profile.id).eq('week_start', weekStart),
+      supabase.from('task_worklogs').select('task_id,task:tasks(project_id,project:projects(name,lead_id))')
+        .eq('user_id', profile.id).gte('work_date', weekStart).lte('work_date', weekEnd),
     ]);
 
-    setLoadError(entryResult.error ?? describeDbErrorOrNull(attResult.error) ?? null);
+    const weekTaskRows = (logsResult.data || []) as WorklogWeekTask[];
+    const projectDetails = new Map<string, { name: string; leadId: string | null }>();
+    for (const row of weekTaskRows) {
+      const task = Array.isArray(row.task) ? row.task[0] : row.task;
+      const project = task ? (Array.isArray(task.project) ? task.project[0] : task.project) : null;
+      if (task?.project_id) {
+        projectDetails.set(task.project_id, {
+          name: project?.name ?? 'Dự án',
+          leadId: project?.lead_id ?? null,
+        });
+      }
+    }
+    setLoadError(
+      entryResult.error
+        ?? describeDbErrorOrNull(attResult.error)
+        ?? describeDbErrorOrNull(submissionResult.error)
+        ?? describeDbErrorOrNull(logsResult.error)
+        ?? null,
+    );
     setEntries(entryResult.entries);
     // Lay ca dau tien trong ngay lam moc gio vao.
     setAttendance(((attResult.data ?? [])[0] as Attendance) ?? null);
+    setWeekSubmissions((submissionResult.data || []) as WorklogSubmission[]);
+    setWeekProjectDetails(projectDetails);
+    setWeekLogProjectIds([...projectDetails.keys()]);
     setLoading(false);
   };
 
@@ -86,6 +142,11 @@ export function StaffWorklog() {
 
   const handleSave = async () => {
     if (!profile) return;
+    const locked = entries.some((entry) => lockedProjectIds.has(entry.task.project_id));
+    if (locked) {
+      toast('Worklog tuần này đã gửi duyệt hoặc được duyệt, không thể sửa.', 'warning');
+      return;
+    }
     setSaving(true);
     const { error } = await saveDayEntries(profile.id, date, entries);
     setSaving(false);
@@ -96,6 +157,41 @@ export function StaffWorklog() {
     }
     toast('Đã lưu nhật ký.', 'success');
     load();
+  };
+
+  const handleSubmitWeek = async () => {
+    if (dirty) {
+      toast('Lưu thay đổi trong ngày trước khi gửi worklog tuần.', 'warning');
+      return;
+    }
+    if (!weekEnded) {
+      toast('Chỉ gửi worklog sau khi tuần đã kết thúc.', 'warning');
+      return;
+    }
+    setSubmittingWeek(true);
+    const { data, error } = await supabase.rpc('submit_project_worklog_week', {
+      target_week_start: weekStart,
+      submission_note: null,
+    });
+    setSubmittingWeek(false);
+    if (error) {
+      toast(`Gửi worklog thất bại: ${describeDbError(error)}`, 'error');
+      return;
+    }
+
+    const { data: projectsData, error: projectsError } = await supabase
+      .from('projects').select('id,name,lead_id').in('id', weekLogProjectIds);
+    if (projectsError) {
+      toast(`Đã gửi worklog, nhưng không tải được người duyệt: ${describeDbError(projectsError)}`, 'warning');
+    } else {
+      for (const project of projectsData || []) {
+        if (project.lead_id && project.lead_id !== profile?.id) {
+          await notifyUser(project.lead_id, 'Worklog tuần chờ duyệt', `${project.name} · tuần từ ${weekStart}`, 'worklog_review');
+        }
+      }
+    }
+    toast(`Đã gửi worklog của ${data ?? 0} dự án cho Project lead.`, 'success');
+    await load(true);
   };
 
   const totalLogged = entries.reduce((sum, e) => sum + e.hours, 0);
@@ -138,6 +234,57 @@ export function StaffWorklog() {
         )}
       </div>
 
+      {!loading && !loadError && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-800">Worklog tuần {weekStart} – {weekEnd}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Gửi theo dự án sau khi tuần kết thúc. Đã ghi nhận {weekLogProjectIds.length} dự án.
+                {dirty ? ' Lưu thay đổi trước khi gửi.' : ''}
+              </p>
+              {weekSubmissions.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {weekSubmissions.map((submission) => (
+                    <Badge
+                      key={submission.id}
+                      className={submission.status === 'APPROVED'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : submission.status === 'RETURNED'
+                          ? 'bg-rose-50 text-rose-700'
+                          : 'bg-amber-50 text-amber-700'}
+                    >
+                      {weekProjectDetails.get(submission.project_id)?.name ?? 'Dự án'}: {
+                        submission.status === 'APPROVED' ? 'Đã duyệt' : submission.status === 'RETURNED' ? 'Cần chỉnh sửa' : 'Chờ duyệt'
+                      }
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              {weekSubmissions.some((submission) => submission.status === 'RETURNED' && submission.review_note) && (
+                <p className="mt-2 text-xs text-rose-700">
+                  Phản hồi: {weekSubmissions.filter((submission) => submission.status === 'RETURNED' && submission.review_note)
+                    .map((submission) => `${weekProjectDetails.get(submission.project_id)?.name ?? 'Dự án'}: ${submission.review_note}`)
+                    .join(' · ')}
+                </p>
+              )}
+            </div>
+            <Button
+              onClick={() => void handleSubmitWeek()}
+              disabled={!weekEnded || weekLogProjectIds.length === 0 || submittingWeek
+                || dirty
+                || weekLogProjectIds.every((projectId) => {
+                  const status = submissionByProject.get(projectId)?.status;
+                  return status === 'SUBMITTED' || status === 'APPROVED';
+                })}
+            >
+              <Send className="h-4 w-4" />
+              {submittingWeek ? 'Đang gửi…' : 'Gửi worklog tuần'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {loading ? (
@@ -161,12 +308,22 @@ export function StaffWorklog() {
                       {entry.task.estimated_hours ? ` · ước lượng ${formatHours(Number(entry.task.estimated_hours))}` : ''}
                     </p>
                   </div>
+                  {submissionByProject.get(entry.task.project_id) && (
+                    <Badge className={submissionByProject.get(entry.task.project_id)?.status === 'APPROVED'
+                      ? 'bg-emerald-50 text-emerald-700'
+                      : submissionByProject.get(entry.task.project_id)?.status === 'RETURNED'
+                        ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}>
+                      {submissionByProject.get(entry.task.project_id)?.status === 'APPROVED'
+                        ? 'Đã duyệt' : submissionByProject.get(entry.task.project_id)?.status === 'RETURNED' ? 'Cần sửa' : 'Chờ duyệt'}
+                    </Badge>
+                  )}
 
                   <input
                     type="text"
                     inputMode="decimal"
                     value={entry.hours === 0 ? '' : entry.hours}
                     onChange={(e) => setHours(entry.task.id, e.target.value.replace(',', '.'))}
+                    disabled={lockedProjectIds.has(entry.task.project_id)}
                     placeholder="0"
                     aria-label={`Số giờ cho ${entry.task.title}`}
                     className="w-20 h-10 px-3 text-center rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -177,6 +334,7 @@ export function StaffWorklog() {
                     type="text"
                     value={entry.note}
                     onChange={(e) => setNote(entry.task.id, e.target.value)}
+                    disabled={lockedProjectIds.has(entry.task.project_id)}
                     placeholder="Ghi chú (không bắt buộc)"
                     aria-label={`Ghi chú cho ${entry.task.title}`}
                     className="w-full sm:w-56 h-10 px-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -227,7 +385,11 @@ export function StaffWorklog() {
                 )}
               </div>
 
-              <Button onClick={handleSave} disabled={saving || !dirty} className="w-full sm:w-auto">
+              <Button
+                onClick={handleSave}
+                disabled={saving || !dirty || entries.some((entry) => lockedProjectIds.has(entry.task.project_id))}
+                className="w-full sm:w-auto"
+              >
                 <Save className="w-4 h-4" />
                 {saving ? 'Đang lưu...' : dirty ? 'Lưu nhật ký' : 'Đã lưu'}
               </Button>

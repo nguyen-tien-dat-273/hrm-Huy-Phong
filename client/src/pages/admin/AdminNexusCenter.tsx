@@ -15,13 +15,14 @@ import { supabase } from '@/lib/supabase';
 import { notifyUser, notifyUsers } from '@/lib/assignments';
 import { hasAdminFunction, isFullAdmin, type AdminFunctionCode } from '@/lib/permissions';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
-import { KpiWorkspace } from '@/components/kpi/KpiWorkspace';
+import { KpiMonthlyReport } from '@/components/kpi/KpiMonthlyReport';
+import { KpiReviewBoard } from '@/components/kpi/KpiReviewBoard';
+import { KpiSchemeBoard } from '@/components/kpi/KpiSchemeBoard';
 import type { Profile } from '@/types';
 
-type Section = 'lifecycle' | 'performance' | 'locations' | 'flags';
+type Section = 'lifecycle' | 'performance' | 'kpiReview' | 'kpiReport' | 'locations' | 'flags';
 interface Lifecycle { id: string; user_id: string; process_type: 'ONBOARDING' | 'OFFBOARDING'; title: string; start_date: string; target_date: string | null; status: string; mentor_id: string | null }
 interface Checklist { id: string; process_id: string; title: string; owner_id: string | null; due_date: string | null; completed: boolean }
-interface Cycle { id: string; name: string; start_date: string; end_date: string; status: string }
 interface Location { id: string; name: string; address: string | null; latitude: number | null; longitude: number | null; radius_meters: number; wifi_bssid: string | null; is_active: boolean }
 interface OrganizationUnit { id: string; code: string; name: string; unit_type: string; parent_id: string | null; is_active: boolean }
 interface LocationAssignment { unit_id: string; location_id: string; is_primary: boolean }
@@ -29,29 +30,26 @@ interface FeatureFlag { key: string; name: string; description: string | null; e
 
 const meta: Record<Section, { title: string; desc: string }> = {
   lifecycle: { title: 'Onboarding & Offboarding', desc: 'Checklist hội nhập 30–60–90 ngày và quy trình bàn giao khi nghỉ việc.' },
-  performance: { title: 'KPI & Đánh giá', desc: 'Khai bộ KPI, gán cho phòng ban rồi chấm điểm theo tháng — ba bước trong một luồng.' },
+  performance: { title: 'Bộ KPI nhân sự', desc: 'Đi xuống cây tổ chức tới từng nhân sự và khai bộ KPI của riêng họ.' },
+  kpiReport: { title: 'Báo cáo KPI tháng', desc: 'Kết quả KPI nhiều kỳ cạnh nhau: ai đang đi xuống, phòng nào dưới mặt bằng.' },
+  kpiReview: { title: 'Chấm điểm theo tháng', desc: 'Bảng tổng hợp đánh giá KPI của kỳ: mở phiếu, nhập điểm và khoá kỳ để kết quả sang bảng lương.' },
   locations: { title: 'Địa điểm chấm công', desc: 'Cấu hình chi nhánh, bán kính GPS và Wi-Fi dự phòng cho check-in.' },
   flags: { title: 'Feature Flags', desc: 'Bật hoặc tắt an toàn các chức năng mới trước khi áp dụng toàn công ty.' },
 };
 
 const emptyProcess = { user_id: '', process_type: 'ONBOARDING', title: '', start_date: new Date().toISOString().slice(0, 10), target_date: '', mentor_id: '' };
 const emptyItem = { process_id: '', title: '', owner_id: '', due_date: '' };
-const emptyCycle = { name: '', start_date: '', end_date: '', status: 'DRAFT' };
 const emptyLocation = { name: '', address: '', maps_url: '', latitude: '', longitude: '', radius_meters: '200', wifi_bssid: '', unit_ids: [] as string[] };
 
 export function AdminNexusCenter({ section }: { section: Section }) {
   const { profile } = useAuth();
-  // 'locations' không còn route trỏ tới (màn "Điểm chấm công" đã bỏ khỏi menu
-  // — chỉ còn dùng dữ liệu từ máy chấm công) nên không còn mã quyền riêng;
-  // giữ lại mã nghiệp vụ cho 3 mục còn route, 'locations' chỉ full admin mới
-  // đụng được (dead code, không ai vào được qua route nữa).
-  const functionCode: AdminFunctionCode | null = (
+  const functionCode: AdminFunctionCode = (
     {
       lifecycle: 'admin.employee_lifecycle', performance: 'admin.performance_manage',
-      locations: null, flags: 'admin.feature_flags',
+      kpiReview: 'admin.performance_manage', kpiReport: 'admin.performance_manage', locations: 'admin.work_locations', flags: 'admin.feature_flags',
     } as const
   )[section];
-  const canManage = isFullAdmin(profile) || (functionCode !== null && hasAdminFunction(profile, functionCode));
+  const canManage = isFullAdmin(profile) || hasAdminFunction(profile, functionCode);
   const { toast } = useToast();
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
@@ -59,16 +57,14 @@ export function AdminNexusCenter({ section }: { section: Section }) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [processes, setProcesses] = useState<Lifecycle[]>([]);
   const [items, setItems] = useState<Checklist[]>([]);
-  const [cycles, setCycles] = useState<Cycle[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [units, setUnits] = useState<OrganizationUnit[]>([]);
   const [locationAssignments, setLocationAssignments] = useState<LocationAssignment[]>([]);
   const [assignmentSupported, setAssignmentSupported] = useState(true);
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
-  const [modal, setModal] = useState<'process' | 'item' | 'cycle' | 'location' | null>(null);
+  const [modal, setModal] = useState<'process' | 'item' | 'location' | null>(null);
   const [processForm, setProcessForm] = useState(emptyProcess);
   const [itemForm, setItemForm] = useState(emptyItem);
-  const [cycleForm, setCycleForm] = useState(emptyCycle);
   const [locationForm, setLocationForm] = useState(emptyLocation);
   const [saving, setSaving] = useState(false);
   const [resolvingMap, setResolvingMap] = useState(false);
@@ -79,10 +75,9 @@ export function AdminNexusCenter({ section }: { section: Section }) {
     setLoading(true); setError('');
     const [results, unitsResult, assignmentsResult] = await Promise.all([
       Promise.all([
-      supabase.from('profiles').select('*').eq('is_active', true).order('name'),
+      supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       supabase.from('employee_lifecycle_processes').select('*').order('created_at', { ascending: false }),
       supabase.from('employee_checklist_items').select('*').order('order_index'),
-      supabase.from('performance_cycles').select('*').order('start_date', { ascending: false }),
       supabase.from('work_locations').select('*').order('name'),
       supabase.from('feature_flags').select('*').order('name'),
       ]),
@@ -91,7 +86,7 @@ export function AdminNexusCenter({ section }: { section: Section }) {
     ]);
     const featureError = results.slice(1).find((result) => result.error)?.error;
     if (featureError) setError(`Các capability Nexus HRM chưa được khởi tạo trên Supabase. Hãy chạy migration 20260908170000_nexus_hrm_capabilities.sql. Chi tiết: ${describeDbError(featureError)}`);
-    setProfiles((results[0].data || []) as Profile[]); setProcesses((results[1].data || []) as Lifecycle[]); setItems((results[2].data || []) as Checklist[]); setCycles((results[3].data || []) as Cycle[]); setLocations((results[4].data || []) as Location[]); setFlags((results[5].data || []) as FeatureFlag[]);
+    setProfiles((results[0].data || []) as Profile[]); setProcesses((results[1].data || []) as Lifecycle[]); setItems((results[2].data || []) as Checklist[]); setLocations((results[3].data || []) as Location[]); setFlags((results[4].data || []) as FeatureFlag[]);
     setUnits((unitsResult.data || []) as OrganizationUnit[]);
     setAssignmentSupported(!assignmentsResult.error);
     setLocationAssignments((assignmentsResult.data || []) as LocationAssignment[]);
@@ -100,7 +95,6 @@ export function AdminNexusCenter({ section }: { section: Section }) {
   useEffect(() => { void load(); }, []);
   useRealtimeSync([
     { table: 'employee_lifecycle_processes' }, { table: 'employee_checklist_items' },
-    { table: 'performance_cycles' },
     { table: 'work_locations' }, { table: 'feature_flags' },
     { table: 'organization_units' }, { table: 'organization_unit_work_locations' },
   ], () => load(), { channelKey: `nexus-${section}` });
@@ -112,7 +106,6 @@ export function AdminNexusCenter({ section }: { section: Section }) {
     const savedModal = modal;
     if (modal === 'process') { const payload = { ...processForm, target_date: processForm.target_date || null, mentor_id: processForm.mentor_id || null, created_by: profile?.id }; result = editingId ? await supabase.from('employee_lifecycle_processes').update(payload).eq('id', editingId) : await supabase.from('employee_lifecycle_processes').insert(payload); }
     else if (modal === 'item') result = await supabase.from('employee_checklist_items').insert({ ...itemForm, owner_id: itemForm.owner_id || null, due_date: itemForm.due_date || null, order_index: items.filter((item) => item.process_id === itemForm.process_id).length });
-    else if (modal === 'cycle') result = editingId ? await supabase.from('performance_cycles').update(cycleForm).eq('id', editingId) : await supabase.from('performance_cycles').insert(cycleForm);
     else {
       const payload = { name: locationForm.name, address: locationForm.address || null, latitude: locationForm.latitude ? Number(locationForm.latitude) : null, longitude: locationForm.longitude ? Number(locationForm.longitude) : null, radius_meters: Number(locationForm.radius_meters), wifi_bssid: locationForm.wifi_bssid || null };
       const locationResult = editingId
@@ -137,11 +130,10 @@ export function AdminNexusCenter({ section }: { section: Section }) {
       const targetProcess = processes.find((item) => item.id === itemForm.process_id);
       await notifyUsers([...new Set([targetProcess?.user_id, itemForm.owner_id].filter((id): id is string => Boolean(id)))], 'Checklist nhân sự có công việc mới', itemForm.title, 'lifecycle_task');
     }
-    toast(editingId ? 'Đã cập nhật dữ liệu.' : 'Đã lưu dữ liệu.', 'success'); setModal(null); setEditingId(null); setProcessForm(emptyProcess); setItemForm(emptyItem); setCycleForm(emptyCycle); setLocationForm(emptyLocation); await load();
+    toast(editingId ? 'Đã cập nhật dữ liệu.' : 'Đã lưu dữ liệu.', 'success'); setModal(null); setEditingId(null); setProcessForm(emptyProcess); setItemForm(emptyItem); setLocationForm(emptyLocation); await load();
   };
 
   const openEditProcess = (item: Lifecycle) => { setEditingId(item.id); setProcessForm({ user_id: item.user_id, process_type: item.process_type, title: item.title, start_date: item.start_date, target_date: item.target_date || '', mentor_id: item.mentor_id || '' }); setModal('process'); };
-  const openEditCycle = (item: Cycle) => { setEditingId(item.id); setCycleForm({ name: item.name, start_date: item.start_date, end_date: item.end_date, status: item.status }); setModal('cycle'); };
   const openEditLocation = (item: Location) => { setEditingId(item.id); setLocationForm({ name: item.name, address: item.address || '', maps_url: locationMapsUrl(item) || '', latitude: item.latitude == null ? '' : String(item.latitude), longitude: item.longitude == null ? '' : String(item.longitude), radius_meters: String(item.radius_meters), wifi_bssid: item.wifi_bssid || '', unit_ids: locationAssignments.filter((assignment) => assignment.location_id === item.id).map((assignment) => assignment.unit_id) }); setModal('location'); };
 
   const applyGoogleMapsUrl = async () => {
@@ -183,7 +175,6 @@ export function AdminNexusCenter({ section }: { section: Section }) {
 
   const keyword = query.trim().toLowerCase();
   const visibleProcesses = processes.filter((item) => !keyword || `${item.title} ${person(item.user_id)?.name || ''}`.toLowerCase().includes(keyword));
-  const visibleCycles = cycles.filter((item) => !keyword || item.name.toLowerCase().includes(keyword));
   const visibleLocations = locations.filter((item) => !keyword || `${item.name} ${item.address || ''}`.toLowerCase().includes(keyword));
   const assignedUnitNames = (locationId: string) => locationAssignments.filter((assignment) => assignment.location_id === locationId).map((assignment) => units.find((unit) => unit.id === assignment.unit_id)?.name).filter((name): name is string => Boolean(name));
   const gpsFlag = flags.find((flag) => flag.key === 'geofence_attendance');
@@ -195,11 +186,13 @@ export function AdminNexusCenter({ section }: { section: Section }) {
   return <div className="space-y-5">
 
 
-    {section !== 'flags' && section !== 'performance' && <Card><CardContent className="flex items-center gap-3 py-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm trong module..." className="w-full bg-transparent text-sm outline-none" /></CardContent></Card>}
+    {section !== 'flags' && section !== 'performance' && section !== 'kpiReview' && section !== 'kpiReport' && <Card><CardContent className="flex items-center gap-3 py-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm trong module..." className="w-full bg-transparent text-sm outline-none" /></CardContent></Card>}
 
     {section === 'lifecycle' && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">{visibleProcesses.map((process) => { const processItems = items.filter((item) => item.process_id === process.id); const done = processItems.filter((item) => item.completed).length; return <Card key={process.id}><CardHeader><div className="flex items-center justify-between gap-3"><CardTitle className="flex items-center gap-2">{process.process_type === 'ONBOARDING' ? <UserPlus className="w-5 h-5 text-emerald-600" /> : <UserMinus className="w-5 h-5 text-rose-600" />}{process.title}</CardTitle><div className="flex items-center gap-1"><Badge className={process.process_type === 'ONBOARDING' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}>{process.process_type === 'ONBOARDING' ? 'Hội nhập' : 'Nghỉ việc'}</Badge><Button variant="secondary" onClick={() => openEditProcess(process)} aria-label="Sửa quy trình"><Pencil className="h-4 w-4" /></Button><Button variant="danger" onClick={() => void removeRecord('employee_lifecycle_processes', 'id', process.id, process.title)} aria-label="Xóa quy trình"><Trash2 className="h-4 w-4" /></Button></div></div></CardHeader><CardContent><p className="text-sm font-medium text-slate-700">{person(process.user_id)?.name || 'Nhân viên'}</p><p className="text-xs text-slate-400 mt-1">Mentor: {person(process.mentor_id)?.name || 'Chưa gán'} · Mục tiêu: {fmt(process.target_date)}</p><div className="mt-4 h-2 bg-slate-100 rounded-full overflow-hidden"><div className="h-full bg-indigo-600" style={{ width: `${processItems.length ? done / processItems.length * 100 : 0}%` }} /></div><p className="text-xs text-slate-500 mt-1.5">{done}/{processItems.length} mục hoàn thành</p><div className="mt-4 space-y-2">{processItems.map((item) => <div key={item.id} className="flex items-center gap-1"><button onClick={() => void toggleChecklist(item)} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg p-2 text-left hover:bg-slate-50"><CheckCircle2 className={`w-4 h-4 ${item.completed ? 'text-emerald-600' : 'text-slate-300'}`} /><span className={`truncate text-sm ${item.completed ? 'line-through text-slate-400' : 'text-slate-700'}`}>{item.title}</span><span className="ml-auto text-xs text-slate-400">{fmt(item.due_date)}</span></button><Button variant="danger" onClick={() => void removeRecord('employee_checklist_items', 'id', item.id, item.title)} aria-label="Xóa checklist"><Trash2 className="h-4 w-4" /></Button></div>)}</div></CardContent></Card>})}{visibleProcesses.length === 0 && <Card className="lg:col-span-2"><EmptyState icon={<UserPlus className="w-7 h-7" />} title="Không có quy trình phù hợp" description="Tạo quy trình mới hoặc đổi từ khóa tìm kiếm." /></Card>}</div>}
 
-    {section === 'performance' && canManage && <KpiWorkspace profiles={profiles} actorId={profile?.id ?? null} />}
+    {section === 'performance' && canManage && <KpiSchemeBoard actorId={profile?.id ?? null} />}
+    {section === 'kpiReview' && canManage && <KpiReviewBoard profiles={profiles} actorId={profile?.id ?? null} />}
+    {section === 'kpiReport' && canManage && <KpiMonthlyReport profiles={profiles} />}
 
 
     {section === 'locations' && <>
@@ -212,7 +205,6 @@ export function AdminNexusCenter({ section }: { section: Section }) {
 
     <Modal open={modal === 'process'} onClose={() => setModal(null)} title="Tạo quy trình nhân sự"><form onSubmit={save} className="space-y-4"><Select label="Nhân viên" value={processForm.user_id} onChange={(e) => setProcessForm({ ...processForm, user_id: e.target.value })} required><option value="">Chọn nhân viên</option>{profiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Loại quy trình" value={processForm.process_type} onChange={(e) => setProcessForm({ ...processForm, process_type: e.target.value })}><option value="ONBOARDING">Onboarding</option><option value="OFFBOARDING">Offboarding</option></Select><Input label="Tên quy trình" value={processForm.title} onChange={(e) => setProcessForm({ ...processForm, title: e.target.value })} required /><div className="grid grid-cols-2 gap-3"><Input label="Ngày bắt đầu" type="date" value={processForm.start_date} onChange={(e) => setProcessForm({ ...processForm, start_date: e.target.value })} /><Input label="Ngày mục tiêu" type="date" value={processForm.target_date} onChange={(e) => setProcessForm({ ...processForm, target_date: e.target.value })} /></div><Select label="Mentor / người phụ trách" value={processForm.mentor_id} onChange={(e) => setProcessForm({ ...processForm, mentor_id: e.target.value })}><option value="">Chưa gán</option>{profiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Actions saving={saving} close={() => setModal(null)} /></form></Modal>
     <Modal open={modal === 'item'} onClose={() => setModal(null)} title="Thêm mục checklist"><form onSubmit={save} className="space-y-4"><Select label="Quy trình" value={itemForm.process_id} onChange={(e) => setItemForm({ ...itemForm, process_id: e.target.value })} required><option value="">Chọn quy trình</option>{processes.map((item) => <option key={item.id} value={item.id}>{item.title} · {person(item.user_id)?.name}</option>)}</Select><Input label="Công việc cần hoàn thành" value={itemForm.title} onChange={(e) => setItemForm({ ...itemForm, title: e.target.value })} required /><Select label="Người phụ trách" value={itemForm.owner_id} onChange={(e) => setItemForm({ ...itemForm, owner_id: e.target.value })}><option value="">Chưa gán</option>{profiles.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Input label="Hạn hoàn thành" type="date" value={itemForm.due_date} onChange={(e) => setItemForm({ ...itemForm, due_date: e.target.value })} /><Actions saving={saving} close={() => setModal(null)} /></form></Modal>
-    <Modal open={modal === 'cycle'} onClose={() => setModal(null)} title="Tạo chu kỳ đánh giá"><form onSubmit={save} className="space-y-4"><Input label="Tên chu kỳ" value={cycleForm.name} onChange={(e) => setCycleForm({ ...cycleForm, name: e.target.value })} required /><div className="grid grid-cols-2 gap-3"><Input label="Bắt đầu" type="date" value={cycleForm.start_date} onChange={(e) => setCycleForm({ ...cycleForm, start_date: e.target.value })} required /><Input label="Kết thúc" type="date" value={cycleForm.end_date} onChange={(e) => setCycleForm({ ...cycleForm, end_date: e.target.value })} required /></div><Select label="Trạng thái" value={cycleForm.status} onChange={(e) => setCycleForm({ ...cycleForm, status: e.target.value })}><option value="DRAFT">Bản nháp</option><option value="ACTIVE">Đang diễn ra</option><option value="CLOSED">Đã đóng</option></Select><Actions saving={saving} close={() => setModal(null)} /></form></Modal>
     <Modal open={modal === 'location'} onClose={() => setModal(null)} title={editingId ? 'Sửa địa điểm chấm công' : 'Thêm địa điểm chấm công'}>
       <form onSubmit={save} className="space-y-4">
         <Input label="Tên địa điểm" value={locationForm.name} onChange={(e) => setLocationForm({ ...locationForm, name: e.target.value })} required />

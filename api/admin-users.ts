@@ -83,16 +83,15 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       response,
       503,
       `Dịch vụ quản trị tài khoản chưa được cấu hình. Thiếu biến môi trường: ${missing.join(', ')}. ` +
-        'Thêm ở Vercel → Settings → Environment Variables rồi deploy lại.',
+        'Kiểm tra file cấu hình môi trường của dịch vụ API rồi khởi động lại.',
     );
   }
 
   const token = readBearer(request);
   if (!token) return fail(response, 401, 'Phiên đăng nhập không hợp lệ.');
 
-  // Vercel hiện suy luận nhầm SupabaseAuthClient theo declaration dành cho
-  // browser khi compile function. Runtime vẫn là supabase-js v2; nới kiểu tại
-  // biên server để build function không loại bỏ các API getUser/admin hợp lệ.
+  // Nới kiểu tại biên server vì các API Auth admin không được suy luận chính
+  // xác từ declaration dùng chung của trình duyệt.
   const authClient: any = createClient(supabaseUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const service: any = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
@@ -198,7 +197,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       await service.auth.admin.deleteUser(created.user.id);
       return fail(response, 400, `Không tạo được hồ sơ nhân sự: ${profileError.message}`);
     }
-    return response.status(201).json({ email: identifier.email, tempPassword: password });
+    return response.status(201).json({ id: created.user.id, email: identifier.email, tempPassword: password });
   }
 
   if (action === 'reset-password' || action === 'delete') {

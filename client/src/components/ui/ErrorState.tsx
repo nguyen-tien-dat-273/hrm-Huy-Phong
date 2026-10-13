@@ -28,8 +28,9 @@ export function ErrorState({ message, onRetry }: ErrorStateProps) {
       </code>
       {onRetry && (
         <button
+          type="button"
           onClick={onRetry}
-          className="mt-5 inline-flex items-center gap-2 h-10 px-4 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+          className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <RotateCw className="w-4 h-4" />
           Thử lại
