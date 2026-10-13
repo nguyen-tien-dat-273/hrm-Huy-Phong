@@ -162,9 +162,14 @@ export default async function handler(request: ApiRequest, response: ApiResponse
 
   if (!serial) return text(response, 400, 'ERROR: thiếu SN');
   if (!allowedSerials.has(serial)) {
-    // Không tiết lộ sê-ri nào được phép. Máy thật sẽ không bao giờ thấy dòng này.
-    console.warn(`[iclock] từ chối sê-ri lạ: ${serial}`);
-    return text(response, 403, 'ERROR: thiet bi chua dang ky');
+    // Kèm SỐ LƯỢNG sê-ri đã khai, không kèm giá trị. Hai nguyên nhân của lỗi
+    // này nhìn giống hệt nhau từ bên ngoài, mà cách sửa thì ngược nhau:
+    //   0  → biến ATTENDANCE_DEVICE_SERIALS chưa tới được hàm (chưa deploy lại,
+    //        sai tên biến, hoặc chưa tick đúng Environment)
+    //   >0 → biến có tới, nhưng giá trị không khớp (thừa dấu cách, sai chữ số)
+    // Con số này không tiết lộ gì: nó chỉ nói "có mấy máy được khai".
+    console.warn(`[iclock] từ chối sê-ri "${serial}" — đã khai ${allowedSerials.size} sê-ri`);
+    return text(response, 403, `ERROR: thiet bi chua dang ky (da khai ${allowedSerials.size} serial)`);
   }
 
   if (request.method === 'GET') return text(response, 200, handshake(serial));
