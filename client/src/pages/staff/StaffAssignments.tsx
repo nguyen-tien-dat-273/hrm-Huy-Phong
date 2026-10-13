@@ -24,7 +24,7 @@ import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { supabase } from '@/lib/supabase';
 import { formatDate, getTodayString } from '@/lib/utils';
-import type { DailyAssignment } from '@/types';
+import type { DailyAssignment, Task } from '@/types';
 
 const STATUS_STYLE: Record<string, { label: string; className: string }> = {
   pending: { label: 'Cần làm', className: 'bg-slate-100 text-slate-700' },
@@ -51,6 +51,7 @@ export function StaffAssignments() {
   const { toast } = useToast();
 
   const [assignments, setAssignments] = useState<DailyAssignment[]>([]);
+  const [projectTasks, setProjectTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
   const [submitTarget, setSubmitTarget] = useState<DailyAssignment | null>(null);
@@ -75,27 +76,52 @@ export function StaffAssignments() {
 
     // `daily_assignments` co 3 khoa ngoai toi profiles nen phai chi ro khoa
     // khi embed, tranh loi PGRST201.
-    const { data, error } = await supabase
-      .from('daily_assignments')
-      .select('*')
-      .eq('user_id', profile.id)
-      .gte('work_date', toDateString(weekStart))
-      .lte('work_date', toDateString(weekEnd))
-      .order('work_date', { ascending: true })
-      .order('created_at', { ascending: true });
+    const [dailyResult, membershipsResult] = await Promise.all([
+      supabase.from('daily_assignments')
+        .select('*')
+        .eq('user_id', profile.id)
+        .gte('work_date', toDateString(weekStart))
+        .lte('work_date', toDateString(weekEnd))
+        .order('work_date', { ascending: true })
+        .order('created_at', { ascending: true }),
+      supabase.from('project_members').select('project_id').eq('user_id', profile.id),
+    ]);
+    const { data, error } = dailyResult;
 
     if (error) toast(describeDbError(error), 'error');
     // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200).
     const rows = (data || []) as DailyAssignment[];
     const people = await fetchProfileMap(rows.map((row) => row.assigned_by));
     setAssignments(rows.map((row) => ({ ...row, assigner: row.assigner ?? people.get(row.assigned_by || '') })));
+    if (membershipsResult.error) {
+      toast(describeDbError(membershipsResult.error), 'error');
+      setProjectTasks([]);
+    } else {
+      const projectIds = (membershipsResult.data || []).map((member) => member.project_id);
+      if (projectIds.length === 0) {
+        setProjectTasks([]);
+      } else {
+        const { data: tasks, error: taskError } = await supabase
+          .from('tasks')
+          .select('*, project:projects(id,name)')
+          .eq('assignee_id', profile.id)
+          .in('project_id', projectIds)
+          .order('due_date', { ascending: true, nullsFirst: false });
+        if (taskError) toast(describeDbError(taskError), 'error');
+        setProjectTasks((tasks || []) as Task[]);
+      }
+    }
     setLoading(false);
   }, [profile, weekStart, weekEnd, toast]);
 
   useEffect(() => { void loadData(); }, [loadData]);
 
   useRealtimeSync(
-    profile ? [{ table: 'daily_assignments', filter: `user_id=eq.${profile.id}` }] : [],
+    profile ? [
+      { table: 'daily_assignments', filter: `user_id=eq.${profile.id}` },
+      { table: 'tasks', filter: `assignee_id=eq.${profile.id}` },
+      { table: 'project_members', filter: `user_id=eq.${profile.id}` },
+    ] : [],
     () => loadData(true),
     { enabled: !!profile, channelKey: `staff-assignments-${profile?.id ?? 'anonymous'}` },
   );
@@ -161,6 +187,43 @@ export function StaffAssignments() {
 
   return (
     <div className="space-y-4">
+      <Card><CardContent className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-bold text-slate-800">Việc được giao</h2>
+          <p className="mt-1 text-xs text-slate-500">Gồm việc hằng ngày và tác vụ dự án được giao cho bạn.</p>
+        </div>
+        <Badge className="bg-indigo-50 text-indigo-700">{assignments.length + projectTasks.length} việc</Badge>
+      </CardContent></Card>
+
+      <Card>
+        <CardContent>
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold text-slate-800">Tác vụ dự án của tôi</h3>
+              <p className="mt-1 text-xs text-slate-500">Các tác vụ do dự án phân công cho bạn.</p>
+            </div>
+            <Badge className="bg-indigo-50 text-indigo-700">{projectTasks.length}</Badge>
+          </div>
+          {projectTasks.length === 0 ? <p className="py-5 text-center text-sm text-slate-400">Chưa có tác vụ dự án được giao.</p> : (
+            <ul className="divide-y divide-slate-100">
+              {projectTasks.map((task) => {
+                const status = task.status === 'todo' ? { label: 'Cần làm', style: 'bg-slate-100 text-slate-700' }
+                  : task.status === 'in_progress' ? { label: 'Đang làm', style: 'bg-blue-100 text-blue-700' }
+                  : task.status === 'in_review' ? { label: 'Đang duyệt', style: 'bg-amber-100 text-amber-700' }
+                  : { label: 'Hoàn thành', style: 'bg-emerald-100 text-emerald-700' };
+                return <li key={task.id} className="flex flex-wrap items-center gap-2 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-800">{task.title}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">{task.project?.name || 'Dự án'}{task.due_date ? ` · Hạn ${formatDate(task.due_date)}` : ''}</p>
+                  </div>
+                  <Badge className={status.style}>{status.label}</Badge>
+                </li>;
+              })}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
       <Card><CardContent className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={() => setWeekOffset(weekOffset - 1)}>Tuần trước</Button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   closestCorners, type DragStartEvent, type DragEndEvent,
@@ -34,6 +35,10 @@ interface MyTaskRequest {
   status: 'SUBMITTED' | 'APPROVED' | 'RETURNED';
   review_note: string | null;
   requested_due_date: string | null;
+  evidence_url: string | null;
+  evidence_file_path: string | null;
+  evidence_file_name: string | null;
+  evidence_file_signed_url?: string | null;
   created_at: string;
 }
 
@@ -50,6 +55,7 @@ const LEGACY_ACCESS: Record<string, ProjectAccess> = {
 };
 
 export function StaffKanban() {
+  const [searchParams] = useSearchParams();
   const { profile } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -62,13 +68,15 @@ export function StaffKanban() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [projectFilter, setProjectFilter] = useState<string>(() => searchParams.get('project') || 'all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [workflowTarget, setWorkflowTarget] = useState<Task | null>(null);
   const [workflowKind, setWorkflowKind] = useState<'DEADLINE_EXTENSION' | 'COMPLETION'>('COMPLETION');
   const [workflowDate, setWorkflowDate] = useState('');
   const [workflowNote, setWorkflowNote] = useState('');
+  const [workflowEvidenceUrl, setWorkflowEvidenceUrl] = useState('');
+  const [workflowEvidenceFile, setWorkflowEvidenceFile] = useState<File | null>(null);
   const [workflowSaving, setWorkflowSaving] = useState(false);
   const [createForm, setCreateForm] = useState({ title: '', description: '', project_id: '', assignee_id: '', start_date: '', due_date: '', priority: 'medium' as TaskPriority });
 
@@ -80,8 +88,13 @@ export function StaffKanban() {
     if (profile) loadData();
   }, [profile]);
 
+  useEffect(() => {
+    const projectId = searchParams.get('project');
+    if (projectId) setProjectFilter(projectId);
+  }, [searchParams]);
+
   useRealtimeSync(
-    profile ? [{ table: 'tasks' }, { table: 'project_members' }, { table: 'project_task_requests', filter: `requested_by=eq.${profile.id}` }] : [],
+    profile ? [{ table: 'tasks' }, { table: 'task_status_logs' }, { table: 'project_members' }, { table: 'project_task_requests', filter: `requested_by=eq.${profile.id}` }] : [],
     () => loadData(true),
     { enabled: !!profile },
   );
@@ -139,7 +152,7 @@ export function StaffKanban() {
       supabase.from('projects').select('*').in('id', projectIds),
       supabase.from('project_members').select('*').in('project_id', projectIds),
       supabase.from('project_task_requests')
-        .select('id,task_id,request_type,status,review_note,requested_due_date,created_at')
+        .select('id,task_id,request_type,status,review_note,requested_due_date,evidence_url,evidence_file_path,evidence_file_name,created_at')
         .eq('requested_by', profile?.id ?? '')
         .order('created_at', { ascending: false }),
     ]);
@@ -157,7 +170,13 @@ export function StaffKanban() {
     setProjects((projectData || []) as Project[]);
     setProjectMembers(members);
     setProfiles(uniqueProfiles);
-    setMyTaskRequests((requestData || []) as MyTaskRequest[]);
+    const requestRows = (requestData || []) as MyTaskRequest[];
+    const signedRequests = await Promise.all(requestRows.map(async (request) => {
+      if (!request.evidence_file_path) return request;
+      const { data } = await supabase.storage.from('task-evidence').createSignedUrl(request.evidence_file_path, 300);
+      return { ...request, evidence_file_signed_url: data?.signedUrl ?? null };
+    }));
+    setMyTaskRequests(signedRequests);
     setLoading(false);
   };
 
@@ -166,8 +185,9 @@ export function StaffKanban() {
   const canEditTask = (projectId: string) => hasProjectPermission(projectId, 'task.edit');
   const canDeleteTask = (projectId: string) => hasProjectPermission(projectId, 'task.delete');
   const canAssignTask = (projectId: string) => hasProjectPermission(projectId, 'task.assign');
-  const canMoveTask = (task: Task) => hasProjectPermission(task.project_id, 'task.move_any')
-    || (task.assignee_id === profile?.id && hasProjectPermission(task.project_id, 'task.move_own'));
+  const canMoveTask = (task: Task) => task.assignee_id === profile?.id
+    && task.status !== 'in_review' && task.status !== 'done'
+    && hasProjectPermission(task.project_id, 'task.move_own');
   const creatableProjects = projects.filter((project) => canCreateTask(project.id));
   const selectedAccess = projectFilter === 'all' ? null : projectAccess[projectFilter];
   const assignableProfiles = Array.from(new Map(
@@ -220,9 +240,17 @@ export function StaffKanban() {
       toast('Bạn chỉ được chuyển trạng thái tác vụ được giao cho mình.', 'warning');
       return;
     }
+    if (task.assignee_id !== profile?.id) {
+      toast('Chỉ người được giao mới được chuyển trạng thái thẻ.', 'warning');
+      return;
+    }
     if (newStatus === 'done') {
-      if (task.assignee_id !== profile?.id) {
-        toast('Chỉ người được giao mới gửi yêu cầu nghiệm thu.', 'warning');
+      toast('Chỉ người kiểm duyệt mới nghiệm thu hoàn thành.', 'warning');
+      return;
+    }
+    if (newStatus === 'in_review') {
+      if (task.status !== 'in_progress') {
+        toast('Chỉ có thể gửi nghiệm thu từ cột Đang làm.', 'warning');
         return;
       }
       if (latestRequestByTask.get(task.id)?.status === 'SUBMITTED') {
@@ -233,6 +261,14 @@ export function StaffKanban() {
       setWorkflowKind('COMPLETION');
       setWorkflowDate('');
       setWorkflowNote('');
+      setWorkflowEvidenceUrl('');
+      setWorkflowEvidenceFile(null);
+      return;
+    }
+    const validMove = (task.status === 'todo' && newStatus === 'in_progress')
+      || (task.status === 'in_progress' && newStatus === 'todo');
+    if (!validMove) {
+      toast('Chuyển cột không đúng thứ tự.', 'warning');
       return;
     }
 
@@ -253,35 +289,76 @@ export function StaffKanban() {
     setWorkflowKind(kind);
     setWorkflowDate(kind === 'DEADLINE_EXTENSION' && task.due_date ? nextDate(task.due_date) : '');
     setWorkflowNote('');
+    setWorkflowEvidenceUrl('');
+    setWorkflowEvidenceFile(null);
   };
 
   const submitWorkflowRequest = async () => {
     if (!workflowTarget) return;
-    if (workflowNote.trim().length < 3) {
-      toast('Nhập lý do hoặc kết quả công việc (ít nhất 3 ký tự).', 'warning');
+    if (workflowNote.trim().length < (workflowKind === 'COMPLETION' ? 10 : 3)) {
+      toast(workflowKind === 'COMPLETION' ? 'Báo cáo công việc cần ít nhất 10 ký tự.' : 'Nhập lý do xin gia hạn (ít nhất 3 ký tự).', 'warning');
       return;
     }
     if (workflowKind === 'DEADLINE_EXTENSION' && !workflowDate) {
       toast('Chọn hạn mới.', 'warning');
       return;
     }
+    if (workflowKind === 'COMPLETION' && !workflowEvidenceUrl.trim() && !workflowEvidenceFile) {
+      toast('Thêm ít nhất một link hoặc file minh chứng trước khi gửi nghiệm thu.', 'warning');
+      return;
+    }
+    const evidenceUrl = workflowEvidenceUrl.trim();
+    if (workflowEvidenceFile && workflowEvidenceFile.size > 10 * 1024 * 1024) {
+      toast('File minh chứng tối đa 10 MB.', 'warning');
+      return;
+    }
+    if (evidenceUrl) {
+      try {
+        const parsed = new URL(evidenceUrl);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('protocol');
+      } catch {
+        toast('Link minh chứng phải bắt đầu bằng http:// hoặc https://.', 'warning');
+        return;
+      }
+    }
     setWorkflowSaving(true);
+    let evidenceFilePath: string | null = null;
+    if (workflowKind === 'COMPLETION' && workflowEvidenceFile) {
+      const safeFileName = workflowEvidenceFile.name.replace(/[^\p{L}\p{N}._-]+/gu, '-').slice(-120) || 'minh-chung';
+      evidenceFilePath = `${workflowTarget.project_id}/${workflowTarget.id}/${profile?.id}/${crypto.randomUUID()}-${safeFileName}`;
+      const { error: uploadError } = await supabase.storage.from('task-evidence').upload(evidenceFilePath, workflowEvidenceFile, {
+        contentType: workflowEvidenceFile.type || 'application/octet-stream',
+      });
+      if (uploadError) {
+        setWorkflowSaving(false);
+        toast(`Tải file minh chứng thất bại: ${uploadError.message}`, 'error');
+        return;
+      }
+    }
     const { error } = await supabase.rpc('request_project_task_action', {
       target_task: workflowTarget.id,
       request_kind: workflowKind,
       target_due_date: workflowKind === 'DEADLINE_EXTENSION' ? workflowDate : null,
       request_reason: workflowNote.trim(),
+      target_evidence_url: evidenceUrl || null,
+      target_evidence_file_path: evidenceFilePath,
+      target_evidence_file_name: workflowEvidenceFile?.name ?? null,
     });
     setWorkflowSaving(false);
     if (error) {
+      if (evidenceFilePath) await supabase.storage.from('task-evidence').remove([evidenceFilePath]);
       toast(`Gửi yêu cầu thất bại: ${describeDbError(error)}`, 'error');
       return;
     }
     toast(workflowKind === 'DEADLINE_EXTENSION' ? 'Đã gửi yêu cầu gia hạn.' : 'Đã gửi yêu cầu nghiệm thu.', 'success');
     const leadId = projects.find((project) => project.id === workflowTarget.project_id)?.lead_id;
-    if (leadId && leadId !== profile?.id) {
+    const reviewerIds = leadId && leadId !== profile?.id
+      ? [leadId]
+      : ((await supabase.from('profiles_directory').select('id,role').in('role', ['admin', 'ceo'])).data || [])
+          .map((reviewer) => reviewer.id).filter((reviewerId) => reviewerId !== profile?.id);
+    for (const reviewerId of reviewerIds) {
       await notifyUser(
-        leadId,
+        reviewerId,
         workflowKind === 'DEADLINE_EXTENSION' ? 'Yêu cầu gia hạn deadline' : 'Yêu cầu nghiệm thu task',
         workflowTarget.title,
         'project_task_review',
@@ -502,12 +579,12 @@ export function StaffKanban() {
                         task={task}
                         assignee={profiles.find((p) => p.id === task.assignee_id)}
                         canMove={canMoveTask(task)}
-                        onEdit={canEditTask(task.project_id) ? () => openEditTask(task) : undefined}
-                        onDelete={canDeleteTask(task.project_id) ? () => handleDeleteTask(task) : undefined}
-                        onRequestDeadline={task.assignee_id === profile?.id && task.due_date
+                        onEdit={task.status !== 'done' && canEditTask(task.project_id) ? () => openEditTask(task) : undefined}
+                        onDelete={task.status !== 'done' && canDeleteTask(task.project_id) ? () => handleDeleteTask(task) : undefined}
+                        onRequestDeadline={task.status !== 'done' && task.assignee_id === profile?.id && task.due_date
                           && latestRequestByTask.get(task.id)?.status !== 'SUBMITTED'
                           ? () => openWorkflowRequest(task, 'DEADLINE_EXTENSION') : undefined}
-                        onRequestCompletion={task.assignee_id === profile?.id && task.status !== 'done'
+        onRequestCompletion={task.assignee_id === profile?.id && task.status === 'in_progress'
                           && latestRequestByTask.get(task.id)?.status !== 'SUBMITTED'
                           ? () => openWorkflowRequest(task, 'COMPLETION') : undefined}
                         request={latestRequestByTask.get(task.id)}
@@ -639,9 +716,26 @@ export function StaffKanban() {
               onChange={(event) => setWorkflowNote(event.target.value)}
               required
             />
+            {workflowKind === 'COMPLETION' && (
+              <>
+              <Input
+                label="Link minh chứng (bắt buộc)"
+                type="url"
+                value={workflowEvidenceUrl}
+                onChange={(event) => setWorkflowEvidenceUrl(event.target.value)}
+                placeholder="https://..."
+                autoComplete="url"
+              />
+              <label className="block text-sm font-semibold text-slate-700">
+                Hoặc tải file minh chứng (tối đa 10 MB)
+                <input type="file" className="mt-1 block w-full text-sm font-normal" onChange={(event) => setWorkflowEvidenceFile(event.target.files?.[0] ?? null)} />
+                {workflowEvidenceFile && <span className="mt-1 block text-xs font-normal text-slate-500">{workflowEvidenceFile.name}</span>}
+              </label>
+              </>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setWorkflowTarget(null)} disabled={workflowSaving}>Hủy</Button>
-              <Button onClick={() => void submitWorkflowRequest()} disabled={workflowSaving || workflowNote.trim().length < 3}>
+              <Button onClick={() => void submitWorkflowRequest()} disabled={workflowSaving || workflowNote.trim().length < (workflowKind === 'COMPLETION' ? 10 : 3) || (workflowKind === 'COMPLETION' && !workflowEvidenceUrl.trim() && !workflowEvidenceFile)}>
                 <Send className="h-4 w-4" />
                 {workflowSaving ? 'Đang gửi…' : 'Gửi Project lead'}
               </Button>
@@ -759,6 +853,16 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
           </Badge>
           {request.status === 'RETURNED' && request.review_note && (
             <p className="mt-1 text-xs text-rose-700">{request.review_note}</p>
+          )}
+          {request.evidence_url && (
+            <a href={request.evidence_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-medium text-indigo-700 underline underline-offset-2">
+              Mở link minh chứng
+            </a>
+          )}
+          {request.evidence_file_signed_url && (
+            <a href={request.evidence_file_signed_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-block text-xs font-medium text-indigo-700 underline underline-offset-2">
+              Mở file: {request.evidence_file_name || 'minh chứng'}
+            </a>
           )}
         </div>
       )}

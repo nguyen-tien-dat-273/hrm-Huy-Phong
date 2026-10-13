@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { describeDbError } from '@/lib/dbError';
 import { notifyUser } from '@/lib/assignments';
@@ -24,6 +25,10 @@ interface WorkflowRequest {
   previous_due_date: string | null;
   requested_due_date: string | null;
   request_note: string;
+  evidence_url: string | null;
+  evidence_file_path: string | null;
+  evidence_file_name: string | null;
+  evidence_file_signed_url?: string | null;
   created_at: string;
 }
 
@@ -40,6 +45,7 @@ export function ProjectTaskWorkflowPanel({
   canReview: boolean;
 }) {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [requests, setRequests] = useState<WorkflowRequest[]>([]);
   const [details, setDetails] = useState<WorkflowDetails>({ taskNames: new Map(), peopleNames: new Map() });
   const [loading, setLoading] = useState(true);
@@ -52,7 +58,7 @@ export function ProjectTaskWorkflowPanel({
     if (!silent) setLoading(true);
     const { data, error } = await supabase
       .from('project_task_requests')
-      .select('id,task_id,project_id,requested_by,request_type,previous_due_date,requested_due_date,request_note,created_at')
+      .select('id,task_id,project_id,requested_by,request_type,previous_due_date,requested_due_date,request_note,evidence_url,evidence_file_path,evidence_file_name,created_at')
       .eq('project_id', projectId)
       .eq('status', 'SUBMITTED')
       .order('created_at', { ascending: true });
@@ -71,7 +77,12 @@ export function ProjectTaskWorkflowPanel({
     ]);
     const detailError = tasksResult.error ?? peopleResult.error;
     setLoadError(detailError ? describeDbError(detailError) : null);
-    setRequests(rows);
+    const rowsWithLinks = await Promise.all(rows.map(async (request) => {
+      if (!request.evidence_file_path) return request;
+      const { data: signed } = await supabase.storage.from('task-evidence').createSignedUrl(request.evidence_file_path, 300);
+      return { ...request, evidence_file_signed_url: signed?.signedUrl ?? null };
+    }));
+    setRequests(rowsWithLinks);
     setDetails({
       taskNames: new Map((tasksResult.data || []).map((task) => [task.id, task.title])),
       peopleNames: new Map((peopleResult.data || []).map((person) => [person.id, person.name])),
@@ -87,8 +98,8 @@ export function ProjectTaskWorkflowPanel({
   );
 
   const review = async (target: WorkflowRequest, decision: 'APPROVED' | 'RETURNED', note = reviewNote) => {
-    if (decision === 'RETURNED' && note.trim().length < 3) {
-      toast('Nhập lý do trả lại (ít nhất 3 ký tự).', 'warning');
+    if (decision === 'RETURNED' && note.trim().length < 10) {
+      toast('Lý do trả lại cần ít nhất 10 ký tự.', 'warning');
       return;
     }
     setBusy(true);
@@ -153,8 +164,23 @@ export function ProjectTaskWorkflowPanel({
                       </p>
                     )}
                     <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{request.request_note}</p>
+                    {request.evidence_url && (
+                      <a
+                        href={request.evidence_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-lg text-sm font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                      >
+                        Mở link minh chứng
+                      </a>
+                    )}
+                    {request.evidence_file_signed_url && (
+                      <a href={request.evidence_file_signed_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-lg text-sm font-medium text-indigo-700 underline underline-offset-2">
+                        Mở file minh chứng: {request.evidence_file_name || 'tệp đính kèm'}
+                      </a>
+                    )}
                   </div>
-                  {canReview && (
+                  {canReview && request.requested_by !== profile?.id && (
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => { setReviewTarget(request); setReviewNote(''); }}>
                         <RotateCcw className="h-3.5 w-3.5" /> Trả lại
@@ -179,7 +205,7 @@ export function ProjectTaskWorkflowPanel({
               {' · '}{details.taskNames.get(reviewTarget.task_id) ?? 'Task'}
             </p>
             <Textarea
-              label="Ghi chú (bắt buộc nếu trả lại)"
+              label="Ghi chú (lý do trả lại cần ít nhất 10 ký tự)"
               rows={3}
               value={reviewNote}
               onChange={(event) => setReviewNote(event.target.value)}
@@ -187,7 +213,7 @@ export function ProjectTaskWorkflowPanel({
             />
             <div className="flex flex-wrap justify-end gap-2">
               <Button variant="outline" onClick={() => setReviewTarget(null)} disabled={busy}>Hủy</Button>
-              <Button variant="outline" onClick={() => void review(reviewTarget, 'RETURNED')} disabled={busy || reviewNote.trim().length < 3}>
+              <Button variant="outline" onClick={() => void review(reviewTarget, 'RETURNED')} disabled={busy || reviewNote.trim().length < 10}>
                 <RotateCcw className="h-4 w-4" /> Trả lại
               </Button>
               <Button variant="success" onClick={() => void review(reviewTarget, 'APPROVED', '')} disabled={busy}>

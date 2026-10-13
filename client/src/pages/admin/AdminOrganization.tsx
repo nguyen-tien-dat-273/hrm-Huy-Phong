@@ -73,7 +73,7 @@ function positionCodeFrom(title: string, taken: string[]): string {
 }
 
 export function AdminOrganization() {
-  const { profile, users, loadUsers, createUser } = useAuth();
+  const { profile, users, loadUsers } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -106,11 +106,6 @@ export function AdminOrganization() {
   const [editingUnit, setEditingUnit] = useState<OrganizationUnit | null>(null);
   const [editingPosition, setEditingPosition] = useState<JobPosition | null>(null);
   const [assignmentModal, setAssignmentModal] = useState(false);
-  const [newMemberOpen, setNewMemberOpen] = useState(false);
-  const [newMemberName, setNewMemberName] = useState('');
-  const [newMemberIdentifier, setNewMemberIdentifier] = useState('');
-  const [newMemberPassword, setNewMemberPassword] = useState('');
-  const [newMemberAssignmentError, setNewMemberAssignmentError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [unitScope, setUnitScope] = useState<'all' | 'attention'>('all');
   /** An don vi da ngung hoat dong khoi so do. Mac dinh HIEN, vi giau di mot don
@@ -128,13 +123,6 @@ export function AdminOrganization() {
   );
   const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
-  useEffect(() => {
-    setNewMemberOpen(false);
-    setNewMemberName('');
-    setNewMemberIdentifier('');
-    setNewMemberPassword('');
-    setNewMemberAssignmentError('');
-  }, [selectedUnitId]);
   const [unitForm, setUnitForm] = useState({
     code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '',
     /** Nguoi phu trach. Phan tu DAU TIEN la nguoi phu trach chinh. */
@@ -173,6 +161,7 @@ export function AdminOrganization() {
     permissions: [] as AdminPermission[],
     function_permissions: [] as AdminFunctionCode[],
   });
+  const [assignmentDefaultUnitId, setAssignmentDefaultUnitId] = useState('');
   /** Quyen chuc nang cap rieng theo tai khoan: userId -> ma chuc nang. */
   const [userFunctionPermissions, setUserFunctionPermissions] = useState<Record<string, string[]>>({});
   const [profileFunctionPermissionsSupported, setProfileFunctionPermissionsSupported] = useState(true);
@@ -1197,12 +1186,13 @@ export function AdminOrganization() {
     ),
   });
 
-  const openAssignment = (user?: Profile) => {
-    const target = user || visibleUsers[0];
+  const openAssignment = (user?: Profile, defaultUnitId?: string) => {
+    const target = user || (defaultUnitId ? undefined : visibleUsers[0]);
+    setAssignmentDefaultUnitId(defaultUnitId || '');
     setAssignmentForm({
       user_id: target?.id || '',
       employee_code: target?.employee_code || '',
-      unit_id: target?.unit_id || '',
+      unit_id: defaultUnitId || target?.unit_id || '',
       position_id: target?.position_id || '',
       manager_id: target?.manager_id || '',
       hire_date: target?.hire_date || '',
@@ -1231,7 +1221,7 @@ export function AdminOrganization() {
     setAssignmentForm({
       user_id: userId,
       employee_code: user?.employee_code || '',
-      unit_id: user?.unit_id || '',
+      unit_id: assignmentDefaultUnitId || user?.unit_id || '',
       position_id: user?.position_id || '',
       manager_id: user?.manager_id || '',
       hire_date: user?.hire_date || '',
@@ -1301,6 +1291,7 @@ export function AdminOrganization() {
     setSubmitting(false);
     toast('Đã cập nhật vị trí và tuyến quản lý của nhân sự.', 'success');
     setAssignmentModal(false);
+    setAssignmentDefaultUnitId('');
     await Promise.all([loadUsers(), load(true)]);
   };
 
@@ -1316,45 +1307,6 @@ export function AdminOrganization() {
     && user.id !== assignmentForm.user_id
     && Boolean(user.unit_id && assignmentUnitLineage.has(user.unit_id)));
   const canManagePositionPermissions = isFullAdmin(profile);
-
-  const createUnitMember = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!selectedUnit || !newMemberName.trim() || !newMemberIdentifier.trim()) return;
-    setSubmitting(true);
-    const created = await createUser({
-      name: newMemberName.trim(),
-      identifier: newMemberIdentifier.trim(),
-      role: 'staff',
-      access_role_code: 'staff',
-      department: selectedUnit.name,
-    });
-    if (created.error || !created.id) {
-      setSubmitting(false);
-      return toast('Không tạo được nhân sự: ' + (created.error || 'Thiếu mã tài khoản.'), 'error');
-    }
-    const createdUserId = created.id;
-    const { error: assignmentError } = await supabase.rpc('assign_employee_organization', {
-      target_user: createdUserId,
-      target_employee_code: null,
-      target_unit: selectedUnit.id,
-      target_position: null,
-      target_manager: null,
-      target_hire_date: null,
-      target_employment_status: 'active',
-    });
-    await Promise.all([loadUsers(), load(true)]);
-    setSubmitting(false);
-    setNewMemberPassword(created.tempPassword || '');
-    setNewMemberAssignmentError(assignmentError ? describeDbError(assignmentError) : '');
-    setNewMemberOpen(false);
-    setNewMemberName('');
-    setNewMemberIdentifier('');
-    if (assignmentError) {
-      toast('Đã tạo tài khoản nhưng chưa gán được vào phòng ban: ' + describeDbError(assignmentError), 'warning');
-    } else {
-      toast(`Đã thêm ${newMemberName.trim()} vào ${selectedUnit.name}.`, 'success');
-    }
-  };
 
   return (
     <div className="space-y-5">
@@ -1757,33 +1709,12 @@ export function AdminOrganization() {
                         </p>
 
                         <div className="border-b border-slate-100 p-3">
-                          {!newMemberOpen && !newMemberPassword && (
-                            <Button size="sm" theme="admin" onClick={() => setNewMemberOpen(true)}>
-                              <Plus className="h-4 w-4" />Thêm nhân sự mới
-                            </Button>
-                          )}
-                          {newMemberOpen && (
-                            <form onSubmit={createUnitMember} className="rounded-xl bg-indigo-50/70 p-3">
-                              <p className="mb-3 text-sm font-semibold text-slate-800">Tạo thành viên cho {selectedUnit.name}</p>
-                              <div className="grid gap-3 sm:grid-cols-2">
-                                <Input label="Họ tên" value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} required />
-                                <Input label="Tên đăng nhập hoặc email" value={newMemberIdentifier} onChange={(event) => setNewMemberIdentifier(event.target.value)} required autoCapitalize="none" autoCorrect="off" />
-                              </div>
-                              <p className="mt-2 text-xs text-slate-500">Tài khoản nhân viên được tạo tự động với mật khẩu tạm; nhân viên đổi mật khẩu khi đăng nhập lần đầu.</p>
-                              <div className="mt-3 flex justify-end gap-2">
-                                <Button type="button" size="sm" variant="outline" onClick={() => { setNewMemberOpen(false); setNewMemberName(''); setNewMemberIdentifier(''); }}>Hủy</Button>
-                                <Button type="submit" size="sm" disabled={submitting}>{submitting ? 'Đang tạo…' : 'Tạo và thêm vào phòng ban'}</Button>
-                              </div>
-                            </form>
-                          )}
-                          {newMemberPassword && (
-                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                              <div className="flex items-start justify-between gap-3">
-                                <div><p className="font-semibold text-emerald-800">{newMemberAssignmentError ? 'Tài khoản đã tạo, chưa gán vào phòng ban' : 'Tài khoản đã tạo và đã thêm vào phòng ban'}</p>{newMemberAssignmentError && <p className="mt-1 text-xs text-amber-800">{newMemberAssignmentError}</p>}<p className="mt-1 text-xs text-emerald-700">Mật khẩu tạm, chỉ hiển thị lần này:</p><code className="mt-1 block select-all font-mono text-emerald-900">{newMemberPassword}</code></div>
-                                <button type="button" onClick={() => { setNewMemberPassword(''); setNewMemberAssignmentError(''); }} className="text-xs font-semibold text-emerald-800 underline">Đóng</button>
-                              </div>
-                            </div>
-                          )}
+                          <Button size="sm" theme="admin" onClick={() => openAssignment(undefined, selectedUnit.id)}>
+                            <Plus className="h-4 w-4" />Thêm từ hồ sơ nhân sự
+                          </Button>
+                          <p className="mt-2 text-xs text-slate-500">
+                            Tạo hồ sơ ở mục Hồ sơ nhân sự trước, rồi chọn hồ sơ có sẵn để thêm vào phòng ban.
+                          </p>
                         </div>
 
                         {/* ---- Nguoi phu trach chua thuoc don vi ----
@@ -1826,7 +1757,7 @@ export function AdminOrganization() {
 
                         {direct.length === 0 ? (
                           <p className="px-3.5 py-3 text-xs leading-relaxed text-slate-500">
-                            Phòng ban chưa có thành viên. Bấm <strong>Thêm nhân sự mới</strong> phía trên để tạo người mới, hoặc dùng tab <em>Phân công nhân sự</em> để chuyển người đã có tài khoản vào đây.
+                            Phòng ban chưa có thành viên. Tạo hồ sơ ở mục <strong>Hồ sơ nhân sự</strong>, rồi bấm <strong>Thêm từ hồ sơ nhân sự</strong> để phân công người đó vào đây.
                           </p>
                         ) : (
                           <ul className="divide-y divide-slate-50">

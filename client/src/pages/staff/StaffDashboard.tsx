@@ -260,8 +260,8 @@ const mList = (memberships || []) as { project_id: string }[];
                     </div>
                   );
                 })}
-                <Link to="/staff/kanban" className="block text-center text-sm text-emerald-600 hover:text-emerald-700 pt-2">
-                  Xem tất cả trên Kanban →
+                <Link to="/staff/assignments" className="block text-center text-sm text-emerald-600 hover:text-emerald-700 pt-2">
+                  Xem tất cả việc được giao →
                 </Link>
               </div>
             )}

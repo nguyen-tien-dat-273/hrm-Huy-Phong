@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
-import { Plus, Search, FolderKanban, Calendar, Users as UsersIcon, Edit3, Trash2, ExternalLink } from 'lucide-react';
+import { Plus, Search, FolderKanban, Calendar, Users as UsersIcon, Edit3, Trash2, ExternalLink, Clock3 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
@@ -17,8 +17,9 @@ import { supabase } from '@/lib/supabase';
 import { deleteProjectDocuments } from '@/lib/documents';
 import { describeDbError } from '@/lib/dbError';
 import { isTeamlead } from '@/lib/permissions';
-import { PROJECT_STATUS_CONFIG, formatDate, formatVND, getTodayString } from '@/lib/utils';
-import type { Project, Profile, ProjectStatus } from '@/types';
+import { PROJECT_STATUS_CONFIG, TASK_STATUSES, formatDate, formatVND, getTodayString } from '@/lib/utils';
+import { fetchProfileMap } from '@/lib/profileDirectory';
+import type { Project, Profile, ProjectStatus, Task } from '@/types';
 
 export function AdminProjects() {
   const { profile } = useAuth();
@@ -28,6 +29,8 @@ export function AdminProjects() {
   const portfolioManager = !isTeamlead(profile);
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [tasksByProject, setTasksByProject] = useState<Record<string, Task[]>>({});
+  const [assigneeNames, setAssigneeNames] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -56,7 +59,7 @@ export function AdminProjects() {
   // Nghe cả project_members: được thêm vào một dự án thì dự án đó mới hiện ra
   // với nhân viên, mà thay đổi đó nằm ở bảng liên kết chứ không phải `projects`.
   useRealtimeSync(
-    [{ table: 'projects' }, { table: 'project_members' }],
+    [{ table: 'projects' }, { table: 'project_members' }, { table: 'tasks' }, { table: 'task_status_logs' }],
     () => loadProjects(true),
   );
 
@@ -64,7 +67,22 @@ export function AdminProjects() {
     if (!silent) setLoading(true);
     const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
     setLoadError(error ? describeDbError(error) : null);
-    setProjects((data || []) as Project[]);
+    const projectRows = (data || []) as Project[];
+    setProjects(projectRows);
+    if (projectRows.length > 0) {
+      const { data: taskRows, error: taskError } = await supabase.from('tasks').select('*').in('project_id', projectRows.map((project) => project.id));
+      if (taskError) {
+        setLoadError(describeDbError(taskError));
+      } else {
+        const list = (taskRows || []) as Task[];
+        setTasksByProject(Object.fromEntries(projectRows.map((project) => [project.id, list.filter((task) => task.project_id === project.id)])));
+        const people = await fetchProfileMap(list.map((task) => task.assignee_id));
+        setAssigneeNames(new Map([...people].map(([personId, person]) => [personId, person.name])));
+      }
+    } else {
+      setTasksByProject({});
+      setAssigneeNames(new Map());
+    }
     setLoading(false);
   };
 
@@ -230,6 +248,18 @@ export function AdminProjects() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((project) => (
+            (() => {
+              const projectTasks = tasksByProject[project.id] || [];
+              const completed = projectTasks.filter((task) => task.status === 'done').length;
+              const progress = projectTasks.length ? Math.round(completed * 100 / projectTasks.length) : 0;
+              const scheduleTasks = [...projectTasks]
+                .filter((task) => task.start_date || task.due_date)
+                .sort((a, b) => {
+                  if ((a.status === 'done') !== (b.status === 'done')) return a.status === 'done' ? 1 : -1;
+                  return (a.due_date || a.start_date || '').localeCompare(b.due_date || b.start_date || '');
+                })
+                .slice(0, 3);
+              return (
 <div
               key={project.id}
               className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 hover:shadow-lifted hover:-translate-y-0.5 transition-all duration-300 group"
@@ -260,6 +290,40 @@ export function AdminProjects() {
                     <span className="font-medium text-slate-600">{formatVND(project.budget)}</span>
                   </div>
                 </div>
+                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-700">Tiến độ tác vụ</span>
+                    <span className="font-bold text-indigo-700">{progress}% <span className="font-normal text-slate-500">({completed}/{projectTasks.length})</span></span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {TASK_STATUSES.map((status) => {
+                      const count = projectTasks.filter((task) => task.status === status.value).length;
+                      return <span key={status.value} className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">{status.label}: {count}</span>;
+                    })}
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                    <Clock3 className="h-3.5 w-3.5 text-indigo-500" />Lịch trình tác vụ
+                  </div>
+                  {scheduleTasks.length ? <div className="space-y-1.5">
+                    {scheduleTasks.map((task) => <div key={task.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-2.5 py-2">
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${task.status === 'done' ? 'bg-emerald-500' : task.status === 'in_review' ? 'bg-amber-500' : task.status === 'in_progress' ? 'bg-blue-500' : 'bg-slate-400'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium text-slate-700">{task.title}</p>
+                        <p className="mt-0.5 truncate text-[10px] text-slate-400">{assigneeNames.get(task.assignee_id || '') || 'Chưa phân công'}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="block text-[10px] leading-4 text-slate-500">{task.start_date ? formatDate(task.start_date) : '—'} → {task.due_date ? formatDate(task.due_date) : '—'}</span>
+                        <span className="text-[9px] font-semibold text-indigo-600">{TASK_STATUSES.find((status) => status.value === task.status)?.label || 'Cần làm'}</span>
+                      </div>
+                    </div>)}
+                    {projectTasks.filter((task) => task.start_date || task.due_date).length > scheduleTasks.length && <p className="text-right text-[10px] text-slate-400">+{projectTasks.filter((task) => task.start_date || task.due_date).length - scheduleTasks.length} mốc khác</p>}
+                  </div> : <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">Chưa có tác vụ được xếp lịch.</p>}
+                </div>
                 {/* Actions */}
                 <div className="flex items-center gap-1.5 pt-4 mt-4 border-t border-slate-100">
                   <Button
@@ -288,6 +352,8 @@ export function AdminProjects() {
                 </div>
               </div>
             </div>
+              );
+            })()
           ))}
         </div>
       )}
