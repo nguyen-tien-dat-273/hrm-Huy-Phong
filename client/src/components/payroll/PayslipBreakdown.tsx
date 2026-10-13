@@ -23,6 +23,8 @@ export interface BreakdownLine {
 interface PayslipBreakdownProps {
   lines: BreakdownLine[];
   netPay: number;
+  /** Chênh lệch làm tròn thực lĩnh (FR06.04.01) — hiện để phiếu cộng trừ khớp. */
+  roundingAdjustment?: number;
   /** Ẩn phần chi phí doanh nghiệp khi nhân viên tự xem phiếu của mình. */
   showEmployerCost?: boolean;
   warnings?: string[];
@@ -32,6 +34,7 @@ interface PayslipBreakdownProps {
 export function PayslipBreakdown({
   lines,
   netPay,
+  roundingAdjustment = 0,
   showEmployerCost = true,
   warnings = [],
   theme = 'admin',
@@ -62,6 +65,13 @@ export function PayslipBreakdown({
 
       {deductions.length > 0 && (
         <Section title="Khấu trừ" total={totalDeductions} lines={deductions} tone="negative" />
+      )}
+
+      {roundingAdjustment !== 0 && (
+        <p className="flex items-center justify-between gap-4 px-4 text-xs text-slate-500">
+          <span>Làm tròn thực lĩnh</span>
+          <span className="tabular-nums">{roundingAdjustment > 0 ? '+' : '−'}{formatVND(Math.abs(roundingAdjustment))}</span>
+        </p>
       )}
 
       <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
