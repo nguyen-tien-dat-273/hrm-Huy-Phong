@@ -148,10 +148,9 @@ export interface LeaveRequest {
   approved_at: string | null;
   reason_reject: string | null;
   /**
-   * Cấp đang chờ duyệt (LU-02): MANAGER = trưởng bộ phận, DIRECTOR = ban giám
-   * đốc. Đơn từ ngưỡng ngày trở lên phải qua cả hai cấp.
+   * Cấp đang chờ duyệt: quản lý trực tiếp trước, Nhân sự/HR chốt sau.
    */
-  approval_stage?: 'MANAGER' | 'DIRECTOR' | null;
+  approval_stage?: 'MANAGER' | 'HR' | null;
   manager_approved_by?: string | null;
   manager_approved_at?: string | null;
   is_cancelled?: boolean;

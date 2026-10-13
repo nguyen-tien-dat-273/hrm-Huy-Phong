@@ -20,19 +20,17 @@ export const LEAVE_STATUS_CONFIG: Record<LeaveStatus, { label: string; color: st
 };
 
 /**
- * Nhãn trạng thái có kèm CẤP đang chờ duyệt (LU-02).
- *
- * Cần thiết vì đơn dài ngày sau khi trưởng bộ phận bấm "Duyệt" vẫn quay về
- * `pending` — đó là đúng quy trình (chờ Ban giám đốc), nhưng nếu màn hình chỉ
- * hiện "Chờ duyệt" như cũ thì người vừa bấm sẽ tưởng thao tác hỏng và bấm
- * lại.
+ * Nhãn trạng thái có kèm cấp đang chờ duyệt.
  */
 export function leaveStatusLabel(request: Pick<LeaveRequest, 'status' | 'approval_stage'>): {
   label: string;
   color: string;
 } {
-  if (request.status === 'pending' && request.approval_stage === 'DIRECTOR') {
-    return { label: 'Chờ Ban giám đốc', color: 'bg-indigo-100 text-indigo-700' };
+  if (request.status === 'pending' && request.approval_stage === 'MANAGER') {
+    return { label: 'Chờ quản lý', color: 'bg-amber-100 text-amber-700' };
+  }
+  if (request.status === 'pending' && request.approval_stage === 'HR') {
+    return { label: 'Chờ HR', color: 'bg-indigo-100 text-indigo-700' };
   }
   return LEAVE_STATUS_CONFIG[request.status];
 }

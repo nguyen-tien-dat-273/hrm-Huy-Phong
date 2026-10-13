@@ -20,7 +20,7 @@ import {
 } from '@/lib/leave';
 import { formatDate } from '@/lib/utils';
 import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from '@/lib/workSchedule';
-import { fetchApproverIds, notifyUsers } from '@/lib/assignments';
+import { fetchManagerIds, notifyUsers } from '@/lib/assignments';
 import type { LeaveCancellationRequest, LeaveLedgerEntry, LeaveRequest, LeaveType } from '@/types';
 
 export function StaffLeave() {
@@ -222,14 +222,22 @@ export function StaffLeave() {
     // Báo chuông cho người duyệt. Trước đây KHÔNG có bước này: đơn nằm im
     // trong hàng chờ, nhân viên đợi mà quản lý không hề biết có đơn mới —
     // trong khi module giao việc thì báo đầy đủ cả hai chiều.
-    const managerIds = await fetchApproverIds('leave');
-    await notifyUsers(
-      managerIds.filter((id) => id !== profile?.id),
-      editing ? 'Đơn nghỉ phép được sửa' : 'Đơn nghỉ phép mới',
-      `${profile?.name ?? 'Nhân viên'} xin ${LEAVE_TYPE_CONFIG[form.leave_type].label.toLowerCase()} ` +
-        `${requestedDays} ngày (${formatDate(form.start_date)} → ${formatDate(form.end_date)}).`,
-      editing ? 'leave_updated' : 'leave_requested',
-    );
+    try {
+      const managerIds = await fetchManagerIds('leave');
+      await notifyUsers(
+        [...new Set([profile?.manager_id, ...managerIds])]
+          .filter((id): id is string => Boolean(id) && id !== profile?.id),
+        editing ? 'Đơn nghỉ phép được sửa' : 'Đơn nghỉ phép mới',
+        `${profile?.name ?? 'Nhân viên'} xin ${LEAVE_TYPE_CONFIG[form.leave_type].label.toLowerCase()} ` +
+          `${requestedDays} ngày (${formatDate(form.start_date)} → ${formatDate(form.end_date)}).`,
+        editing ? 'leave_updated' : 'leave_requested',
+      );
+    } catch (notificationError) {
+      toast(
+        `Đơn đã lưu nhưng không tải được danh sách người duyệt: ${notificationError instanceof Error ? notificationError.message : String(notificationError)}`,
+        'warning',
+      );
+    }
 
     toast(editing ? 'Đã cập nhật đơn nghỉ phép.' : 'Đã gửi đơn nghỉ phép, chờ duyệt.', 'success');
     setModalOpen(false);
@@ -282,13 +290,21 @@ export function StaffLeave() {
       toast('Gửi yêu cầu hủy thất bại: ' + describeDbError(error), 'error');
       return;
     }
-    const managerIds = await fetchApproverIds('leave');
-    await notifyUsers(
-      managerIds.filter((id) => id !== profile?.id),
-      'Yêu cầu hủy phép đã duyệt',
-      `${profile?.name ?? 'Nhân viên'} đề nghị hủy kỳ nghỉ ${formatDate(cancelTarget.start_date)} → ${formatDate(cancelTarget.end_date)}.`,
-      'leave_cancellation_requested',
-    );
+    try {
+      const managerIds = await fetchManagerIds('leave');
+      await notifyUsers(
+        [...new Set([profile?.manager_id, ...managerIds])]
+          .filter((id): id is string => Boolean(id) && id !== profile?.id),
+        'Yêu cầu hủy phép đã duyệt',
+        `${profile?.name ?? 'Nhân viên'} đề nghị hủy kỳ nghỉ ${formatDate(cancelTarget.start_date)} → ${formatDate(cancelTarget.end_date)}.`,
+        'leave_cancellation_requested',
+      );
+    } catch (notificationError) {
+      toast(
+        `Yêu cầu đã lưu nhưng không tải được danh sách người duyệt: ${notificationError instanceof Error ? notificationError.message : String(notificationError)}`,
+        'warning',
+      );
+    }
     toast('Đã gửi yêu cầu hủy, chờ quản lý xử lý.', 'success');
     setCancelTarget(null);
     setCancelReason('');
@@ -420,6 +436,12 @@ export function StaffLeave() {
                         {formatDate(request.start_date)} → {formatDate(request.end_date)}
                       </p>
                       {request.reason && <p className="text-xs text-slate-500 mt-0.5">{request.reason}</p>}
+                      {request.status === 'pending' && request.approval_stage === 'HR' && (
+                        <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg mt-1.5 flex items-center gap-1.5 font-medium w-fit">
+                          <Sparkles className="w-3.5 h-3.5 flex-shrink-0 text-indigo-600" />
+                          Đã qua duyệt của quản lý trực tiếp · Đang chờ Nhân sự/HR chốt
+                        </p>
+                      )}
                       {request.status === 'rejected' && request.reason_reject && (
                         <p className="text-xs text-red-600 mt-1 flex items-start gap-1.5">
                           <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0 mt-px" />

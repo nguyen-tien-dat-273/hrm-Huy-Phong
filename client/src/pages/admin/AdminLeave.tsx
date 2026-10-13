@@ -17,24 +17,28 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { LEAVE_TYPE_CONFIG, leaveStatusLabel } from '@/lib/leave';
-import { notifyUser } from '@/lib/assignments';
+import { fetchManagerIds, notifyUser, notifyUsers } from '@/lib/assignments';
 import { LeaveQuotaPanel } from '@/components/LeaveQuotaPanel';
 import { formatDate } from '@/lib/utils';
 import { hasPermission } from '@/lib/permissions';
-import type { LeaveCancellationRequest, LeaveRequest, LeaveStatus } from '@/types';
+import type { LeaveCancellationRequest, LeaveRequest, LeaveStatus, Profile } from '@/types';
 
 export function AdminLeave() {
   const { profile } = useAuth();
   const { toast } = useToast();
   const canReviewAttendance = hasPermission(profile, 'attendance');
-  const canReviewLeave = hasPermission(profile, 'leave');
+  const canReviewHr = hasPermission(profile, 'users');
+  const canReviewLeave = hasPermission(profile, 'leave') || canReviewHr;
+  const canManageLeave = hasPermission(profile, 'leave');
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [cancellations, setCancellations] = useState<LeaveCancellationRequest[]>([]);
   const [cancellationSupported, setCancellationSupported] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<LeaveStatus | 'all'>('pending');
+  type LeaveFilterKey = 'pending' | 'pending_manager' | 'pending_hr' | 'approved' | 'rejected' | 'all';
+  const [filter, setFilter] = useState<LeaveFilterKey>('pending');
+  const [profileMap, setProfileMap] = useState<Map<string, Profile>>(new Map());
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -65,15 +69,16 @@ export function AdminLeave() {
 
   const loadRequests = async (silent = false) => {
     if (!silent) setLoading(true);
-    // `leave_requests` chỉ có MỘT khóa ngoại tới profiles qua user_id ngoài
-    // approved_by, nên vẫn phải chỉ rõ khóa để tránh lỗi PGRST201 như đã gặp ở
-    // bảng shifts và attendance.
     let query = supabase
       .from('leave_requests')
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (filter !== 'all') query = query.eq('status', filter);
+    if (filter === 'pending' || filter === 'pending_manager' || filter === 'pending_hr') {
+      query = query.eq('status', 'pending');
+    } else if (filter !== 'all') {
+      query = query.eq('status', filter);
+    }
 
     const { data, error } = await query;
     const cancellationResult = await supabase
@@ -82,18 +87,26 @@ export function AdminLeave() {
       .order('created_at', { ascending: false });
     setLoadError(error ? describeDbError(error) : null);
 
-    // `profiles_directory` là VIEW nên PostgREST không nhúng được (PGRST200);
-    // nạp hồ sơ rời rồi ghép tại chỗ, cho cả đơn nghỉ lẫn đơn xin hủy phép.
     const requestRows = (data || []) as LeaveRequest[];
     const cancelRows = cancellationResult.error
       ? []
       : ((cancellationResult.data || []) as unknown as LeaveCancellationRequest[]);
     const people = await fetchProfileMap([
       ...requestRows.map((row) => row.user_id),
+      ...(requestRows.map((row) => row.manager_approved_by).filter(Boolean) as string[]),
+      ...(requestRows.map((row) => row.approved_by).filter(Boolean) as string[]),
       ...cancelRows.map((row) => row.leave?.user_id),
     ]);
+    setProfileMap(people);
 
-    setRequests(requestRows.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) })));
+    let filteredRequests = requestRows;
+    if (filter === 'pending_manager') {
+      filteredRequests = filteredRequests.filter((r) => !r.approval_stage || r.approval_stage === 'MANAGER');
+    } else if (filter === 'pending_hr') {
+      filteredRequests = filteredRequests.filter((r) => r.approval_stage === 'HR');
+    }
+
+    setRequests(filteredRequests.map((row) => ({ ...row, profile: row.profile ?? people.get(row.user_id) })));
     setCancellations(cancelRows.map((row) => (row.leave
       ? { ...row, leave: { ...row.leave, profile: row.leave.profile ?? people.get(row.leave.user_id) } }
       : row)));
@@ -111,7 +124,7 @@ export function AdminLeave() {
       .update({ status: 'approved', approved_by: profile?.id, approved_at: new Date().toISOString(), reason_reject: null })
       .eq('id', request.id)
       .eq('status', 'pending')
-      .select('id')
+      .select('id, status, approval_stage')
       .maybeSingle();
     setBusy(false);
 
@@ -124,13 +137,38 @@ export function AdminLeave() {
       loadRequests();
       return;
     }
-    await notify(
-      request.user_id,
-      'Đơn nghỉ phép đã được duyệt',
-      `${LEAVE_TYPE_CONFIG[request.leave_type].label} ${formatDate(request.start_date)} → ${formatDate(request.end_date)} (${Number(request.days)} ngày) đã được duyệt.`,
-      'leave_approved',
-    );
-    toast('Đã duyệt đơn nghỉ phép.', 'success');
+
+    if (updated.status === 'pending' && updated.approval_stage === 'HR') {
+      try {
+        const hrApproverIds = await fetchManagerIds('users');
+        await notifyUsers(
+          hrApproverIds.filter((id) => id !== profile?.id),
+          'Đơn nghỉ phép chờ Nhân sự/HR chốt',
+          `${LEAVE_TYPE_CONFIG[request.leave_type].label} (${Number(request.days)} ngày) của ${request.profile?.name ?? 'nhân viên'} đã qua duyệt của quản lý trực tiếp.`,
+          'leave_approved',
+        );
+      } catch (notificationError) {
+        toast(
+          `Đơn đã chuyển sang HR nhưng không gửi được thông báo: ${notificationError instanceof Error ? notificationError.message : String(notificationError)}`,
+          'warning',
+        );
+      }
+      await notify(
+        request.user_id,
+        'Đơn nghỉ phép: Đã qua duyệt quản lý',
+        `${LEAVE_TYPE_CONFIG[request.leave_type].label} (${Number(request.days)} ngày) đã được quản lý trực tiếp duyệt và chuyển Nhân sự/HR chốt.`,
+        'leave_approved',
+      );
+      toast('Quản lý trực tiếp đã duyệt. Đơn được chuyển sang Nhân sự/HR chốt.', 'success');
+    } else {
+      await notify(
+        request.user_id,
+        'Đơn nghỉ phép đã được phê duyệt',
+        `${LEAVE_TYPE_CONFIG[request.leave_type].label} ${formatDate(request.start_date)} → ${formatDate(request.end_date)} (${Number(request.days)} ngày) đã được phê duyệt hoàn tất.`,
+        'leave_approved',
+      );
+      toast('Đã phê duyệt hoàn tất đơn nghỉ phép.', 'success');
+    }
     loadRequests();
   };
 
@@ -200,8 +238,10 @@ export function AdminLeave() {
     loadRequests();
   };
 
-  const filters: { key: LeaveStatus | 'all'; label: string }[] = [
-    { key: 'pending', label: 'Chờ duyệt' },
+  const filters: { key: LeaveFilterKey; label: string }[] = [
+    { key: 'pending', label: 'Chờ duyệt (Tất cả)' },
+    { key: 'pending_manager', label: 'Chờ quản lý (Cấp 1)' },
+    { key: 'pending_hr', label: 'Chờ HR (Cấp 2)' },
     { key: 'approved', label: 'Đã duyệt' },
     { key: 'rejected', label: 'Từ chối' },
     { key: 'all', label: 'Tất cả' },
@@ -218,8 +258,8 @@ export function AdminLeave() {
         {([
           ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đi muộn · Về sớm · Làm thêm' }] : []),
           ...(canReviewLeave ? [{ key: 'requests' as const, label: 'Nghỉ phép' }] : []),
-          ...(canReviewLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép' }] : []),
-          ...(canReviewLeave ? [{ key: 'quota' as const, label: 'Quỹ phép' }] : []),
+          ...(canManageLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép' }] : []),
+          ...(canManageLeave ? [{ key: 'quota' as const, label: 'Quỹ phép' }] : []),
         ] as const).map((t) => (
           <button
             key={t.key}
@@ -304,6 +344,9 @@ export function AdminLeave() {
               {requests.map((request) => {
                 const type = LEAVE_TYPE_CONFIG[request.leave_type];
                 const status = leaveStatusLabel(request);
+                const managerApprover = request.manager_approved_by ? profileMap.get(request.manager_approved_by) : null;
+                const finalApprover = request.approved_by ? profileMap.get(request.approved_by) : null;
+
                 return (
                   <div key={request.id} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50/70 transition-colors">
                     <Avatar name={request.profile?.name || ''} url={request.profile?.avatar_url} size="sm" />
@@ -312,7 +355,9 @@ export function AdminLeave() {
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <span className="text-sm font-medium text-slate-800">{request.profile?.name || '—'}</span>
                         <Badge className={type.color}>{type.label}</Badge>
-                        <Badge className={request.is_cancelled ? 'bg-slate-100 text-slate-600' : status.color}>{request.is_cancelled ? 'Đã hủy' : status.label}</Badge>
+                        <Badge className={request.is_cancelled ? 'bg-slate-100 text-slate-600' : status.color}>
+                          {request.is_cancelled ? 'Đã hủy' : status.label}
+                        </Badge>
                         <span className="text-xs font-medium text-slate-500">{Number(request.days)} ngày</span>
                       </div>
                       <p className="text-sm text-slate-600">
@@ -320,6 +365,20 @@ export function AdminLeave() {
                         {request.profile?.department && <span className="text-slate-400"> · {request.profile.department}</span>}
                       </p>
                       {request.reason && <p className="text-xs text-slate-500 mt-0.5">Lý do: {request.reason}</p>}
+                      {request.approval_stage === 'HR' && (
+                        <div className="mt-1.5 flex items-center gap-1.5 text-xs text-indigo-700 bg-indigo-50/90 border border-indigo-100 px-2.5 py-1 rounded-lg w-fit">
+                          <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
+                          <span>
+                            Cấp 1 đã duyệt bởi <strong>{managerApprover?.name || 'Trưởng bộ phận'}</strong>
+                            {request.manager_approved_at ? ` (${formatDate(request.manager_approved_at)})` : ''} · Chờ Nhân sự/HR chốt
+                          </span>
+                        </div>
+                      )}
+                      {request.status === 'approved' && request.manager_approved_by && (
+                        <p className="text-xs text-slate-500 mt-1">
+                          Qua 2 cấp duyệt: Quản lý ({managerApprover?.name || 'quản lý trực tiếp'}) → HR ({finalApprover?.name || 'Nhân sự'})
+                        </p>
+                      )}
                       {request.status === 'rejected' && request.reason_reject && (
                         <p className="text-xs text-red-600 mt-1 flex items-start gap-1.5">
                           <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
@@ -330,14 +389,35 @@ export function AdminLeave() {
 
                     {request.status === 'pending' && (
                       <div className="flex items-center gap-2">
-                        <Button size="sm" onClick={() => handleApprove(request)} disabled={busy} theme="admin">
-                          <Check className="w-4 h-4" />
-                          Duyệt
-                        </Button>
+                        {request.approval_stage === 'HR' ? (
+                          canReviewHr ? (
+                            <Button size="sm" onClick={() => handleApprove(request)} disabled={busy} theme="admin">
+                              <Check className="w-4 h-4" />
+                              HR chốt
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" disabled title="Đơn cần Nhân sự/HR duyệt cấp cuối">
+                              Chờ HR chốt
+                            </Button>
+                          )
+                        ) : (
+                          hasPermission(profile, 'leave') ? (
+                            <Button size="sm" onClick={() => handleApprove(request)} disabled={busy} theme="admin">
+                              <Check className="w-4 h-4" />
+                              Quản lý duyệt (Cấp 1)
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" disabled title="Đang chờ quản lý trực tiếp duyệt trước">
+                              Chờ quản lý duyệt
+                            </Button>
+                          )
+                        )}
+                        {(request.approval_stage === 'HR' ? canReviewHr : hasPermission(profile, 'leave')) && (
                         <Button size="sm" variant="outline" onClick={() => setRejectTarget(request)} disabled={busy}>
                           <X className="w-4 h-4" />
                           Từ chối
                         </Button>
+                        )}
                       </div>
                     )}
                   </div>

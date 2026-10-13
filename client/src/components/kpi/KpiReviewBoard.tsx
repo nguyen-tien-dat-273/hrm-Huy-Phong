@@ -667,6 +667,8 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
             ? scored.reduce((sum, item) => sum + Number(item.final_pct), 0) / scored.length
             : 0;
           const notStarted = profiles.filter((person) => !reviewByUser.get(person.id)).length;
+          const readyToStart = profiles.filter((person) => !reviewByUser.get(person.id) && readyTemplate(person)).length;
+          const needsTemplate = notStarted - readyToStart;
 
           // Gom theo xếp loại do database tính, không tự xếp lại ở client —
           // hai nguồn xếp loại lệch nhau là thứ không ai gỡ được.
@@ -716,12 +718,17 @@ export function KpiReviewBoard({ profiles, actorId }: { profiles: Profile[]; act
                   {scored.length ? `${average.toFixed(1)}%` : '—'}
                 </p>
               </div>
-              {notStarted > 0 && (
+              {readyToStart > 0 && (
                 <div className="flex items-center sm:col-span-2">
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => void startAllPending()}>
-                    <Plus className="h-3.5 w-3.5" /> Gửi yêu cầu cho {notStarted} người còn lại
+                    <Plus className="h-3.5 w-3.5" /> Mở phiếu cho {readyToStart} người đủ bộ KPI
                   </Button>
                 </div>
+              )}
+              {needsTemplate > 0 && (
+                <p className="text-xs text-amber-800 sm:col-span-4">
+                  {needsTemplate} người chưa thể mở phiếu vì chưa được gán bộ KPI đang hoạt động. Gán hoặc bật bộ KPI trước khi gửi yêu cầu.
+                </p>
               )}
               {byRating.size > 0 && (
                 <div className="sm:col-span-4 flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2.5">

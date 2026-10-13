@@ -73,7 +73,7 @@ function positionCodeFrom(title: string, taken: string[]): string {
 }
 
 export function AdminOrganization() {
-  const { profile, users, loadUsers } = useAuth();
+  const { profile, users, loadUsers, createUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -106,6 +106,11 @@ export function AdminOrganization() {
   const [editingUnit, setEditingUnit] = useState<OrganizationUnit | null>(null);
   const [editingPosition, setEditingPosition] = useState<JobPosition | null>(null);
   const [assignmentModal, setAssignmentModal] = useState(false);
+  const [newMemberOpen, setNewMemberOpen] = useState(false);
+  const [newMemberName, setNewMemberName] = useState('');
+  const [newMemberIdentifier, setNewMemberIdentifier] = useState('');
+  const [newMemberPassword, setNewMemberPassword] = useState('');
+  const [newMemberAssignmentError, setNewMemberAssignmentError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [unitScope, setUnitScope] = useState<'all' | 'attention'>('all');
   /** An don vi da ngung hoat dong khoi so do. Mac dinh HIEN, vi giau di mot don
@@ -123,6 +128,13 @@ export function AdminOrganization() {
   );
   const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  useEffect(() => {
+    setNewMemberOpen(false);
+    setNewMemberName('');
+    setNewMemberIdentifier('');
+    setNewMemberPassword('');
+    setNewMemberAssignmentError('');
+  }, [selectedUnitId]);
   const [unitForm, setUnitForm] = useState({
     code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '',
     /** Nguoi phu trach. Phan tu DAU TIEN la nguoi phu trach chinh. */
@@ -662,6 +674,10 @@ export function AdminOrganization() {
 
     setSubmitting(false);
     toast(editingUnit ? 'Đã cập nhật đơn vị.' : 'Đã thêm đơn vị vào cơ cấu tổ chức.', 'success');
+    if (!editingUnit && unitId) {
+      if (unitForm.unit_type === 'company') chooseCompany(unitId);
+      else setSelectedUnitId(unitId);
+    }
     setUnitModal(false);
     setEditingUnit(null);
     setUnitForm({ code: '', name: '', unit_type: 'department', parent_id: '', manager_ids: [], new_positions: [], member_ids: [], member_positions: {} });
@@ -1301,8 +1317,52 @@ export function AdminOrganization() {
     && Boolean(user.unit_id && assignmentUnitLineage.has(user.unit_id)));
   const canManagePositionPermissions = isFullAdmin(profile);
 
+  const createUnitMember = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedUnit || !newMemberName.trim() || !newMemberIdentifier.trim()) return;
+    setSubmitting(true);
+    const created = await createUser({
+      name: newMemberName.trim(),
+      identifier: newMemberIdentifier.trim(),
+      role: 'staff',
+      access_role_code: 'staff',
+      department: selectedUnit.name,
+    });
+    if (created.error || !created.id) {
+      setSubmitting(false);
+      return toast('Không tạo được nhân sự: ' + (created.error || 'Thiếu mã tài khoản.'), 'error');
+    }
+    const createdUserId = created.id;
+    const { error: assignmentError } = await supabase.rpc('assign_employee_organization', {
+      target_user: createdUserId,
+      target_employee_code: null,
+      target_unit: selectedUnit.id,
+      target_position: null,
+      target_manager: null,
+      target_hire_date: null,
+      target_employment_status: 'active',
+    });
+    await Promise.all([loadUsers(), load(true)]);
+    setSubmitting(false);
+    setNewMemberPassword(created.tempPassword || '');
+    setNewMemberAssignmentError(assignmentError ? describeDbError(assignmentError) : '');
+    setNewMemberOpen(false);
+    setNewMemberName('');
+    setNewMemberIdentifier('');
+    if (assignmentError) {
+      toast('Đã tạo tài khoản nhưng chưa gán được vào phòng ban: ' + describeDbError(assignmentError), 'warning');
+    } else {
+      toast(`Đã thêm ${newMemberName.trim()} vào ${selectedUnit.name}.`, 'success');
+    }
+  };
+
   return (
     <div className="space-y-5">
+      <section className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4">
+        <p className="text-xs font-bold uppercase tracking-wider text-indigo-700">Tổ chức & nhân sự</p>
+        <h2 className="mt-1 text-xl font-bold text-slate-900">Quản lý phòng ban và thành viên</h2>
+        <p className="mt-1 text-sm text-slate-600">Tạo phòng ban trước, chọn phòng ban đó, rồi thêm nhân sự trực tiếp trong danh sách thành viên.</p>
+      </section>
       <div className="grid gap-3 sm:grid-cols-3">
         {/* Dang dung trong mot doanh nghiep thi ba con so nay phai la cua
             doanh nghiep do, khong phai tong toan he thong - neu khong nguoi
@@ -1327,7 +1387,7 @@ export function AdminOrganization() {
             {activeCompany ? (
               <div className="inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Quản lý cơ cấu">
                 {([
-                  ['units', 'Cây tổ chức'], ['positions', 'Vị trí'], ['assignments', 'Phân công nhân sự'],
+                  ['units', 'Phòng ban & nhân sự'], ['positions', 'Chức danh & quyền'], ['assignments', 'Phân công'],
                 ] as const).map(([value, label]) => (
                   <button key={value} type="button" role="tab" aria-selected={effectiveTab === value} onClick={() => setTab(value)} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${effectiveTab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
                 ))}
@@ -1341,7 +1401,7 @@ export function AdminOrganization() {
               </div>
             )}
             <Button theme="admin" onClick={() => effectiveTab === 'units' ? openNewUnit() : effectiveTab === 'positions' ? openNewPosition() : openAssignment()}>
-              <Plus className="h-4 w-4" />{effectiveTab === 'units' ? (activeCompany ? 'Thêm đơn vị' : 'Thêm doanh nghiệp') : effectiveTab === 'positions' ? 'Thêm vị trí' : 'Gán nhân sự'}
+              <Plus className="h-4 w-4" />{effectiveTab === 'units' ? (activeCompany ? 'Thêm phòng ban' : 'Thêm doanh nghiệp') : effectiveTab === 'positions' ? 'Thêm chức danh' : 'Gán nhân sự'}
             </Button>
           </div>
           <div className="relative mt-4">
@@ -1696,6 +1756,36 @@ export function AdminOrganization() {
                           <span className="font-normal text-slate-400">({direct.length})</span>
                         </p>
 
+                        <div className="border-b border-slate-100 p-3">
+                          {!newMemberOpen && !newMemberPassword && (
+                            <Button size="sm" theme="admin" onClick={() => setNewMemberOpen(true)}>
+                              <Plus className="h-4 w-4" />Thêm nhân sự mới
+                            </Button>
+                          )}
+                          {newMemberOpen && (
+                            <form onSubmit={createUnitMember} className="rounded-xl bg-indigo-50/70 p-3">
+                              <p className="mb-3 text-sm font-semibold text-slate-800">Tạo thành viên cho {selectedUnit.name}</p>
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <Input label="Họ tên" value={newMemberName} onChange={(event) => setNewMemberName(event.target.value)} required />
+                                <Input label="Tên đăng nhập hoặc email" value={newMemberIdentifier} onChange={(event) => setNewMemberIdentifier(event.target.value)} required autoCapitalize="none" autoCorrect="off" />
+                              </div>
+                              <p className="mt-2 text-xs text-slate-500">Tài khoản nhân viên được tạo tự động với mật khẩu tạm; nhân viên đổi mật khẩu khi đăng nhập lần đầu.</p>
+                              <div className="mt-3 flex justify-end gap-2">
+                                <Button type="button" size="sm" variant="outline" onClick={() => { setNewMemberOpen(false); setNewMemberName(''); setNewMemberIdentifier(''); }}>Hủy</Button>
+                                <Button type="submit" size="sm" disabled={submitting}>{submitting ? 'Đang tạo…' : 'Tạo và thêm vào phòng ban'}</Button>
+                              </div>
+                            </form>
+                          )}
+                          {newMemberPassword && (
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
+                              <div className="flex items-start justify-between gap-3">
+                                <div><p className="font-semibold text-emerald-800">{newMemberAssignmentError ? 'Tài khoản đã tạo, chưa gán vào phòng ban' : 'Tài khoản đã tạo và đã thêm vào phòng ban'}</p>{newMemberAssignmentError && <p className="mt-1 text-xs text-amber-800">{newMemberAssignmentError}</p>}<p className="mt-1 text-xs text-emerald-700">Mật khẩu tạm, chỉ hiển thị lần này:</p><code className="mt-1 block select-all font-mono text-emerald-900">{newMemberPassword}</code></div>
+                                <button type="button" onClick={() => { setNewMemberPassword(''); setNewMemberAssignmentError(''); }} className="text-xs font-semibold text-emerald-800 underline">Đóng</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         {/* ---- Nguoi phu trach chua thuoc don vi ----
                              Dat ai do lam phu trach chi ghi `manager_id`;
                              `profiles.unit_id` moi la cai quyet dinh ho co
@@ -1736,8 +1826,7 @@ export function AdminOrganization() {
 
                         {direct.length === 0 ? (
                           <p className="px-3.5 py-3 text-xs leading-relaxed text-slate-500">
-                            Chưa ai được gán vào đơn vị này. Bấm <strong>Chỉnh sửa</strong> bên dưới
-                            rồi tích người ở mục <em>Nhân sự thuộc đơn vị</em>.
+                            Phòng ban chưa có thành viên. Bấm <strong>Thêm nhân sự mới</strong> phía trên để tạo người mới, hoặc dùng tab <em>Phân công nhân sự</em> để chuyển người đã có tài khoản vào đây.
                           </p>
                         ) : (
                           <ul className="divide-y divide-slate-50">
@@ -1864,7 +1953,7 @@ export function AdminOrganization() {
             </CardContent></Card>
           )}
 
-      <Modal open={unitModal} onClose={() => { setUnitModal(false); setEditingUnit(null); }} title={editingUnit ? 'Sửa đơn vị tổ chức' : 'Thêm đơn vị tổ chức'}>
+      <Modal open={unitModal} onClose={() => { setUnitModal(false); setEditingUnit(null); }} title={editingUnit ? 'Chỉnh sửa đơn vị' : unitForm.unit_type === 'company' ? 'Thêm doanh nghiệp' : 'Thêm phòng ban'}>
         <form onSubmit={saveUnit} className="space-y-4">
           <div className="grid grid-cols-2 gap-3"><Input label="Mã đơn vị" value={unitForm.code} onChange={(event) => setUnitForm({ ...unitForm, code: event.target.value })} placeholder="VD: HP-HCM" required /><Select label="Loại đơn vị" value={unitForm.unit_type} onChange={(event) => setUnitForm({ ...unitForm, unit_type: event.target.value as OrganizationUnitType })}>{Object.entries(UNIT_TYPES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></div>
           <Input label="Tên đơn vị" value={unitForm.name} onChange={(event) => setUnitForm({ ...unitForm, name: event.target.value })} required />
@@ -1877,6 +1966,8 @@ export function AdminOrganization() {
               .filter((unit) => unit.is_active && !descendantsOfEditingUnit.has(unit.id))
               .map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
           </Select>
+          {!editingUnit && unitForm.unit_type !== 'company' && <p className="rounded-xl bg-indigo-50 px-3.5 py-3 text-xs leading-relaxed text-indigo-800">Sau khi tạo, phòng ban sẽ được chọn tự động. Bạn có thể thêm thành viên ngay trong phần chi tiết phòng ban.</p>}
+          {editingUnit && <>
           {/* ---- Người phụ trách ----
                Hai vung tach bach: o tim mo ra KHO nguoi de chon, con ben
                duoi la nhung nguoi DA CHON. Tron hai thu vao mot danh sach
@@ -2336,8 +2427,8 @@ export function AdminOrganization() {
             </Button>
           </fieldset>
 
-
-          <div className="flex gap-3 pt-2"><Button type="button" variant="outline" className="flex-1" onClick={() => setUnitModal(false)}>Hủy</Button><Button type="submit" theme="admin" className="flex-1" disabled={submitting}>{submitting ? 'Đang lưu…' : editingUnit ? 'Lưu thay đổi' : 'Tạo đơn vị'}</Button></div>
+          </>}
+          <div className="flex gap-3 pt-2"><Button type="button" variant="outline" className="flex-1" onClick={() => setUnitModal(false)}>Hủy</Button><Button type="submit" theme="admin" className="flex-1" disabled={submitting}>{submitting ? 'Đang lưu…' : editingUnit ? 'Lưu thay đổi' : unitForm.unit_type === 'company' ? 'Tạo doanh nghiệp' : 'Tạo phòng ban'}</Button></div>
         </form>
       </Modal>
 
