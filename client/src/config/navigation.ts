@@ -4,7 +4,7 @@ import {
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
   ArrowLeftRight, Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
-  FileBarChart, Fingerprint, KanbanSquare, WalletCards,
+  FileBarChart, Fingerprint, WalletCards,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
 
@@ -91,7 +91,6 @@ export const STAFF_NAV_ITEMS: StaffNavItem[] = [
 
   { to: '/staff/assignments', label: 'Việc được giao', description: 'Việc quản lý giao theo ngày, gửi lại khi xong', icon: ClipboardList, group: 'Công việc', keywords: 'giao viec phan cong nhiem vu' },
   { to: '/staff/projects', label: 'Dự án của tôi', description: 'Các dự án và thành viên đang cộng tác', icon: Briefcase, group: 'Công việc', keywords: 'du an project cong tac' },
-  { to: '/staff/kanban', label: 'Tác vụ Kanban', description: 'Theo dõi và cập nhật trạng thái tác vụ', icon: KanbanSquare, group: 'Công việc', keywords: 'task cong viec tac vu' },
   { to: '/staff/worklog', label: 'Nhật ký giờ', description: 'Ghi nhận thời gian thực tế cho từng công việc', icon: NotebookPen, group: 'Công việc', keywords: 'ghi gio worklog timesheet' },
 
   { to: '/staff/attendance', label: 'Chấm công', description: 'Xem giờ vào từ máy và checkout cuối ngày', icon: Fingerprint, group: 'Thời gian & Lịch', keywords: 'gio vao may cham cong checkout van tay khuon mat' },

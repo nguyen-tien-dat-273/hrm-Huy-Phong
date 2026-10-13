@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Briefcase, Calendar, Users as UsersIcon, FileText } from 'lucide-react';
+import { Briefcase, Calendar, Users as UsersIcon, FileText, KanbanSquare, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
@@ -13,7 +13,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
-import { PROJECT_STATUS_CONFIG, MEMBER_ROLE_CONFIG, formatDate, formatVND } from '@/lib/utils';
+import { PROJECT_STATUS_CONFIG, MEMBER_ROLE_CONFIG, KANBAN_COLUMNS, formatDate } from '@/lib/utils';
 import type { Project, ProjectMember, Task } from '@/types';
 
 export function StaffProjects() {
@@ -21,7 +21,8 @@ export function StaffProjects() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [docsProject, setDocsProject] = useState<{ id: string; name: string } | null>(null);
-  const [projects, setProjects] = useState<{ project: Project; role: string; members: ProjectMember[]; taskCount: number }[]>([]);
+  const [detailProject, setDetailProject] = useState<Project | null>(null);
+  const [projects, setProjects] = useState<{ project: Project; role: string; members: ProjectMember[]; tasks: Task[]; taskCount: number }[]>([]);
 
   useEffect(() => {
     if (profile) loadData();
@@ -67,7 +68,7 @@ const projectIds = mList.map((m: { project_id: string; role: string }) => m.proj
     ] = await Promise.all([
       supabase.from('projects').select('*').in('id', projectIds),
       supabase.from('project_members').select('*').in('project_id', projectIds),
-      supabase.from('tasks').select('project_id').in('project_id', projectIds),
+      supabase.from('tasks').select('*').in('project_id', projectIds),
     ]);
 
     const firstError = projErr ?? memberErr ?? taskErr;
@@ -86,6 +87,7 @@ const result = projectList.map((project) => {
         project,
         role: membership?.role || 'member',
         members: memberList.filter((m: ProjectMember) => m.project_id === project.id),
+        tasks: taskList.filter((t: Task) => t.project_id === project.id),
         taskCount: taskList.filter((t: Task) => t.project_id === project.id).length,
       };
     });
@@ -165,8 +167,14 @@ const result = projectList.map((project) => {
             {/* Nhân viên không có trang chi tiết dự án riêng, nên tài liệu mở
                 trong hộp thoại ngay từ thẻ. */}
             <button
-              onClick={() => setDocsProject({ id: project.id, name: project.name })}
+              onClick={() => setDetailProject(project)}
               className="ml-auto inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+            >
+              <ExternalLink className="w-4 h-4" /> Chi tiết
+            </button>
+            <button
+              onClick={() => setDocsProject({ id: project.id, name: project.name })}
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
             >
               <FileText className="w-4 h-4" />
               Tài liệu
@@ -175,6 +183,53 @@ const result = projectList.map((project) => {
         </Card>
       ))}
 
+      <Modal
+        open={!!detailProject}
+        onClose={() => setDetailProject(null)}
+        title={`Chi tiết dự án — ${detailProject?.name ?? ''}`}
+        size="xl"
+      >
+        {detailProject && (() => {
+          const row = projects.find((item) => item.project.id === detailProject.id);
+          const projectTasks = (row?.tasks ?? []) as Task[];
+          const done = projectTasks.filter((task) => task.status === 'done').length;
+          const memberNames = new Map((row?.members ?? []).map((member) => [member.user_id, member.profile?.name || 'Thành viên']));
+          return <div className="space-y-4">
+            <section className="rounded-xl bg-indigo-50/70 p-4">
+              <h3 className="text-sm font-bold text-slate-800">Giới thiệu dự án</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{detailProject.description || 'Dự án chưa có phần giới thiệu.'}</p>
+              <p className="mt-3 text-xs text-slate-500">{formatDate(detailProject.start_date)} → {formatDate(detailProject.end_date)} · Vai trò của bạn: {row?.role || 'Thành viên'}</p>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(row?.members ?? []).map((member) => <Badge key={member.id} className="bg-white text-slate-600">{member.profile?.name || 'Thành viên'}</Badge>)}
+              </div>
+            </section>
+            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">Tiến độ: {done}/{projectTasks.length} nhiệm vụ hoàn thành ({projectTasks.length ? Math.round(done * 100 / projectTasks.length) : 0}%)</div>
+            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><KanbanSquare className="h-4 w-4 text-emerald-600" />Kanban công việc của dự án</h3>
+            <div className="flex snap-x gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-2 xl:grid-cols-4">
+              {KANBAN_COLUMNS.map((column) => {
+                const columnTasks = projectTasks.filter((task) => task.status === column.value);
+                return <section key={column.value} className="w-[78vw] shrink-0 snap-start rounded-xl border border-slate-200 bg-slate-50 p-3 md:w-auto">
+                  <div className={`mb-3 flex items-center justify-between border-t-4 ${column.accent} rounded-t pt-2`}>
+                    <h4 className="text-xs font-bold text-slate-700">{column.label}</h4>
+                    <Badge className="bg-white text-slate-600">{columnTasks.length}</Badge>
+                  </div>
+                  <div className="max-h-72 space-y-2 overflow-y-auto">
+                    {columnTasks.map((task) => <article key={task.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                      <p className="text-sm font-semibold text-slate-800">{task.title}</p>
+                      {task.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{task.description}</p>}
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                        <span>{task.assignee_id ? memberNames.get(task.assignee_id) || 'Thành viên dự án' : 'Chưa phân công'}</span>
+                        {task.due_date && <span>Hạn {formatDate(task.due_date)}</span>}
+                      </div>
+                    </article>)}
+                    {columnTasks.length === 0 && <p className="py-4 text-center text-xs text-slate-400">Chưa có tác vụ</p>}
+                  </div>
+                </section>;
+              })}
+            </div>
+          </div>;
+        })()}
+      </Modal>
       <Modal
         open={!!docsProject}
         onClose={() => setDocsProject(null)}

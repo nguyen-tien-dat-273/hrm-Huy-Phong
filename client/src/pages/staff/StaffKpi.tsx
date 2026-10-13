@@ -56,6 +56,11 @@ interface Score {
   not_applicable_reason: string | null;
 }
 
+interface SelfDraft {
+  field: 'self_score' | 'self_actual_value';
+  raw: string;
+}
+
 interface Criteria {
   id: string;
   template_id: string;
@@ -79,6 +84,7 @@ export function StaffKpi() {
   const [supported, setSupported] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, SelfDraft>>({});
   const { toast } = useToast();
 
   /**
@@ -95,43 +101,79 @@ export function StaffKpi() {
    * phai `actual_value`: cot kia co trigger suy ra diem chinh thuc, nhan vien
    * ghi duoc vao do la tu cham diem that cho minh.
    */
-  const setSelfMeasure = async (score: Score, raw: string, criterion: Criteria) => {
+  const setSelfMeasure = (score: Score, raw: string, criterion: Criteria) => {
     if (!supabase) return;
     const value = raw.trim() === '' ? null : Number(raw);
-    if (value !== null && !Number.isFinite(value)) return;
+    if (value !== null && !Number.isFinite(value)) {
+      setDrafts((prev) => ({ ...prev, [score.id]: { field: 'self_actual_value', raw } }));
+      return;
+    }
 
-    // Xem truoc ngay tai cho; con so THAT van do trigger ghi, tai lai sau.
     const preview = scoreFromLevels(criterion.score_levels, value);
     setScores((prev) => prev.map((item) => (
       item.id === score.id ? { ...item, self_actual_value: value, self_score: preview } : item
     )));
-
-    const { error } = await supabase
-      .from('performance_review_scores')
-      .update({ self_actual_value: value })
-      .eq('id', score.id);
-    if (error) toast('Khong luu duoc ket qua: ' + describeDbError(error), 'error');
+    setDrafts((prev) => ({ ...prev, [score.id]: { field: 'self_actual_value', raw } }));
   };
 
-  const setSelfScore = async (score: Score, raw: string) => {
+  const setSelfScore = (score: Score, raw: string) => {
     if (!supabase) return;
     const value = raw.trim() === '' ? null : Number(raw);
-    if (value !== null && !Number.isFinite(value)) return;
+    if (value !== null && !Number.isFinite(value)) {
+      setDrafts((prev) => ({ ...prev, [score.id]: { field: 'self_score', raw } }));
+      return;
+    }
 
     setScores((prev) => prev.map((item) => (
       item.id === score.id ? { ...item, self_score: value } : item
     )));
+    setDrafts((prev) => ({ ...prev, [score.id]: { field: 'self_score', raw } }));
+  };
 
-    const { error } = await supabase
-      .from('performance_review_scores')
-      .update({ self_score: value })
-      .eq('id', score.id);
-    if (error) toast(describeDbError(error), 'error');
+  const persistDrafts = async (review: Review): Promise<boolean> => {
+    if (!supabase) return false;
+    const reviewScores = scores.filter((score) => score.review_id === review.id && drafts[score.id]);
+    if (reviewScores.length === 0) return true;
+
+    const updates = reviewScores.map((score) => {
+      const draft = drafts[score.id];
+      const value = draft.raw.trim() === '' ? null : Number(draft.raw);
+      if (value !== null && !Number.isFinite(value)) {
+        return Promise.resolve({ scoreId: score.id, error: new Error('Nhập một con số hợp lệ trước khi lưu.') });
+      }
+      return supabase
+        .from('performance_review_scores')
+        .update({ [draft.field]: value })
+        .eq('id', score.id)
+        .then(({ error }) => ({ scoreId: score.id, error }));
+    });
+    const results = await Promise.all(updates);
+    const failed = results.find((result) => result.error);
+    if (failed?.error) {
+      toast('Không lưu được bản tự chấm: ' + describeDbError(failed.error), 'error');
+      return false;
+    }
+
+    const savedIds = new Set(reviewScores.map((score) => score.id));
+    setDrafts((prev) => Object.fromEntries(Object.entries(prev).filter(([id]) => !savedIds.has(id))));
+    return true;
+  };
+
+  const saveDraft = async (review: Review) => {
+    setSaving(review.id);
+    const saved = await persistDrafts(review);
+    setSaving(null);
+    if (saved) toast('Đã lưu bản tự chấm. Bạn có thể tiếp tục chỉnh sửa trước khi gửi.', 'success');
   };
 
   const submitSelf = async (review: Review) => {
     if (!supabase) return;
     setSaving(review.id);
+    const draftsSaved = await persistDrafts(review);
+    if (!draftsSaved) {
+      setSaving(null);
+      return;
+    }
     const { data, error } = await supabase.rpc('submit_kpi_self_scores', { p_review: review.id });
     setSaving(null);
     if (error) return toast(describeDbError(error), 'error');
@@ -224,6 +266,7 @@ export function StaffKpi() {
         // ban khac voi ban ho da doc.
         const canSelfScore = !review.locked_at && !review.self_submitted_at;
         const missingSelf = rows.filter(({ score }) => score && score.self_score == null).length;
+        const reviewDraftCount = rows.filter(({ score }) => score && drafts[score.id]).length;
         // Da nhap ket qua ma van khong ra diem = so do roi ngoai moi muc tieu.
         // Noi dung ly do, khong de nguoi ta tuong minh quen cham.
         const outOfRange = rows.filter(({ score }) => (
@@ -269,7 +312,9 @@ export function StaffKpi() {
               {isOpen && rows.length > 0 && canSelfScore && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 px-3.5 py-2.5">
                   <p className="min-w-0 text-xs leading-relaxed text-indigo-900">
-                    {missingSelf > 0
+                    {reviewDraftCount > 0
+                      ? <><strong>{reviewDraftCount} thay đổi chưa lưu.</strong> Lưu nháp hoặc gửi để lưu và khóa bản tự chấm.</>
+                      : missingSelf > 0
                       ? outOfRange > 0
                         ? <><strong>{outOfRange} tiêu chí</strong> có kết quả rơi ngoài mọi mục tiêu đã khai nên chưa ra điểm. Kiểm lại con số, hoặc báo quản lý khai thiếu mục tiêu.</>
                         : <>Còn <strong>{missingSelf} tiêu chí</strong> bạn chưa tự chấm. Chấm đủ rồi hãy gửi.</>
@@ -277,14 +322,21 @@ export function StaffKpi() {
                         ? <>Sửa theo yêu cầu ở trên rồi gửi lại — <strong>gửi rồi không sửa được nữa</strong>.</>
                         : <>Đã chấm đủ. Gửi đi để quản lý chấm lại — <strong>gửi rồi không sửa được nữa</strong>.</>}
                   </p>
-                  <Button
-                    size="sm"
-                    disabled={missingSelf > 0 || saving === review.id}
-                    onClick={() => void submitSelf(review)}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    {saving === review.id ? 'Đang gửi…' : 'Gửi bản tự chấm'}
-                  </Button>
+                  <span className="flex flex-wrap gap-2">
+                    {reviewDraftCount > 0 && (
+                      <Button size="sm" variant="outline" disabled={saving === review.id} onClick={() => void saveDraft(review)}>
+                        {saving === review.id ? 'Đang lưu…' : 'Lưu nháp'}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      disabled={missingSelf > 0 || saving === review.id}
+                      onClick={() => void submitSelf(review)}
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      {saving === review.id ? 'Đang xử lý…' : 'Gửi bản tự chấm'}
+                    </Button>
+                  </span>
                 </div>
               )}
 
@@ -332,8 +384,8 @@ export function StaffKpi() {
                               <span className="mt-0.5 flex items-center gap-1">
                                 <input
                                   inputMode="decimal"
-                                  value={score.self_actual_value == null ? '' : String(score.self_actual_value)}
-                                  onChange={(event) => void setSelfMeasure(score, event.target.value.replace(/[^\d.-]/g, ''), item)}
+                                  value={drafts[score.id]?.raw ?? (score.self_actual_value == null ? '' : String(score.self_actual_value))}
+                                  onChange={(event) => setSelfMeasure(score, event.target.value.replace(/[^\d.-]/g, ''), item)}
                                   placeholder="—"
                                   aria-label={`Kết quả thực tế của ${item.name}`}
                                   className="h-9 w-20 rounded-lg border border-slate-200 text-center text-sm outline-none focus:border-indigo-500"
@@ -365,8 +417,8 @@ export function StaffKpi() {
                           ) : canSelfScore && score && !score.not_applicable ? (
                             <input
                               inputMode="decimal"
-                              value={score.self_score == null ? '' : String(score.self_score)}
-                              onChange={(event) => void setSelfScore(score, event.target.value.replace(/[^\d.]/g, ''))}
+                              value={drafts[score.id]?.raw ?? (score.self_score == null ? '' : String(score.self_score))}
+                              onChange={(event) => setSelfScore(score, event.target.value.replace(/[^\d.]/g, ''))}
                               placeholder="—"
                               aria-label={`Tự chấm ${item.name}`}
                               className="mt-0.5 h-9 w-16 rounded-lg border border-slate-200 text-center text-sm outline-none focus:border-indigo-500"

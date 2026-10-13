@@ -72,6 +72,7 @@ export function AdminProjectDetail() {
     id
       ? [
           { table: 'tasks', filter: `project_id=eq.${id}` },
+          { table: 'task_status_logs', filter: `project_id=eq.${id}` },
           { table: 'project_members', filter: `project_id=eq.${id}` },
           { table: 'task_worklogs' },
           { table: 'profiles' },
@@ -143,6 +144,16 @@ export function AdminProjectDetail() {
   const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!editingTask && taskForm.title.trim().length > 200) {
+      toast('Tên nhiệm vụ không được vượt quá 200 ký tự.', 'warning');
+      return;
+    }
+
+    if (!editingTask && taskForm.assignee_id && !members.some((member) => member.user_id === taskForm.assignee_id)) {
+      toast('Người thực hiện phải là thành viên của dự án.', 'warning');
+      return;
+    }
+
     // DB có CHECK (start_date <= due_date). Chặn ở đây để người dùng thấy câu
     // tiếng Việt chứ không phải lỗi ràng buộc của Postgres.
     if (taskForm.start_date && taskForm.due_date && taskForm.start_date > taskForm.due_date) {
@@ -152,7 +163,7 @@ export function AdminProjectDetail() {
 
     setSubmitting(true);
     const payload = {
-      title: taskForm.title,
+      title: taskForm.title.trim(),
       description: taskForm.description || null,
       assignee_id: taskForm.assignee_id || null,
       start_date: taskForm.start_date || null,
@@ -164,9 +175,17 @@ export function AdminProjectDetail() {
     };
 
     if (editingTask) {
-      const { error } = await supabase.from('tasks').update(payload).eq('id', editingTask.id);
+      const { data, error } = await supabase.from('tasks').update(payload)
+        .eq('id', editingTask.id)
+        .eq('updated_at', editingTask.updated_at)
+        .select('id')
+        .maybeSingle();
       if (error) {
-        toast('Cập nhật tác vụ thất bại', 'error');
+        toast(`Cập nhật tác vụ thất bại: ${describeDbError(error)}`, 'error');
+      } else if (!data) {
+        toast('Tác vụ vừa được người khác chỉnh sửa. Vui lòng tải lại trang rồi thử lại.', 'error');
+        setTaskModalOpen(false);
+        if (id) loadData(id, true);
       } else {
         if (taskForm.assignee_id && taskForm.assignee_id !== editingTask.assignee_id && taskForm.assignee_id !== profile?.id) {
           await notifyUser(
@@ -188,9 +207,10 @@ export function AdminProjectDetail() {
         order_index: tasks.length,
       });
       if (error) {
-        toast('Tạo tác vụ thất bại', 'error');
+        const message = describeDbError(error);
+        toast(message || 'Tạo tác vụ thất bại', 'error');
       } else {
-        if (taskForm.assignee_id && taskForm.assignee_id !== profile?.id) {
+        if (taskForm.assignee_id) {
           await notifyUser(
             taskForm.assignee_id,
             'Bạn có tác vụ dự án mới',
@@ -225,8 +245,12 @@ export function AdminProjectDetail() {
 
   const handleUpdateTaskStatus = async (taskId: string, status: TaskStatus) => {
     const task = tasks.find((item) => item.id === taskId);
-    if (status === 'done' && task?.status !== 'done') {
-      toast('Người được giao cần gửi yêu cầu nghiệm thu; Project lead duyệt tại tab Tác vụ.', 'warning');
+    if (task?.assignee_id !== profile?.id) {
+      toast('Chỉ người được giao mới được kéo thẻ giữa Cần làm và Đang làm.', 'warning');
+      return;
+    }
+    if (status === 'in_review' || status === 'done') {
+      toast('Nhân viên gửi báo cáo nghiệm thu từ Kanban; người kiểm duyệt xử lý tại tab Tác vụ.', 'warning');
       return;
     }
     const { error } = await supabase.from('tasks').update({ status }).eq('id', taskId);
@@ -238,7 +262,10 @@ export function AdminProjectDetail() {
   };
 
   const handleDragStart = (e: DragStartEvent) => {
-    setActiveTaskId(e.active.id as string);
+    const task = tasks.find((item) => item.id === e.active.id);
+    if (task?.assignee_id === profile?.id && task.status !== 'in_review' && task.status !== 'done') {
+      setActiveTaskId(e.active.id as string);
+    }
   };
 
   const handleDragEnd = async (e: DragEndEvent) => {
@@ -268,8 +295,16 @@ export function AdminProjectDetail() {
 
     const task = tasks.find((t) => t.id === taskId);
     if (!task || task.status === newStatus) return;
-    if (newStatus === 'done') {
-      toast('Người được giao cần gửi yêu cầu nghiệm thu; Project lead duyệt tại tab Tác vụ.', 'warning');
+    if (task.assignee_id !== profile?.id) {
+      toast('Chỉ người được giao mới được kéo thẻ giữa Cần làm và Đang làm.', 'warning');
+      return;
+    }
+    if (newStatus === 'in_review' || newStatus === 'done') {
+      toast('Nhân viên gửi báo cáo nghiệm thu từ Kanban; người kiểm duyệt xử lý tại tab Tác vụ.', 'warning');
+      return;
+    }
+    if (!((task.status === 'todo' && newStatus === 'in_progress') || (task.status === 'in_progress' && newStatus === 'todo'))) {
+      toast('Chuyển cột không đúng thứ tự.', 'warning');
       return;
     }
 
@@ -603,6 +638,13 @@ export function AdminProjectDetail() {
 
         {/* Kanban tab */}
         {tab === 'kanban' && (
+          <div className="space-y-4">
+          <div className="flex justify-end">
+            <Button onClick={openCreateTask} theme="admin" size="sm">
+              <Plus className="w-4 h-4" />
+              Thêm nhiệm vụ
+            </Button>
+          </div>
           <DndContext
             sensors={sensors}
             collisionDetection={closestCorners}
@@ -633,9 +675,10 @@ export function AdminProjectDetail() {
                           <SortableTaskItem
                             key={task.id}
                             task={task}
+                            canMove={task.assignee_id === profile?.id && task.status !== 'in_review' && task.status !== 'done'}
                             assignee={allProfiles.find((p) => p.id === task.assignee_id)}
-                            onEdit={() => openEditTask(task)}
-                            onDelete={() => handleDeleteTask(task)}
+                            onEdit={task.status !== 'done' ? () => openEditTask(task) : undefined}
+                            onDelete={task.status !== 'done' ? () => handleDeleteTask(task) : undefined}
                           />
                         ))}
                       </div>
@@ -653,6 +696,7 @@ export function AdminProjectDetail() {
               ) : null}
             </DragOverlay>
           </DndContext>
+          </div>
         )}
 
       {/* Documents tab */}
@@ -724,6 +768,7 @@ export function AdminProjectDetail() {
             label="Tiêu đề"
             value={taskForm.title}
             onChange={(e) => setTaskForm({ ...taskForm, title: e.target.value })}
+            maxLength={200}
             required
             placeholder="VD: Thiết kế trang chủ"
           />
@@ -763,11 +808,14 @@ export function AdminProjectDetail() {
               label="Hạn chót"
               type="date"
               value={taskForm.due_date}
-              min={taskForm.start_date || undefined}
+              min={!editingTask ? (project && taskForm.start_date && taskForm.start_date > project.start_date ? taskForm.start_date : project?.start_date) : taskForm.start_date || undefined}
+              max={!editingTask ? project?.end_date : undefined}
+              required={!editingTask}
               disabled={!!editingTask}
               onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })}
             />
           </div>
+          {!editingTask && <p className="-mt-2 text-xs text-slate-500">Deadline nhập theo ngày dd/MM/yyyy, áp dụng đến 23:59 GMT+7.</p>}
           {editingTask && (
             <p className="text-xs text-slate-500">
               Muốn đổi hạn chót, người được giao gửi yêu cầu gia hạn. Project lead duyệt trong tab Tác vụ.
@@ -835,8 +883,8 @@ export function AdminProjectDetail() {
   );
 }
 
-function SortableTaskItem({ task, assignee, onEdit, onDelete }: { task: Task; assignee?: Profile; onEdit: () => void; onDelete: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
+function SortableTaskItem({ task, assignee, canMove, onEdit, onDelete }: { task: Task; assignee?: Profile; canMove: boolean; onEdit?: () => void; onDelete?: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: !canMove });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const priority = PRIORITY_CONFIG[task.priority];
 
@@ -868,10 +916,10 @@ function SortableTaskItem({ task, assignee, onEdit, onDelete }: { task: Task; as
           )}
         </div>
       </div>
-      <div className="flex justify-end gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button onClick={onEdit} className="p-1 text-slate-400 hover:text-blue-600"><Edit3 className="w-3.5 h-3.5" /></button>
-        <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
-      </div>
+      {(onEdit || onDelete) && <div className="flex justify-end gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {onEdit && <button onClick={onEdit} className="p-1 text-slate-400 hover:text-blue-600"><Edit3 className="w-3.5 h-3.5" /></button>}
+        {onDelete && <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}
+      </div>}
     </div>
   );
 }

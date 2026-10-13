@@ -23,7 +23,9 @@ export function notificationRoute(type: string): string {
     case 'assignment_rejected':
       return '/staff/assignments';
     case 'project_task_assigned':
-      return '/staff/kanban';
+      return '/staff/assignments';
+    case 'project_task_review_result':
+      return '/staff/projects';
     case 'attendance_approved':
       return '/staff/attendance';
     case 'attendance_request_approved':

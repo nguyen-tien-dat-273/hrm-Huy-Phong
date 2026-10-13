@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileSpreadsheet, Search, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Phone, Building2, Wallet, Sparkles, UserCheck, CheckCircle2, ChevronDown, ChevronUp, CalendarClock } from 'lucide-react';
+import { FileSpreadsheet, Search, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Phone, Building2, Wallet, Sparkles, UserCheck, CheckCircle2, ChevronDown, ChevronUp, CalendarClock, Plus } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -114,6 +114,17 @@ export function AdminUsers() {
   const [submitting, setSubmitting] = useState(false);
   const fullAdmin = isFullAdmin(currentUser);
   const canAdminister = (user: Profile) => fullAdmin || user.role === 'staff';
+
+  const openCreateProfile = () => {
+    setEditingUser(null);
+    setForm({
+      name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '',
+      employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '',
+      education_level: '', school_name: '', major: '', graduation_year: '',
+      unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active', permissions: [],
+    });
+    setModalOpen(true);
+  };
 
   const loadPendingHandoffs = async () => {
     try {
@@ -607,6 +618,7 @@ export function AdminUsers() {
           <p className="text-sm text-slate-500 mt-1">Tra cứu thông tin cá nhân, tình trạng làm việc và giấy tờ ({users.length} nhân sự)</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {fullAdmin && <Button theme="admin" onClick={openCreateProfile}><Plus className="h-4 w-4" />Thêm hồ sơ nhân sự</Button>}
           {fullAdmin && (
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <FileSpreadsheet className="w-4 h-4" />
