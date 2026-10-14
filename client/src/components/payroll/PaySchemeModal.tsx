@@ -1,81 +1,66 @@
 // ============================================================================
-// Thiết lập cơ chế lương cho MỘT người.
+// F06.03 — "Thiết lập Cơ chế Lương" cho MỘT người hoặc MỘT đơn vị.
 // ----------------------------------------------------------------------------
-// Đây là chỗ thay thế cho modal cũ chỉ có hai ô "lương cơ bản" và "phụ cấp".
-// Một người ở đây được chọn cách tính lương gốc, mức đóng bảo hiểm, cách khấu
-// trừ thuế, và gán từng khoản cộng/trừ riêng kèm giá trị hoặc công thức của
-// riêng họ.
+// Màn này KHÔNG ghi thẳng cơ chế. Nó soạn một ĐỀ XUẤT (payroll_scheme_requests):
+// lưu nháp được, trình BGĐ ký duyệt (BR-PAY-012); chỉ khi BGĐ duyệt database
+// mới áp vào employee_pay_* / unit_pay_items. Cơ chế chưa duyệt là bản nháp,
+// engine không dùng.
+//
+// Đề xuất là bản THAY THẾ TOÀN BỘ phần khai riêng từ tháng áp dụng: khoản nào
+// không còn trong đề xuất thì hết hiệu lực từ tháng đó. Vì vậy màn mở ra với
+// đúng các khoản đang áp, và đánh dấu rõ thêm / bỏ / đổi so với hiện hành —
+// đó cũng là thứ BGĐ nhìn thấy khi ký.
+//
+// Không có con số lương nào nằm trong file này: lương tối thiểu vùng, thuế
+// suất khấu trừ thẳng mặc định, công chuẩn… đều đọc từ bộ tham số hiệu lực.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Save, Search, Trash2, TriangleAlert, Wallet } from 'lucide-react';
+import { Building2, Save, Search, Send, Trash2, TriangleAlert, XCircle } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { Input, Textarea } from '@/components/ui/Input';
+import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Avatar } from '@/components/ui/Avatar';
 import { PayrollFormulaBuilder } from '@/components/payroll/PayrollFormulaBuilder';
 import { PayItemFormulaPicker } from '@/components/payroll/PayItemFormulaPicker';
-import { parsePayFormula } from '@/lib/payItemFormula';
 import { useToast } from '@/contexts/ToastContext';
-import { formatVND } from '@/lib/utils';
-import { sampleFormulaScope } from '@/lib/payroll';
-import { validateFormula } from '@/lib/payrollFormula';
-import { deletePayItem, savePayItem, savePayProfile } from '@/lib/payrollData';
+import { useConfirm } from '@/contexts/ConfirmContext';
+import { useAppSettings } from '@/contexts/SettingsContext';
+import { formatVND, getTodayString } from '@/lib/utils';
+import { payProfileForPeriod, sampleFormulaScope } from '@/lib/payroll';
+import { explainFormulaError, type FormulaFunctions } from '@/lib/payrollFormula';
+import { parsePayFormula } from '@/lib/payItemFormula';
+import { firstEditableMonth, versionForMonth, type NamedParamDef, type TierTable } from '@/lib/payrollSettings';
+import {
+  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, baseAmountOf, diffSchemeItems, earliestSchemeMonth, openRequestFor,
+  personalItemsAt, profilePayloadOf, resolvePayItems, resolveTemplateFor, unitItemsAt, type SchemeChangeKind,
+} from '@/lib/payrollScheme';
+import { computeForPerson, paramsForMonth, schemeSourceOf } from '@/lib/payrollRun';
+import { cancelSchemeRequest, fetchPayrollApproverIds, saveSchemeRequest, type PayrollWorkspace } from '@/lib/payrollData';
+import { notifyUsers } from '@/lib/assignments';
 import type {
-  EmployeePayItem,
-  EmployeePayProfile,
-  PayBasis,
-  PayComponent,
-  PayrollNamedParam,
-  Profile,
-  TaxMode,
+  EmployeePayItem, EmployeePayProfile, OrganizationUnit, PayComponent, Profile, SchemePayloadItem,
+  SchemePayloadProfile, TaxMode,
 } from '@/types';
-import type { PayrollParams } from '@/lib/payrollSettings';
 
-/**
- * `pay_basis` và `base_amount` không còn khai trên màn này.
- *
- * Trước đây lương gốc là một mô hình RIÊNG: chọn một trong năm cơ chế
- * (tháng / giờ / ngày / khoán / hoa hồng) rồi nhập một con số. Người khai phải
- * học hai cách cho cùng một việc — lương gốc một kiểu, mọi khoản khác một kiểu.
- *
- * Giờ lương gốc cũng chỉ là một khoản trong danh mục, khai y như mọi khoản
- * khác: chọn khoản, chọn cách tính. Năm cơ chế cũ diễn đạt lại được hết bằng
- * cách tính của khoản —
- *
- *     lương tháng   -> mức ÷ công chuẩn × số công
- *     lương ngày    -> mức × số công
- *     lương giờ     -> công thức riêng với biến WORK_HOURS
- *     khoán/hoa hồng-> không có khoản lương gốc, chỉ có khoản khoán
- *
- * Cột dưới database giữ nguyên để không phải viết migration và để các bản ghi
- * cũ vẫn đọc được; màn này luôn ghi 'MONTHLY' và 0.
- */
-const LEGACY_PAY_BASIS: PayBasis = 'MONTHLY';
+export type SchemeTarget = { type: 'USER'; person: Profile } | { type: 'UNIT'; unit: OrganizationUnit };
 
 interface PaySchemeModalProps {
-  /** Tham số lương, dùng dựng bộ biến mẫu khi kiểm tra công thức. */
-  params: PayrollParams;
   open: boolean;
-  target: Profile | null;
-  /** Bản ghi cơ chế đang áp dụng cho kỳ đang xem, nếu có. */
-  current: EmployeePayProfile | null;
-  components: PayComponent[];
-  /** Tham số lương tự khai — dùng làm số liệu hoặc hệ số trong công thức. */
-  namedParams?: PayrollNamedParam[];
-  assignedItems: EmployeePayItem[];
-  /** Ngày đầu tháng đang xem — mặc định cho ngày hiệu lực. */
-  defaultEffectiveFrom: string;
-  actorId: string | null;
+  target: SchemeTarget | null;
+  data: PayrollWorkspace;
+  /** Tháng đang xem ở màn cha — mặc định cho tháng áp dụng. */
+  viewMonth: string;
+  lastClosedMonth: string | null;
+  /** Người chỉ có quyền xem (VD BGĐ) mở để đọc, không sửa. */
+  readOnly?: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
 
 /**
- * Cách tính khi người này KHÔNG khai công thức riêng.
- *
- * Lúc đó engine dùng `calc_type` của khoản trong Danh mục, không phải không
- * tính gì. Nói ra để người khai biết mình đang để khoản đó chạy theo cái gì.
+ * Cách tính khi KHÔNG khai công thức riêng: engine dùng `calc_type` của khoản
+ * trong Danh mục. Nói ra để người khai biết khoản đó đang chạy theo cái gì.
  */
 const CACH_TINH_MAC_DINH: Record<string, string> = {
   FIXED: 'số tiền cố định',
@@ -86,619 +71,897 @@ const CACH_TINH_MAC_DINH: Record<string, string> = {
   FORMULA: 'công thức khai ở Danh mục',
 };
 
+const TAX_MODE_LABEL: Record<TaxMode, string> = {
+  PROGRESSIVE: 'Lũy tiến theo biểu thuế (có giảm trừ gia cảnh)',
+  FLAT: 'Khấu trừ thẳng theo tỷ lệ (HĐ dưới 3 tháng)',
+  NONE: 'Không khấu trừ thuế',
+};
+
+const CHANGE_LABEL: Record<Exclude<SchemeChangeKind, 'SAME'>, { text: string; tone: string }> = {
+  ADDED: { text: 'Thêm mới', tone: 'bg-emerald-50 text-emerald-700' },
+  CHANGED: { text: 'Thay đổi', tone: 'bg-amber-50 text-amber-700' },
+  REMOVED: { text: 'Bỏ', tone: 'bg-red-50 text-red-700' },
+};
+
 interface ItemDraft {
-  id?: string;
   componentId: string;
   amount: string;
   formula: string;
   note: string;
+  /** null = theo Danh mục; true/false = khai riêng cho người này. */
+  taxable: boolean | null;
+  insurable: boolean | null;
+  isBase: boolean | null;
   /**
-   * Ba tính chất của khoản, khai RIÊNG cho người này.
-   *
-   * Danh mục khoản lương chỉ còn là danh sách tên. Nạp lần đầu thì lấy theo
-   * danh mục nên không ai phải khai lại từ đầu; lưu một lần là nó thành giá
-   * trị riêng của người này, từ đó danh mục đổi cũng không kéo theo.
-   */
-  taxable: boolean;
-  insurable: boolean;
-  isBase: boolean;
-  /**
-   * Đang khai bằng ô công thức tự do thay vì các ô chọn.
-   *
-   * KHÔNG còn nút bật/tắt — cờ này chỉ do hệ thống đặt lúc MỞ, khi công thức
-   * đã lưu không đọc được bằng các ô chọn. Giữ nó là bắt buộc: bỏ đi thì mở
-   * một cơ chế viết tay ra là màn hình diễn giải lại sai rồi ghi đè mất.
-   *
-   * Tính MỘT LẦN lúc mở, không suy lại mỗi lần render: đang gõ dở một biểu
-   * thức mà màn hình nhảy về ô chọn giữa chừng là mất hết cái vừa gõ.
+   * Công thức đã lưu mà bộ ô chọn không đọc nổi thì mở thẳng ô viết tay.
+   * Tính MỘT LẦN lúc nạp: đang gõ dở mà màn nhảy về ô chọn là mất chữ.
    */
   handWritten: boolean;
 }
 
+interface ProfileDraft {
+  dependents: string;
+  insuranceEnabled: boolean;
+  insuranceBase: string;
+  taxMode: TaxMode;
+  flatRate: string;
+  standardDays: string;
+  templateId: string;
+}
+
 const digitsOnly = (value: string) => value.replace(/[^\d]/g, '');
+const decimalOnly = (value: string) => value.replace(/[^\d.]/g, '');
+const monthText = (iso: string) => `${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 /** Bỏ dấu để gõ "xang" tìm ra "Phụ cấp xăng xe". */
 const stripTone = (text: string) => text
   .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
   .toLowerCase().trim();
 
+function monthEndOf(monthStart: string): string {
+  const [year, month] = monthStart.split('-').map(Number);
+  return `${monthStart.slice(0, 7)}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+}
+
+function profileDraftOf(profile: SchemePayloadProfile): ProfileDraft {
+  return {
+    dependents: String(profile.dependents ?? 0),
+    insuranceEnabled: profile.insurance_enabled,
+    insuranceBase: profile.insurance_base == null ? '' : String(profile.insurance_base),
+    taxMode: profile.tax_mode,
+    flatRate: profile.flat_tax_rate == null ? '' : String(profile.flat_tax_rate),
+    standardDays: profile.standard_days_override == null ? '' : String(profile.standard_days_override),
+    templateId: profile.template_id ?? '',
+  };
+}
+
+function profilePayloadFromDraft(draft: ProfileDraft): SchemePayloadProfile {
+  return {
+    dependents: Number(draft.dependents) || 0,
+    insurance_enabled: draft.insuranceEnabled,
+    insurance_base: draft.insuranceBase.trim() ? Number(draft.insuranceBase) : null,
+    tax_mode: draft.taxMode,
+    flat_tax_rate: draft.flatRate.trim() ? Number(draft.flatRate) : null,
+    standard_days_override: draft.standardDays.trim() ? Number(draft.standardDays) : null,
+    template_id: draft.templateId || null,
+  };
+}
+
 export function PaySchemeModal({
-  open, target, current, components, assignedItems, params,
-  defaultEffectiveFrom, actorId, onClose, onSaved, namedParams = [],
+  open, target, data, viewMonth, lastClosedMonth, readOnly = false, onClose, onSaved,
 }: PaySchemeModalProps) {
   const { toast } = useToast();
+  const confirm = useConfirm();
+  const app = useAppSettings();
 
-  /** Khoản được đánh dấu lương gốc trong danh mục, nếu đã khai. */
-  const [effectiveFrom, setEffectiveFrom] = useState(defaultEffectiveFrom);
-  const [insuranceEnabled, setInsuranceEnabled] = useState(true);
-  const [insuranceBase, setInsuranceBase] = useState('');
-  const [dependents, setDependents] = useState('0');
-  const [taxMode, setTaxMode] = useState<TaxMode>('PROGRESSIVE');
-  const [flatRate, setFlatRate] = useState('10');
-  const [standardDays, setStandardDays] = useState('');
-  const [note, setNote] = useState('');
+  const isUser = target?.type === 'USER';
+  const targetId = target ? (target.type === 'USER' ? target.person.id : target.unit.id) : null;
+  const targetName = target ? (target.type === 'USER' ? target.person.name : target.unit.name) : '';
+
+  const request = useMemo(
+    () => (target && targetId ? openRequestFor(data.schemeRequests, { type: target.type, id: targetId }) : null),
+    [data.schemeRequests, target, targetId],
+  );
+  const locked = readOnly || request?.status === 'SUBMITTED';
+
+  const minMonth = useMemo(() => {
+    const floor = firstEditableMonth(lastClosedMonth, getTodayString());
+    if (!target || !targetId) return floor;
+    const own = target.type === 'USER'
+      ? [
+        ...data.payProfiles.filter((row) => row.user_id === targetId).map((row) => row.effective_from),
+        ...data.items.filter((row) => row.user_id === targetId).map((row) => row.effective_from),
+      ]
+      : data.unitItems.filter((row) => row.unit_id === targetId).map((row) => row.effective_from);
+    return earliestSchemeMonth(floor, own);
+  }, [data.items, data.payProfiles, data.unitItems, lastClosedMonth, target, targetId]);
+
+  const [month, setMonth] = useState(viewMonth);
   const [drafts, setDrafts] = useState<ItemDraft[]>([]);
-  const [removedIds, setRemovedIds] = useState<string[]>([]);
-  const [componentQuery, setComponentQuery] = useState('');
-  /** Dòng đang được lưu lẻ, để chỉ khoá đúng nút đó. */
-  const [savingOne, setSavingOne] = useState<number | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [profile, setProfile] = useState<ProfileDraft | null>(null);
+  const [note, setNote] = useState('');
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState<'draft' | 'submit' | 'cancel' | null>(null);
 
-  // Nạp lại mỗi lần mở cho người khác. Không dùng `key` ở phía cha vì modal
-  // cần giữ trạng thái khi người dùng cuộn trong lúc đang sửa.
-  useEffect(() => {
-    if (!open) return;
-    setEffectiveFrom(current?.effective_from ?? defaultEffectiveFrom);
-    setInsuranceEnabled(current?.insurance_enabled ?? true);
-    setInsuranceBase(current?.insurance_base != null ? String(Number(current.insurance_base)) : '');
-    setDependents(String(current?.dependents ?? 0));
-    setTaxMode(current?.tax_mode ?? 'PROGRESSIVE');
-    setFlatRate(String(current?.flat_tax_rate ?? 10));
-    setStandardDays(current?.standard_days_override != null ? String(Number(current.standard_days_override)) : '');
-    setNote(current?.note ?? '');
-    setDrafts(assignedItems.map((item) => ({
-      id: item.id,
-      componentId: item.component_id,
-      amount: item.amount != null ? String(Number(item.amount)) : '',
-      formula: item.formula ?? '',
-      taxable: item.taxable ?? componentById.get(item.component_id)?.taxable ?? true,
-      insurable: item.insurable ?? componentById.get(item.component_id)?.insurable ?? false,
-      isBase: item.is_base ?? componentById.get(item.component_id)?.is_base ?? false,
-      // Công thức đã lưu mà các ô chọn không đọc nổi thì mở thẳng ô tự do —
-      // hiện ô chọn rồi bấm Lưu là ghi đè mất công thức người ta viết tay.
-      handWritten: !!item.formula
-        && !parsePayFormula(
-          item.formula,
-          components.map((c) => c.code),
-          // PHẢI truyền cả mã số liệu tháng. Không có nó thì `MUC_RIENG *
-          // SO_CHUYEN` bị coi là mã gõ sai, và gần như mọi khoản của công ty
-          // mở ra đều rơi về ô viết tay — đúng cái mà bộ ô chọn để tránh.
-          components.map((c) => c.input_code).filter((code): code is string => !!code),
-        ),
-      note: item.note ?? '',
-    })));
-    setRemovedIds([]);
-  }, [open, target?.id, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const componentById = useMemo(
-    () => new Map(components.map((component) => [component.id, component])),
-    [components],
+  const componentById = useMemo(() => new Map(data.components.map((c) => [c.id, c])), [data.components]);
+  const componentCodes = useMemo(() => data.components.map((c) => c.code), [data.components]);
+  const inputCodes = useMemo(
+    () => data.components.map((c) => c.input_code).filter((code): code is string => !!code),
+    [data.components],
   );
 
-  // Biến mẫu để kiểm tra công thức ngay lúc gõ, gồm cả mã số liệu tháng của
-  // các khoản đang hoạt động — nếu không, công thức đúng vẫn báo "không có biến".
-  const formulaScope = useMemo(() => {
-    const inputCodes = components
-      .map((component) => component.input_code)
-      .filter((code): code is string => !!code);
-    const componentCodes = components.map((component) => component.code);
-    return sampleFormulaScope(params, [...inputCodes, ...componentCodes]);
-  }, [components, params]);
+  const draftOf = (item: SchemePayloadItem): ItemDraft => ({
+    componentId: item.component_id,
+    amount: item.amount == null ? '' : String(item.amount),
+    formula: item.formula ?? '',
+    note: item.note ?? '',
+    taxable: item.taxable ?? null,
+    insurable: item.insurable ?? null,
+    isBase: item.is_base ?? null,
+    handWritten: !!item.formula && !parsePayFormula(item.formula, componentCodes, inputCodes),
+  });
+
+  // Nạp lại mỗi lần mở cho một đối tượng khác. Tháng mở = tháng của đề xuất
+  // đang dở, hoặc tháng đang xem nếu còn sửa được, hoặc tháng sớm nhất được sửa.
+  useEffect(() => {
+    if (!open || !target || !targetId) return;
+    const start = request?.effective_from ?? (viewMonth >= minMonth ? viewMonth : minMonth);
+    const end = monthEndOf(start);
+    setMonth(start);
+    const items = request?.payload.items
+      ?? (target.type === 'USER'
+        ? personalItemsAt(data.items, targetId, start, end)
+        : unitItemsAt(data.unitItems, targetId, start, end));
+    setDrafts(items.map(draftOf));
+    if (target.type === 'USER') {
+      const current = payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === targetId), end);
+      const fallbackRate = versionForMonth(data.paramVersions, start)?.flatTaxRate ?? 0;
+      setProfile(profileDraftOf(request?.payload.profile ?? profilePayloadOf(current, fallbackRate)));
+    } else {
+      setProfile(null);
+    }
+    setNote(request?.note ?? '');
+    setQuery('');
+  }, [open, targetId, request?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const monthEnd = monthEndOf(month);
+  const version = useMemo(() => versionForMonth(data.paramVersions, month), [data.paramVersions, month]);
+  const params = useMemo(
+    () => paramsForMonth(data, app, new Date(`${month}T00:00:00`), month),
+    [data, app, month],
+  );
+  const formulaScope = useMemo(
+    () => (params ? sampleFormulaScope(params, [...componentCodes, ...inputCodes]) : {}),
+    [params, componentCodes, inputCodes],
+  );
+
+  const payloadItems: SchemePayloadItem[] = useMemo(() => drafts.map((draft) => ({
+    component_id: draft.componentId,
+    amount: draft.amount.trim() === '' ? null : Number(draft.amount),
+    formula: draft.formula.trim() || null,
+    note: draft.note.trim() || null,
+    ...(isUser ? { taxable: draft.taxable, insurable: draft.insurable, is_base: draft.isBase } : {}),
+  })), [drafts, isUser]);
+
+  /** Phần khai riêng ĐANG ÁP ở tháng chọn — mốc so sánh thêm / bỏ / đổi. */
+  const currentItems = useMemo(() => {
+    if (!target || !targetId) return [];
+    return target.type === 'USER'
+      ? personalItemsAt(data.items, targetId, month, monthEnd)
+      : unitItemsAt(data.unitItems, targetId, month, monthEnd);
+  }, [data.items, data.unitItems, month, monthEnd, target, targetId]);
+  const changes = useMemo(() => diffSchemeItems(currentItems, payloadItems), [currentItems, payloadItems]);
+  const changeOf = (componentId: string) => changes.find((change) => change.componentId === componentId)?.kind ?? 'SAME';
+  const removed = changes.filter((change) => change.kind === 'REMOVED');
 
   /**
-   * Danh mục để tick chọn, lọc theo ô tìm.
-   *
-   * Danh mục thật có gần 40 khoản. Bản cũ bắt bấm "Thêm khoản" rồi dò trong
-   * một dropdown dài bằng đó — mỗi khoản một lần, và không lúc nào thấy được
-   * mình đã chọn những gì. Bày cả danh mục ra, tick một lượt, rồi mới khai
-   * công thức cho từng khoản đã tick.
+   * Khoản người / đơn vị này THỪA HƯỞNG từ mẫu của khối và khoản chung của
+   * đơn vị cấp trên — chỉ để xem. Khai riêng cùng khoản thì phần riêng thắng.
    */
+  const inherited = useMemo(() => {
+    if (!target) return [];
+    const source = schemeSourceOf(data);
+    if (target.type === 'USER') {
+      return resolvePayItems(
+        target.person,
+        { template_id: profile?.templateId || null },
+        { ...source, employeeItems: [] },
+        month, monthEnd,
+      );
+    }
+    return resolvePayItems(
+      { id: '', unit_id: target.unit.id },
+      null,
+      { ...source, unitItems: source.unitItems.filter((row) => row.unit_id !== target.unit.id), employeeItems: [] },
+      month, monthEnd,
+    );
+  }, [data, month, monthEnd, profile?.templateId, target]);
+
+  const unitTemplateLabel = useMemo(() => {
+    if (!target) return '';
+    const person = target.type === 'USER' ? target.person : { id: '', unit_id: target.unit.id };
+    return resolveTemplateFor(person, null, schemeSourceOf(data), month).label;
+  }, [data, month, target]);
+
+  // ---- Kiểm tra --------------------------------------------------------------
+  const formulaIssues = drafts.map((draft) => (draft.formula.trim()
+    ? explainFormulaError(draft.formula, formulaScope, { functions: params?.tierFunctions })
+    : null));
+  const amountIssues = drafts.map((draft) => {
+    if (!draft.amount.trim()) return null;
+    const value = Number(draft.amount);
+    return Number.isFinite(value) && value >= 0 ? null : 'Mức phải là số không âm.';
+  });
+  const profileIssues: Partial<Record<keyof ProfileDraft, string>> = {};
+  if (profile) {
+    const dependents = Number(profile.dependents);
+    if (!/^\d+$/.test(profile.dependents.trim()) || dependents > 30) profileIssues.dependents = 'Số nguyên từ 0 đến 30.';
+    if (profile.taxMode === 'FLAT') {
+      const rate = Number(profile.flatRate);
+      if (!profile.flatRate.trim() || !(rate >= 0 && rate <= 100)) profileIssues.flatRate = 'Từ 0 đến 100%.';
+    }
+    if (profile.standardDays.trim()) {
+      const days = Number(profile.standardDays);
+      if (!(days > 0 && days <= 31)) profileIssues.standardDays = 'Trong khoảng 1–31, hoặc để trống.';
+    }
+  }
+  const baseAmount = baseAmountOf(payloadItems, data.components);
+  const baseCount = drafts.filter((draft) => draft.isBase ?? componentById.get(draft.componentId)?.is_base).length;
+  const minimumWage = version?.regionalMinimumWage ?? null;
+  const belowMinimum = baseAmount != null && minimumWage != null && baseAmount < minimumWage;
+  const hasBlocking = formulaIssues.some(Boolean) || amountIssues.some(Boolean)
+    || Object.keys(profileIssues).length > 0 || baseCount > 1;
+
+  /** Ước tính một tháng đủ công chuẩn với cơ chế ĐANG SOẠN — chưa gồm OT/KPI/điều chỉnh. */
+  const preview = useMemo(() => {
+    if (!target || target.type !== 'USER' || !params || !profile || hasBlocking) return null;
+    const userId = target.person.id;
+    const payloadProfile = profilePayloadFromDraft(profile);
+    const fakeProfile: EmployeePayProfile = {
+      id: 'draft', user_id: userId, effective_from: month, pay_basis: 'MONTHLY', base_amount: 0,
+      insurance_base: payloadProfile.insurance_base, insurance_enabled: payloadProfile.insurance_enabled,
+      dependents: payloadProfile.dependents, tax_mode: payloadProfile.tax_mode,
+      flat_tax_rate: payloadProfile.flat_tax_rate ?? 0,
+      standard_days_override: payloadProfile.standard_days_override, template_id: payloadProfile.template_id,
+      note: null, created_by: null, created_at: '', updated_at: '',
+    };
+    const fakeItems: EmployeePayItem[] = payloadItems.map((item, index) => ({
+      id: `draft-${index}`, user_id: userId, component_id: item.component_id, amount: item.amount,
+      formula: item.formula, taxable: item.taxable ?? null, insurable: item.insurable ?? null,
+      is_base: item.is_base ?? null, effective_from: month, effective_to: null, note: item.note ?? null,
+      created_by: null, created_at: '', updated_at: '',
+    }));
+    const sandbox: PayrollWorkspace = {
+      ...data,
+      items: [...data.items.filter((row) => row.user_id !== userId), ...fakeItems],
+      payProfiles: [...data.payProfiles.filter((row) => row.user_id !== userId), fakeProfile],
+      inputs: [], adjustments: [], attendanceRequests: [], attendance: [], leaves: [],
+    };
+    const standard = payloadProfile.standard_days_override ?? params.standardWorkDays;
+    try {
+      return computeForPerson(target.person, sandbox, params, new Date(`${month}T00:00:00`), month, monthEnd, {
+        statsOverride: {
+          workDays: standard, leaveDays: 0, holidayDays: 0,
+          workHours: standard * params.hoursPerDay, lateCount: 0, earlyCount: 0,
+        },
+      }).computed;
+    } catch {
+      return null;
+    }
+  }, [data, hasBlocking, month, monthEnd, params, payloadItems, profile, target]);
+
+  // ---- Chọn khoản ------------------------------------------------------------
   const pickable = useMemo(() => {
-    const keyword = stripTone(componentQuery);
-    return components
-      .filter((item) => item.is_active)
-      .filter((item) => !keyword
-        || stripTone(item.name).includes(keyword)
-        || stripTone(item.code || '').includes(keyword));
-  }, [components, componentQuery]);
+    const keyword = stripTone(query);
+    return data.components
+      .filter((c) => c.is_active && c.calc_source !== 'ENGINE')
+      .filter((c) => !keyword || stripTone(c.name).includes(keyword) || stripTone(c.code).includes(keyword));
+  }, [data.components, query]);
+  const pickableGroups = useMemo(() => data.categories
+    .map((category) => ({ category, items: pickable.filter((c) => c.category_code === category.code) }))
+    .filter((group) => group.items.length > 0), [data.categories, pickable]);
 
   const chosen = (componentId: string) => drafts.some((draft) => draft.componentId === componentId);
-
-  /**
-   * Mã các khoản khác đã khai cho CHÍNH người này.
-   *
-   * Khoản lương gán theo từng người: công thức trỏ tới một khoản mà người này
-   * chưa được khai thì engine tính phần đó bằng 0đ. Đưa danh sách này xuống để
-   * ô chọn nguồn tách được "đã khai cho người này" với phần còn lại.
-   */
-  /**
-   * Gom khoản theo nhóm, mỗi nhóm MỘT khung.
-   *
-   * Trước đây mỗi khoản một khung riêng, và chữ "KHOẢN CỘNG" lặp lại trên
-   * từng khung — mười khoản cộng là mười lần cùng một chữ. Nhóm chỉ cần nói
-   * một lần ở đầu khung.
-   *
-   * Giữ `index` GỐC trong mảng `drafts` chứ không đánh số lại theo nhóm: mọi
-   * hàm sửa/xoá đều chạy theo chỉ số của mảng gốc, đánh lại là sửa nhầm dòng.
-   */
-  const groups = useMemo(() => {
-    const order: Array<PayComponent['kind']> = ['EARNING', 'DEDUCTION', 'EMPLOYER_COST'];
-    const label: Record<string, string> = {
-      EARNING: 'Khoản cộng', DEDUCTION: 'Khoản trừ', EMPLOYER_COST: 'Chi phí doanh nghiệp',
-    };
-    return order
-      .map((kind) => ({
-        kind,
-        label: label[kind],
-        rows: drafts
-          .map((draft, index) => ({ draft, index }))
-          .filter((row) => (componentById.get(row.draft.componentId)?.kind ?? 'EARNING') === kind),
-      }))
-      .filter((group) => group.rows.length > 0);
-  }, [drafts, componentById]);
-
-  const assignedCodes = (skipIndex: number) => drafts
-    .filter((_, index) => index !== skipIndex)
-    .map((draft) => componentById.get(draft.componentId)?.code)
-    .filter((code): code is string => !!code);
-
-  /**
-   * Tick vào thì thêm một dòng khai; bỏ tick thì gỡ dòng đó.
-   *
-   * Khoản ĐÃ LƯU mà bỏ tick phải đưa id vào `removedIds` để lúc lưu còn xoá
-   * dưới database — chỉ gỡ khỏi màn hình thì lần mở sau nó hiện lại như chưa
-   * có gì xảy ra.
-   */
-  const toggleComponent = (componentId: string) => {
-    setDrafts((list) => {
-      const existing = list.find((draft) => draft.componentId === componentId);
-      if (!existing) {
-        const chon = componentById.get(componentId);
-        return [...list, {
-          componentId,
-          amount: '',
-          formula: '',
-          handWritten: false,
-          note: '',
-          taxable: chon?.taxable ?? true,
-          insurable: chon?.insurable ?? false,
-          isBase: chon?.is_base ?? false,
-        }];
-      }
-      if (existing.id) setRemovedIds((ids) => [...ids, existing.id as string]);
-      return list.filter((draft) => draft.componentId !== componentId);
-    });
-  };
-
-  /**
-   * Lưu RIÊNG một khoản, không chờ lưu cả cơ chế.
-   *
-   * Dùng khi khai xong một khoản rồi muốn chốt nó lại trước khi khai tiếp.
-   *
-   * Phải ghi `id` trả về vào draft: không giữ id thì lần lưu tổng sau đó coi
-   * khoản này là mới và CHÈN THÊM một dòng nữa cho cùng một khoản — người đó
-   * ăn khoản lương hai lần.
-   */
-  const saveOne = async (index: number) => {
-    if (!target) return;
-    const draft = drafts[index];
-    if (!draft?.componentId) return;
-    if (formulaErrors[index]) {
-      toast('Công thức khoản này chưa hợp lệ — sửa trước khi lưu.', 'warning');
-      return;
-    }
-    setSavingOne(index);
-    const { error, id } = await savePayItem({
-      ...(draft.id ? { id: draft.id } : {}),
-      user_id: target.id,
-      component_id: draft.componentId,
-      amount: draft.amount ? Number(draft.amount) : null,
-      formula: draft.formula.trim() || null,
-      taxable: draft.taxable,
-      insurable: draft.insurable,
-      is_base: draft.isBase,
-      effective_from: effectiveFrom,
-      note: draft.note.trim() || null,
-      created_by: actorId,
-    });
-    setSavingOne(null);
-    if (error) return toast('Không lưu được khoản này: ' + error, 'error');
-    if (id) updateDraft(index, { id });
-    toast(`Đã lưu ${componentById.get(draft.componentId)?.name ?? 'khoản'}.`, 'success');
-  };
-
   const updateDraft = (index: number, patch: Partial<ItemDraft>) => {
     setDrafts((list) => list.map((draft, i) => (i === index ? { ...draft, ...patch } : draft)));
   };
-
-  /**
-   * Bật lương gốc cho một khoản, TẮT các khoản còn lại.
-   *
-   * Database có unique index chặn hai khoản cùng là lương gốc của một người.
-   * Không tắt ở đây thì người dùng bật cái thứ hai, bấm Lưu, và nhận một lỗi
-   * ràng buộc khó hiểu — trong khi ý họ rõ ràng là đổi khoản lương gốc.
-   */
+  const toggleComponent = (componentId: string) => {
+    setDrafts((list) => (list.some((draft) => draft.componentId === componentId)
+      ? list.filter((draft) => draft.componentId !== componentId)
+      : [...list, {
+        componentId, amount: '', formula: '', note: '',
+        taxable: null, insurable: null, isBase: null, handWritten: false,
+      }]));
+  };
+  /** Bật lương gốc cho một khoản thì tắt các khoản còn lại — mỗi cơ chế MỘT lương gốc. */
   const setBase = (index: number, on: boolean) => {
-    setDrafts((list) => list.map((draft, i) => ({ ...draft, isBase: on && i === index })));
+    setDrafts((list) => list.map((draft, i) => {
+      if (i === index) return { ...draft, isBase: on };
+      const effective = draft.isBase ?? componentById.get(draft.componentId)?.is_base ?? false;
+      return on && effective ? { ...draft, isBase: false } : draft;
+    }));
   };
 
-  const removeDraft = (index: number) => {
-    setDrafts((list) => {
-      const draft = list[index];
-      if (draft?.id) setRemovedIds((ids) => [...ids, draft.id as string]);
-      return list.filter((_, i) => i !== index);
-    });
-  };
+  const assignedCodes = (skipIndex: number) => [
+    ...drafts.filter((_, index) => index !== skipIndex).map((draft) => componentById.get(draft.componentId)?.code),
+    ...inherited.map((entry) => entry.component.code),
+  ].filter((code): code is string => !!code);
 
-  // Chặn lưu khi công thức hỏng: phát hiện lúc chạy lương thì đã muộn.
-  const formulaErrors = drafts.map((draft) => {
-    const source = draft.formula.trim();
-    if (!source) return null;
-    return validateFormula(source, formulaScope);
-  });
-  const hasFormulaError = formulaErrors.some(Boolean);
+  const groupedDrafts = useMemo(() => data.categories
+    .map((category) => ({
+      category,
+      rows: drafts.map((draft, index) => ({ draft, index }))
+        .filter(({ draft }) => componentById.get(draft.componentId)?.category_code === category.code),
+    }))
+    .filter((group) => group.rows.length > 0), [componentById, data.categories, drafts]);
 
-  const handleSave = async () => {
-    if (!target) return;
-    if (drafts.length === 0) {
-      toast('Chưa chọn khoản lương nào. Thêm ít nhất một khoản.', 'warning');
+  // ---- Lưu / trình / huỷ -----------------------------------------------------
+  const handleSave = async (submit: boolean) => {
+    if (!target || !targetId) return;
+    if (month < minMonth) {
+      toast(`Tháng áp dụng sớm nhất là ${monthText(minMonth)}.`, 'warning');
       return;
     }
-    if (drafts.some((item) => !item.componentId)) {
-      toast('Còn dòng chưa chọn khoản lương.', 'warning');
+    if (hasBlocking) {
+      toast('Còn ô chưa hợp lệ — sửa các chỗ tô đỏ trước.', 'warning');
       return;
     }
-    if (hasFormulaError) {
-      toast('Còn công thức chưa hợp lệ — sửa trước khi lưu.', 'warning');
-      return;
+    if (submit) {
+      if (!version) {
+        toast(`Chưa có bộ tham số lương hiệu lực cho ${monthText(month)} — khai ở Tham số & công thức trước.`, 'warning');
+        return;
+      }
+      if (belowMinimum) {
+        toast(`Mức lương cơ bản thấp hơn lương tối thiểu vùng ${formatVND(minimumWage)} (BR-PAY-013).`, 'error');
+        return;
+      }
+      if (drafts.length === 0 && isUser && inherited.length === 0) {
+        const ok = await confirm({
+          title: 'Trình cơ chế không có khoản nào?',
+          message: 'Người này không khai khoản riêng và cũng không thừa hưởng khoản nào — phiếu lương sẽ ra 0đ.',
+          confirmLabel: 'Vẫn trình',
+        });
+        if (!ok) return;
+      }
     }
 
-    setSaving(true);
-    const profileError = await savePayProfile({
-      user_id: target.id,
-      effective_from: effectiveFrom,
-      // Hai cột vestigial: xem chú thích ở LEGACY_PAY_BASIS đầu file. Lương
-      // gốc thật nằm ở khoản được đánh dấu trong danh mục.
-      pay_basis: LEGACY_PAY_BASIS,
-      base_amount: 0,
-      // Bốn trường dưới KHÔNG còn ô nhập trên màn. State của chúng nạp từ bản
-      // ghi hiện có ở `useEffect` khởi tạo, nên lưu lại là ghi đúng giá trị cũ
-      // chứ không phải mặc định — bỏ ô nhập mà ghi mặc định là âm thầm xoá
-      // thiết lập bảo hiểm/thuế của người ta.
-      insurance_base: insuranceBase ? Number(insuranceBase) : null,
-      insurance_enabled: insuranceEnabled,
-      dependents: Number(dependents) || 0,
-      tax_mode: taxMode,
-      flat_tax_rate: Number(flatRate) || 10,
-      standard_days_override: standardDays ? Number(standardDays) : null,
+    setBusy(submit ? 'submit' : 'draft');
+    const { id, error } = await saveSchemeRequest({
+      requestId: request && request.status !== 'SUBMITTED' ? request.id : null,
+      targetType: target.type,
+      userId: target.type === 'USER' ? targetId : null,
+      unitId: target.type === 'UNIT' ? targetId : null,
+      effectiveFrom: month,
+      payload: {
+        ...(profile ? { profile: profilePayloadFromDraft(profile) } : {}),
+        items: payloadItems,
+      },
       note: note.trim() || null,
-      created_by: actorId,
+      submit,
     });
-
-    if (profileError) {
-      setSaving(false);
-      toast('Lưu cơ chế lương thất bại: ' + profileError, 'error');
+    if (error || !id) {
+      setBusy(null);
+      toast((submit ? 'Không trình được: ' : 'Không lưu được: ') + (error ?? 'không rõ lỗi'), 'error');
       return;
     }
-
-    for (const id of removedIds) {
-      const error = await deletePayItem(id);
-      if (error) {
-        setSaving(false);
-        toast('Xóa khoản thất bại: ' + error, 'error');
-        return;
-      }
+    if (submit) {
+      const approvers = await fetchPayrollApproverIds();
+      await notifyUsers(
+        approvers,
+        'Cơ chế lương chờ duyệt',
+        `${target.type === 'USER' ? 'Nhân sự' : 'Đơn vị'} ${targetName} — áp dụng từ ${monthText(month)}. Mở Lương & đãi ngộ › Phê duyệt để ký.`,
+        'payroll_scheme_submitted',
+      );
     }
-
-    for (const draft of drafts) {
-      const { error } = await savePayItem({
-        ...(draft.id ? { id: draft.id } : {}),
-        user_id: target.id,
-        component_id: draft.componentId,
-        amount: draft.amount ? Number(draft.amount) : null,
-        formula: draft.formula.trim() || null,
-        taxable: draft.taxable,
-        insurable: draft.insurable,
-        is_base: draft.isBase,
-        // Dùng chung ngày của cả cơ chế: ô "Áp dụng từ" giờ nằm ngoài, mỗi
-        // khoản không còn ngày riêng.
-        effective_from: effectiveFrom,
-        note: draft.note.trim() || null,
-        created_by: actorId,
-      });
-      if (error) {
-        setSaving(false);
-        toast('Lưu khoản lương thất bại: ' + error, 'error');
-        return;
-      }
-    }
-
-    setSaving(false);
-    toast(`Đã lưu cơ chế lương cho ${target.name}.`, 'success');
+    setBusy(null);
+    toast(submit ? `Đã trình BGĐ duyệt cơ chế lương của ${targetName}.` : 'Đã lưu nháp đề xuất.', 'success');
     onSaved();
     onClose();
   };
 
+  const handleCancel = async () => {
+    if (!request) return;
+    const ok = await confirm({
+      title: 'Huỷ đề xuất này?',
+      message: request.status === 'SUBMITTED'
+        ? 'Đề xuất đang chờ BGĐ duyệt sẽ bị rút về và huỷ. Cơ chế hiện hành giữ nguyên.'
+        : 'Bản nháp sẽ bị huỷ. Cơ chế hiện hành giữ nguyên.',
+      confirmLabel: 'Huỷ đề xuất',
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy('cancel');
+    const error = await cancelSchemeRequest(request.id);
+    setBusy(null);
+    if (error) return toast('Không huỷ được: ' + error, 'error');
+    toast('Đã huỷ đề xuất.', 'success');
+    onSaved();
+    onClose();
+  };
+
+  if (!target) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title="Cơ chế lương" size="xl">
-      {target && (
-        <div className="space-y-5">
-          <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
-            <Avatar name={target.name} url={target.avatar_url} size="md" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-slate-800">{target.name}</p>
-              <p className="text-xs text-slate-500">{target.department || 'Chưa có bộ phận'}</p>
-            </div>
+    <Modal open={open} onClose={onClose} title="Thiết lập cơ chế lương" size="xl">
+      <div className="space-y-5">
+        {/* --- Đối tượng + trạng thái đề xuất --- */}
+        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3">
+          {target.type === 'USER' ? (
+            <Avatar name={target.person.name} url={target.person.avatar_url} size="md" />
+          ) : (
+            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+              <Building2 className="h-5 w-5" />
+            </span>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-slate-800">{targetName}</p>
+            <p className="text-xs text-slate-500">
+              {target.type === 'USER'
+                ? `${target.person.employee_code ?? ''}${target.person.employee_code ? ' · ' : ''}${target.person.department || 'Chưa có bộ phận'}`
+                : 'Khoản chung — áp cho mọi người trong đơn vị và đơn vị con'}
+              {' · '}Mẫu: {unitTemplateLabel}
+            </p>
           </div>
+          {request && (
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${SCHEME_STATUS_TONE[request.status]}`}>
+              {request.code} · {SCHEME_STATUS_LABEL[request.status]}
+            </span>
+          )}
+        </div>
 
-          {/* Màn này hiện CHỈ còn danh mục khoản. Hiệu lực, ngày công chuẩn,
-              bảo hiểm và thuế đã bỏ khỏi giao diện theo yêu cầu — nhưng state
-              của chúng GIỮ NGUYÊN và vẫn được ghi xuống khi lưu, lấy từ bản
-              ghi hiện có. Bỏ ô nhập mà ghi giá trị mặc định là âm thầm xoá
-              thiết lập bảo hiểm/thuế của người ta. */}
-          <section className="space-y-3">
-            <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              Các khoản lương ({drafts.length})
-            </h3>
+        {request?.status === 'REJECTED' && request.review_note && (
+          <p className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+            <XCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+            <span><strong>BGĐ từ chối:</strong> {request.review_note} — sửa rồi trình lại.</span>
+          </p>
+        )}
+        {request?.status === 'SUBMITTED' && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Đề xuất đang chờ BGĐ ký duyệt nên không sửa được. Cần đổi thì huỷ đề xuất rồi lập lại.
+          </p>
+        )}
 
-            {/* Một ngày hiệu lực cho CẢ cơ chế, không phải mỗi khoản một ngày.
-                Đổi lương là một quyết định có một mốc; để mỗi khoản một ngày
-                thì sửa vài khoản xong sẽ có người mang ba mốc khác nhau, và
-                đối chiếu bảng lương không ra vì sao. */}
-            <Input
-              label="Áp dụng từ ngày"
-              type="date"
-              value={effectiveFrom}
-              onChange={(event) => setEffectiveFrom(event.target.value)}
-            />
-            {/* --- Chọn khoản từ danh mục --- */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Input
+            label="Áp dụng từ tháng"
+            type="month"
+            required
+            min={minMonth.slice(0, 7)}
+            value={month.slice(0, 7)}
+            disabled={locked}
+            onChange={(event) => event.target.value && setMonth(`${event.target.value}-01`)}
+            error={month < minMonth ? `Sớm nhất ${monthText(minMonth)} (sau kỳ đã chốt / phiên bản đã có).` : undefined}
+          />
+          <div className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">Bộ tham số áp dụng</p>
+            {version ? (
+              <p className="mt-0.5">
+                Từ {monthText(version.effectiveFrom)} · Lương tối thiểu vùng {version.regionCode}:{' '}
+                <strong>{formatVND(version.regionalMinimumWage)}</strong>
+              </p>
+            ) : (
+              <p className="mt-0.5 text-red-600">Chưa có bộ tham số hiệu lực cho tháng này.</p>
+            )}
+          </div>
+        </div>
+
+        {/* --- Thuế / bảo hiểm / NPT (chỉ cho người) --- */}
+        {profile && (
+          <section className="space-y-3 rounded-xl border border-slate-200 p-3">
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Thuế, bảo hiểm & người phụ thuộc</h3>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Input
+                label="Số người phụ thuộc (NPT)"
+                inputMode="numeric"
+                required
+                disabled={locked}
+                value={profile.dependents}
+                onChange={(event) => setProfile({ ...profile, dependents: digitsOnly(event.target.value) })}
+                error={profileIssues.dependents}
+              />
+              <Select
+                label="Cách tính thuế TNCN"
+                disabled={locked}
+                value={profile.taxMode}
+                onChange={(event) => setProfile({ ...profile, taxMode: event.target.value as TaxMode })}
+              >
+                {(Object.keys(TAX_MODE_LABEL) as TaxMode[]).map((mode) => (
+                  <option key={mode} value={mode}>{TAX_MODE_LABEL[mode]}</option>
+                ))}
+              </Select>
+              {profile.taxMode === 'FLAT' ? (
+                <Input
+                  label="Thuế suất khấu trừ (%)"
+                  inputMode="decimal"
+                  required
+                  disabled={locked}
+                  value={profile.flatRate}
+                  onChange={(event) => setProfile({ ...profile, flatRate: decimalOnly(event.target.value) })}
+                  error={profileIssues.flatRate}
+                />
+              ) : <div />}
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 sm:col-span-1">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-indigo-600"
+                  disabled={locked}
+                  checked={profile.insuranceEnabled}
+                  onChange={(event) => setProfile({ ...profile, insuranceEnabled: event.target.checked })}
+                />
+                Tham gia BHXH / BHYT / BHTN
+              </label>
+              <Input
+                label="Mức lương đóng bảo hiểm"
+                inputMode="numeric"
+                placeholder="Trống = theo các khoản tính bảo hiểm"
+                disabled={locked || !profile.insuranceEnabled}
+                value={profile.insuranceBase}
+                onChange={(event) => setProfile({ ...profile, insuranceBase: digitsOnly(event.target.value) })}
+              />
+              <Input
+                label="Công chuẩn riêng (ngày)"
+                inputMode="decimal"
+                placeholder={params ? `Trống = ${params.standardWorkDays} theo lịch` : 'Trống = theo lịch'}
+                disabled={locked}
+                value={profile.standardDays}
+                onChange={(event) => setProfile({ ...profile, standardDays: decimalOnly(event.target.value) })}
+                error={profileIssues.standardDays}
+              />
+            </div>
+            <Select
+              label="Mẫu bảng lương"
+              disabled={locked}
+              value={profile.templateId}
+              onChange={(event) => setProfile({ ...profile, templateId: event.target.value })}
+            >
+              <option value="">Theo đơn vị — {unitTemplateLabel}</option>
+              {data.templates.filter((template) => template.is_active || template.id === profile.templateId).map((template) => (
+                <option key={template.id} value={template.id}>{template.code} · {template.name} (gán riêng)</option>
+              ))}
+            </Select>
+          </section>
+        )}
+
+        {/* --- Khoản thừa hưởng --- */}
+        <section className="rounded-xl border border-slate-200">
+          <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            Thừa hưởng từ mẫu khối & đơn vị cấp trên ({inherited.length})
+          </p>
+          {inherited.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-slate-500">Không thừa hưởng khoản nào.</p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {inherited.map((entry) => {
+                const overridden = chosen(entry.component.id);
+                return (
+                  <li key={entry.component.id} className={`flex flex-wrap items-center gap-2 px-3 py-1.5 text-xs ${overridden ? 'opacity-50' : ''}`}>
+                    <span className="font-semibold text-slate-700">{entry.component.name}</span>
+                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{entry.origin}</span>
+                    <span className="ml-auto font-mono text-[11px] text-slate-500">
+                      {entry.item.formula?.trim() || (entry.item.amount != null ? formatVND(entry.item.amount) : CACH_TINH_MAC_DINH[entry.component.calc_type])}
+                    </span>
+                    {overridden && <span className="text-[10px] font-bold text-indigo-600">← khai riêng bên dưới thay thế</span>}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* --- Chọn khoản khai riêng --- */}
+        <section className="space-y-3">
+          <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            {isUser ? 'Khoản khai riêng cho người này' : 'Khoản chung của đơn vị'} ({drafts.length})
+          </h3>
+          {!locked && (
             <div className="rounded-xl border border-slate-200 p-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                 <input
-                  value={componentQuery}
-                  onChange={(event) => setComponentQuery(event.target.value)}
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
                   placeholder="Tìm khoản trong danh mục..."
                   className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/60 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
-              <div className="mt-2 max-h-48 overflow-y-auto">
-                {pickable.length === 0 ? (
+              <div className="mt-2 max-h-56 space-y-2 overflow-y-auto">
+                {pickableGroups.length === 0 ? (
                   <p className="py-4 text-center text-xs text-slate-500">
-                    Không có khoản nào khớp &ldquo;{componentQuery}&rdquo;.
+                    {query ? <>Không có khoản nào khớp &ldquo;{query}&rdquo;.</> : 'Danh mục chưa có khoản nào đang hoạt động.'}
                   </p>
-                ) : (
-                  <div className="grid gap-1 sm:grid-cols-2">
-                    {pickable.map((item) => (
-                      <label
-                        key={item.id}
-                        className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition hover:bg-slate-50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={chosen(item.id)}
-                          onChange={() => toggleComponent(item.id)}
-                          className="mt-0.5 h-4 w-4 flex-shrink-0 accent-indigo-600"
-                        />
-                        <span className="min-w-0">
-                          <span className="block truncate text-xs font-semibold text-slate-800">
-                            {/* Dấu +/−/◦ cho thấy ngay khoản này cộng vào hay
-                                trừ đi, không phải đọc tên mới đoán ra. */}
-                            {item.kind === 'DEDUCTION' ? '− ' : item.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}
-                            {item.name}
+                ) : pickableGroups.map(({ category, items }) => (
+                  <div key={category.code}>
+                    <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">{category.name}</p>
+                    <div className="grid gap-0.5 sm:grid-cols-2">
+                      {items.map((item) => (
+                        <label key={item.id} className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 transition hover:bg-slate-50">
+                          <input
+                            type="checkbox"
+                            checked={chosen(item.id)}
+                            onChange={() => toggleComponent(item.id)}
+                            className="mt-0.5 h-4 w-4 flex-shrink-0 accent-indigo-600"
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate text-xs font-semibold text-slate-800">
+                              {item.kind === 'DEDUCTION' ? '− ' : item.kind === 'EMPLOYER_COST' ? '◦ ' : '+ '}
+                              {item.name}
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400">{item.code}</span>
+                            {item.is_base && <span className="ml-1.5 text-[10px] font-bold text-indigo-600">LƯƠNG GỐC</span>}
                           </span>
-                          {item.is_base && (
-                            <span className="text-[10px] font-bold text-indigo-600">LƯƠNG GỐC</span>
-                          )}
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {drafts.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
-                {/* Không còn "lương gốc" ngoài danh mục nữa: không khoản nào
-                    thì phiếu lương thật sự ra 0đ, phải nói đúng như vậy. */}
-                Chưa chọn khoản nào — phiếu lương của người này sẽ ra 0đ. Tick ít nhất khoản
-                lương gốc ở trên.
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {groups.map((group) => (
-                  <div key={group.kind} className="rounded-xl border border-slate-200">
-                    <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
-                      {group.label} ({group.rows.length})
-                    </p>
-                    <div className="divide-y divide-slate-100">
-                      {group.rows.map(({ draft, index }) => {
-                        const component = componentById.get(draft.componentId);
-                        return (
-                          <div key={draft.id ?? `new-${index}`} className="p-3">
-                            {/* Hàng thao tác đứng TRÊN CÙNG và giống nhau ở mọi
-                                khoản: công thức sinh ra, lưu lẻ, xoá. Để rải
-                                mỗi thứ một chỗ thì mỗi khoản phải tìm lại từ
-                                đầu. */}
-                            <div className="mb-2 flex flex-wrap items-center gap-2">
-                              {/* Bỏ trống KHÔNG có nghĩa là không tính gì:
-                                  engine quay về dùng công thức / cách tính của
-                                  khoản trong Danh mục (payroll.ts:665). Hiện
-                                  "—" ở đây là màn hình nói sai — người khai
-                                  tưởng khoản này im, trong khi nó vẫn trừ tiền
-                                  theo một công thức họ không thấy. */}
-                              {draft.formula.trim() ? (
-                                <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-indigo-700">
-                                  {draft.formula.trim()}
-                                </code>
-                              ) : (
-                                <code className="min-w-0 flex-1 break-words font-mono text-[11px] text-amber-700">
-                                  {component?.formula?.trim() || CACH_TINH_MAC_DINH[component?.calc_type ?? 'FIXED']}
-                                  <span className="ml-1.5 font-sans text-[10px] font-bold text-amber-600">
-                                    ← lấy từ Danh mục, chưa khai riêng
-                                  </span>
-                                </code>
-                              )}
-                              {component?.is_base && (
-                                <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                                  LƯƠNG GỐC
-                                </span>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => void saveOne(index)}
-                                disabled={savingOne !== null}
-                                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-bold text-slate-400 transition hover:text-emerald-700 disabled:opacity-40"
-                              >
-                                <Save className="h-3 w-3" /> {savingOne === index ? 'Đang lưu…' : 'Lưu'}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeDraft(index)}
-                                className="rounded p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
-                                aria-label="Bỏ khoản này"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-
-                            <div className="flex items-start gap-2">
-                              <div className="min-w-0 flex-1">
-
-                                {/* Khoản tính theo % thì "× số công" vô nghĩa — tỷ lệ
-                                    nhân vào một khoản khác, không nhân vào ngày công.
-                                    Giữ ô nhập tỷ lệ như cũ cho nhóm đó. */}
-                                {component?.calc_type === 'PERCENT' && (
-                                  <div className="mb-3">
-                                    <Input
-                                      label="Tỷ lệ riêng (%)"
-                                      inputMode="decimal"
-                                      placeholder={`Trống = ${formatComponentDefault(component)} theo danh mục`}
-                                      value={draft.amount}
-                                      onChange={(e) => updateDraft(index, { amount: e.target.value.replace(/[^\d.]/g, '') })}
-                                    />
-                                  </div>
-                                )}
-
-                                {draft.handWritten || component?.calc_type === 'PERCENT' ? (
-                                  <PayrollFormulaBuilder
-                                    label={`Công thức ${component?.name ?? ''}`}
-                                    value={draft.formula}
-                                    onChange={(formula) => updateDraft(index, { formula })}
-                                    sampleScope={formulaScope}
-                                    components={components}
-                                    defaultFormula={component?.formula}
-                                  />
-                                ) : (
-                                  <PayItemFormulaPicker
-                                    componentName={component?.name ?? 'Khoản'}
-                                    assignedCodes={assignedCodes(index)}
-                                    formula={draft.formula}
-                                    onFormulaChange={(formula) => updateDraft(index, { formula })}
-                                    amount={draft.amount}
-                                    onAmountChange={(amount) => updateDraft(index, { amount: digitsOnly(amount) })}
-                                    components={components}
-                                    namedParams={namedParams}
-                                    selfCode={component?.code ?? null}
-                                    sampleScope={formulaScope}
-                                  />
-                                )}
-
-                                {/* Ba tính chất của khoản, khai cho CHÍNH NGƯỜI NÀY.
-                                    Danh mục chỉ còn là danh sách tên, nên đây là nơi
-                                    duy nhất quyết định khoản có vào thu nhập chịu thuế,
-                                    vào mức đóng bảo hiểm, và khoản nào là lương gốc. */}
-                                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                                  {([
-                                    ['Chịu thuế TNCN', draft.taxable,
-                                      () => updateDraft(index, { taxable: !draft.taxable })],
-                                    ['Tính bảo hiểm', draft.insurable,
-                                      () => updateDraft(index, { insurable: !draft.insurable })],
-                                    ['Lương gốc', draft.isBase,
-                                      () => setBase(index, !draft.isBase)],
-                                  ] as const).map(([label, on, toggle]) => (
-                                    <button
-                                      key={label}
-                                      type="button"
-                                      onClick={toggle}
-                                      aria-pressed={on}
-                                      className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
-                                        on
-                                          ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
-                                          : 'border-slate-200 text-slate-400 hover:border-indigo-300'
-                                      }`}
-                                    >
-                                      {on ? '✓ ' : '○ '}{label}
-                                    </button>
-                                  ))}
-                                </div>
-
-                                {/* Khoản có mức mặc định 0 mà không khai riêng thì gán
-                                    xong vẫn ra 0đ — trông như đã làm xong nhưng thực tế
-                                    không cộng gì vào lương. */}
-                                {component && !draft.formula.trim() && !draft.amount
-                                  && Number(component.default_amount) === 0 && (
-                                  <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
-                                    <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
-                                    Chưa có mức — khoản này sẽ cộng 0đ.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                        </label>
+                      ))}
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-
-          </section>
-
-          <Textarea
-            label="Ghi chú"
-            rows={2}
-            placeholder="VD: Tăng lương theo quyết định ngày 01/09/2026"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-          />
-
-          {hasFormulaError && (
-            <p className="flex items-start gap-2 text-xs text-red-600">
-              <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-              Còn công thức chưa hợp lệ. Sửa xong mới lưu được — công thức hỏng sẽ làm khoản đó
-              bị bỏ qua khi chạy lương.
-            </p>
+            </div>
           )}
 
-          <div className="flex gap-3 pt-1">
-            <Button variant="outline" onClick={onClose} className="flex-1" disabled={saving}>Hủy</Button>
-            <Button onClick={handleSave} className="flex-1" disabled={saving || hasFormulaError}>
-              {saving ? 'Đang lưu…' : (<><Wallet className="h-4 w-4" /> Lưu cơ chế lương</>)}
+          {drafts.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">
+              {isUser
+                ? 'Chưa khai khoản riêng — người này nhận đúng các khoản thừa hưởng ở trên.'
+                : 'Đơn vị chưa có khoản chung nào.'}
+            </p>
+          ) : groupedDrafts.map((group) => (
+            <div key={group.category.code} className="rounded-xl border border-slate-200">
+              <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                {group.category.name} ({group.rows.length})
+              </p>
+              <div className="divide-y divide-slate-100">
+                {group.rows.map(({ draft, index }) => (
+                  <DraftRow
+                    key={draft.componentId}
+                    draft={draft}
+                    component={componentById.get(draft.componentId)}
+                    isUser={isUser}
+                    locked={locked}
+                    change={changeOf(draft.componentId)}
+                    formulaIssue={formulaIssues[index]?.message ?? null}
+                    amountIssue={amountIssues[index]}
+                    components={data.components}
+                    formulaScope={formulaScope}
+                    assignedCodes={assignedCodes(index)}
+                    namedParams={version?.namedParams ?? []}
+                    tierTables={version?.tierTables ?? []}
+                    functions={params?.tierFunctions}
+                    onChange={(patch) => updateDraft(index, patch)}
+                    onBase={(on) => setBase(index, on)}
+                    onRemove={() => toggleComponent(draft.componentId)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {removed.length > 0 && (
+            <div className="rounded-xl border border-red-200 bg-red-50/50 px-3 py-2 text-xs text-red-700">
+              <p className="font-semibold">Sẽ thôi áp từ {monthText(month)}:</p>
+              <p className="mt-0.5">{removed.map((change) => componentById.get(change.componentId)?.name ?? '?').join(', ')}</p>
+            </div>
+          )}
+        </section>
+
+        {/* --- Kiểm tra & ước tính --- */}
+        <section className="space-y-2">
+          {baseCount > 1 && (
+            <Issue tone="error">Mỗi cơ chế chỉ được MỘT khoản lương gốc — bỏ bớt cờ &ldquo;Lương gốc&rdquo;.</Issue>
+          )}
+          {belowMinimum && (
+            <Issue tone="error">
+              Lương cơ bản {formatVND(baseAmount)} thấp hơn lương tối thiểu vùng {version?.regionCode}{' '}
+              {formatVND(minimumWage)} (BR-PAY-013) — lưu nháp được nhưng không trình duyệt được.
+            </Issue>
+          )}
+          {isUser && baseAmount == null && drafts.length > 0 && (
+            <Issue tone="warning">
+              Chưa có khoản lương gốc khai mức tiền riêng — hệ thống chưa đối chiếu được với lương tối thiểu vùng.
+            </Issue>
+          )}
+          {preview && (
+            <div className="grid gap-2 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 sm:grid-cols-4">
+              <PreviewStat label="Tổng thu nhập (Gross)" value={preview.gross} />
+              <PreviewStat label="Bảo hiểm NLĐ" value={preview.insuranceEmployee} />
+              <PreviewStat label="Thuế TNCN" value={preview.personalIncomeTax} />
+              <PreviewStat label="Thực lĩnh (Net)" value={preview.netPay} strong />
+              <p className="text-[11px] text-slate-500 sm:col-span-4">
+                Ước tính nếu đi đủ công chuẩn {monthText(month)}, chưa gồm số liệu tháng (OT, sản lượng, KPI) và điều chỉnh.
+                {preview.warnings.length > 0 && <span className="text-amber-700"> Lưu ý: {preview.warnings.join(' · ')}</span>}
+              </p>
+            </div>
+          )}
+        </section>
+
+        <Textarea
+          label="Ghi chú / căn cứ"
+          rows={2}
+          disabled={locked}
+          placeholder="VD: Tăng lương theo quyết định số 12/QĐ ngày 01/10/2026"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+        />
+
+        <div className="flex flex-wrap justify-end gap-2 pt-1">
+          {request && !readOnly && (
+            <Button variant="ghost" onClick={handleCancel} disabled={!!busy} className="mr-auto text-red-600">
+              <Trash2 className="h-4 w-4" /> {busy === 'cancel' ? 'Đang huỷ…' : 'Huỷ đề xuất'}
             </Button>
-          </div>
+          )}
+          <Button variant="outline" onClick={onClose} disabled={!!busy}>Đóng</Button>
+          {!locked && (
+            <>
+              <Button variant="secondary" onClick={() => void handleSave(false)} disabled={!!busy || hasBlocking}>
+                <Save className="h-4 w-4" /> {busy === 'draft' ? 'Đang lưu…' : 'Lưu nháp'}
+              </Button>
+              <Button onClick={() => void handleSave(true)} disabled={!!busy || hasBlocking || belowMinimum || !version}>
+                <Send className="h-4 w-4" /> {busy === 'submit' ? 'Đang trình…' : 'Lưu & trình BGĐ duyệt'}
+              </Button>
+            </>
+          )}
         </div>
-      )}
+      </div>
     </Modal>
   );
 }
 
-function formatComponentDefault(component: PayComponent): string {
-  const amount = Number(component.default_amount);
-  return component.calc_type === 'PERCENT' ? `${amount}%` : formatVND(amount);
+function DraftRow({
+  draft, component, isUser, locked, change, formulaIssue, amountIssue, components, formulaScope,
+  assignedCodes, namedParams, tierTables, functions, onChange, onBase, onRemove,
+}: {
+  draft: ItemDraft;
+  component: PayComponent | undefined;
+  isUser: boolean;
+  locked: boolean;
+  change: SchemeChangeKind;
+  formulaIssue: string | null;
+  amountIssue: string | null;
+  components: PayComponent[];
+  formulaScope: Readonly<Record<string, number>>;
+  assignedCodes: string[];
+  namedParams: readonly NamedParamDef[];
+  tierTables: readonly TierTable[];
+  functions: FormulaFunctions | undefined;
+  onChange: (patch: Partial<ItemDraft>) => void;
+  onBase: (on: boolean) => void;
+  onRemove: () => void;
+}) {
+  const taxable = draft.taxable ?? component?.taxable ?? true;
+  const insurable = draft.insurable ?? component?.insurable ?? false;
+  const isBase = draft.isBase ?? component?.is_base ?? false;
+  const percent = component?.calc_type === 'PERCENT';
+
+  return (
+    <div className="space-y-2 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-slate-800">{component?.name ?? 'Khoản đã bị xoá'}</span>
+        <span className="font-mono text-[10px] text-slate-400">{component?.code}</span>
+        {change !== 'SAME' && change !== 'REMOVED' && (
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${CHANGE_LABEL[change].tone}`}>{CHANGE_LABEL[change].text}</span>
+        )}
+        {!locked && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="ml-auto rounded p-1 text-slate-300 transition-colors hover:bg-red-50 hover:text-red-600"
+            aria-label="Bỏ khoản này"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      {locked ? (
+        <p className="font-mono text-[11px] text-slate-600">
+          {draft.formula.trim() || (draft.amount ? formatVND(Number(draft.amount)) : CACH_TINH_MAC_DINH[component?.calc_type ?? 'FIXED'])}
+        </p>
+      ) : (
+        <>
+          {percent && (
+            <Input
+              label="Tỷ lệ riêng (%)"
+              inputMode="decimal"
+              placeholder={`Trống = ${Number(component?.default_amount ?? 0)}% theo danh mục`}
+              value={draft.amount}
+              onChange={(event) => onChange({ amount: decimalOnly(event.target.value) })}
+              error={amountIssue ?? undefined}
+            />
+          )}
+          {draft.handWritten || percent ? (
+            <PayrollFormulaBuilder
+              label={`Công thức ${component?.name ?? ''}`}
+              value={draft.formula}
+              onChange={(formula) => onChange({ formula })}
+              sampleScope={formulaScope}
+              components={components}
+              defaultFormula={component?.formula}
+              namedParams={namedParams}
+              tierTables={tierTables}
+              functions={functions}
+            />
+          ) : (
+            <PayItemFormulaPicker
+              componentName={component?.name ?? 'Khoản'}
+              assignedCodes={assignedCodes}
+              formula={draft.formula}
+              onFormulaChange={(formula) => onChange({ formula })}
+              amount={draft.amount}
+              onAmountChange={(amount) => onChange({ amount: digitsOnly(amount) })}
+              components={components}
+              namedParams={namedParams}
+              selfCode={component?.code ?? null}
+              sampleScope={formulaScope}
+            />
+          )}
+          {!draft.handWritten && !percent && (
+            <button
+              type="button"
+              className="text-[11px] font-semibold text-indigo-600 hover:underline"
+              onClick={() => onChange({ handWritten: true })}
+            >
+              Viết công thức tự do (dùng tham số / biểu bậc thang)
+            </button>
+          )}
+        </>
+      )}
+
+      {formulaIssue && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-red-600">
+          <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" /> {formulaIssue}
+        </p>
+      )}
+      {amountIssue && !percent && <p className="text-xs font-semibold text-red-600">{amountIssue}</p>}
+
+      {isUser && (
+        <div className="flex flex-wrap gap-1.5">
+          {([
+            ['Chịu thuế TNCN', taxable, () => onChange({ taxable: !taxable })],
+            ['Tính bảo hiểm', insurable, () => onChange({ insurable: !insurable })],
+            ['Lương gốc', isBase, () => onBase(!isBase)],
+          ] as const).map(([label, on, toggle]) => (
+            <button
+              key={label}
+              type="button"
+              disabled={locked}
+              onClick={toggle}
+              aria-pressed={on}
+              className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition disabled:cursor-default ${
+                on ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-400 hover:border-indigo-300'
+              }`}
+            >
+              {on ? '✓ ' : '○ '}{label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!locked && component && !draft.formula.trim() && !draft.amount && Number(component.default_amount) === 0 && !component.formula && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+          <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" /> Chưa có mức — khoản này sẽ cộng 0đ.
+        </p>
+      )}
+    </div>
+  );
 }
 
-/** Một dòng trong bảng ước tính. `muted` cho dòng chỉ để tham khảo, không cộng trừ. */
+function Issue({ tone, children }: { tone: 'error' | 'warning'; children: React.ReactNode }) {
+  return (
+    <p className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
+      tone === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-800'
+    }`}>
+      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
+function PreviewStat({ label, value, strong = false }: { label: string; value: number; strong?: boolean }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className={`tabular-nums ${strong ? 'text-base font-black text-indigo-700' : 'text-sm font-bold text-slate-700'}`}>
+        {formatVND(value)}
+      </p>
+    </div>
+  );
+}

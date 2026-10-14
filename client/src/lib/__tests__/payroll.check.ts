@@ -1,17 +1,46 @@
 // Kiểm chứng engine lương. Chạy: npm run check:payroll
-import { evaluateFormula } from '../payrollFormula';
+import { evaluateFormula, tierLookup } from '../payrollFormula';
+import {
+  baseAmountOf, diffSchemeItems, earliestSchemeMonth, openRequestFor, resolvePayItems, resolveTemplateFor,
+} from '../payrollScheme';
 import {
   computePayslip, mergeUnitAndEmployeeItems, progressiveIncomeTax, splitOvertimeHours, summarisePeriod,
-  type PayrollAdjustment,
+  toTaxBrackets, type PayrollAdjustment,
 } from '../payroll';
 import {
   EMPTY_SCHEDULES, measurePunctuality, monthStandardDays, type ScheduleSet,
 } from '../workSchedule';
-import { DEFAULT_PAYROLL_SETTINGS, toPayrollParams } from '../payrollSettings';
+import { toPayrollParams, type PayrollParamVersion } from '../payrollSettings';
+
+/**
+ * Bộ tham số dùng cho kiểm chứng. KHÔNG còn bộ "mặc định" trong code
+ * (F06.02) — test tự khai đủ, đúng như kế toán khai ở màn Tham số lương.
+ * Làm tròn thực lĩnh để 1đ ở bộ này để các phép so cũ giữ nguyên con số;
+ * làm tròn hàng nghìn kiểm riêng ở cuối file.
+ */
+export const TEST_VERSION: PayrollParamVersion = {
+  id: null, effectiveFrom: '2000-01-01', label: 'test', note: null, updatedAt: null,
+  standardWorkDays: 26,
+  socialInsuranceRate: 8, healthInsuranceRate: 1.5, unemploymentInsuranceRate: 1,
+  employerSocialRate: 17.5, employerHealthRate: 3, employerUnemploymentRate: 1, employerUnionFundRate: 0,
+  insuranceSalaryCap: 46_800_000, unemploymentSalaryCap: 99_200_000,
+  taxPersonalDeduction: 11_000_000, taxDependentDeduction: 4_400_000,
+  baseSalaryLevel: 2_340_000, regionalMinimumWage: 4_960_000, regionCode: 'I',
+  flatTaxRate: 10, unpaidDaysWaiveInsurance: 14, netRoundingUnit: 1, netRoundingMode: 'NEAREST',
+  brackets: [
+    { step: 1, upperBound: 5_000_000, rate: 5 }, { step: 2, upperBound: 10_000_000, rate: 10 },
+    { step: 3, upperBound: 18_000_000, rate: 15 }, { step: 4, upperBound: 32_000_000, rate: 20 },
+    { step: 5, upperBound: 52_000_000, rate: 25 }, { step: 6, upperBound: 80_000_000, rate: 30 },
+    { step: 7, upperBound: null, rate: 35 },
+  ],
+  namedParams: [],
+  tierTables: [],
+};
+const BRACKETS = toTaxBrackets(TEST_VERSION.brackets);
 import { describeLevelIssues, isAutoScorable, scoreFromLevels } from '../kpiScoring';
 import { buildPayrollJournal } from '../payrollJournal';
 import { buildKpiFormula } from '../kpiPayFormula';
-import type { EmployeePayProfile, PayComponent, EmployeePayItem, Profile } from '@/types';
+import type { EmployeePayProfile, PayComponent, EmployeePayItem, Profile, UnitPayItem } from '@/types';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -47,19 +76,16 @@ expectError('thiếu ngoặc', 'MAX(1, 2');
 
 // --- Thuế lũy tiến ----------------------------------------------------------
 // Thu nhập tính thuế 20tr: 5tr*5% + 5tr*10% + 8tr*15% + 2tr*20% = 250k+500k+1.2tr+400k
-check('thuế 20tr', progressiveIncomeTax(20_000_000).tax, 2_350_000);
-check('thuế 5tr', progressiveIncomeTax(5_000_000).tax, 250_000);
-check('thuế 0', progressiveIncomeTax(0).tax, 0);
-check('thuế âm', progressiveIncomeTax(-1_000_000).tax, 0);
+check('thuế 20tr', progressiveIncomeTax(20_000_000, BRACKETS).tax, 2_350_000);
+check('thuế 5tr', progressiveIncomeTax(5_000_000, BRACKETS).tax, 250_000);
+check('thuế 0', progressiveIncomeTax(0, BRACKETS).tax, 0);
+check('thuế âm', progressiveIncomeTax(-1_000_000, BRACKETS).tax, 0);
 // 100tr: 250k+500k+1.2tr+2.8tr+5tr+8.4tr+7tr = 25.15tr
-check('thuế 100tr', progressiveIncomeTax(100_000_000).tax, 25_150_000);
+check('thuế 100tr', progressiveIncomeTax(100_000_000, BRACKETS).tax, 25_150_000);
 
 // --- Tính phiếu lương -------------------------------------------------------
 const profile = { id: 'u1', name: 'Nguyễn Văn A', department: 'Kinh doanh' } as Profile;
-const settings = toPayrollParams(
-  { ...DEFAULT_PAYROLL_SETTINGS, standardWorkDays: 26 },
-  { standardHoursPerDay: 8 },
-);
+const settings = toPayrollParams(TEST_VERSION, { standardHoursPerDay: 8 });
 
 function payProfile(over: Partial<EmployeePayProfile>): EmployeePayProfile {
   return {
@@ -741,7 +767,7 @@ check('nghỉ 14 ngày thì không trừ bảo hiểm', mostlyUnpaid.insuranceEm
 check('doanh nghiệp cũng không đóng tháng đó', mostlyUnpaid.insuranceEmployer, 0);
 check('thực nhận không âm', mostlyUnpaid.netPay >= 0, true);
 check('có cảnh báo giải thích vì sao',
-  mostlyUnpaid.warnings.some((w) => w.includes('Điều 85')), true);
+  mostlyUnpaid.warnings.some((w) => w.includes('Luật BHXH')), true);
 
 // Đúng 13 ngày nghỉ (dưới ngưỡng) thì vẫn đóng bình thường.
 const justUnder = { workDays: 13, leaveDays: 0, holidayDays: 0, paidDays: 13, workHours: 104, missingCheckout: 0 };
@@ -1043,5 +1069,220 @@ const duNguon = computePayslip({
 check('gán đủ thì không cảnh báo thiếu nguồn',
   duNguon.warnings.some((w) => w.includes('chưa được gán khoản đó')), false);
 
+// ===========================================================================
+// M06 (F06.01–F06.04) — các kiểm chứng thêm cùng đợt đặc tả lương
+// ===========================================================================
+
+// --- Khoản lương gốc là MỨC, không phải một dòng tiền thứ hai ---------------
+// Lỗi có thật trước đợt này: gán "Lương cơ bản 26tr" (cờ lương gốc) thì engine
+// vừa sinh dòng Lương thời gian 26tr vừa cộng thêm dòng Lương cơ bản 26tr —
+// gross 52tr.
+const goc26 = computePayslip({
+  profile, payProfile: payProfile({ base_amount: 0 }),
+  items: [{ item: item('cBase', { amount: 26_000_000 }), component: luongGoc }],
+  inputs: {}, stats, settings,
+});
+check('lương gốc không bị cộng hai lần (gross = 26tr)', goc26.gross, 26_000_000);
+check('không có dòng tiền riêng cho khoản lương gốc',
+  goc26.lines.some((line) => line.code === 'LUONG_CO_BAN'), false);
+const gocCongThuc = computePayslip({
+  profile, payProfile: payProfile({ base_amount: 0 }),
+  items: [{ item: item('cBase', { amount: 26_000_000, formula: '(MUC_RIENG / STANDARD_DAYS) * PAID_DAYS' }), component: luongGoc }],
+  inputs: {}, stats: { ...stats, workDays: 13, paidDays: 13 }, settings,
+});
+check('công thức chia công của khoản lương gốc (do màn cũ ghi) vẫn ra đúng nửa tháng',
+  gocCongThuc.gross, 13_000_000);
+check('và không sinh cảnh báo thừa', gocCongThuc.warnings.some((w) => w.includes('công thức riêng')), false);
+const kpiTheoBac = component({ id: 'cKpi', code: 'LUONG_KPI_BAC', name: 'KPI theo bậc', calc_type: 'FORMULA',
+  formula: 'LUONG_CO_BAN * 10 / 100', sort_order: 50 });
+const kpiBac = computePayslip({
+  profile, payProfile: payProfile({ base_amount: 0 }),
+  items: [
+    { item: item('cBase', { amount: 20_000_000 }), component: luongGoc },
+    { item: item('cKpi'), component: kpiTheoBac },
+  ],
+  inputs: {}, stats, settings, catalogCodes: ['LUONG_CO_BAN', 'LUONG_KPI_BAC'],
+});
+check('mã khoản lương gốc mang mức bậc lương cho khoản khác dùng',
+  kpiBac.lines.find((line) => line.code === 'LUONG_KPI_BAC')?.amount, 2_000_000);
+
+// --- Khoản danh mục do engine tự tính không đè biến hệ thống ----------------
+const quyTheoGio = component({ id: 'cQuy', code: 'QUY', name: 'Quỹ', kind: 'DEDUCTION', calc_type: 'FORMULA',
+  formula: 'BASE_WORK * 1 / 100', sort_order: 900 });
+const coMaEngine = computePayslip({
+  profile, payProfile: payProfile({}), items: [{ item: item('cQuy'), component: quyTheoGio }],
+  inputs: {}, stats, settings,
+  // BASE_WORK nằm trong danh mục (khoản "Lương thời gian" liệt kê cho đủ 26).
+  catalogCodes: ['BASE_WORK', 'PIT', 'QUY'],
+});
+check('mã BASE_WORK trong danh mục không làm lương thời gian về 0',
+  coMaEngine.lines.find((line) => line.code === 'QUY')?.amount, 200_000);
+
+// --- Làm tròn thực lĩnh tới hàng nghìn (FR06.04.01) -------------------------
+const settings1000 = toPayrollParams({ ...TEST_VERSION, netRoundingUnit: 1000 }, { standardHoursPerDay: 8 });
+const lamTron = computePayslip({
+  profile, payProfile: payProfile({ base_amount: 20_123_456 }), items: [], inputs: {}, stats, settings: settings1000,
+});
+check('thực lĩnh làm tròn tới hàng nghìn', lamTron.netPay % 1000, 0);
+check('chênh lệch làm tròn ghi riêng, không quá nửa đơn vị',
+  Math.abs(lamTron.roundingAdjustment) <= 500 && lamTron.netPay
+    === lamTron.gross - lamTron.insuranceEmployee - lamTron.personalIncomeTax - lamTron.otherDeductions + lamTron.roundingAdjustment,
+  true);
+
+// --- Ngưỡng nghỉ không lương là THAM SỐ, không phải hằng số trong code -------
+const settings10 = toPayrollParams({ ...TEST_VERSION, unpaidDaysWaiveInsurance: 10 }, { standardHoursPerDay: 8 });
+check('đổi ngưỡng ở bộ tham số thì engine theo (16/26 công, ngưỡng 10 → miễn đóng)',
+  computePayslip({ profile, payProfile: payProfile({}), items: [], inputs: {},
+    stats: { ...stats, workDays: 16, paidDays: 16 }, settings: settings10 }).insuranceEmployee, 0);
+
+// --- Thuế khấu trừ thẳng lấy tỷ lệ của bộ tham số khi hồ sơ không ghi --------
+check('biểu thuế rỗng thì cảnh báo, không lẳng lặng dùng biểu trong code',
+  computePayslip({ profile, payProfile: payProfile({}), items: [], inputs: {}, stats,
+    settings: toPayrollParams({ ...TEST_VERSION, brackets: [] }, { standardHoursPerDay: 8 }) })
+    .warnings.some((w) => w.includes('biểu thuế')), true);
+
+// --- KPCĐ doanh nghiệp đóng theo tham số, không tính trùng khoản gán tay -----
+const kpcdKhoan = component({ id: 'cKpcd', code: 'ER_UNION_FUND', name: 'KPCĐ', kind: 'EMPLOYER_COST',
+  calc_type: 'PERCENT', base_code: 'INSURANCE_BASE', default_amount: 2, sort_order: 720 });
+const kpcd = computePayslip({
+  profile, payProfile: payProfile({}), items: [{ item: item('cKpcd'), component: kpcdKhoan }], inputs: {}, stats,
+  settings: toPayrollParams({ ...TEST_VERSION, employerUnionFundRate: 2 }, { standardHoursPerDay: 8 }),
+});
+check('KPCĐ 2% tính một lần dù vẫn còn khoản ER_UNION_FUND gán tay',
+  kpcd.lines.filter((line) => line.code === 'ER_UNION_FUND').length, 1);
+check('KPCĐ = 2% mức đóng', kpcd.lines.find((line) => line.code === 'ER_UNION_FUND')?.amount, 400_000);
+
+// --- Công thức: IF chỉ tính nhánh được chọn, ROUND(x, -3), biểu bậc thang ----
+check('IF không nổ chia 0 ở nhánh không chọn',
+  evaluateFormula('IF(KHOAN > 0, DS / KHOAN, 0)', { KHOAN: 0, DS: 5 }).value, 0);
+check('toán tử ? : cũng vậy', evaluateFormula('KHOAN > 0 ? DS / KHOAN : 7', { KHOAN: 0, DS: 5 }).value, 7);
+check('&& đi tắt', evaluateFormula('KHOAN > 0 && DS / KHOAN > 1', { KHOAN: 0, DS: 5 }).value, 0);
+check('ROUND(x, -3) tới hàng nghìn (FR06.02.02)', evaluateFormula('ROUND(17459600, -3)', {}).value, 17_460_000);
+check('ROUND nửa đơn vị làm tròn ra xa 0', evaluateFormula('ROUND(2500, -3)', {}).value, 3_000);
+check('ROUND(1.005, 2) = 1,01 như Excel (không vấp sai số dấu phẩy động)', evaluateFormula('ROUND(1.005, 2)', {}).value, 1.01);
+expectError('biến gõ sai ở nhánh KHÔNG chọn vẫn bị bắt', 'IF(1 > 0, 5, BIEN_SAI)');
+let viTri: number | undefined;
+try { evaluateFormula('BASE * HE_SAI', { BASE: 1 }); } catch (error) { viTri = (error as { at?: number }).at; }
+check('lỗi chỉ đúng vị trí ký tự (khoanh vùng lỗi F06.02)', viTri, 7);
+const hhBl02 = tierLookup([{ from: 0, value: 0 }, { from: 75, value: 1.5 }, { from: 90, value: 3 }, { from: 105, value: 4 }]);
+check('bậc thang BR-PAY-004: 74,9% → 0', hhBl02(74.9), 0);
+check('bậc thang: 89,5% → 1,5 (lấp khoảng hở 89–90%)', hhBl02(89.5), 1.5);
+check('bậc thang: 104,5% → 3 (lấp khoảng hở 104–105%)', hhBl02(104.5), 3);
+check('bậc thang: 160% → 4', hhBl02(160), 4);
+const hoaHong = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [{ item: item('cHH', { formula: 'IF(DOANH_SO_KHOAN > 0, DOANH_SO * HH_BL02(DOANH_SO / DOANH_SO_KHOAN * 100) / 100, 0)' }),
+    component: component({ id: 'cHH', code: 'LUONG_DOANH_SO', name: 'Lương DT', calc_type: 'FORMULA', formula: '0' }) }],
+  inputs: { DOANH_SO: 950_000_000, DOANH_SO_KHOAN: 1_000_000_000 }, stats,
+  settings: toPayrollParams({ ...TEST_VERSION, tierTables: [{ code: 'HH_BL02', name: 'HH', inputLabel: null, unit: '%', note: null,
+    rows: [{ from: 0, value: 0 }, { from: 75, value: 1.5 }, { from: 90, value: 3 }, { from: 105, value: 4 }] }] },
+  { standardHoursPerDay: 8 }),
+});
+check('hoa hồng BL 02: đạt 95% → 3% × 950tr = 28,5tr',
+  hoaHong.lines.find((line) => line.code === 'LUONG_DOANH_SO')?.amount, 28_500_000);
+const chuaCoKhoan = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [{ item: item('cHH', { formula: 'IF(DOANH_SO_KHOAN > 0, DOANH_SO * HH_BL02(DOANH_SO / DOANH_SO_KHOAN * 100) / 100, 0)' }),
+    component: component({ id: 'cHH', code: 'LUONG_DOANH_SO', name: 'Lương DT', calc_type: 'FORMULA', formula: '0' }) }],
+  inputs: { DOANH_SO: 950_000_000, DOANH_SO_KHOAN: 0 }, stats,
+  settings: toPayrollParams({ ...TEST_VERSION, tierTables: [{ code: 'HH_BL02', name: 'HH', inputLabel: null, unit: '%', note: null,
+    rows: [{ from: 0, value: 0 }] }] }, { standardHoursPerDay: 8 }),
+});
+check('chưa có doanh số khoán: khoản ra 0đ, không biến mất khỏi phiếu',
+  chuaCoKhoan.lines.find((line) => line.code === 'LUONG_DOANH_SO')?.amount, 0);
+
+// --- Tham số tự khai vào thẳng công thức, không đè biến hệ thống --------------
+const thamSo = computePayslip({
+  profile, payProfile: payProfile({}),
+  items: [{ item: item('cOt'), component: component({ id: 'cOt', code: 'OT_T', name: 'OT', calc_type: 'FORMULA',
+    formula: 'HOURLY_RATE * HE_SO_OT_THUONG * OT_WEEKDAY_HOURS', input_code: 'OT_WEEKDAY_HOURS' }) }],
+  inputs: { OT_WEEKDAY_HOURS: 10 }, stats,
+  settings: toPayrollParams({ ...TEST_VERSION, namedParams: [
+    { code: 'HE_SO_OT_THUONG', name: 'OT', value: 1.5, unit: 'HE_SO', group: 'OT', note: null },
+    { code: 'BASE_WORK', name: 'cố tình trùng', value: 1, unit: 'VND', group: 'OTHER', note: null },
+  ] }, { standardHoursPerDay: 8 }),
+});
+check('tham số HE_SO_OT_THUONG đi vào công thức OT',
+  thamSo.lines.find((line) => line.code === 'OT_T')?.amount, Math.round((20_000_000 / 26 / 8) * 1.5 * 10));
+check('tham số trùng tên biến hệ thống bị bỏ qua (BASE_WORK giữ lương thời gian)',
+  thamSo.lines.find((line) => line.code === 'BASE_WORK')?.amount, 20_000_000);
+
+// --- Nhật ký tính toán cho Chạy thử (F06.02) --------------------------------
+const nhatKy = computePayslip({ ...{ profile, payProfile: payProfile({}), items: [], inputs: {}, stats, settings }, trace: true });
+check('chạy thử có nhật ký đủ các phần', ['BASE', 'INSURANCE', 'TAX', 'NET'].every(
+  (section) => nhatKy.trace?.some((step) => step.section === section)), true);
+check('tính thường không tốn công ghi nhật ký', monthly.trace, undefined);
+
+// --- Giải khoản theo CÂY tổ chức (F06.03) -----------------------------------
+const donVi = new Map([
+  ['hp', { id: 'hp', name: 'Huy Phong', parent_id: null }],
+  ['kd', { id: 'kd', name: 'Khối Kinh doanh', parent_id: 'hp' }],
+  ['kd1', { id: 'kd1', name: 'Phòng KD1', parent_id: 'kd' }],
+]);
+const bl01 = { id: 'bl01', code: 'BL01', name: 'BL 01', description: null, is_active: true, created_at: '', updated_at: '' };
+const bl02 = { id: 'bl02', code: 'BL02', name: 'BL 02', description: null, is_active: true, created_at: '', updated_at: '' };
+const phuCap = component({ id: 'pc', code: 'PHU_CAP', name: 'Phụ cấp' });
+const nguonCay = {
+  components: [phuCap],
+  unitById: donVi,
+  templates: [bl01, bl02],
+  templateItems: [
+    { id: 't1', template_id: 'bl01', component_id: 'pc', amount: 100_000, formula: null, taxable: null, insurable: null, effective_from: '2026-01-01', effective_to: null, note: null },
+    { id: 't2', template_id: 'bl02', component_id: 'pc', amount: 200_000, formula: null, taxable: null, insurable: null, effective_from: '2026-01-01', effective_to: null, note: null },
+  ],
+  unitTemplates: [
+    { id: 'a1', unit_id: 'hp', template_id: 'bl01', effective_from: '2026-01-01', note: null },
+    { id: 'a2', unit_id: 'kd', template_id: 'bl02', effective_from: '2026-10-01', note: null },
+  ],
+  unitItems: [] as UnitPayItem[],
+  employeeItems: [] as EmployeePayItem[],
+};
+const nvKd1 = { id: 'u9', unit_id: 'kd1' };
+check('trước 10/2026: phòng KD1 thừa hưởng BL01 của công ty',
+  resolveTemplateFor(nvKd1, null, nguonCay, '2026-09-01').template?.code, 'BL01');
+check('từ 10/2026: đơn vị GẦN nhất (Khối KD) thắng → BL02',
+  resolveTemplateFor(nvKd1, null, nguonCay, '2026-10-01').template?.code, 'BL02');
+check('mẫu gán riêng cho người thắng mẫu của đơn vị',
+  resolveTemplateFor(nvKd1, { template_id: 'bl01' }, nguonCay, '2026-10-01').template?.code, 'BL01');
+check('khoản từ mẫu BL02 ra đúng mức của khối',
+  resolvePayItems(nvKd1, null, nguonCay, '2026-10-01', '2026-10-31')[0]?.item.amount, 200_000);
+const coKhoanPhong = { ...nguonCay, unitItems: [
+  { id: 'up1', unit_id: 'kd', component_id: 'pc', amount: 300_000, formula: null, effective_from: '2026-01-01', effective_to: null, note: null, created_by: null, created_at: '', updated_at: '' },
+  { id: 'up2', unit_id: 'kd1', component_id: 'pc', amount: 400_000, formula: null, effective_from: '2026-01-01', effective_to: null, note: null, created_by: null, created_at: '', updated_at: '' },
+] };
+check('khoản chung của phòng GẦN nhất thắng khoản của khối và của mẫu',
+  resolvePayItems(nvKd1, null, coKhoanPhong, '2026-10-01', '2026-10-31')[0]?.item.amount, 400_000);
+check('khoản riêng của người thắng tất cả',
+  resolvePayItems(nvKd1, null, { ...coKhoanPhong, employeeItems: [
+    { ...item('pc', { amount: 999_000 }), user_id: 'u9' },
+  ] }, '2026-10-01', '2026-10-31')[0]?.item.amount, 999_000);
+check('khoản được ghi nguồn để màn hình nói rõ "theo phòng KD1"',
+  resolvePayItems(nvKd1, null, coKhoanPhong, '2026-10-01', '2026-10-31')[0]?.origin, 'Phòng KD1');
+
+// --- F06.03: đề xuất cơ chế lương ------------------------------------------
+check('tháng áp dụng sớm nhất = tháng sau kỳ đã chốt khi chưa có phiên bản sau đó',
+  earliestSchemeMonth('2026-11-01', ['2026-03-01']), '2026-11-01');
+check('không chen trước phiên bản đã có hiệu lực sau mốc chốt (cùng tháng thì được)',
+  earliestSchemeMonth('2026-11-01', ['2026-12-01', '2026-02-01']), '2026-12-01');
+check('phiên bản cũ ghi giữa tháng đẩy mốc sang đầu tháng sau',
+  earliestSchemeMonth('2026-11-01', ['2026-12-15']), '2027-01-01');
+const req = (id: string, status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED', user: string | null, unit: string | null) => ({
+  id, code: id, target_type: (user ? 'USER' : 'UNIT') as 'USER' | 'UNIT', user_id: user, unit_id: unit, effective_from: '2026-11-01',
+  status, payload: { items: [] }, note: null, created_by: null, created_at: '', updated_at: '', submitted_by: null,
+  submitted_at: null, reviewed_by: null, reviewed_at: null, review_note: null, approval_fingerprint: null, applied_at: null,
+});
+check('đề xuất đã duyệt / đã huỷ không còn là đề xuất mở',
+  openRequestFor([req('a', 'APPROVED', 'u1', null), req('b', 'CANCELLED', 'u1', null)], { type: 'USER', id: 'u1' }), null);
+check('đề xuất bị từ chối vẫn mở để sửa và trình lại',
+  openRequestFor([req('a', 'APPROVED', 'u1', null), req('c', 'REJECTED', 'u1', null)], { type: 'USER', id: 'u1' })?.id, 'c');
+check('đề xuất của đơn vị không lẫn với đề xuất của người trùng id',
+  openRequestFor([req('d', 'SUBMITTED', 'x', null)], { type: 'UNIT', id: 'x' }), null);
+check('BGĐ thấy đúng phần đổi: thêm / bỏ / đổi mức, khoản giữ nguyên không tính',
+  diffSchemeItems(
+    [{ component_id: 'a', amount: 1, formula: null }, { component_id: 'b', amount: 2, formula: null }, { component_id: 'c', amount: 3, formula: null }],
+    [{ component_id: 'a', amount: 1, formula: null }, { component_id: 'b', amount: 5, formula: null }, { component_id: 'd', amount: 4, formula: null }],
+  ).map((change) => `${change.componentId}:${change.kind}`).sort().join(','), 'a:SAME,b:CHANGED,c:REMOVED,d:ADDED');
+check('lương cơ bản để đối chiếu lương tối thiểu vùng lấy từ khoản đánh dấu lương gốc',
+  baseAmountOf([{ component_id: 'pc', amount: 500_000, formula: null }, { component_id: 'lcb', amount: 6_000_000, formula: null, is_base: true }], []), 6_000_000);
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

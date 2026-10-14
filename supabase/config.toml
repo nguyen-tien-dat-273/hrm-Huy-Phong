@@ -300,9 +300,11 @@ auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
 max_enrolled_factors = 10
 
 # Control MFA via App Authenticator (TOTP)
+# Bật: M06 F06.04 — Kế toán trưởng khoá kỳ lương bằng mã 2FA (lock_payroll_run
+# kiểm JWT aal2 + amr totp). Supabase Cloud bật TOTP mặc định.
 [auth.mfa.totp]
-enroll_enabled = false
-verify_enabled = false
+enroll_enabled = true
+verify_enabled = true
 
 # Configure MFA via Phone Messaging
 [auth.mfa.phone]

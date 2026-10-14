@@ -3,31 +3,43 @@
 // ----------------------------------------------------------------------------
 // Tách khỏi component để trang AdminPayroll chỉ lo hiển thị, và để phần tính
 // lương có thể kiểm chứng độc lập (xem `__tests__/payroll.check.ts`).
+//
+// Mọi thao tác đổi trạng thái hay ghi cơ chế lương đi qua RPC ở database
+// (migration 20261013*_m06_*). Client không còn ghi thẳng vào bảng cơ chế
+// hay đổi cột trạng thái kỳ lương — database chặn, và các hàm cũ làm việc đó
+// đã bị gỡ khỏi file này để không ai gọi nhầm.
 // ============================================================================
 
+import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { describeDbError } from './dbError';
 import type {
   Attendance,
   CompanyHoliday,
+  EmployeeBankAccount,
   EmployeePayItem,
   EmployeePayProfile,
   LeaveRequest,
+  OrganizationUnit,
   PayComponent,
-  PayrollNamedParam,
+  PayComponentCategory,
+  PayrollApprovalEvent,
+  PayrollBankTemplate,
   PayrollInput,
   PayrollRun,
-  PayrollRunStatus,
-  UnitPayItem,
+  PayrollSchemeRequest,
+  PayrollTemplate,
+  PayrollTemplateItem,
   Payslip,
   PayslipLine,
   Profile,
+  SchemePayloadItem,
+  SchemePayloadProfile,
+  UnitPayItem,
+  UnitPayrollTemplate,
 } from '@/types';
 import type { ComputedPayslip, PayrollAdjustment } from './payroll';
-import {
-  fetchPayrollSettings, fetchPitBrackets, DEFAULT_PAYROLL_SETTINGS, DEFAULT_PIT_BRACKETS,
-  type PayrollSettings, type PitBracket,
-} from './payrollSettings';
+import { fetchParamVersions, type PayrollParamVersion } from './payrollSettings';
 import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from './workSchedule';
 
 export interface AttendanceRequestForPayroll {
@@ -38,13 +50,26 @@ export interface AttendanceRequestForPayroll {
   hours: number | null;
 }
 
+export interface LockReadiness {
+  timesheetLocked: boolean;
+  openKpiReviews: number;
+  lastClosedMonth: string | null;
+}
+
 /** Dữ liệu cần để dựng bảng lương một tháng. */
 export interface PayrollWorkspace {
   profiles: Profile[];
+  /** Cây tổ chức — để giải khoản / mẫu theo đơn vị cha. */
+  units: OrganizationUnit[];
+  categories: PayComponentCategory[];
   components: PayComponent[];
+  paramVersions: PayrollParamVersion[];
+  templates: PayrollTemplate[];
+  templateItems: PayrollTemplateItem[];
+  unitTemplates: UnitPayrollTemplate[];
   payProfiles: EmployeePayProfile[];
   items: EmployeePayItem[];
-  /** Khoản gán cho cả đơn vị — người trong đơn vị thừa hưởng. */
+  /** Khoản gán cho cả đơn vị — người trong đơn vị (và đơn vị con) thừa hưởng. */
   unitItems: UnitPayItem[];
   inputs: PayrollInput[];
   attendance: Attendance[];
@@ -55,30 +80,22 @@ export interface PayrollWorkspace {
   holidays: string[];
   /** Ca làm việc — dùng tính công chuẩn theo tháng và đo đi muộn. */
   schedules: ScheduleSet;
-  /** Truy lĩnh / truy thu kỳ trước dồn sang tháng này (LU-14). */
+  /** Điều chỉnh tăng / giảm dồn vào tháng này (FR06.04.02). */
   adjustments: PayrollAdjustment[];
+  /** Đề xuất cơ chế lương chưa xử lý xong — để cây hiện "chờ duyệt". */
+  schemeRequests: PayrollSchemeRequest[];
   run: PayrollRun | null;
+  runEvents: PayrollApprovalEvent[];
   payslips: Payslip[];
   payslipLines: PayslipLine[];
-  payrollSettings: PayrollSettings;
-  /** Tham số tự khai — mã của chúng dùng được trong công thức. */
-  namedParams: PayrollNamedParam[];
-  pitBrackets: PitBracket[];
+  readiness: LockReadiness | null;
   timesheetLocked: boolean;
   /** Migration chưa chạy — UI hiện hướng dẫn thay vì báo lỗi khó hiểu. */
   engineReady: boolean;
+  /** Bảng phiên bản tham số / đề xuất cơ chế đã có (migration F06.02–F06.04). */
+  specReady: boolean;
   error: string | null;
 }
-
-const EMPTY: PayrollWorkspace = {
-  profiles: [], components: [], payProfiles: [], items: [], unitItems: [], inputs: [],
-  attendance: [], leaves: [], attendanceRequests: [], holidays: [], schedules: EMPTY_SCHEDULES, adjustments: [],
-  run: null, payslips: [], payslipLines: [],
-  payrollSettings: DEFAULT_PAYROLL_SETTINGS,
-  namedParams: [],
-  pitBrackets: DEFAULT_PIT_BRACKETS,
-  timesheetLocked: false, engineReady: false, error: null,
-};
 
 /**
  * Nạp toàn bộ dữ liệu một kỳ lương trong một lượt.
@@ -91,25 +108,31 @@ export async function loadPayrollWorkspace(
   monthStartStr: string,
   monthEndStr: string,
 ): Promise<PayrollWorkspace> {
-  if (!supabase) return { ...EMPTY, error: 'Chưa kết nối Supabase.' };
+  const empty: PayrollWorkspace = {
+    profiles: [], units: [], categories: [], components: [], paramVersions: [], templates: [],
+    templateItems: [], unitTemplates: [], payProfiles: [], items: [], unitItems: [], inputs: [],
+    attendance: [], leaves: [], attendanceRequests: [], holidays: [], schedules: EMPTY_SCHEDULES,
+    adjustments: [], schemeRequests: [], run: null, runEvents: [], payslips: [], payslipLines: [],
+    readiness: null, timesheetLocked: false, engineReady: false, specReady: false, error: null,
+  };
+  if (!supabase) return { ...empty, error: 'Chưa kết nối Supabase.' };
 
   const [
-    payrollSettings,
-    pitBrackets,
-    schedules,
-    profilesRes, componentsRes, namedParamsRes, payProfilesRes, itemsRes, unitItemsRes, inputsRes,
-    attendanceRes, leavesRes, attendanceRequestsRes, runRes, periodRes,
+    versions, schedules,
+    profilesRes, unitsRes, categoriesRes, componentsRes, templatesRes, templateItemsRes, unitTemplatesRes,
+    payProfilesRes, itemsRes, unitItemsRes, inputsRes,
+    attendanceRes, leavesRes, attendanceRequestsRes, runRes, periodRes, requestsRes, holidaysRes, adjustmentsRes,
   ] = await Promise.all([
-    // Tham số lương nằm ở bảng riêng `payroll_settings` (chỉ Admin/CEO ghi
-    // được), không phải `app_settings` vốn mở cho quyền lẻ `settings`.
-    fetchPayrollSettings(),
-    // Biểu thuế lũy tiến: khai trong database để kế toán sửa được khi luật đổi.
-    fetchPitBrackets(),
-    // Ca làm việc: cho công chuẩn theo tháng (P02) và đo đi muộn.
+    fetchParamVersions(),
+    // Ca làm việc: cho công chuẩn theo tháng (BR-PAY-001) và đo đi muộn.
     fetchWorkSchedules(),
     supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
+    supabase.from('organization_units').select('id, code, name, unit_type, parent_id, manager_id, is_active, created_at, updated_at').order('name'),
+    supabase.from('payroll_component_categories').select('*').order('sort_order'),
     supabase.from('payroll_components').select('*').order('sort_order'),
-    supabase.from('payroll_named_params').select('*').eq('is_active', true).order('sort_order'),
+    supabase.from('payroll_templates').select('*').order('code'),
+    supabase.from('payroll_template_items').select('*').lte('effective_from', monthEndStr),
+    supabase.from('unit_payroll_templates').select('*').lte('effective_from', monthEndStr),
     supabase.from('employee_pay_profiles').select('*').lte('effective_from', monthEndStr),
     supabase.from('employee_pay_items').select('*'),
     supabase.from('unit_pay_items').select('*'),
@@ -136,42 +159,37 @@ export async function loadPayrollWorkspace(
       .lte('work_date', monthEndStr),
     supabase.from('payroll_runs').select('*').eq('month_start', monthStartStr).maybeSingle(),
     supabase.from('timesheet_periods').select('status').eq('month_start', monthStartStr).maybeSingle(),
+    supabase.from('payroll_scheme_requests').select('*').in('status', ['DRAFT', 'SUBMITTED', 'REJECTED'])
+      .order('updated_at', { ascending: false }),
+    // Bảng có thể chưa tồn tại (migration chưa chạy) — chỉ là chưa tách được L03.
+    supabase.from('company_holidays').select('holiday_date').eq('is_active', true)
+      .gte('holiday_date', monthStartStr).lte('holiday_date', monthEndStr),
+    supabase.from('payroll_adjustments')
+      .select('id, user_id, kind, amount, reason, taxable, origin_month')
+      .eq('month_start', monthStartStr),
   ]);
-
-  // Bảng company_holidays có thể chưa tồn tại (migration chưa chạy) — không
-  // coi là lỗi chặn cả trang, chỉ đơn giản là chưa tách được L03.
-  const holidaysRes = await supabase
-    .from('company_holidays')
-    .select('holiday_date')
-    .eq('is_active', true)
-    .gte('holiday_date', monthStartStr)
-    .lte('holiday_date', monthEndStr);
-  const holidays = ((holidaysRes.data || []) as Pick<CompanyHoliday, 'holiday_date'>[]).map(
-    (row) => row.holiday_date,
-  );
-
-  // Điều chỉnh truy lĩnh/truy thu. Bảng có thể chưa tồn tại (migration chưa
-  // chạy) — bỏ qua chứ không chặn cả trang, giống cách xử lý ngày lễ.
-  const adjustmentsRes = await supabase
-    .from('payroll_adjustments')
-    .select('id, user_id, kind, amount, reason, taxable, origin_month')
-    .eq('month_start', monthStartStr);
-  const adjustments = (adjustmentsRes.data || []) as PayrollAdjustment[];
 
   // Bảng của bộ máy lương chưa tồn tại nghĩa là migration chưa chạy. Đây là
   // tình huống cấu hình, không phải lỗi dữ liệu — báo riêng để UI hướng dẫn.
   const engineReady = !componentsRes.error;
+  const specReady = versions.supported && !templatesRes.error && !requestsRes.error && !categoriesRes.error;
 
   const blockingError =
     profilesRes.error ?? attendanceRes.error ?? leavesRes.error ?? null;
 
   let payslips: Payslip[] = [];
   let payslipLines: PayslipLine[] = [];
+  let runEvents: PayrollApprovalEvent[] = [];
   const run = (runRes.data as PayrollRun | null) ?? null;
 
   if (run) {
-    const slipRes = await supabase.from('payslips').select('*').eq('run_id', run.id);
+    const [slipRes, eventsRes] = await Promise.all([
+      supabase.from('payslips').select('*').eq('run_id', run.id),
+      supabase.from('payroll_approval_events').select('*')
+        .eq('subject_type', 'RUN').eq('subject_id', run.id).order('created_at', { ascending: false }),
+    ]);
     payslips = (slipRes.data || []) as Payslip[];
+    runEvents = eventsRes.error ? [] : (eventsRes.data || []) as PayrollApprovalEvent[];
     if (payslips.length > 0) {
       const linesRes = await supabase
         .from('payslip_lines')
@@ -182,16 +200,19 @@ export async function loadPayrollWorkspace(
     }
   }
 
+  const readiness = await fetchLockReadiness(monthStartStr);
+
   return {
     profiles: (profilesRes.data || []) as Profile[],
+    units: (unitsRes.data || []) as OrganizationUnit[],
+    categories: categoriesRes.error ? [] : (categoriesRes.data || []) as PayComponentCategory[],
     components: (componentsRes.data || []) as PayComponent[],
-    // Bảng có thể chưa tồn tại (migration chưa chạy) — khi đó công thức nào
-    // dùng mã tham số sẽ báo "không có biến", chứ cả trang không chết.
-    namedParams: namedParamsRes.error ? [] : (namedParamsRes.data || []) as PayrollNamedParam[],
+    paramVersions: versions.versions,
+    templates: templatesRes.error ? [] : (templatesRes.data || []) as PayrollTemplate[],
+    templateItems: templateItemsRes.error ? [] : (templateItemsRes.data || []) as PayrollTemplateItem[],
+    unitTemplates: unitTemplatesRes.error ? [] : (unitTemplatesRes.data || []) as UnitPayrollTemplate[],
     payProfiles: (payProfilesRes.data || []) as EmployeePayProfile[],
     items: (itemsRes.data || []) as EmployeePayItem[],
-    // Bảng có thể chưa tồn tại (migration chưa chạy) — khi đó chỉ mất phần
-    // thừa hưởng theo đơn vị, khoản gán riêng vẫn chạy như cũ.
     unitItems: (unitItemsRes.data || []) as UnitPayItem[],
     inputs: (inputsRes.data || []) as PayrollInput[],
     attendance: (attendanceRes.data || []) as Attendance[],
@@ -201,38 +222,66 @@ export async function loadPayrollWorkspace(
     attendanceRequests: attendanceRequestsRes.error
       ? []
       : (attendanceRequestsRes.data || []) as AttendanceRequestForPayroll[],
-    holidays,
-    adjustments,
+    holidays: ((holidaysRes.data || []) as Pick<CompanyHoliday, 'holiday_date'>[]).map((row) => row.holiday_date),
+    adjustments: (adjustmentsRes.data || []) as PayrollAdjustment[],
+    schemeRequests: requestsRes.error ? [] : (requestsRes.data || []) as PayrollSchemeRequest[],
     run,
+    runEvents,
     payslips,
     payslipLines,
-    payrollSettings,
-    pitBrackets,
+    readiness,
     schedules,
     timesheetLocked: periodRes.data?.status === 'LOCKED',
     engineReady,
-    error: blockingError ? describeDbError(blockingError) : null,
+    specReady,
+    error: blockingError ? describeDbError(blockingError) : versions.error,
   };
 }
 
-// ---------------------------------------------------------------------------
-// Ghi dữ liệu
-// ---------------------------------------------------------------------------
-
-export async function saveNamedParam(
-  param: Partial<PayrollNamedParam> & { code: string; name: string },
-): Promise<string | null> {
-  if (!supabase) return 'Chưa kết nối Supabase.';
-  const { error } = param.id
-    ? await supabase.from('payroll_named_params').update(param).eq('id', param.id)
-    : await supabase.from('payroll_named_params').insert(param);
-  return error ? describeDbError(error) : null;
+async function rpcError<T>(promise: PromiseLike<{ data: T; error: PostgrestError | null }>): Promise<{ data: T | null; error: string | null }> {
+  const { data, error } = await promise;
+  return { data: error ? null : data, error: error ? describeDbError(error) : null };
 }
 
-export async function deleteNamedParam(id: string): Promise<string | null> {
-  if (!supabase) return 'Chưa kết nối Supabase.';
-  const { error } = await supabase.from('payroll_named_params').delete().eq('id', id);
-  return error ? describeDbError(error) : null;
+export async function fetchLockReadiness(monthStart: string): Promise<LockReadiness | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('payroll_lock_readiness', { p_month: monthStart });
+  if (error || !data) return null;
+  const row = data as { timesheet_locked: boolean; open_kpi_reviews: number; last_closed_month: string | null };
+  return {
+    timesheetLocked: !!row.timesheet_locked,
+    openKpiReviews: Number(row.open_kpi_reviews) || 0,
+    lastClosedMonth: row.last_closed_month,
+  };
+}
+
+export async function fetchLastClosedMonth(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('payroll_last_closed_month');
+  return error ? null : (data as string | null);
+}
+
+/**
+ * Kỳ lương của tháng đã khoá chưa (LOCKED / APPROVED / PAID). Dùng ở Bảng công
+ * để ẩn "Mở lại kỳ công" (BR-PAY-009) — database cũng chặn thao tác đó.
+ */
+export async function fetchPayrollMonthClosed(monthStart: string): Promise<boolean> {
+  if (!supabase) return false;
+  const { data, error } = await supabase.rpc('payroll_month_closed', { p_month: monthStart });
+  return !error && data === true;
+}
+
+// ---------------------------------------------------------------------------
+// F06.01 — Danh mục khoản lương
+// ---------------------------------------------------------------------------
+
+/** Lỗi trùng mã từ ràng buộc unique: nói đúng câu đặc tả yêu cầu. */
+function catalogError(error: PostgrestError): string {
+  if (error.code === '23505' && /payroll_components_code_key|code/.test(error.message ?? '')
+    && !/Tên khoản/.test(error.message ?? '')) {
+    return 'Mã khoản lương đã tồn tại trên hệ thống.';
+  }
+  return describeDbError(error);
 }
 
 export async function saveComponent(
@@ -242,75 +291,189 @@ export async function saveComponent(
   const { error } = component.id
     ? await supabase.from('payroll_components').update(component).eq('id', component.id)
     : await supabase.from('payroll_components').insert(component);
-  return error ? describeDbError(error) : null;
+  return error ? catalogError(error) : null;
 }
 
-export async function deleteComponent(id: string): Promise<string | null> {
+/**
+ * Xoá theo đúng luồng F06.01: khoản đã phát sinh trong kỳ lương chốt thì
+ * database tự chuyển "Ngừng hoạt động" thay vì xoá.
+ */
+export async function removeComponent(id: string): Promise<{ result: 'DELETED' | 'DEACTIVATED' | null; error: string | null }> {
+  if (!supabase) return { result: null, error: 'Chưa kết nối Supabase.' };
+  const { data, error } = await rpcError(supabase.rpc('remove_payroll_component', { p_component_id: id }));
+  return { result: data as 'DELETED' | 'DEACTIVATED' | null, error };
+}
+
+export interface StandardCatalogItem {
+  std_no: number;
+  code: string;
+  name: string;
+  category_code: string;
+  kind: PayComponent['kind'];
+  nature: PayComponent['nature'];
+  calc_source: PayComponent['calc_source'];
+  taxable: boolean;
+  insurable: boolean;
+  is_base: boolean;
+  note: string;
+}
+
+export async function fetchStandardCatalog(): Promise<StandardCatalogItem[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.rpc('payroll_standard_catalog');
+  return error ? [] : (data || []) as StandardCatalogItem[];
+}
+
+export async function seedStandardCatalog(): Promise<{ inserted: number; error: string | null }> {
+  if (!supabase) return { inserted: 0, error: 'Chưa kết nối Supabase.' };
+  const { data, error } = await rpcError(supabase.rpc('seed_standard_payroll_catalog'));
+  return { inserted: Number(data) || 0, error };
+}
+
+// ---------------------------------------------------------------------------
+// F06.02 — Mẫu bảng lương theo khối
+// ---------------------------------------------------------------------------
+
+export async function saveTemplate(
+  template: Partial<PayrollTemplate> & { code: string; name: string },
+): Promise<{ id: string | null; error: string | null }> {
+  if (!supabase) return { id: null, error: 'Chưa kết nối Supabase.' };
+  const payload = {
+    code: template.code, name: template.name, description: template.description ?? null,
+    is_active: template.is_active ?? true,
+  };
+  const { data, error } = template.id
+    ? await supabase.from('payroll_templates').update(payload).eq('id', template.id).select('id').single()
+    : await supabase.from('payroll_templates').insert(payload).select('id').single();
+  return { id: (data as { id?: string } | null)?.id ?? null, error: error ? describeDbError(error) : null };
+}
+
+export async function deleteTemplate(id: string): Promise<string | null> {
   if (!supabase) return 'Chưa kết nối Supabase.';
-  const { error } = await supabase.from('payroll_components').delete().eq('id', id);
+  const { error } = await supabase.from('payroll_templates').delete().eq('id', id);
   return error ? describeDbError(error) : null;
 }
 
-export async function savePayProfile(
-  payProfile: Partial<EmployeePayProfile> & { user_id: string; effective_from: string },
+export async function saveTemplateItem(args: {
+  templateId: string; componentId: string; effectiveFrom: string;
+  amount: number | null; formula: string | null; taxable: boolean | null; insurable: boolean | null; note?: string | null;
+}): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await rpcError(supabase.rpc('save_payroll_template_item', {
+    p_template_id: args.templateId,
+    p_component_id: args.componentId,
+    p_effective_from: args.effectiveFrom,
+    p_amount: args.amount,
+    p_formula: args.formula,
+    p_taxable: args.taxable,
+    p_insurable: args.insurable,
+    p_note: args.note ?? null,
+  }));
+  return error;
+}
+
+export async function endTemplateItem(templateId: string, componentId: string, effectiveFrom: string): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await rpcError(supabase.rpc('end_payroll_template_item', {
+    p_template_id: templateId, p_component_id: componentId, p_effective_from: effectiveFrom,
+  }));
+  return error;
+}
+
+export async function assignTemplate(
+  unitId: string, templateId: string | null, effectiveFrom: string, note?: string | null,
 ): Promise<string | null> {
   if (!supabase) return 'Chưa kết nối Supabase.';
-  // Cùng người + cùng ngày hiệu lực là sửa lại bản ghi đó, không tạo bản trùng.
-  const { error } = await supabase
-    .from('employee_pay_profiles')
-    .upsert(payProfile, { onConflict: 'user_id,effective_from' });
-  return error ? describeDbError(error) : null;
+  const { error } = await rpcError(supabase.rpc('assign_payroll_template', {
+    p_unit_id: unitId, p_template_id: templateId, p_effective_from: effectiveFrom, p_note: note ?? null,
+  }));
+  return error;
 }
 
-/**
- * Lưu một khoản của một người. Trả về cả ID của dòng vừa ghi.
- *
- * ID là thứ bắt buộc với luồng "lưu lẻ từng khoản": lưu lẻ mà không giữ ID
- * thì lần lưu tổng sau đó coi khoản ấy là mới và CHÈN THÊM một dòng nữa cho
- * cùng một khoản — người đó ăn khoản lương hai lần.
- */
-/**
- * Ba cột chỉ có sau migration 20261007100000.
- *
- * Đẩy code lên là deploy ngay, còn migration thì người dùng chạy tay — nên có
- * một quãng mà code mới gặp database cũ. Không xử lý thì cả màn Cơ chế lương
- * không lưu được gì trong quãng đó.
- */
-const COT_MOI = ['taxable', 'insurable', 'is_base'] as const;
-
-/** Database chưa có ba cột kia, chứ không phải người dùng nhập sai. */
-function thieuCotMoi(error: { message?: string; code?: string }): boolean {
-  const text = error.message ?? '';
-  return COT_MOI.some((cot) => text.includes(`'${cot}'`) || text.includes(`"${cot}"`));
+export async function seedTemplateDefaults(templateId: string, effectiveFrom: string): Promise<{ count: number; error: string | null }> {
+  if (!supabase) return { count: 0, error: 'Chưa kết nối Supabase.' };
+  const { data, error } = await rpcError(supabase.rpc('seed_payroll_template_defaults', {
+    p_template_id: templateId, p_effective_from: effectiveFrom,
+  }));
+  return { count: Number(data) || 0, error };
 }
 
-export async function savePayItem(
-  item: Partial<EmployeePayItem> & { user_id: string; component_id: string; effective_from: string },
-): Promise<{ error: string | null; id: string | null }> {
-  if (!supabase) return { error: 'Chưa kết nối Supabase.', id: null };
+// ---------------------------------------------------------------------------
+// F06.03 — Đề xuất cơ chế lương và BGĐ ký duyệt
+// ---------------------------------------------------------------------------
 
-  const ghi = async (payload: Record<string, unknown>) => (item.id
-    ? await supabase!.from('employee_pay_items').update(payload).eq('id', item.id).select('id').single()
-    : await supabase!.from('employee_pay_items').insert(payload).select('id').single());
-
-  let { data, error } = await ghi(item);
-
-  // Chạy lại không có ba cột mới. Khoản vẫn lưu được; ba tính chất kia tạm
-  // lấy theo danh mục cho tới khi migration chạy.
-  if (error && thieuCotMoi(error)) {
-    const rutGon = { ...item } as Record<string, unknown>;
-    for (const cot of COT_MOI) delete rutGon[cot];
-    ({ data, error } = await ghi(rutGon));
-  }
-
-  return { error: error ? describeDbError(error) : null, id: (data as { id?: string } | null)?.id ?? null };
+export async function saveSchemeRequest(args: {
+  requestId: string | null;
+  targetType: 'USER' | 'UNIT';
+  userId: string | null;
+  unitId: string | null;
+  effectiveFrom: string;
+  payload: { profile?: SchemePayloadProfile; items: SchemePayloadItem[] };
+  note: string | null;
+  submit: boolean;
+}): Promise<{ id: string | null; error: string | null }> {
+  if (!supabase) return { id: null, error: 'Chưa kết nối Supabase.' };
+  const { data, error } = await rpcError(supabase.rpc('save_payroll_scheme_request', {
+    p_request_id: args.requestId,
+    p_target_type: args.targetType,
+    p_user_id: args.userId,
+    p_unit_id: args.unitId,
+    p_effective_from: args.effectiveFrom,
+    p_payload: args.payload,
+    p_note: args.note,
+    p_submit: args.submit,
+  }));
+  return { id: (data as string | null) ?? null, error };
 }
 
-export async function deletePayItem(id: string): Promise<string | null> {
+export async function cancelSchemeRequest(id: string, reason?: string): Promise<string | null> {
   if (!supabase) return 'Chưa kết nối Supabase.';
-  const { error } = await supabase.from('employee_pay_items').delete().eq('id', id);
-  return error ? describeDbError(error) : null;
+  const { error } = await rpcError(supabase.rpc('cancel_payroll_scheme_request', { p_request_id: id, p_reason: reason ?? null }));
+  return error;
 }
+
+/** Mã lỗi khi database đòi xác thực lại để ký (amr quá hạn). */
+export const REAUTH_REQUIRED = 'REAUTH_REQUIRED';
+
+function reviewError(error: PostgrestError | null): string | null {
+  if (!error) return null;
+  if (error.code === '28000') return REAUTH_REQUIRED;
+  return describeDbError(error);
+}
+
+export async function reviewSchemeRequest(id: string, decision: 'APPROVED' | 'REJECTED', note: string | null): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await supabase.rpc('review_payroll_scheme_request', {
+    p_request_id: id, p_decision: decision, p_note: note,
+  });
+  return reviewError(error);
+}
+
+export async function fetchSchemeRequests(statuses: PayrollSchemeRequest['status'][]): Promise<PayrollSchemeRequest[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('payroll_scheme_requests').select('*')
+    .in('status', statuses).order('updated_at', { ascending: false }).limit(200);
+  return error ? [] : (data || []) as PayrollSchemeRequest[];
+}
+
+export async function fetchApprovalEvents(subjectType: 'SCHEME' | 'RUN', subjectIds: string[]): Promise<PayrollApprovalEvent[]> {
+  if (!supabase || subjectIds.length === 0) return [];
+  const { data, error } = await supabase.from('payroll_approval_events').select('*')
+    .eq('subject_type', subjectType).in('subject_id', subjectIds).order('created_at', { ascending: false });
+  return error ? [] : (data || []) as PayrollApprovalEvent[];
+}
+
+/** Người có chức năng Phê duyệt lương — để gửi thông báo trình ký. */
+export async function fetchPayrollApproverIds(): Promise<string[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.rpc('get_payroll_approver_ids');
+  if (error || !Array.isArray(data)) return [];
+  return (data as Array<{ user_id: string }>).map((row) => row.user_id).filter(Boolean);
+}
+
+// ---------------------------------------------------------------------------
+// Số liệu tháng và điều chỉnh (FR06.04.02)
+// ---------------------------------------------------------------------------
 
 export async function savePayrollInput(
   input: { user_id: string; month_start: string; code: string; quantity: number; created_by?: string | null },
@@ -321,99 +484,6 @@ export async function savePayrollInput(
     .upsert(input, { onConflict: 'user_id,month_start,code' });
   return error ? describeDbError(error) : null;
 }
-
-// ---------------------------------------------------------------------------
-// Kỳ chạy lương
-// ---------------------------------------------------------------------------
-
-export async function ensurePayrollRun(
-  monthStart: string,
-  createdBy: string | null,
-): Promise<{ run: PayrollRun | null; error: string | null }> {
-  if (!supabase) return { run: null, error: 'Chưa kết nối Supabase.' };
-
-  const existing = await supabase
-    .from('payroll_runs').select('*').eq('month_start', monthStart).maybeSingle();
-  if (existing.data) return { run: existing.data as PayrollRun, error: null };
-
-  const { data, error } = await supabase
-    .from('payroll_runs')
-    .insert({ month_start: monthStart, created_by: createdBy })
-    .select()
-    .single();
-  return { run: (data as PayrollRun) ?? null, error: error ? describeDbError(error) : null };
-}
-
-export async function setRunStatus(
-  runId: string,
-  status: PayrollRunStatus,
-  actorId: string | null,
-): Promise<string | null> {
-  if (!supabase) return 'Chưa kết nối Supabase.';
-  const patch: Record<string, unknown> = { status };
-  if (status === 'APPROVED') patch.approved_by = actorId;
-  const { error } = await supabase.from('payroll_runs').update(patch).eq('id', runId);
-  return error ? describeDbError(error) : null;
-}
-
-export interface PayslipToPersist {
-  profile: Profile;
-  computed: ComputedPayslip;
-}
-
-/**
- * Ghi kết quả tính xuống database — đây là bước "đóng băng".
- *
- * Thay toàn bộ phiếu và dòng chi tiết qua một RPC transaction. Trigger
- * `payslips_immutable` chặn thao tác này khi kỳ đã duyệt.
- */
-export async function persistPayslips(
-  run: PayrollRun,
-  entries: PayslipToPersist[],
-): Promise<string | null> {
-  if (!supabase) return 'Chưa kết nối Supabase.';
-
-  const { error } = await supabase.rpc('persist_payroll_payslips', {
-    target_run_id: run.id,
-    payslip_entries: entries.map(({ profile, computed }) => ({
-      user_id: profile.id,
-      employee_name: profile.name,
-      employee_code: profile.employee_code ?? null,
-      department: profile.department ?? null,
-      pay_basis: computed.payBasis,
-      work_days: computed.stats.workDays,
-      leave_days: computed.stats.leaveDays,
-      paid_days: computed.stats.paidDays,
-      standard_days: computed.standardDays,
-      work_hours: computed.stats.workHours,
-      gross_pay: computed.gross,
-      taxable_income: computed.taxableIncome,
-      insurance_employee: computed.insuranceEmployee,
-      insurance_employer: computed.insuranceEmployer,
-      personal_income_tax: computed.personalIncomeTax,
-      other_deductions: computed.otherDeductions,
-      net_pay: computed.netPay,
-      snapshot: computed.snapshot,
-      lines: computed.lines.map((line, sequence) => ({
-        sequence,
-        code: line.code,
-        name: line.name,
-        kind: line.kind,
-        quantity: line.quantity,
-        rate: line.rate,
-        amount: line.amount,
-        taxable: line.taxable,
-        insurable: line.insurable,
-        detail: line.detail,
-      })),
-    })),
-  });
-  return error ? describeDbError(error) : null;
-}
-
-// ---------------------------------------------------------------------------
-// Điều chỉnh truy lĩnh / truy thu (LU-14)
-// ---------------------------------------------------------------------------
 
 export async function savePayrollAdjustment(
   adjustment: {
@@ -442,21 +512,215 @@ export async function deletePayrollAdjustment(id: string): Promise<string | null
 }
 
 // ---------------------------------------------------------------------------
-// Khoản lương theo đơn vị
+// F06.04 — Kỳ chạy lương
 // ---------------------------------------------------------------------------
 
-export async function saveUnitPayItem(
-  item: Partial<UnitPayItem> & { unit_id: string; component_id: string; effective_from: string },
+export async function ensurePayrollRun(
+  monthStart: string,
+  createdBy: string | null,
+): Promise<{ run: PayrollRun | null; error: string | null }> {
+  if (!supabase) return { run: null, error: 'Chưa kết nối Supabase.' };
+
+  const existing = await supabase
+    .from('payroll_runs').select('*').eq('month_start', monthStart).maybeSingle();
+  if (existing.data) return { run: existing.data as PayrollRun, error: null };
+
+  const { data, error } = await supabase
+    .from('payroll_runs')
+    .insert({ month_start: monthStart, created_by: createdBy })
+    .select()
+    .single();
+  return { run: (data as PayrollRun) ?? null, error: error ? describeDbError(error) : null };
+}
+
+export interface PayslipToPersist {
+  profile: Profile;
+  computed: ComputedPayslip;
+}
+
+/**
+ * Chạy bảng lương nháp (FR06.04.01): ghi toàn bộ phiếu và chuyển kỳ sang
+ * "Đã tính" trong MỘT transaction ở database. Kỳ đã khoá thì từ chối.
+ */
+export async function persistPayslips(
+  run: PayrollRun,
+  entries: PayslipToPersist[],
 ): Promise<string | null> {
   if (!supabase) return 'Chưa kết nối Supabase.';
-  const { error } = item.id
-    ? await supabase.from('unit_pay_items').update(item).eq('id', item.id)
-    : await supabase.from('unit_pay_items').insert(item);
+
+  const { error } = await supabase.rpc('persist_payroll_payslips', {
+    target_run_id: run.id,
+    payslip_entries: entries.map(({ profile, computed }) => ({
+      user_id: profile.id,
+      employee_name: profile.name,
+      employee_code: profile.employee_code ?? null,
+      department: profile.department ?? null,
+      pay_basis: computed.payBasis,
+      work_days: computed.stats.workDays,
+      leave_days: computed.stats.leaveDays,
+      paid_days: computed.stats.paidDays,
+      standard_days: computed.standardDays,
+      work_hours: computed.stats.workHours,
+      gross_pay: computed.gross,
+      taxable_income: computed.taxableIncome,
+      insurance_employee: computed.insuranceEmployee,
+      insurance_employer: computed.insuranceEmployer,
+      personal_income_tax: computed.personalIncomeTax,
+      other_deductions: computed.otherDeductions,
+      rounding_adjustment: computed.roundingAdjustment,
+      net_pay: computed.netPay,
+      snapshot: computed.snapshot,
+      lines: computed.lines.map((line, sequence) => ({
+        sequence,
+        code: line.code,
+        name: line.name,
+        kind: line.kind,
+        quantity: line.quantity,
+        rate: line.rate,
+        amount: line.amount,
+        taxable: line.taxable,
+        insurable: line.insurable,
+        detail: line.detail,
+      })),
+    })),
+  });
   return error ? describeDbError(error) : null;
 }
 
-export async function deleteUnitPayItem(id: string): Promise<string | null> {
+/** Khoá kỳ (FR06.04.03). Phiên phải vừa nhập mã TOTP — xem `TwoFactorDialog`. */
+export async function lockPayrollRun(runId: string): Promise<string | null> {
   if (!supabase) return 'Chưa kết nối Supabase.';
-  const { error } = await supabase.from('unit_pay_items').delete().eq('id', id);
+  const { error } = await supabase.rpc('lock_payroll_run', { p_run_id: runId });
+  return reviewError(error);
+}
+
+export async function withdrawPayrollRun(runId: string, reason: string): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await rpcError(supabase.rpc('withdraw_payroll_run', { p_run_id: runId, p_reason: reason }));
+  return error;
+}
+
+/** BGĐ ký duyệt / từ chối chi trả (FR06.04.04). */
+export async function reviewPayrollRun(runId: string, decision: 'APPROVED' | 'REJECTED', note: string | null): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await supabase.rpc('review_payroll_run', { p_run_id: runId, p_decision: decision, p_note: note });
+  return reviewError(error);
+}
+
+/** Xác nhận đã chi trả — phiếu lương phát hành cho nhân viên (FR06.04.05). */
+export async function markPayrollRunPaid(runId: string): Promise<{ published: number; error: string | null }> {
+  if (!supabase) return { published: 0, error: 'Chưa kết nối Supabase.' };
+  const { data, error } = await rpcError(supabase.rpc('mark_payroll_run_paid', { p_run_id: runId }));
+  return { published: Number(data) || 0, error };
+}
+
+export async function recordBankExport(runId: string, templateCode: string, rows: number, total: number): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await rpcError(supabase.rpc('record_payroll_bank_export', {
+    p_run_id: runId, p_template_code: templateCode, p_rows: rows, p_total: total,
+  }));
+  return error;
+}
+
+/** Kỳ lương đang chờ BGĐ duyệt / đã duyệt — cho màn Phê duyệt lương. */
+export async function fetchRunsForApproval(): Promise<PayrollRun[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('payroll_runs').select('*')
+    .in('status', ['LOCKED', 'APPROVED', 'PAID']).order('month_start', { ascending: false }).limit(24);
+  return error ? [] : (data || []) as PayrollRun[];
+}
+
+export interface RunTotals {
+  count: number;
+  gross: number;
+  insuranceEmployee: number;
+  insuranceEmployer: number;
+  pit: number;
+  net: number;
+}
+
+/** Tổng quỹ lương của từng kỳ — thứ BGĐ cần nhìn trước khi ký chi. */
+export async function fetchRunTotals(runIds: string[]): Promise<Map<string, RunTotals>> {
+  const totals = new Map<string, RunTotals>();
+  if (!supabase || runIds.length === 0) return totals;
+  const { data, error } = await supabase.from('payslips')
+    .select('run_id, gross_pay, insurance_employee, insurance_employer, personal_income_tax, net_pay')
+    .in('run_id', runIds);
+  if (error) return totals;
+  for (const row of (data || []) as Array<Record<string, unknown>>) {
+    const key = String(row.run_id);
+    const current = totals.get(key) ?? { count: 0, gross: 0, insuranceEmployee: 0, insuranceEmployer: 0, pit: 0, net: 0 };
+    current.count += 1;
+    current.gross += Number(row.gross_pay) || 0;
+    current.insuranceEmployee += Number(row.insurance_employee) || 0;
+    current.insuranceEmployer += Number(row.insurance_employer) || 0;
+    current.pit += Number(row.personal_income_tax) || 0;
+    current.net += Number(row.net_pay) || 0;
+    totals.set(key, current);
+  }
+  return totals;
+}
+
+// ---------------------------------------------------------------------------
+// Tài khoản nhận lương và mẫu file ngân hàng (FR06.04.04)
+// ---------------------------------------------------------------------------
+
+export async function fetchBankAccounts(): Promise<EmployeeBankAccount[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('employee_bank_accounts').select('*');
+  return error ? [] : (data || []) as EmployeeBankAccount[];
+}
+
+export async function saveBankAccount(account: Omit<EmployeeBankAccount, 'updated_at'>): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await supabase.from('employee_bank_accounts').upsert(account, { onConflict: 'user_id' });
   return error ? describeDbError(error) : null;
+}
+
+export async function fetchBankTemplates(): Promise<PayrollBankTemplate[]> {
+  if (!supabase) return [];
+  const { data, error } = await supabase.from('payroll_bank_templates').select('*').order('sort_order');
+  return error ? [] : (data || []) as PayrollBankTemplate[];
+}
+
+export async function saveBankTemplate(template: PayrollBankTemplate): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await supabase.from('payroll_bank_templates').upsert(template, { onConflict: 'code' });
+  return error ? describeDbError(error) : null;
+}
+
+// ---------------------------------------------------------------------------
+// Phiếu lương của chính mình (FR06.04.05)
+// ---------------------------------------------------------------------------
+
+export interface MyPayslipStatus {
+  published: boolean;
+  publishedAt: string | null;
+  inProgress: boolean;
+  reauthRequired: boolean;
+  reauthWindowMinutes: number;
+}
+
+export async function fetchMyPayslipStatus(monthStart: string): Promise<MyPayslipStatus | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase.rpc('get_my_payslip_status', { p_month: monthStart });
+  if (error || !data) return null;
+  const row = data as Record<string, unknown>;
+  return {
+    published: !!row.published,
+    publishedAt: (row.published_at as string) ?? null,
+    inProgress: !!row.in_progress,
+    reauthRequired: !!row.reauth_required,
+    reauthWindowMinutes: Number(row.reauth_window_minutes) || 0,
+  };
+}
+
+export async function fetchMyPayslip(monthStart: string): Promise<{
+  payslip: Payslip | null; lines: PayslipLine[]; error: string | null;
+}> {
+  if (!supabase) return { payslip: null, lines: [], error: 'Chưa kết nối Supabase.' };
+  const { data, error } = await supabase.rpc('get_my_payslip', { p_month: monthStart });
+  if (error) return { payslip: null, lines: [], error: reviewError(error) };
+  const row = data as { payslip?: Payslip; lines?: PayslipLine[] } | null;
+  return { payslip: row?.payslip ?? null, lines: row?.lines ?? [], error: null };
 }

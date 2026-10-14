@@ -377,7 +377,31 @@ export type PayBasis = 'MONTHLY' | 'HOURLY' | 'DAILY' | 'PIECE' | 'COMMISSION';
 /** FLAT dùng cho hợp đồng thời vụ dưới 3 tháng (khấu trừ thẳng 10%). */
 export type TaxMode = 'PROGRESSIVE' | 'FLAT' | 'NONE';
 
-export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'APPROVED' | 'PAID';
+/**
+ * DRAFT -> CALCULATED (chạy nháp) -> LOCKED (KTT khoá bằng 2FA, chờ BGĐ)
+ * -> APPROVED (BGĐ ký duyệt chi) -> PAID (đã chi trả, phiếu phát hành).
+ * Xem migration 20261013130000.
+ */
+export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'LOCKED' | 'APPROVED' | 'PAID';
+
+/** Năm nhóm phân loại bắt buộc của khoản lương (BR-PAY-001). */
+export type PayComponentCategoryCode =
+  | 'THU_NHAP_CO_DINH' | 'THU_NHAP_BIEN_DOI' | 'LAM_THEM_GIO' | 'THUONG_PHAT_SINH' | 'KHAU_TRU_PHAT';
+
+export interface PayComponentCategory {
+  code: PayComponentCategoryCode;
+  name: string;
+  description: string | null;
+  allowed_kinds: PayComponentKind[];
+  default_nature: PayComponentNature;
+  sort_order: number;
+}
+
+/** Cố định định kỳ / Biến đổi theo hiệu suất, thời gian. */
+export type PayComponentNature = 'FIXED' | 'VARIABLE';
+
+/** ASSIGNED: gán cho người/phòng/mẫu. ENGINE: hệ thống tự tính, không gán được. */
+export type PayComponentSource = 'ASSIGNED' | 'ENGINE';
 
 /** Định nghĩa một khoản lương ở cấp công ty. */
 export interface PayComponent {
@@ -418,6 +442,10 @@ export interface PayComponent {
    * một khoản lương nên không có số tiền nào thuộc về nó.
    */
   group_name: string | null;
+  /** Một trong năm nhóm bắt buộc (BR-PAY-001). */
+  category_code: PayComponentCategoryCode;
+  nature: PayComponentNature;
+  calc_source: PayComponentSource;
   is_active: boolean;
   is_system: boolean;
   note: string | null;
@@ -440,10 +468,131 @@ export interface EmployeePayProfile {
   tax_mode: TaxMode;
   flat_tax_rate: number;
   standard_days_override: number | null;
+  /** Mẫu bảng lương gán riêng. NULL = theo mẫu của đơn vị trên cây tổ chức. */
+  template_id?: string | null;
   note: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Mẫu bảng lương theo khối (BL 01 / BL 02) — F06.02. */
+export interface PayrollTemplate {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PayrollTemplateItem {
+  id: string;
+  template_id: string;
+  component_id: string;
+  amount: number | null;
+  formula: string | null;
+  taxable: boolean | null;
+  insurable: boolean | null;
+  effective_from: string;
+  effective_to: string | null;
+  note: string | null;
+}
+
+/** Mẫu áp cho đơn vị từ tháng nào. `template_id` NULL = chặn thừa hưởng từ cấp trên. */
+export interface UnitPayrollTemplate {
+  id: string;
+  unit_id: string;
+  template_id: string | null;
+  effective_from: string;
+  note: string | null;
+}
+
+export type SchemeRequestStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+/** Một khoản trong đề xuất cơ chế lương. */
+export interface SchemePayloadItem {
+  component_id: string;
+  amount: number | null;
+  formula: string | null;
+  taxable?: boolean | null;
+  insurable?: boolean | null;
+  is_base?: boolean | null;
+  note?: string | null;
+}
+
+export interface SchemePayloadProfile {
+  dependents: number;
+  insurance_enabled: boolean;
+  insurance_base: number | null;
+  tax_mode: TaxMode;
+  flat_tax_rate: number | null;
+  standard_days_override: number | null;
+  template_id: string | null;
+}
+
+/** Đề xuất thay đổi cơ chế lương chờ BGĐ ký duyệt (F06.03, BR-PAY-012). */
+export interface PayrollSchemeRequest {
+  id: string;
+  code: string;
+  target_type: 'USER' | 'UNIT';
+  user_id: string | null;
+  unit_id: string | null;
+  effective_from: string;
+  status: SchemeRequestStatus;
+  payload: { profile?: SchemePayloadProfile; items: SchemePayloadItem[] };
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  review_note: string | null;
+  approval_fingerprint: string | null;
+  applied_at: string | null;
+}
+
+/** Lịch sử phê duyệt (UI_04) — dùng chung cho cơ chế lương và kỳ lương. */
+export interface PayrollApprovalEvent {
+  id: number;
+  subject_type: 'SCHEME' | 'RUN';
+  subject_id: string;
+  action: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  note: string | null;
+  details: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface EmployeeBankAccount {
+  user_id: string;
+  bank_code: string;
+  bank_name: string;
+  account_number: string;
+  account_holder: string;
+  branch: string | null;
+  updated_at: string;
+}
+
+export type BankExportField =
+  | 'seq' | 'employee_code' | 'account_holder' | 'account_number' | 'bank_name'
+  | 'bank_code' | 'branch' | 'amount' | 'description';
+
+/** Mẫu file chi lương theo ngân hàng — bố cục cột là dữ liệu. */
+export interface PayrollBankTemplate {
+  code: string;
+  name: string;
+  columns: Array<{ header: string; field: BankExportField }>;
+  description_template: string;
+  strip_diacritics: boolean;
+  sheet_name: string;
+  note: string | null;
+  is_active: boolean;
+  sort_order: number;
 }
 
 /** Một khoản lương đã gán cho một người, có thể kèm giá trị/công thức riêng. */
@@ -533,9 +682,20 @@ export interface PayrollRun {
   note: string | null;
   created_by: string | null;
   calculated_at: string | null;
+  calculated_by?: string | null;
+  locked_by?: string | null;
+  locked_at?: string | null;
+  /** SHA-256 toàn bộ phiếu lúc khoá — BGĐ duyệt đúng bộ số này. */
+  lock_fingerprint?: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  approval_fingerprint?: string | null;
+  /** Lý do BGĐ từ chối hoặc KTT rút lại gần nhất. */
+  review_note?: string | null;
+  paid_by?: string | null;
   paid_at: string | null;
+  /** Lúc phiếu lương phát hành cho nhân viên (cùng lúc xác nhận chi trả). */
+  published_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -560,6 +720,8 @@ export interface Payslip {
   insurance_employer: number;
   personal_income_tax: number;
   other_deductions: number;
+  /** Chênh lệch do làm tròn thực lĩnh — net_pay đã gồm phần này. */
+  rounding_adjustment?: number;
   net_pay: number;
   /** Tham số đã dùng lúc chốt: thuế suất, người phụ thuộc, trần bảo hiểm... */
   snapshot: Record<string, unknown>;

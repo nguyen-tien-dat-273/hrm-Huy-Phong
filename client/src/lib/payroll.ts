@@ -21,7 +21,7 @@
 // ============================================================================
 
 import type { PayrollParams } from './payrollSettings';
-import { evaluateFormula, FormulaError } from './payrollFormula';
+import { evaluateFormula, FormulaError, roundTo, type FormulaFunctions } from './payrollFormula';
 import {
   dayWeight, EMPTY_PUNCTUALITY, EMPTY_SCHEDULES, measurePunctuality,
   type PunctualityExceptions, type ScheduleSet,
@@ -41,31 +41,10 @@ import type {
 // Thuế thu nhập cá nhân
 // ---------------------------------------------------------------------------
 
-/**
- * Biểu thuế lũy tiến từng phần, Phụ lục 01 Thông tư 111/2013/TT-BTC.
- * `upTo` tính trên THU NHẬP TÍNH THUẾ tháng (đã trừ bảo hiểm và giảm trừ).
- */
-export const PIT_BRACKETS: ReadonlyArray<{ upTo: number; rate: number }> = [
-  { upTo: 5_000_000, rate: 0.05 },
-  { upTo: 10_000_000, rate: 0.1 },
-  { upTo: 18_000_000, rate: 0.15 },
-  { upTo: 32_000_000, rate: 0.2 },
-  { upTo: 52_000_000, rate: 0.25 },
-  { upTo: 80_000_000, rate: 0.3 },
-  { upTo: Number.POSITIVE_INFINITY, rate: 0.35 },
-];
-
-/**
- * Ngưỡng ngày không hưởng lương khiến tháng đó không phải đóng bảo hiểm.
- *
- * Điều 85 khoản 3 Luật Bảo hiểm xã hội 2014: người lao động không làm việc và
- * không hưởng tiền lương từ 14 ngày làm việc trở lên trong tháng thì không
- * đóng BHXH tháng đó. BHYT và BHTN đi theo cùng nguyên tắc.
- *
- * CỐ Ý không đưa ra thành tham số cấu hình: đây là con số của luật, không phải
- * chính sách của công ty. Mở cho sửa chỉ tạo thêm một chỗ khai sai.
- */
-export const UNPAID_DAYS_WAIVING_INSURANCE = 14;
+// Biểu thuế và ngưỡng "nghỉ không lương từ N ngày thì không đóng bảo hiểm"
+// từng là hằng số ở đây. Cả hai là con số pháp lý, và luật thuế TNCN lẫn luật
+// BHXH đều đang sửa đổi — F06.02 đòi chúng nằm trong bộ tham số có ngày hiệu
+// lực (`PayrollParams.brackets`, `PayrollParams.unpaidDaysWaiveInsurance`).
 
 export interface TaxBreakdownStep {
   /** Phần thu nhập rơi vào bậc này. */
@@ -81,12 +60,8 @@ export interface TaxBreakdownStep {
  */
 export function progressiveIncomeTax(
   taxableIncome: number,
-  /**
-   * Biểu thuế. Mặc định là biểu trong code để mọi chỗ gọi cũ chạy nguyên vẹn;
-   * bảng lương truyền vào biểu khai trong `pit_brackets` để kế toán tự sửa
-   * được khi luật đổi, không phải chờ deploy.
-   */
-  brackets: ReadonlyArray<{ upTo: number; rate: number }> = PIT_BRACKETS,
+  /** Biểu thuế của bộ tham số đang hiệu lực, đã quy đổi bằng `toTaxBrackets`. */
+  brackets: ReadonlyArray<{ upTo: number; rate: number }>,
 ): {
   tax: number;
   steps: TaxBreakdownStep[];
@@ -112,16 +87,16 @@ export function progressiveIncomeTax(
 }
 
 /**
- * Đổi biểu khai trong database sang dạng engine dùng.
+ * Đổi biểu khai trong bộ tham số sang dạng engine dùng.
  *
  * Hai khác biệt phải quy đổi: cận trên `null` của bậc cuối thành vô cực, và
- * thuế suất phần trăm (5) thành hệ số (0,05). Biểu rỗng thì giữ nguyên biểu
- * trong code — không bao giờ tính thuế bằng một biểu không có bậc nào.
+ * thuế suất phần trăm (5) thành hệ số (0,05). Biểu rỗng trả về rỗng — người
+ * gọi phải cảnh báo, không có biểu "dự phòng" nào trong code để rơi về.
  */
 export function toTaxBrackets(
   brackets: ReadonlyArray<{ upperBound: number | null; rate: number }> | undefined,
 ): ReadonlyArray<{ upTo: number; rate: number }> {
-  if (!brackets || brackets.length === 0) return PIT_BRACKETS;
+  if (!brackets || brackets.length === 0) return [];
   return brackets.map((bracket) => ({
     upTo: bracket.upperBound ?? Number.POSITIVE_INFINITY,
     rate: bracket.rate / 100,
@@ -340,6 +315,23 @@ export interface ComputedLine {
   taxExemptCap?: number | null;
   /** Câu giải thích để phiếu lương tự nói được vì sao ra con số này. */
   detail: string;
+  /** Khoản đến từ đâu: mẫu khối, khoản chung của phòng, hay khai riêng. */
+  origin?: string | null;
+}
+
+/**
+ * Một bước trong nhật ký tính toán (F06.02 — "xuất nhật ký tính toán chi
+ * tiết" khi chạy thử). Đủ để kế toán tự tính tay lại từng con số.
+ */
+export interface CalcTraceStep {
+  section: 'BASE' | 'EARNING' | 'INSURANCE' | 'TAX' | 'DEDUCTION' | 'EMPLOYER' | 'NET';
+  label: string;
+  /** Công thức hay phép tính đã dùng, nếu có. */
+  expression?: string;
+  /** Giá trị của từng biến công thức đọc tới, tại đúng lúc tính. */
+  variables?: Record<string, number>;
+  result: number;
+  note?: string;
 }
 
 export interface ComputedPayslip {
@@ -358,11 +350,16 @@ export interface ComputedPayslip {
   taxSteps: TaxBreakdownStep[];
   /** Khấu trừ ngoài bảo hiểm và thuế (tạm ứng, đoàn phí...). */
   otherDeductions: number;
+  /** Chênh lệch do làm tròn thực lĩnh theo bộ tham số (FR06.04.01). */
+  roundingAdjustment: number;
+  /** Thực lĩnh ĐÃ làm tròn. */
   netPay: number;
   /** Tham số đã dùng — ghi vào `payslips.snapshot` khi chốt kỳ. */
   snapshot: Record<string, unknown>;
   /** Vấn đề cần người xử lý: thiếu cơ chế lương, công thức hỏng... */
   warnings: string[];
+  /** Nhật ký tính toán, chỉ có khi gọi với `trace: true`. */
+  trace?: CalcTraceStep[];
 }
 
 /** Mã khoản mà engine tự sinh, không đến từ `payroll_components`. */
@@ -388,12 +385,26 @@ export const SYSTEM_CODES = {
   adjustmentClawback: 'ADJ_CLAWBACK',
 } as const;
 
+/**
+ * Tên biến engine tự cấp cho công thức — tham số tự khai hay mã khoản không
+ * được trùng (trùng là đè biến hệ thống). Bản database tương ứng:
+ * `payroll_reserved_formula_names()` (migration 20261013110000).
+ */
+export const ENGINE_VARIABLE_NAMES: readonly string[] = [
+  'BASE', 'BASE_WORK', 'BASE_LEAVE', 'BASE_HOLIDAY', 'GROSS', 'MUC_RIENG',
+  'HOURLY_RATE', 'DAILY_RATE', 'MONTHLY_RATE', 'WORK_DAYS', 'LEAVE_DAYS', 'HOLIDAY_DAYS',
+  'PAID_DAYS', 'STANDARD_DAYS', 'WORK_HOURS', 'HOURS_PER_DAY', 'DEPENDENTS',
+  'LATE_MINUTES', 'LATE_COUNT', 'LATE_AFTER_CUTOFF', 'EARLY_MINUTES', 'EARLY_COUNT',
+  'INSURANCE_BASE', 'INSURANCE_EMPLOYEE', 'PIT', 'TAXABLE_INCOME',
+  'ADJ_RECOVERY', 'ADJ_CLAWBACK', 'KPI_TARGET', 'KPI_PCT',
+];
+
 /** Câu giải thích cho dòng điều chỉnh: bù cho kỳ nào, vì sao. */
 function adjustmentDetail(adjustment: PayrollAdjustment): string {
-  const origin = adjustment.origin_month
-    ? `Kỳ ${adjustment.origin_month.slice(5, 7)}/${adjustment.origin_month.slice(0, 4)}`
-    : 'Không ghi kỳ gốc';
-  return `${origin} — ${adjustment.reason}`;
+  // Điều chỉnh không gắn kỳ gốc (thưởng tiền mặt, khoản phát sinh trong kỳ)
+  // thì lý do giải trình chính là toàn bộ câu cần nói.
+  if (!adjustment.origin_month) return adjustment.reason;
+  return `Kỳ ${adjustment.origin_month.slice(5, 7)}/${adjustment.origin_month.slice(0, 4)} — ${adjustment.reason}`;
 }
 
 const PAY_BASIS_LABEL: Record<PayBasis, string> = {
@@ -439,6 +450,8 @@ export interface PayItemAssignment {
 export interface AssignedPayItem {
   item: PayItemAssignment;
   component: PayComponent;
+  /** Nhãn nguồn của khoản (ví dụ "Mẫu BL02", "Phòng KD1", "Riêng") — chỉ để hiển thị. */
+  origin?: string | null;
 }
 
 /**
@@ -544,6 +557,8 @@ export interface ComputePayslipArgs {
    * thường — phần lớn kỳ lương không có điều chỉnh nào.
    */
   adjustments?: readonly PayrollAdjustment[];
+  /** Ghi nhật ký tính toán từng bước (Chạy thử ở F06.02). */
+  trace?: boolean;
 }
 
 /** Một khoản điều chỉnh đã ghi cho kỳ đang tính. */
@@ -672,6 +687,18 @@ function computeHourlyRate(
  * Tính một dòng khoản lương. Trả về `null` kèm cảnh báo nếu công thức hỏng —
  * một khoản sai không được làm hỏng cả phiếu lương.
  */
+interface ComponentLineResult {
+  line: ComputedLine;
+  /** Công thức đã chạy (nếu khoản tính bằng công thức) và giá trị biến lúc đó. */
+  expression?: string;
+  variables?: Record<string, number>;
+}
+
+/** Giá trị của các biến một công thức đọc tới — cho nhật ký tính toán. */
+function pickVariables(names: readonly string[], scope: Readonly<Record<string, number>>): Record<string, number> {
+  return Object.fromEntries(names.filter((name) => scope[name] !== undefined).map((name) => [name, scope[name]]));
+}
+
 function computeComponentLine(
   assigned: AssignedPayItem,
   scope: Record<string, number>,
@@ -680,8 +707,11 @@ function computeComponentLine(
   inputs: Readonly<Record<string, number>>,
   warnings: string[],
   employeeName: string,
-): ComputedLine | null {
+  functions: FormulaFunctions,
+): ComponentLineResult | null {
   const { component, item } = assigned;
+  let expression: string | undefined;
+  let variables: Record<string, number> | undefined;
   // Giá trị riêng của người này thắng giá trị mặc định của công ty.
   const amount = item.amount ?? component.default_amount;
   const overrideFormula = item.formula?.trim() || '';
@@ -702,9 +732,12 @@ function computeComponentLine(
   switch (overrideFormula ? 'OVERRIDE' : component.calc_type) {
     case 'OVERRIDE': {
       try {
-        const result = evaluateFormula(overrideFormula, { ...scope, MUC_RIENG: amount });
+        const formulaScope = { ...scope, MUC_RIENG: amount };
+        const result = evaluateFormula(overrideFormula, formulaScope, { functions });
         value = result.value;
         detail = overrideFormula;
+        expression = overrideFormula;
+        variables = pickVariables(result.usedVariables, formulaScope);
       } catch (error) {
         const reason = error instanceof FormulaError ? error.message : String(error);
         warnings.push(`${employeeName}: công thức khoản "${component.name}" lỗi — ${reason}`);
@@ -768,9 +801,12 @@ function computeComponentLine(
         // kiểu "mức riêng × hệ số" đều phải nhét con số tiền vào module khác —
         // ví dụ mức lương KPI phải nằm trong mẫu KPI, khiến module KPI giữ
         // một con số tiền lương vốn không thuộc về nó.
-        const result = evaluateFormula(formula, { ...scope, MUC_RIENG: amount });
+        const formulaScope = { ...scope, MUC_RIENG: amount };
+        const result = evaluateFormula(formula, formulaScope, { functions });
         value = result.value;
         detail = formula;
+        expression = formula;
+        variables = pickVariables(result.usedVariables, formulaScope);
       } catch (error) {
         const reason = error instanceof FormulaError ? error.message : String(error);
         warnings.push(`${employeeName}: công thức khoản "${component.name}" lỗi — ${reason}`);
@@ -799,28 +835,52 @@ function computeComponentLine(
   }
 
   return {
-    code: component.code,
-    name: component.name,
-    kind: component.kind,
-    quantity,
-    rate,
-    amount: round(value),
-    // Cờ khai riêng cho người này thắng; chưa khai thì theo danh mục.
-    taxable: item.taxable ?? component.taxable,
-    insurable: item.insurable ?? component.insurable,
-    otMultiplier: component.ot_multiplier ?? null,
-    taxExemptCap: component.tax_exempt_cap ?? null,
-    detail,
+    line: {
+      code: component.code,
+      name: component.name,
+      kind: component.kind,
+      quantity,
+      rate,
+      amount: round(value),
+      // Cờ khai riêng cho người này thắng; chưa khai thì theo danh mục.
+      taxable: item.taxable ?? component.taxable,
+      insurable: item.insurable ?? component.insurable,
+      otMultiplier: component.ot_multiplier ?? null,
+      taxExemptCap: component.tax_exempt_cap ?? null,
+      detail,
+      origin: assigned.origin ?? null,
+    },
+    expression,
+    variables,
   };
+}
+
+/**
+ * Công thức của khoản lương gốc mà engine đã thực hiện ĐÚNG Y bằng ba dòng
+ * lương thời gian / phép / lễ — không cần nhắc người dùng gì cả.
+ */
+const BASE_FORMULAS_HANDLED_BY_ENGINE = new Set([
+  'MUC_RIENG',
+  '(MUC_RIENG/STANDARD_DAYS)*PAID_DAYS',
+  'MUC_RIENG/STANDARD_DAYS*PAID_DAYS',
+  'MUC_RIENG*PAID_DAYS/STANDARD_DAYS',
+]);
+
+/** Làm tròn thực lĩnh theo đơn vị và chiều của bộ tham số. */
+function roundNet(value: number, unit: number, mode: 'NEAREST' | 'DOWN' | 'UP'): number {
+  if (unit <= 1) return round(value);
+  if (mode === 'DOWN') return Math.floor(value / unit) * unit;
+  if (mode === 'UP') return Math.ceil(value / unit) * unit;
+  return roundTo(value, -Math.round(Math.log10(unit)));
 }
 
 /**
  * Tính trọn một phiếu lương.
  *
- * Thứ tự cố ý: lương gốc → các khoản cộng (theo `sort_order`) → bảo hiểm →
- * thuế → các khoản trừ. Bảo hiểm phải xong trước thuế vì tiền bảo hiểm được
- * trừ khỏi thu nhập tính thuế; các khoản trừ khác đứng sau cùng vì chúng
- * không ảnh hưởng nghĩa vụ thuế.
+ * Thứ tự cố ý: lương gốc → các khoản cộng (theo phụ thuộc rồi `sort_order`) →
+ * bảo hiểm → thuế → các khoản trừ → làm tròn thực lĩnh. Bảo hiểm phải xong
+ * trước thuế vì tiền bảo hiểm được trừ khỏi thu nhập tính thuế; các khoản trừ
+ * khác đứng sau thuế vì chúng không ảnh hưởng nghĩa vụ thuế.
  */
 export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   const {
@@ -829,16 +889,21 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   } = args;
   const warnings: string[] = [];
   const lines: ComputedLine[] = [];
+  const trace: CalcTraceStep[] | null = args.trace ? [] : null;
+  const functions: FormulaFunctions = settings.tierFunctions ?? {};
 
   /**
-   * Khoản được đánh dấu LƯƠNG GỐC trong danh mục, nếu người này có gán.
+   * Khoản được đánh dấu LƯƠNG GỐC (Bậc lương), nếu người này có gán.
    *
-   * Khai lương gốc như mọi khoản khác — chọn trong danh mục rồi điền công
-   * thức — thay vì học một mô hình riêng chỉ để khai một con số.
+   * Khoản này là MỨC để tính, không phải một dòng tiền: BR-PAY-002 định nghĩa
+   * Lương thời gian = Bậc lương ÷ công chuẩn × công thực tế, lương phép và
+   * lương lễ tương tự. Ba dòng đó do engine sinh ngay dưới đây.
    *
-   * Không gán khoản nào có cờ đó thì chạy y như cũ theo `pay_basis`. Nhờ vậy
-   * cờ này bật lên không làm đổi lương của bất kỳ ai cho tới khi chính người
-   * dùng gán khoản đó cho một người.
+   * Bản trước vừa sinh ba dòng ấy, vừa chạy luôn khoản lương gốc như một khoản
+   * cộng bình thường — người được gán khoản lương gốc 26 triệu nhận gross 52
+   * triệu. Giờ khoản lương gốc chỉ còn là biến (mã của nó = mức Bậc lương).
+   *
+   * Không gán khoản nào có cờ đó thì chạy y như cũ theo `pay_basis`.
    */
   const baseItem = items.find((entry) => entry.item.is_base ?? entry.component.is_base);
 
@@ -847,9 +912,14 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     // Mức riêng của người này, không có thì lấy mức chung của danh mục.
     ? Number(baseItem.item.amount ?? baseItem.component.default_amount ?? 0)
     : Number(payProfile?.base_amount ?? 0);
-  const hoursPerDay = Math.max(settings.hoursPerDay || 8, 1);
+  if (!(settings.hoursPerDay > 0)) {
+    warnings.push('Chưa khai số giờ làm chuẩn mỗi ngày ở Thiết lập giờ làm — đơn giá giờ đang tính với 1 giờ/ngày.');
+  }
+  const hoursPerDay = Math.max(settings.hoursPerDay || 0, 1);
+  // `Math.max(…, 1)` chỉ để không bao giờ chia cho 0; công chuẩn thật đến từ
+  // lịch làm việc hoặc bộ tham số đang hiệu lực, không có số dự phòng nào ở đây.
   const standardDays = Math.max(
-    Number(payProfile?.standard_days_override ?? settings.standardWorkDays) || 26,
+    Number(payProfile?.standard_days_override ?? settings.standardWorkDays) || 0,
     1,
   );
 
@@ -859,6 +929,15 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     warnings.push(baseItem
       ? `${profile.name}: khoản lương gốc "${baseItem.component.name}" đang là 0đ.`
       : `${profile.name}: cơ chế "${payBasisLabel(basis)}" nhưng đơn giá đang là 0.`);
+  }
+
+  const baseFormula = (baseItem?.item.formula ?? '').replace(/\s+/g, '').toUpperCase();
+  if (baseItem && baseFormula && !BASE_FORMULAS_HANDLED_BY_ENGINE.has(baseFormula)) {
+    warnings.push(
+      `${profile.name}: khoản lương gốc "${baseItem.component.name}" mang công thức riêng (${baseItem.item.formula}). `
+      + 'Lương thời gian / phép / lễ luôn tính theo Bậc lương ÷ công chuẩn × ngày công (BR-PAY-002), '
+      + 'nên công thức đó KHÔNG được áp — bỏ công thức hoặc khai khoản riêng nếu cần cách tính khác.',
+    );
   }
 
   // --- Lương gốc ------------------------------------------------------------
@@ -922,6 +1001,22 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     }
   }
 
+  trace?.push({
+    section: 'BASE',
+    label: baseItem ? `Bậc lương (${baseItem.component.name})` : `Lương gốc theo cơ chế ${payBasisLabel(basis)}`,
+    expression: basis === 'HOURLY' || basis === 'PIECE'
+      ? base.detail
+      : 'Bậc lương ÷ STANDARD_DAYS × (WORK_DAYS + LEAVE_DAYS + HOLIDAY_DAYS)',
+    variables: {
+      MUC_BAC_LUONG: baseAmount,
+      STANDARD_DAYS: standardDays,
+      WORK_DAYS: stats.workDays,
+      LEAVE_DAYS: stats.leaveDays,
+      HOLIDAY_DAYS: stats.holidayDays,
+    },
+    result: round(base.amount),
+  });
+
   // Lấy thẳng từ các dòng đã đẩy vào phiếu, thay vì tính lại: cơ chế HOURLY/PIECE
   // chỉ có một dòng lương gốc duy nhất, không tách ba, nên mọi cách tính lại đều
   // phải rẽ nhánh theo cơ chế — cộng từ dòng thật thì luôn khớp với phiếu.
@@ -958,10 +1053,9 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     DEPENDENTS: payProfile?.dependents ?? 0,
 
     // Chuyên cần, đo từ ca làm việc (lib/workSchedule.ts). Engine chỉ CUNG CẤP
-    // số liệu; mức phạt và ngưỡng do khoản lương quyết định — đặc tả còn để
-    // phần lớn ngưỡng ở trạng thái "Cần xác nhận", và mục L16 cảnh báo Điều
-    // 127 BLLĐ 2019 cấm phạt tiền thay cho xử lý kỷ luật. Bằng 0 khi chưa khai
-    // ca làm việc, nên công thức phạt sẽ ra 0 thay vì phạt oan.
+    // số liệu; mức phạt và ngưỡng do khoản lương và tham số quyết định — mục L16
+    // cảnh báo Điều 127 BLLĐ 2019 cấm phạt tiền thay cho xử lý kỷ luật. Bằng 0
+    // khi chưa khai ca làm việc, nên công thức phạt sẽ ra 0 thay vì phạt oan.
     LATE_MINUTES: stats.lateMinutes,
     LATE_COUNT: stats.lateCount,
     LATE_AFTER_CUTOFF: stats.lateAfterCutoffCount,
@@ -969,15 +1063,31 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     EARLY_COUNT: stats.earlyCount,
   };
 
-  // Tham số lương tự khai. Đứng trước mã khoản và số liệu tháng để hai nguồn
-  // kia thắng khi trùng mã.
-  for (const [code, value] of Object.entries(namedParams)) {
-    scope[code.toUpperCase()] = value;
+  /**
+   * Tên biến engine đã cấp. Tham số tự khai hay mã khoản trùng tên một trong
+   * số này KHÔNG được đè lên: một khoản danh mục tên BASE_WORK (khoản "Lương
+   * thời gian" do engine tự tính, liệt kê ở danh mục cho đủ 26 khoản) mà đè
+   * về 0 thì mọi công thức tính trên lương thời gian ra sai.
+   */
+  const engineNames = new Set(Object.keys(scope));
+
+  // Tham số lương của bộ đang hiệu lực, rồi tham số truyền riêng (nếu có).
+  // Đứng trước mã khoản và số liệu tháng để hai nguồn kia thắng khi trùng mã.
+  for (const [code, value] of Object.entries({ ...settings.namedParams, ...namedParams })) {
+    const key = code.toUpperCase();
+    if (!engineNames.has(key)) scope[key] = value;
   }
 
-  // Moi khoản trong danh mục đều là một biến, bằng 0 với người không được gán.
+  // Mọi khoản trong danh mục đều là một biến, bằng 0 với người không được gán.
   for (const code of catalogCodes) {
-    scope[code.toUpperCase()] = 0;
+    const key = code.toUpperCase();
+    if (!engineNames.has(key)) scope[key] = 0;
+  }
+
+  // Khoản lương gốc: mã của nó mang MỨC bậc lương — đúng nghĩa người khai
+  // nhập ("lương cơ bản 12 triệu"), để khoản khác tính % trên bậc lương được.
+  if (baseItem && !engineNames.has(baseItem.component.code.toUpperCase())) {
+    scope[baseItem.component.code.toUpperCase()] = baseAmount;
   }
 
   /**
@@ -996,9 +1106,9 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   const catalogSet = new Set(catalogCodes.map((code) => code.toUpperCase()));
   for (const entry of items) {
     const formula = entry.item.formula ?? entry.component.formula;
-    if (!formula) continue;
+    if (!formula || entry === baseItem) continue;
     const missing = codesReferencedBy(formula)
-      .filter((code) => catalogSet.has(code) && !assignedCodes.has(code));
+      .filter((code) => catalogSet.has(code) && !assignedCodes.has(code) && !engineNames.has(code));
     if (missing.length === 0) continue;
     warnings.push(
       `${profile.name}: khoản "${entry.component.name}" lấy số từ `
@@ -1006,21 +1116,22 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     );
   }
 
-  // Moi so lieu thang da KHAI trong danh muc deu co mat trong pham vi bien,
-  // bang 0 neu thang nay chua ai nhap.
+  // Mọi số liệu tháng đã KHAI trong danh mục đều có mặt trong phạm vi biến,
+  // bằng 0 nếu tháng này chưa ai nhập.
   //
-  // Khong co buoc nay thi mot cong thuc nhu `HOURLY_RATE * OT_NGAY_THUONG * 2`
-  // se nem loi "khong co bien" o dung nhung thang khong ai lam them gio - tuc
-  // la ca dong luong bien mat khoi phieu kem mot canh bao, trong khi cau tra
-  // loi dung la 0d. Khai bao mot so lieu thang chinh la tuyen bo "bien nay ton
-  // tai"; chua nhap nghia la chua phat sinh.
+  // Không có bước này thì một công thức như `HOURLY_RATE * OT_NGAY_THUONG * 2`
+  // sẽ ném lỗi "không có biến" ở đúng những tháng không ai làm thêm giờ - tức
+  // là cả dòng lương biến mất khỏi phiếu kèm một cảnh báo, trong khi câu trả
+  // lời đúng là 0đ. Khai báo một số liệu tháng chính là tuyên bố "biến này tồn
+  // tại"; chưa nhập nghĩa là chưa phát sinh.
   for (const assigned of items) {
     const code = assigned.component.input_code;
-    if (code) scope[code.toUpperCase()] = 0;
+    if (code && !engineNames.has(code.toUpperCase())) scope[code.toUpperCase()] = 0;
   }
 
   for (const [code, quantity] of Object.entries(inputs)) {
-    scope[code.toUpperCase()] = quantity;
+    const key = code.toUpperCase();
+    if (!engineNames.has(key)) scope[key] = quantity;
   }
 
   // Mức đóng bảo hiểm: lấy mức khai báo riêng nếu có, nếu không thì lấy lương
@@ -1032,6 +1143,21 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   const rawInsuranceBase = Number(declaredInsuranceBase ?? contractualBase);
   scope.INSURANCE_BASE = rawInsuranceBase;
 
+  const runLine = (assigned: AssignedPayItem, section: CalcTraceStep['section']): ComputedLine | null => {
+    const result = computeComponentLine(
+      assigned, scope, stats, standardDays, inputs, warnings, profile.name, functions,
+    );
+    if (!result) return null;
+    trace?.push({
+      section,
+      label: result.line.name + (assigned.origin ? ` · ${assigned.origin}` : ''),
+      expression: result.expression ?? result.line.detail,
+      variables: result.variables,
+      result: result.line.amount,
+    });
+    return result.line;
+  };
+
   // --- Các khoản cộng -------------------------------------------------------
   //
   // Sắp theo PHỤ THUỘC chứ không chỉ theo `sort_order`.
@@ -1041,22 +1167,28 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   // XONG trước, không thì lúc đọc nó vẫn đang là 0 — và công thức nhìn đúng
   // vẫn ra số sai, lặng lẽ, không cảnh báo gì. Xếp theo `sort_order` là phó
   // mặc chuyện đó cho người khai nhớ đánh số đúng thứ tự.
-  const sorted = orderByDependency(items, warnings);
+  //
+  // Khoản do engine tự tính (`calc_source = ENGINE`) bị bỏ qua nếu lỡ có trong
+  // danh sách gán: database đã chặn gán, đây là lớp phòng thủ cuối để không
+  // bao giờ trả / trừ hai lần.
+  const sorted = orderByDependency(
+    items.filter((entry) => entry !== baseItem && entry.component.calc_source !== 'ENGINE'),
+    warnings,
+  );
 
   const earningItems = sorted.filter((entry) => entry.component.kind === 'EARNING');
   for (const assigned of earningItems) {
-    const line = computeComponentLine(
-      assigned, scope, stats, standardDays, inputs, warnings, profile.name,
-    );
+    const line = runLine(assigned, 'EARNING');
     if (!line) continue;
     lines.push(line);
     scope[line.code] = line.amount;
     scope.GROSS = round(scope.GROSS + line.amount);
   }
 
-  // Truy lĩnh kỳ trước (LU-14). Đặt SAU các khoản cộng và TRƯỚC khi chốt gross
-  // để nó vào đúng diện chịu thuế — truy lĩnh tiền lương là thu nhập chịu thuế
-  // của kỳ chi trả, không phải của kỳ phát sinh.
+  // Điều chỉnh TĂNG (truy lĩnh, thưởng tiền mặt — FR06.04.02). Đặt SAU các
+  // khoản cộng và TRƯỚC khi chốt gross để nó vào đúng diện chịu thuế — truy
+  // lĩnh tiền lương là thu nhập chịu thuế của kỳ chi trả, không phải của kỳ
+  // phát sinh.
   let adjustmentRecovery = 0;
   for (const adjustment of adjustments) {
     if (adjustment.kind !== 'RECOVERY') continue;
@@ -1064,11 +1196,12 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     if (amount <= 0) continue;
     lines.push({
       code: SYSTEM_CODES.adjustmentRecovery,
-      name: 'Truy lĩnh kỳ trước',
+      name: adjustment.origin_month ? 'Truy lĩnh kỳ trước' : 'Điều chỉnh tăng',
       kind: 'EARNING', quantity: null, rate: null,
       amount, taxable: adjustment.taxable, insurable: false,
       detail: adjustmentDetail(adjustment),
     });
+    trace?.push({ section: 'EARNING', label: 'Điều chỉnh tăng', expression: adjustment.reason, result: amount });
     adjustmentRecovery += amount;
     scope.GROSS = round(scope.GROSS + amount);
   }
@@ -1087,8 +1220,9 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
 
   // Số ngày làm việc trong tháng mà người này KHÔNG hưởng lương. Ngày lễ và
   // ngày nghỉ có lương đã nằm trong `paidDays` nên không bị tính vào đây.
+  // Ngưỡng miễn đóng (Luật BHXH) lấy từ bộ tham số đang hiệu lực.
   const unpaidDays = Math.max(0, standardDays - stats.paidDays);
-  const waiveInsurance = unpaidDays >= UNPAID_DAYS_WAIVING_INSURANCE;
+  const waiveInsurance = unpaidDays >= settings.unpaidDaysWaiveInsurance;
 
   // Trước khi có nhánh này, người nghỉ gần hết tháng vẫn bị trừ đủ bảo hiểm
   // trên mức lương đóng BH, trong khi lương thực tế gần bằng 0 — thực nhận ra
@@ -1098,8 +1232,8 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     warnings.push(
       `${profile.name}: tháng này chỉ có ${formatNumber(stats.paidDays)} ngày công hưởng lương `
       + `trên ${formatNumber(standardDays)} ngày chuẩn (nghỉ không lương `
-      + `${formatNumber(unpaidDays)} ngày ≥ ${UNPAID_DAYS_WAIVING_INSURANCE}) nên KHÔNG tính bảo hiểm `
-      + 'theo Điều 85 Luật BHXH. Kiểm tra lại chấm công nếu đây là nhầm lẫn.',
+      + `${formatNumber(unpaidDays)} ngày ≥ ${formatNumber(settings.unpaidDaysWaiveInsurance)}) nên KHÔNG tính bảo hiểm `
+      + 'theo Luật BHXH. Kiểm tra lại chấm công nếu đây là nhầm lẫn.',
     );
   }
 
@@ -1134,6 +1268,26 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     insuranceEmployee = social + health + unemployment;
   }
 
+  trace?.push({
+    section: 'INSURANCE',
+    label: 'Bảo hiểm người lao động đóng',
+    expression: insuranceEnabled && !waiveInsurance
+      ? 'MIN(INSURANCE_BASE, trần BHXH) × (BHXH + BHYT)% + MIN(INSURANCE_BASE, trần BHTN) × BHTN%'
+      : undefined,
+    variables: {
+      INSURANCE_BASE: rawInsuranceBase,
+      TRAN_BHXH_BHYT: settings.insuranceSalaryCap,
+      TRAN_BHTN: settings.unemploymentSalaryCap,
+      BHXH_PCT: settings.socialInsuranceRate,
+      BHYT_PCT: settings.healthInsuranceRate,
+      BHTN_PCT: settings.unemploymentInsuranceRate,
+    },
+    result: insuranceEmployee,
+    note: !insuranceEnabled
+      ? 'Không tham gia bảo hiểm bắt buộc.'
+      : waiveInsurance ? `Nghỉ không lương ${formatNumber(unpaidDays)} ngày — miễn đóng tháng này.` : undefined,
+  });
+
   scope.INSURANCE_EMPLOYEE = insuranceEmployee;
 
   // --- Thuế thu nhập cá nhân ------------------------------------------------
@@ -1156,6 +1310,7 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   const personalRelief = settings.taxPersonalDeduction;
   const dependentRelief = dependents * settings.taxDependentDeduction;
   const taxMode = payProfile?.tax_mode ?? 'PROGRESSIVE';
+  const brackets = toTaxBrackets(settings.brackets);
 
   let taxableIncome = 0;
   let personalIncomeTax = 0;
@@ -1166,14 +1321,18 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     taxDetail = 'Không khấu trừ thuế tại nguồn';
   } else if (taxMode === 'FLAT') {
     // Hợp đồng dưới 3 tháng: khấu trừ thẳng trên tổng thu nhập chịu thuế,
-    // KHÔNG có giảm trừ gia cảnh.
-    const rate = payProfile?.flat_tax_rate ?? 10;
+    // KHÔNG có giảm trừ gia cảnh. Tỷ lệ riêng của người này, không có thì
+    // theo bộ tham số.
+    const rate = payProfile?.flat_tax_rate ?? settings.flatTaxRate;
     taxableIncome = taxableEarnings;
     personalIncomeTax = round((taxableEarnings * rate) / 100);
     taxDetail = `Khấu trừ ${rate}% trên ${formatNumber(taxableEarnings)}đ (hợp đồng dưới 3 tháng)`;
   } else {
     taxableIncome = Math.max(0, taxableEarnings - insuranceEmployee - personalRelief - dependentRelief);
-    const result = progressiveIncomeTax(taxableIncome, toTaxBrackets(settings.brackets));
+    if (brackets.length === 0) {
+      warnings.push('Bộ tham số đang hiệu lực chưa có biểu thuế lũy tiến — thuế TNCN đang tính bằng 0.');
+    }
+    const result = progressiveIncomeTax(taxableIncome, brackets);
     personalIncomeTax = result.tax;
     taxSteps = result.steps;
     taxDetail =
@@ -1193,32 +1352,48 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     });
   }
 
+  trace?.push({
+    section: 'TAX',
+    label: 'Thuế TNCN',
+    expression: taxDetail,
+    variables: {
+      THU_NHAP_CHIU_THUE: round(taxableEarnings),
+      INSURANCE_EMPLOYEE: insuranceEmployee,
+      GIAM_TRU_BAN_THAN: personalRelief,
+      GIAM_TRU_NPT: dependentRelief,
+      TAXABLE_INCOME: round(taxableIncome),
+    },
+    result: personalIncomeTax,
+    note: taxSteps.length > 0
+      ? taxSteps.map((step) => `${formatNumber(round(step.amount))} × ${formatNumber(step.rate * 100)}% = ${formatNumber(round(step.tax))}`).join('; ')
+      : undefined,
+  });
+
   scope.PIT = personalIncomeTax;
   scope.TAXABLE_INCOME = taxableIncome;
 
   // --- Khấu trừ khác --------------------------------------------------------
   let otherDeductions = 0;
 
-  // Truy thu kỳ trước. Đặt SAU thuế: đây là thu hồi tiền đã trả thừa, không
-  // phải một khoản làm giảm thu nhập chịu thuế của kỳ này.
+  // Điều chỉnh GIẢM (truy thu kỳ trước). Đặt SAU thuế: đây là thu hồi tiền đã
+  // trả thừa, không phải một khoản làm giảm thu nhập chịu thuế của kỳ này.
   for (const adjustment of adjustments) {
     if (adjustment.kind !== 'CLAWBACK') continue;
     const amount = round(Number(adjustment.amount));
     if (amount <= 0) continue;
     lines.push({
       code: SYSTEM_CODES.adjustmentClawback,
-      name: 'Truy thu kỳ trước',
+      name: adjustment.origin_month ? 'Truy thu kỳ trước' : 'Điều chỉnh giảm',
       kind: 'DEDUCTION', quantity: null, rate: null,
       amount, taxable: false, insurable: false,
       detail: adjustmentDetail(adjustment),
     });
+    trace?.push({ section: 'DEDUCTION', label: 'Điều chỉnh giảm', expression: adjustment.reason, result: amount });
     otherDeductions += amount;
   }
   scope.ADJ_CLAWBACK = otherDeductions;
   for (const assigned of sorted.filter((entry) => entry.component.kind === 'DEDUCTION')) {
-    const line = computeComponentLine(
-      assigned, scope, stats, standardDays, inputs, warnings, profile.name,
-    );
+    const line = runLine(assigned, 'DEDUCTION');
     if (!line) continue;
     lines.push(line);
     scope[line.code] = line.amount;
@@ -1228,23 +1403,26 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   // --- Chi phí doanh nghiệp -------------------------------------------------
   // Không trừ của nhân viên; chỉ để biết một người thực sự tốn bao nhiêu.
   //
-  // Bảo hiểm phần doanh nghiệp tính NGAY TẠI ĐÂY từ cấu hình, giống hệt cách
-  // phần người lao động được tính ở trên. Trước đây ba khoản ER_* là component
-  // phải gán tay cho từng người, nên cùng một nghĩa vụ bảo hiểm lại có hai nơi
-  // khai báo tỷ lệ và hai cách vận hành.
-  // `waiveInsurance` áp cho CẢ HAI phía: Điều 85 miễn nghĩa vụ đóng của tháng
-  // đó, không phải chỉ miễn phần trừ vào lương nhân viên. Bỏ sót phần doanh
+  // Bảo hiểm và kinh phí công đoàn phần doanh nghiệp tính NGAY TẠI ĐÂY từ bộ
+  // tham số, giống hệt cách phần người lao động được tính ở trên.
+  // `waiveInsurance` áp cho CẢ HAI phía: luật miễn nghĩa vụ đóng của tháng đó,
+  // không phải chỉ miễn phần trừ vào lương nhân viên. Bỏ sót phần doanh
   // nghiệp sẽ khai vống chi phí nhân sự của tháng.
   let insuranceEmployer = 0;
+  const engineEmployerCodes = new Set<string>();
   if (insuranceEnabled && rawInsuranceBase > 0 && !waiveInsurance) {
     const employerParts: Array<[string, string, number, number]> = [
       ['ER_SOCIAL', 'BHXH doanh nghiệp đóng', settings.employerSocialRate, cappedSocialBase],
       ['ER_HEALTH', 'BHYT doanh nghiệp đóng', settings.employerHealthRate, cappedSocialBase],
       ['ER_UNEMPLOY', 'BHTN doanh nghiệp đóng', settings.employerUnemploymentRate, cappedUnemployBase],
+      // KPCĐ (FR06.02.03). Cùng mã với khoản ER_UNION_FUND trong danh mục:
+      // khai tỷ lệ ở bộ tham số thì khoản gán tay cùng mã bị bỏ qua bên dưới,
+      // không bao giờ tính hai lần.
+      ['ER_UNION_FUND', 'Kinh phí công đoàn doanh nghiệp đóng', settings.employerUnionFundRate ?? 0, cappedSocialBase],
     ];
 
     for (const [code, name, rate, base] of employerParts) {
-      if (rate <= 0) continue;
+      if (!(rate > 0)) continue;
       const amount = round((base * rate) / 100);
       lines.push({
         code, name: `${name} (${rate}%)`, kind: 'EMPLOYER_COST',
@@ -1252,23 +1430,45 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
         detail: `${rate}% × ${formatNumber(base)}đ mức đóng`,
       });
       scope[code] = amount;
+      engineEmployerCodes.add(code);
       insuranceEmployer += amount;
     }
   }
 
-  // Khoản chi phí doanh nghiệp KHÁC do HR tự định nghĩa (kinh phí công đoàn,
-  // phúc lợi...) vẫn chạy qua component như trước.
+  // Khoản chi phí doanh nghiệp KHÁC do HR tự định nghĩa (phúc lợi...) vẫn chạy
+  // qua component như trước.
   for (const assigned of sorted.filter((entry) => entry.component.kind === 'EMPLOYER_COST')) {
-    const line = computeComponentLine(
-      assigned, scope, stats, standardDays, inputs, warnings, profile.name,
-    );
+    if (engineEmployerCodes.has(assigned.component.code.toUpperCase())) continue;
+    const line = runLine(assigned, 'EMPLOYER');
     if (!line) continue;
     lines.push(line);
     scope[line.code] = line.amount;
     insuranceEmployer += line.amount;
   }
 
-  const netPay = gross - insuranceEmployee - personalIncomeTax - otherDeductions;
+  trace?.push({ section: 'EMPLOYER', label: 'Chi phí doanh nghiệp đóng thêm', result: round(insuranceEmployer) });
+
+  // --- Thực lĩnh & làm tròn -------------------------------------------------
+  // FR06.04.01: làm tròn thực lĩnh (tới hàng nghìn theo bộ tham số). Chênh lệch
+  // giữ riêng để phiếu vẫn cộng trừ khớp từng dòng.
+  const rawNet = gross - insuranceEmployee - personalIncomeTax - otherDeductions;
+  const netPay = roundNet(rawNet, settings.netRoundingUnit ?? 1, settings.netRoundingMode ?? 'NEAREST');
+  const roundingAdjustment = round(netPay - round(rawNet));
+
+  trace?.push({
+    section: 'NET',
+    label: 'Thực lĩnh',
+    expression: `GROSS − bảo hiểm − thuế − khấu trừ khác, làm tròn ${formatNumber(settings.netRoundingUnit ?? 1)}đ`,
+    variables: {
+      GROSS: round(gross),
+      INSURANCE_EMPLOYEE: round(insuranceEmployee),
+      PIT: round(personalIncomeTax),
+      KHAU_TRU_KHAC: round(otherDeductions),
+      CHUA_LAM_TRON: round(rawNet),
+    },
+    result: netPay,
+    note: roundingAdjustment !== 0 ? `Làm tròn ${roundingAdjustment > 0 ? '+' : ''}${formatNumber(roundingAdjustment)}đ` : undefined,
+  });
 
   if (netPay < 0) {
     warnings.push(
@@ -1291,8 +1491,10 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     personalIncomeTax: round(personalIncomeTax),
     taxSteps,
     otherDeductions: round(otherDeductions),
-    netPay: round(netPay),
+    roundingAdjustment,
+    netPay,
     snapshot: {
+      param_version_effective_from: settings.versionEffectiveFrom ?? null,
       pay_basis: basis,
       base_amount: baseAmount,
       standard_days: standardDays,
@@ -1307,16 +1509,20 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
       employer_social_rate: settings.employerSocialRate,
       employer_health_rate: settings.employerHealthRate,
       employer_unemployment_rate: settings.employerUnemploymentRate,
+      employer_union_fund_rate: settings.employerUnionFundRate ?? 0,
       tax_mode: taxMode,
       flat_tax_rate: payProfile?.flat_tax_rate ?? null,
       dependents,
       personal_relief: personalRelief,
       dependent_relief: dependentRelief,
       tax_steps: taxSteps,
+      net_rounding_unit: settings.netRoundingUnit ?? 1,
+      rounding_adjustment: roundingAdjustment,
       inputs,
       computed_at: new Date().toISOString(),
     },
     warnings,
+    ...(trace ? { trace } : {}),
   };
 }
 
@@ -1379,9 +1585,14 @@ export function sampleFormulaScope(
   settings: PayrollParams,
   extraCodes: string[] = [],
 ): Record<string, number> {
-  const standardDays = settings.standardWorkDays || 26;
-  const hoursPerDay = settings.hoursPerDay || 8;
+  // Số liệu MẪU để thử công thức lúc gõ, không phải quy tắc: chỉ cần khác 0
+  // để phép chia không nổ. Công chuẩn, giờ chuẩn và tỷ lệ bảo hiểm vẫn lấy từ
+  // bộ tham số đang hiệu lực để con số thử gần với thật.
+  const standardDays = Math.max(settings.standardWorkDays || 0, 1);
+  const hoursPerDay = Math.max(settings.hoursPerDay || 0, 1);
   const monthly = 15_000_000;
+  const employeeInsuranceRate =
+    (settings.socialInsuranceRate + settings.healthInsuranceRate + settings.unemploymentInsuranceRate) / 100;
 
   const scope: Record<string, number> = {
     BASE: monthly,
@@ -1406,12 +1617,20 @@ export function sampleFormulaScope(
     EARLY_MINUTES: 0,
     EARLY_COUNT: 0,
     KPI_PCT: 100,
+    KPI_TARGET: 1_000_000,
     MUC_RIENG: 1_000_000,
     INSURANCE_BASE: monthly,
-    INSURANCE_EMPLOYEE: monthly * 0.105,
+    INSURANCE_EMPLOYEE: Number.isFinite(employeeInsuranceRate) ? monthly * employeeInsuranceRate : 0,
     PIT: 0,
     TAXABLE_INCOME: 0,
+    ADJ_RECOVERY: 0,
+    ADJ_CLAWBACK: 0,
   };
+
+  // Tham số tự khai của bộ đang hiệu lực mang đúng giá trị thật.
+  for (const [code, value] of Object.entries(settings.namedParams ?? {})) {
+    if (scope[code] === undefined) scope[code] = value;
+  }
 
   for (const code of extraCodes) {
     const normalized = code.toUpperCase();

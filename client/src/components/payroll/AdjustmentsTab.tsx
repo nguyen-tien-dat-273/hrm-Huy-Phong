@@ -46,9 +46,10 @@ interface Draft {
 }
 
 const KIND_LABEL: Record<Draft['kind'], string> = {
-  RECOVERY: 'Truy lĩnh — trả bù cho nhân viên',
-  CLAWBACK: 'Truy thu — thu hồi tiền đã trả thừa',
+  RECOVERY: 'Điều chỉnh tăng (+) — truy lĩnh, trả bù cho nhân viên',
+  CLAWBACK: 'Điều chỉnh giảm (−) — truy thu, thu hồi tiền đã trả thừa',
 };
+const KIND_SHORT: Record<Draft['kind'], string> = { RECOVERY: 'Tăng (+)', CLAWBACK: 'Giảm (−)' };
 
 /** '2026-07-01' ↔ '2026-07' cho ô input type=month. */
 const toMonthInput = (iso: string | null) => (iso ? iso.slice(0, 7) : '');
@@ -123,7 +124,7 @@ export function AdjustmentsTab({
     const ok = await confirm({
       title: 'Xóa điều chỉnh này?',
       message:
-        `${adjustment.kind === 'RECOVERY' ? 'Truy lĩnh' : 'Truy thu'} ` +
+        `Điều chỉnh ${KIND_SHORT[adjustment.kind].toLowerCase()} ` +
         `${formatVND(Number(adjustment.amount))} của ${person?.name ?? 'nhân sự'} ` +
         `sẽ không còn trên phiếu lương tháng ${monthLabel}.`,
       confirmLabel: 'Xóa',
@@ -146,8 +147,8 @@ export function AdjustmentsTab({
         <div>
           <h3 className="text-base font-bold text-slate-800">Điều chỉnh lương tháng {monthLabel}</h3>
           <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
-            Sai sót của kỳ đã khóa được xử lý ở kỳ này. Mỗi dòng phải ghi lý do và nên ghi kỳ
-            phát sinh, để về sau tra được khoản tiền bù cho tháng nào.
+            Điều chỉnh tăng (+) / giảm (−) trên bảng lương nháp (FR06.04.02). Mỗi dòng bắt buộc ghi lý do;
+            sai sót của kỳ đã khoá ghi ở kỳ này kèm kỳ phát sinh để về sau tra được.
           </p>
         </div>
         {!readOnly && (
@@ -161,8 +162,8 @@ export function AdjustmentsTab({
 
       {readOnly && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Kỳ lương đã duyệt nên không thêm sửa điều chỉnh được. Sai sót phát hiện lúc này
-          xử lý ở kỳ sau — đó chính là mục đích của màn hình này.
+          Kỳ lương tháng {monthLabel} đã khoá nên không thêm / sửa điều chỉnh được (BR-PAY-009). Sai sót
+          phát hiện lúc này ghi vào điều chỉnh của kỳ đang mở.
         </p>
       )}
 
@@ -174,7 +175,7 @@ export function AdjustmentsTab({
                 <ArrowUpRight className="h-4.5 w-4.5" />
               </span>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Tổng truy lĩnh</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Tổng điều chỉnh tăng</p>
                 <p className="mt-0.5 text-base font-extrabold tabular-nums text-emerald-700">
                   {formatVND(totals.recovery)}
                 </p>
@@ -187,7 +188,7 @@ export function AdjustmentsTab({
                 <ArrowDownLeft className="h-4.5 w-4.5" />
               </span>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Tổng truy thu</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Tổng điều chỉnh giảm</p>
                 <p className="mt-0.5 text-base font-extrabold tabular-nums text-red-700">
                   {formatVND(totals.clawback)}
                 </p>
@@ -219,7 +220,7 @@ export function AdjustmentsTab({
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                           isRecovery ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
                         }`}>
-                          {isRecovery ? 'Truy lĩnh' : 'Truy thu'}
+                          {KIND_SHORT[adjustment.kind]}
                         </span>
                         {!adjustment.taxable && (
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
@@ -258,7 +259,7 @@ export function AdjustmentsTab({
         </CardContent>
       </Card>
 
-      <Modal open={!!draft} onClose={() => setDraft(null)} title="Thêm điều chỉnh lương" size="md">
+      <Modal open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? "Sửa điều chỉnh lương" : "Thêm điều chỉnh lương"} size="md">
         {draft && (
           <div className="space-y-4">
             <Select
@@ -300,7 +301,7 @@ export function AdjustmentsTab({
                 onChange={(e) => setDraft({ ...draft, amount: e.target.value.replace(/[^\d]/g, '') })}
               />
               <Input
-                label="Kỳ phát sinh sai sót"
+                label="Kỳ phát sinh (nếu bù / thu kỳ trước)"
                 type="month"
                 value={draft.origin_month}
                 onChange={(e) => setDraft({ ...draft, origin_month: e.target.value })}
@@ -311,7 +312,8 @@ export function AdjustmentsTab({
             )}
 
             <Textarea
-              label="Lý do (bắt buộc)"
+              label="Lý do điều chỉnh"
+              required
               rows={2}
               placeholder="VD: Tháng 7 tính thiếu 8 giờ tăng ca ngày lễ"
               value={draft.reason}
