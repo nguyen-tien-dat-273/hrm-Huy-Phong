@@ -57,6 +57,13 @@ const STATUS_STYLE: Record<RequestStatus, { label: string; color: string }> = {
   CANCELLED: { label: 'Đã huỷ', color: 'bg-slate-100 text-slate-500' },
 };
 
+/** Số phút từ nửa đêm thành `HH:MM`. */
+function gioPhut(phut: number): string {
+  const g = Math.floor(phut / 60);
+  const p = phut % 60;
+  return `${`${g}`.padStart(2, '0')}:${`${p}`.padStart(2, '0')}`;
+}
+
 /** Hai loại đơn này tiêu hạn mức tháng; đơn OT thì không. */
 const QUOTA_TYPES: RequestType[] = ['LATE_ARRIVAL', 'EARLY_LEAVE'];
 
@@ -66,6 +73,16 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
 
   const [rows, setRows] = useState<AttendanceRequest[]>([]);
   const [quota, setQuota] = useState(3);
+  /**
+   * BR-ATT-001: giờ đến muộn nhất được phép xin, phút tính từ nửa đêm.
+   *
+   * `null` = công ty không chặn theo giờ. Database mới là chỗ chặn thật
+   * (trigger `guard_late_request_cutoff`); ở đây chỉ báo trước, vì bị từ chối
+   * lúc bấm Gửi mà không biết vì sao là trải nghiệm tệ.
+   */
+  const [cutoff, setCutoff] = useState<number | null>(null);
+  /** Giờ vào ca của ngày đang xin, phút từ nửa đêm. */
+  const [shiftStart, setShiftStart] = useState(8 * 60);
   const [loading, setLoading] = useState(true);
   const [supported, setSupported] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -99,9 +116,29 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
     }
     setRows((data || []) as AttendanceRequest[]);
 
-    const settings = await supabase.from('payroll_settings').select('late_request_monthly_quota').maybeSingle();
+    const settings = await supabase
+      .from('payroll_settings')
+      .select('late_request_monthly_quota, late_request_cutoff_minutes')
+      .maybeSingle();
     if (!settings.error && settings.data?.late_request_monthly_quota != null) {
       setQuota(Number(settings.data.late_request_monthly_quota));
+    }
+    // Cột chỉ có sau migration 20261014120000 — chưa chạy thì không chặn giờ.
+    const raw = (settings.data as { late_request_cutoff_minutes?: number | null } | null)
+      ?.late_request_cutoff_minutes;
+    setCutoff(raw == null ? null : Number(raw));
+
+    const sched = await supabase
+      .from('work_schedules')
+      .select('start_time')
+      .eq('is_active', true)
+      .order('effective_from', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const start = (sched.data as { start_time?: string } | null)?.start_time;
+    if (start) {
+      const [gio, phut] = start.split(':').map(Number);
+      if (Number.isFinite(gio) && Number.isFinite(phut)) setShiftStart(gio * 60 + phut);
     }
     setLoading(false);
   };
@@ -336,6 +373,18 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
               />
             )}
           </div>
+
+          {/* Báo TRƯỚC khi bấm Gửi. Database vẫn là chỗ chặn thật, nhưng để
+              người dùng đâm vào lỗi ràng buộc rồi mới biết là tệ. */}
+          {draft.request_type === 'LATE_ARRIVAL' && cutoff != null
+            && shiftStart + Number(draft.minutes || 0) > cutoff && (
+            <p className="flex items-start gap-1.5 rounded-lg bg-red-50 px-3 py-2.5 text-xs leading-relaxed text-red-700">
+              <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              Đến {gioPhut(shiftStart + Number(draft.minutes || 0))} là quá mốc{' '}
+              {gioPhut(cutoff)} của quy chế. Trường hợp này phải xin nghỉ phép hoặc
+              bổ sung công, không gửi đơn đi muộn được.
+            </p>
+          )}
 
           {!isOvertime && usedInMonth >= quota && (
             <p className="flex items-start gap-1.5 rounded-lg bg-red-50 px-3 py-2.5 text-xs leading-relaxed text-red-700">
