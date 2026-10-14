@@ -5,7 +5,7 @@
  * được giao việc cá nhân vẫn phải vào màn nhân viên; nhân viên có quyền quản
  * lý nhận đơn chờ duyệt vẫn phải vào màn quản trị.
  */
-export function notificationRoute(type: string): string {
+export function notificationRoute(type: string, message?: string): string {
   switch (type) {
     case 'assignment_submitted':
       return '/admin/assignments';
@@ -36,7 +36,7 @@ export function notificationRoute(type: string): string {
     case 'leave_cancellation_rejected':
       return '/staff/leave';
     case 'training_assigned':
-      return '/staff/training';
+      return message ? `/staff/training?course=${encodeURIComponent(message.split(' · hạn hoàn thành')[0])}` : '/staff/training';
     case 'lifecycle_assigned':
     case 'lifecycle_mentor':
     case 'lifecycle_task':

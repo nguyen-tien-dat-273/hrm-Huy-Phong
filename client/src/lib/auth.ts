@@ -395,7 +395,7 @@ export async function adminDeleteUser(userId: string): Promise<{ error?: string;
 /** Cập nhật hồ sơ (không đụng tới mật khẩu) — đi thẳng qua RLS. */
 export async function updateProfile(
   id: string,
-  updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code'>>,
+  updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code' | 'training_audience'>>,
 ): Promise<{ error?: string }> {
   let { error } = await supabase.from('profiles').update(updates).eq('id', id);
   // Frontend có thể được deploy trước migration vai trò mở rộng. Trong thời

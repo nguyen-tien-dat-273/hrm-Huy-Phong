@@ -19,6 +19,8 @@ interface ProtectedRouteProps {
   functionCode?: AdminFunctionCode;
   /** Loại trừ vai trò trưởng nhóm khỏi màn hình tổng hợp toàn công ty. */
   denyTeamlead?: boolean;
+  /** Cho phép trưởng nhóm vào đúng không gian hồ sơ nhân viên được giới hạn. */
+  teamleadEmployeeDocuments?: boolean;
   /**
    * Đánh dấu route chính là trang đổi mật khẩu, để không tự chuyển hướng về
    * chính nó khi tài khoản đang bị ép đổi mật khẩu tạm.
@@ -33,6 +35,7 @@ export function ProtectedRoute({
   fullAdminOnly = false,
   functionCode,
   denyTeamlead = false,
+  teamleadEmployeeDocuments = false,
   allowPasswordChange = false,
 }: ProtectedRouteProps) {
   const { profile, loading } = useAuth();
@@ -59,7 +62,9 @@ export function ProtectedRoute({
     return <Navigate to="/change-password" replace />;
   }
 
-  if (permission && !hasPermission(profile, permission)) {
+  const teamleadDocumentAccess = teamleadEmployeeDocuments && isTeamlead(profile);
+
+  if (permission && !hasPermission(profile, permission) && !teamleadDocumentAccess) {
     return <Navigate to="/staff/dashboard" replace />;
   }
 
@@ -71,7 +76,7 @@ export function ProtectedRoute({
     return <Navigate to="/admin" replace />;
   }
 
-  if (functionCode && !hasAdminFunction(profile, functionCode)) {
+  if (functionCode && !hasAdminFunction(profile, functionCode) && !teamleadDocumentAccess) {
     return <Navigate to="/admin" replace />;
   }
 
