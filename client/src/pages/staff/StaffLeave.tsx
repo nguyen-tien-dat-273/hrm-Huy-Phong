@@ -12,6 +12,8 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppSettings } from '@/contexts/SettingsContext';
+import { leaveEntitlement } from '@/lib/leaveEntitlement';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
@@ -25,6 +27,7 @@ import type { LeaveCancellationRequest, LeaveLedgerEntry, LeaveRequest, LeaveTyp
 
 export function StaffLeave() {
   const { profile } = useAuth();
+  const { defaultAnnualLeave, leaveSeniorityStepYears, leaveSeniorityStepDays } = useAppSettings();
   const { toast } = useToast();
   const confirm = useConfirm();
   const [section, setSection] = useState<'attendance' | 'leave'>('attendance');
@@ -93,6 +96,12 @@ export function StaffLeave() {
   };
 
   const balance = calculateLedgerBalance(ledger, requests, profile?.annual_leave_quota ?? 0);
+  /** Số ngày phép LUẬT cho, để nhân viên tự đối chiếu với hạn mức đang áp. */
+  const phep = leaveEntitlement(profile?.hire_date, new Date().getFullYear(), {
+    baseDays: defaultAnnualLeave || 12,
+    seniorityStepYears: leaveSeniorityStepYears || 5,
+    seniorityStepDays: leaveSeniorityStepDays,
+  });
 
   // Nghỉ nửa ngày chỉ có nghĩa khi đơn gói gọn trong một ngày.
   const isSingleDay = form.start_date === form.end_date;
@@ -354,6 +363,39 @@ export function StaffLeave() {
                 <span className="text-lg font-semibold text-slate-400"> / {balance.quota} ngày</span>
               </p>
               <p className="mt-1 text-xs text-slate-500">Số dư khả dụng sau khi trừ các đơn đã duyệt.</p>
+              {/* Vì sao hạn mức là con số đó. Không nói thì nhân viên không có
+                  cách nào tự kiểm — và chính chỗ này hay sai: mốc 5 năm thâm
+                  niên bị bỏ quên, hoặc người vào giữa năm bị cấp tròn năm. */}
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                {phep.unknownHireDate ? (
+                  <span className="text-amber-700">
+                    Hồ sơ chưa có ngày vào làm nên chưa tính được thâm niên — báo nhân sự bổ sung.
+                  </span>
+                ) : (
+                  <>
+                    <span className="font-semibold text-slate-700">{phep.base} ngày</span>
+                    {phep.monthsInYear < 12 && ` (làm ${phep.monthsInYear}/12 tháng trong năm)`}
+                    {phep.seniority > 0 && (
+                      <>
+                        {' + '}
+                        <span className="font-semibold text-indigo-700">{phep.seniority} ngày thâm niên</span>
+                        {` (${phep.serviceYears} năm làm việc)`}
+                      </>
+                    )}
+                    {' = '}
+                    <span className="font-semibold text-slate-700">{phep.total} ngày</span>
+                    {' theo Điều 113, 114 BLLĐ 2019.'}
+                  </>
+                )}
+              </p>
+              {/* Hạn mức đang lưu khác con số luật cho thì nhân viên phải thấy,
+                  chứ không phải chỉ nhân sự thấy ở màn quản trị. */}
+              {!phep.unknownHireDate && phep.total !== balance.quota && balance.quota > 0 && (
+                <p className="mt-1 text-xs font-semibold text-amber-700">
+                  Hạn mức đang áp dụng là {balance.quota} ngày, lệch {Math.abs(phep.total - balance.quota)} ngày
+                  so với cách tính trên. Liên hệ nhân sự nếu bạn cho là chưa đúng.
+                </p>
+              )}
             </div>
             <Button onClick={openCreate}>
               <Plus className="w-4 h-4" />

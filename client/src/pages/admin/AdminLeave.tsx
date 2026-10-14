@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AttendanceRequestPanel } from '@/components/attendance/AttendanceRequestPanel';
 import { Check, X, CalendarOff, TriangleAlert, RotateCcw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -19,6 +19,23 @@ import { fetchProfileMap } from '@/lib/profileDirectory';
 import { LEAVE_TYPE_CONFIG, leaveStatusLabel } from '@/lib/leave';
 import { fetchManagerIds, notifyUser, notifyUsers } from '@/lib/assignments';
 import { LeaveQuotaPanel } from '@/components/LeaveQuotaPanel';
+import { CompanyLeaveCalendar } from '@/components/CompanyLeaveCalendar';
+import { PendingRequestsInbox, type PendingRow } from '@/components/PendingRequestsInbox';
+
+/** Dòng tối giản của `attendance_requests` — hộp thư chỉ cần bấy nhiêu. */
+interface AttendanceRequestRow {
+  id: string;
+  user_id: string;
+  request_type: string;
+  work_date: string;
+  reason: string | null;
+}
+
+const ATT_LABEL: Record<string, string> = {
+  LATE_ARRIVAL: 'Đi muộn',
+  EARLY_LEAVE: 'Về sớm',
+  OVERTIME: 'Đăng ký tăng ca',
+};
 import { formatDate } from '@/lib/utils';
 import { hasPermission } from '@/lib/permissions';
 import type { LeaveCancellationRequest, LeaveRequest, LeaveStatus, Profile } from '@/types';
@@ -39,6 +56,8 @@ export function AdminLeave() {
   type LeaveFilterKey = 'pending' | 'pending_manager' | 'pending_hr' | 'approved' | 'rejected' | 'all';
   const [filter, setFilter] = useState<LeaveFilterKey>('pending');
   const [profileMap, setProfileMap] = useState<Map<string, Profile>>(new Map());
+  /** Đơn đi muộn/về sớm/làm thêm đang chờ — nguồn thứ ba của hộp thư gộp. */
+  const [attendancePending, setAttendancePending] = useState<AttendanceRequestRow[]>([]);
   const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -46,7 +65,7 @@ export function AdminLeave() {
   const [cancelReviewNote, setCancelReviewNote] = useState('');
 
   /** Một trung tâm cho mọi loại đơn đã có nghiệp vụ xử lý phía sau. */
-  const [tab, setTab] = useState<'attendance' | 'requests' | 'cancellations' | 'quota'>(
+  const [tab, setTab] = useState<'inbox' | 'attendance' | 'requests' | 'cancellations' | 'calendar' | 'quota'>(
     canReviewAttendance ? 'attendance' : 'requests',
   );
 
@@ -98,6 +117,15 @@ export function AdminLeave() {
       ...cancelRows.map((row) => row.leave?.user_id),
     ]);
     setProfileMap(people);
+
+    // Nguồn thứ ba: đơn chấm công. Bảng có thể chưa tồn tại ở môi trường chưa
+    // chạy migration — khi đó chỉ thiếu phần đó trong hộp thư, không chặn trang.
+    const attRes = await supabase
+      .from('attendance_requests')
+      .select('id, user_id, request_type, work_date, reason')
+      .eq('status', 'PENDING')
+      .order('work_date', { ascending: false });
+    setAttendancePending(attRes.error ? [] : (attRes.data || []) as AttendanceRequestRow[]);
 
     let filteredRequests = requestRows;
     if (filter === 'pending_manager') {
@@ -212,6 +240,76 @@ export function AdminLeave() {
     loadRequests();
   };
 
+  /**
+   * Ba nguồn quy về một hình dạng.
+   *
+   * Chỉ lấy đơn CHỜ DUYỆT: hộp thư trả lời "có gì cần tôi", nên đơn đã xử lý
+   * nằm ở tab của nó chứ không ở đây.
+   */
+  const hopThu: PendingRow[] = useMemo(() => {
+    const rows: PendingRow[] = [];
+
+    if (canReviewAttendance) {
+      for (const don of attendancePending) {
+        const nguoi = profileMap.get(don.user_id);
+        rows.push({
+          id: don.id,
+          tab: 'attendance',
+          loai: ATT_LABEL[don.request_type] ?? 'Đơn chấm công',
+          mau: 'bg-sky-100 text-sky-700',
+          tenNguoi: nguoi?.name ?? 'Nhân viên',
+          avatarUrl: nguoi?.avatar_url,
+          boPhan: nguoi?.department,
+          tuNgay: don.work_date,
+          lyDo: don.reason,
+        });
+      }
+    }
+
+    if (canReviewLeave) {
+      for (const don of requests) {
+        if (don.status !== 'pending' || don.is_cancelled) continue;
+        const cfg = LEAVE_TYPE_CONFIG[don.leave_type];
+        const nguoi = don.profile ?? profileMap.get(don.user_id);
+        rows.push({
+          id: don.id,
+          tab: 'requests',
+          loai: cfg.label,
+          mau: cfg.color,
+          tenNguoi: nguoi?.name ?? 'Nhân viên',
+          avatarUrl: nguoi?.avatar_url,
+          boPhan: nguoi?.department,
+          tuNgay: don.start_date,
+          denNgay: don.end_date,
+          lyDo: don.reason,
+        });
+      }
+    }
+
+    if (canManageLeave) {
+      for (const don of cancellations) {
+        if (don.status !== 'pending') continue;
+        const nguoi = don.leave?.profile ?? (don.leave ? profileMap.get(don.leave.user_id) : null);
+        rows.push({
+          id: don.id,
+          tab: 'cancellations',
+          loai: 'Hủy phép',
+          mau: 'bg-rose-100 text-rose-700',
+          tenNguoi: nguoi?.name ?? 'Nhân viên',
+          avatarUrl: nguoi?.avatar_url,
+          boPhan: nguoi?.department,
+          tuNgay: don.leave?.start_date ?? '',
+          denNgay: don.leave?.end_date,
+          lyDo: don.reason,
+        });
+      }
+    }
+
+    // Đơn cũ nhất lên trước: nó là đơn đã chờ lâu nhất.
+    return rows.sort((a, b) => a.tuNgay.localeCompare(b.tuNgay));
+  }, [attendancePending, requests, cancellations, profileMap,
+      canReviewAttendance, canReviewLeave, canManageLeave]);
+
   const reviewCancellation = async (request: LeaveCancellationRequest, status: 'approved' | 'rejected', note?: string) => {
     setBusy(true);
     const { data, error } = await supabase
@@ -256,9 +354,13 @@ export function AdminLeave() {
 
       <div className="flex max-w-full gap-1 overflow-x-auto p-1 bg-slate-100 rounded-xl w-fit">
         {([
+          { key: 'inbox' as const, label: `Chờ tôi duyệt${hopThu.length ? ` (${hopThu.length})` : ''}` },
           ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đi muộn · Về sớm · Làm thêm' }] : []),
           ...(canReviewLeave ? [{ key: 'requests' as const, label: 'Nghỉ phép' }] : []),
           ...(canManageLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép' }] : []),
+          // Lịch nghỉ đứng TRƯỚC Quỹ phép: nó là thứ người duyệt cần nhìn
+          // ngay trước khi bấm duyệt, còn quỹ phép là việc quản trị định kỳ.
+          ...(canReviewLeave ? [{ key: 'calendar' as const, label: 'Lịch nghỉ công ty' }] : []),
           ...(canManageLeave ? [{ key: 'quota' as const, label: 'Quỹ phép' }] : []),
         ] as const).map((t) => (
           <button
@@ -275,6 +377,10 @@ export function AdminLeave() {
 
       {tab === 'attendance' ? (
         <AttendanceRequestPanel mode="review" />
+      ) : tab === 'inbox' ? (
+        <PendingRequestsInbox rows={hopThu} loading={loading} onOpen={setTab} />
+      ) : tab === 'calendar' ? (
+        <CompanyLeaveCalendar />
       ) : tab === 'quota' ? (
         <LeaveQuotaPanel />
       ) : tab === 'cancellations' ? (
