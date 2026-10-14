@@ -46,6 +46,14 @@ export interface AppSettings {
   leaveCarryOverMax: number;
   /** Hạn dùng hết phép chuyển sang, dạng `MM-DD` của năm sau. Rỗng = không hạn. */
   leaveCarryOverDeadline: string;
+  /**
+   * BR-ATT-007: hai lần quẹt của cùng một người trên cùng thiết bị cách nhau
+   * dưới số giây này được coi là MỘT.
+   *
+   * Quẹt lại vì máy không kêu, hoặc quẹt nhầm rồi quẹt lại, là chuyện hằng
+   * ngày. 0 = tắt khử trùng lặp theo thời gian.
+   */
+  deviceDedupSeconds: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -60,6 +68,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   leaveSeniorityStepDays: 1,
   leaveCarryOverMax: 0,
   leaveCarryOverDeadline: '',
+  deviceDedupSeconds: 180,
 };
 
 /** Tên cột trong database — snake_case, khác camelCase phía TypeScript. */
@@ -75,6 +84,7 @@ interface SettingsRow {
   leave_seniority_step_days?: number | string | null;
   leave_carry_over_max?: number | string | null;
   leave_carry_over_deadline?: string | null;
+  device_dedup_seconds?: number | string | null;
 }
 
 /**
@@ -95,6 +105,7 @@ const COLUMNS = '*';
 const COT_PHEP = [
   'leave_seniority_step_years', 'leave_seniority_step_days',
   'leave_carry_over_max', 'leave_carry_over_deadline',
+  'device_dedup_seconds',
 ] as const;
 
 /**
@@ -120,6 +131,7 @@ function fromRow(row: SettingsRow): AppSettings {
     leaveSeniorityStepDays: num(row.leave_seniority_step_days, DEFAULT_SETTINGS.leaveSeniorityStepDays),
     leaveCarryOverMax: num(row.leave_carry_over_max, DEFAULT_SETTINGS.leaveCarryOverMax),
     leaveCarryOverDeadline: row.leave_carry_over_deadline ?? DEFAULT_SETTINGS.leaveCarryOverDeadline,
+    deviceDedupSeconds: num(row.device_dedup_seconds, DEFAULT_SETTINGS.deviceDedupSeconds),
   };
 }
 
@@ -179,6 +191,7 @@ export async function saveSettings(
     leave_seniority_step_days: settings.leaveSeniorityStepDays,
     leave_carry_over_max: settings.leaveCarryOverMax,
     leave_carry_over_deadline: settings.leaveCarryOverDeadline.trim() || null,
+    device_dedup_seconds: settings.deviceDedupSeconds,
   };
 
   // Bảng một dòng, nhưng PostgREST vẫn đòi điều kiện WHERE cho UPDATE.

@@ -134,6 +134,25 @@ export function AdminAttendanceSettings() {
         </CardContent>
       </Card>
 
+      {/* Quy tắc đọc dữ liệu từ máy chấm công. Đứng cạnh Định mức công vì cùng
+          là thứ quyết định một lần quẹt có thành ngày công hay không. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Quy tắc máy chấm công</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <NumberField
+            label="Gộp các lần quẹt cách nhau dưới (giây)"
+            hint="Quẹt lại vì máy không kêu, hoặc quẹt nhầm rồi quẹt lại, là chuyện hằng ngày — các lần đó được tính là MỘT. Đặt 0 để tắt."
+            value={draft.deviceDedupSeconds}
+            min={0}
+            max={3600}
+            step={10}
+            onChange={(value) => update({ deviceDedupSeconds: value })}
+          />
+        </CardContent>
+      </Card>
+
       {/* Giờ làm chuẩn tự lưu riêng (bảng `work_schedules`), không đi qua thanh
           "Lưu thiết lập" bên dưới — nó là danh mục nhiều dòng, không phải vài
           ô số như hai thẻ kia. */}
