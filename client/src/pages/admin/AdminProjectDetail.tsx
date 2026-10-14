@@ -263,7 +263,11 @@ export function AdminProjectDetail() {
 
   const handleDragStart = (e: DragStartEvent) => {
     const task = tasks.find((item) => item.id === e.active.id);
-    if (task?.assignee_id === profile?.id && task.status !== 'in_review' && task.status !== 'done') {
+    // Chặn sớm thay vì dùng `task?.`: khi KHÔNG tìm thấy thẻ và cũng chưa có
+    // hồ sơ, `task?.assignee_id === profile?.id` là undefined === undefined,
+    // tức TRUE — rồi `task.status` ngay sau đó làm văng trang.
+    if (!task || !profile) return;
+    if (task.assignee_id === profile.id && task.status !== 'in_review' && task.status !== 'done') {
       setActiveTaskId(e.active.id as string);
     }
   };

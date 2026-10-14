@@ -17,6 +17,15 @@ export function notificationRoute(type: string, message?: string): string {
     case 'recruitment_request':
     case 'recruitment_review':
       return '/admin/recruitment';
+    case 'payroll_scheme_submitted':
+    case 'payroll_run_submitted':
+      return '/admin/payroll/approvals';
+    case 'payroll_scheme_reviewed':
+      return '/admin/payroll/schemes';
+    case 'payroll_run_reviewed':
+      return '/admin/payroll';
+    case 'payslip_published':
+      return '/staff/payroll';
 
     case 'assignment_new':
     case 'assignment_approved':

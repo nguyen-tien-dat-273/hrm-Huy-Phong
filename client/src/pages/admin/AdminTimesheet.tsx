@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError, describeDbErrorOrNull } from '@/lib/dbError';
 import { formatTime, toDateString } from '@/lib/utils';
 import { hasAdminFunction } from '@/lib/permissions';
+import { fetchPayrollMonthClosed } from '@/lib/payrollData';
 import type { Attendance, AttendanceSession, DailyAssignment, LeaveRequest, Profile } from '@/types';
 
 /** Một ô ngày trên bảng công. */
@@ -72,6 +73,8 @@ export function AdminTimesheet() {
   const [periodSupported, setPeriodSupported] = useState(true);
   const [exceptions, setExceptions] = useState(0);
   const [changingPeriod, setChangingPeriod] = useState(false);
+  /** Kỳ lương tháng này đã khoá — kỳ công không được mở lại nữa (BR-PAY-009). */
+  const [payrollClosed, setPayrollClosed] = useState(false);
 
   const monthEndStr = toDateString(endOfMonth(monthStart));
   const monthStartStr = toDateString(monthStart);
@@ -121,6 +124,11 @@ export function AdminTimesheet() {
   };
 
   useEffect(() => { loadData(); }, [monthStartStr]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPayrollMonthClosed(monthStartStr).then((closed) => { if (!cancelled) setPayrollClosed(closed); });
+    return () => { cancelled = true; };
+  }, [monthStartStr]);
 
   useRealtimeSync(
     [{ table: 'attendance' }, { table: 'leave_requests' }, { table: 'daily_assignments' }, { table: 'timesheet_periods' }],
@@ -344,8 +352,13 @@ export function AdminTimesheet() {
           {periodSupported && hasAdminFunction(profile, 'admin.timesheet_lock') && periodStatus === 'REVIEW' && (
             <Button onClick={() => setPeriodStatus('LOCKED')} disabled={changingPeriod || exceptions > 0}><Lock className="w-4 h-4" />Khóa kỳ công</Button>
           )}
-          {periodSupported && hasAdminFunction(profile, 'admin.timesheet_lock') && periodStatus === 'LOCKED' && (
+          {periodSupported && hasAdminFunction(profile, 'admin.timesheet_lock') && periodStatus === 'LOCKED' && !payrollClosed && (
             <Button variant="outline" onClick={() => setPeriodStatus('OPEN')} disabled={changingPeriod}><Unlock className="w-4 h-4" />Mở lại kỳ</Button>
+          )}
+          {periodStatus === 'LOCKED' && payrollClosed && (
+            <span className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-semibold text-slate-500" title="Kỳ lương tháng này đã khoá — sai sót chấm công xử lý bằng Điều chỉnh lương kỳ sau (BR-PAY-009).">
+              <Lock className="h-3.5 w-3.5" /> Kỳ lương đã khoá — không mở lại kỳ công
+            </span>
           )}
           <Button onClick={handleExport} disabled={exporting || rows.length === 0 || periodStatus !== 'LOCKED'} title={periodStatus !== 'LOCKED' ? 'Khóa kỳ công trước khi xuất bản chính thức' : undefined}>
             <FileSpreadsheet className="w-4 h-4" />

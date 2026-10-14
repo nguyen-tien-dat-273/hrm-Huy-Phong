@@ -16,13 +16,19 @@ import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { useToast } from '@/contexts/ToastContext';
 import { savePayrollInput } from '@/lib/payrollData';
-import type { EmployeePayItem, PayComponent, PayrollInput, Profile, UnitPayItem } from '@/types';
+import { ENGINE_VARIABLE_NAMES } from '@/lib/payroll';
+import { BUILTIN_FUNCTION_NAMES } from '@/lib/payrollFormula';
+import type { EmployeePayItem, PayComponent, PayrollInput, PayrollTemplateItem, Profile, UnitPayItem } from '@/types';
 
 interface MonthlyInputsTabProps {
   profiles: Profile[];
   components: PayComponent[];
   employeeItems: EmployeePayItem[];
   unitItems: UnitPayItem[];
+  /** Khoản của mẫu BL theo khối — công thức của mẫu cũng có thể dùng số liệu tháng. */
+  templateItems: PayrollTemplateItem[];
+  /** Mã tham số / biểu bậc thang của bộ tham số hiệu lực — là hằng số, không phải số liệu nhập. */
+  paramCodes: readonly string[];
   inputs: PayrollInput[];
   monthStart: string;
   actorId: string | null;
@@ -32,7 +38,7 @@ interface MonthlyInputsTabProps {
 }
 
 export function MonthlyInputsTab({
-  profiles, components, employeeItems, unitItems, inputs, monthStart, actorId, readOnly, onChanged,
+  profiles, components, employeeItems, unitItems, templateItems, paramCodes, inputs, monthStart, actorId, readOnly, onChanged,
 }: MonthlyInputsTabProps) {
   const { toast } = useToast();
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -41,9 +47,12 @@ export function MonthlyInputsTab({
   // Chỉ hiện cột cho mã thực sự được khoản nào đó dùng tới. Bảng nhập liệu mà
   // có cột không ai dùng thì người nhập sẽ đoán và điền bừa.
   const codes = useMemo(() => {
+    // Biến engine, hàm dựng sẵn và mã tham số đều là thứ hệ thống cấp sẵn —
+    // không phải số liệu người nhập. Lấy từ nguồn gốc, không chép tay danh sách.
+    const RESERVED = new Set([...ENGINE_VARIABLE_NAMES, ...BUILTIN_FUNCTION_NAMES, ...paramCodes]);
     const seen = new Map<string, string>();
     for (const component of components) {
-      if (!component.is_active || !component.input_code) continue;
+      if (!component.is_active || component.calc_source === 'ENGINE' || !component.input_code) continue;
       if (!seen.has(component.input_code)) seen.set(component.input_code, component.name);
     }
     // Công thức cũng tham chiếu mã số liệu mà không khai báo input_code
@@ -61,7 +70,7 @@ export function MonthlyInputsTab({
     // thành khoản theo KPI, doanh số... Các biến đó cũng phải tự tạo cột nhập
     // liệu; nếu chỉ quét công thức chung trong danh mục thì công thức riêng lưu
     // được nhưng không có nơi nhập số liệu để chạy.
-    const assigned = [...employeeItems, ...unitItems];
+    const assigned = [...employeeItems, ...unitItems, ...templateItems];
     for (const item of assigned) {
       const source = item.formula ?? '';
       const component = components.find((entry) => entry.id === item.component_id);
@@ -72,7 +81,7 @@ export function MonthlyInputsTab({
       }
     }
     return [...seen.entries()].map(([code, usedBy]) => ({ code, usedBy }));
-  }, [components, employeeItems, unitItems]);
+  }, [components, employeeItems, unitItems, templateItems, paramCodes]);
 
   const valueOf = (userId: string, code: string): string => {
     const key = `${userId}|${code}`;
@@ -202,13 +211,3 @@ export function MonthlyInputsTab({
     </div>
   );
 }
-
-/** Biến do engine cung cấp — không phải số liệu người dùng nhập. */
-const RESERVED = new Set([
-  'BASE', 'BASE_WORK', 'BASE_LEAVE', 'BASE_HOLIDAY', 'GROSS', 'MUC_RIENG',
-  'HOURLY_RATE', 'DAILY_RATE', 'MONTHLY_RATE', 'WORK_DAYS', 'LEAVE_DAYS', 'HOLIDAY_DAYS',
-  'PAID_DAYS', 'STANDARD_DAYS', 'WORK_HOURS', 'HOURS_PER_DAY', 'DEPENDENTS', 'INSURANCE_BASE',
-  'LATE_MINUTES', 'LATE_COUNT', 'LATE_AFTER_CUTOFF', 'EARLY_MINUTES', 'EARLY_COUNT',
-  'INSURANCE_EMPLOYEE', 'PIT', 'TAXABLE_INCOME',
-  'MIN', 'MAX', 'ROUND', 'FLOOR', 'CEIL', 'ABS', 'IF',
-]);
