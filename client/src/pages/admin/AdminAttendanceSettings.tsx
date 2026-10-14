@@ -146,13 +146,65 @@ export function AdminAttendanceSettings() {
         <CardContent>
           <NumberField
             label="Phép năm mặc định (ngày)"
-            hint="Hạn mức gợi ý khi tạo người dùng mới. Hạn mức từng người được quản lý ở module Nghỉ phép."
+            hint="Điều 113 BLLĐ 2019 đặt sàn 12 ngày với điều kiện lao động bình thường. Công ty được cho cao hơn."
             value={draft.defaultAnnualLeave}
             min={0}
             max={365}
             step={0.5}
             onChange={(value) => update({ defaultAnnualLeave: value })}
           />
+
+          {/* Thâm niên: KHÔNG khoá cứng 5 năm / 1 ngày.
+              Điều 114 BLLĐ 2019 là mức SÀN, công ty được cho hậu hơn. Khoá
+              cứng thì công ty nào cho 3 năm +1 phải sửa code. */}
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Cứ đủ mấy năm thâm niên"
+              hint="Điều 114 BLLĐ 2019: cứ đủ 5 năm làm việc cho một người sử dụng lao động."
+              value={draft.leaveSeniorityStepYears}
+              min={1}
+              max={50}
+              step={1}
+              onChange={(value) => update({ leaveSeniorityStepYears: value })}
+            />
+            <NumberField
+              label="Thì cộng thêm (ngày)"
+              hint="Điều 114: tăng thêm tương ứng 1 ngày."
+              value={draft.leaveSeniorityStepDays}
+              min={0}
+              max={30}
+              step={0.5}
+              onChange={(value) => update({ leaveSeniorityStepDays: value })}
+            />
+          </div>
+
+          {/* Phép tồn chuyển sang năm sau là THOẢ THUẬN NỘI BỘ, không phải luật
+              định — nên mặc định 0. Bật sẵn là đổi số dư của mọi người mà
+              không ai yêu cầu. */}
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <NumberField
+              label="Phép tồn chuyển sang năm sau, tối đa (ngày)"
+              hint="0 = không cho chuyển. Đây là quy định nội bộ của công ty, luật không bắt buộc."
+              value={draft.leaveCarryOverMax}
+              min={0}
+              max={365}
+              step={0.5}
+              onChange={(value) => update({ leaveCarryOverMax: value })}
+            />
+            <div>
+              <Input
+                label="Hạn dùng hết phép chuyển sang"
+                placeholder="VD: 03-31"
+                value={draft.leaveCarryOverDeadline}
+                onChange={(e) => update({
+                  leaveCarryOverDeadline: e.target.value.replace(/[^\d-]/g, '').slice(0, 5),
+                })}
+              />
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                Dạng <span className="font-mono">MM-DD</span> của năm sau. Để trống là không đặt hạn.
+              </p>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

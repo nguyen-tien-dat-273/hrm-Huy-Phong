@@ -17,7 +17,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { DEFAULT_LEAVE_POLICY, leaveEntitlement } from '@/lib/leaveEntitlement';
+import { DEFAULT_LEAVE_POLICY, describeLeavePolicy, leaveEntitlement } from '@/lib/leaveEntitlement';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -32,7 +32,7 @@ import type { LeaveLedgerEntry, LeaveRequest, Profile } from '@/types';
 export function LeaveQuotaPanel() {
   const { toast } = useToast();
   const confirm = useConfirm();
-  const { defaultAnnualLeave } = useAppSettings();
+  const { defaultAnnualLeave, leaveSeniorityStepYears, leaveSeniorityStepDays } = useAppSettings();
 
   /**
    * Số ngày phép LUẬT cho, tính từ ngày vào làm của từng người.
@@ -41,10 +41,11 @@ export function LeaveQuotaPanel() {
    * nhìn thấy và có thể đã lên kế hoạch dùng, nên đổi nó phải do người quyết.
    * Màn hình chỉ chỉ ra ai đang lệch, và lệch bao nhiêu.
    */
-  const chinhSach = useMemo(
-    () => ({ ...DEFAULT_LEAVE_POLICY, baseDays: defaultAnnualLeave || DEFAULT_LEAVE_POLICY.baseDays }),
-    [defaultAnnualLeave],
-  );
+  const chinhSach = useMemo(() => ({
+    baseDays: defaultAnnualLeave || DEFAULT_LEAVE_POLICY.baseDays,
+    seniorityStepYears: leaveSeniorityStepYears || DEFAULT_LEAVE_POLICY.seniorityStepYears,
+    seniorityStepDays: leaveSeniorityStepDays,
+  }), [defaultAnnualLeave, leaveSeniorityStepYears, leaveSeniorityStepDays]);
   const theoLuat = (p: Profile) => leaveEntitlement(p.hire_date, year, chinhSach);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -204,6 +205,11 @@ export function LeaveQuotaPanel() {
             />
           ) : (
             <div className="overflow-x-auto">
+              {/* In chính sách ra chữ, ngay cạnh bảng. Không có dòng này thì
+                  cột "Theo luật" là một con số không ai kiểm lại được. */}
+              <p className="border-b border-slate-100 px-5 py-2.5 text-xs leading-relaxed text-slate-500">
+                {describeLeavePolicy(chinhSach)}
+              </p>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs font-semibold text-slate-500 border-b border-slate-100">
