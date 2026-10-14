@@ -11,7 +11,7 @@
 // ============================================================================
 
 import { useEffect, useState } from 'react';
-import { BookOpen, Download, Search, TriangleAlert } from 'lucide-react';
+import { BookOpen, Download, Eye, Search, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardContent } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -20,6 +20,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatDate } from '@/lib/utils';
+import { Modal } from '@/components/ui/Modal';
 
 const BUCKET = 'process-documents';
 
@@ -58,6 +59,7 @@ export function StaffProcesses() {
   const [loading, setLoading] = useState(true);
   const [supported, setSupported] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedDoc, setSelectedDoc] = useState<ProcessDocument | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -152,7 +154,7 @@ export function StaffProcesses() {
                   <li key={doc.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
                     <span className="min-w-0 flex-1">
                       <span className="flex flex-wrap items-center gap-2">
-                        <strong className="text-sm text-slate-900">{doc.title}</strong>
+                        <button type="button" onClick={() => setSelectedDoc(doc)} className="text-left text-sm font-bold text-slate-900 hover:text-indigo-700">{doc.title}</button>
                         <Badge className={CATEGORY_COLOR[doc.category]}>{doc.version_label}</Badge>
                       </span>
                       <span className="mt-0.5 block text-xs text-slate-500">
@@ -162,6 +164,9 @@ export function StaffProcesses() {
                         <span className="mt-1 block text-xs leading-relaxed text-slate-500">{doc.summary}</span>
                       )}
                     </span>
+                    <button type="button" onClick={() => setSelectedDoc(doc)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50">
+                      <Eye className="h-3.5 w-3.5" /> Chi tiết
+                    </button>
                     <button
                       type="button"
                       onClick={() => void openFile(doc)}
@@ -178,6 +183,14 @@ export function StaffProcesses() {
           </Card>
         ))
       )}
+      <Modal open={!!selectedDoc} onClose={() => setSelectedDoc(null)} title={selectedDoc?.title || 'Chi tiết quy trình'}>
+        {selectedDoc && <div className="space-y-4">
+          <div className="flex flex-wrap gap-2"><Badge className={CATEGORY_COLOR[selectedDoc.category]}>{CATEGORY_LABEL[selectedDoc.category]}</Badge><Badge className="bg-emerald-50 text-emerald-700">Đang hiệu lực</Badge><Badge className="bg-slate-100 text-slate-600">{selectedDoc.version_label}</Badge></div>
+          <dl className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm"><div><dt className="text-xs text-slate-500">Mã quy trình</dt><dd className="mt-1 font-mono font-semibold text-slate-800">{selectedDoc.code}</dd></div><div><dt className="text-xs text-slate-500">Ngày hiệu lực</dt><dd className="mt-1 font-medium text-slate-800">{formatDate(selectedDoc.effective_from)}</dd></div></dl>
+          <div><h3 className="text-sm font-semibold text-slate-800">Nội dung / tóm tắt</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{selectedDoc.summary || 'Chưa có phần tóm tắt. Mở tệp đính kèm để xem nội dung chi tiết.'}</p></div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="truncate text-xs text-slate-500">{selectedDoc.file_name || 'Chưa đính kèm tài liệu'}</span><button type="button" disabled={!selectedDoc.file_path} onClick={() => void openFile(selectedDoc)} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white disabled:opacity-40"><Download className="h-4 w-4" />Mở tài liệu</button></div>
+        </div>}
+      </Modal>
     </div>
   );
 }

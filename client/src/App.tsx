@@ -43,6 +43,7 @@ const AdminProcessLibrary = lazyRoute('AdminProcessLibrary', () => import('@/pag
 const AdminTraining = lazyRoute('AdminTraining', () => import('@/pages/admin/AdminTraining').then((m) => ({ default: m.AdminTraining })));
 const AdminRecruitment = lazyRoute('AdminRecruitment', () => import('@/pages/admin/AdminRecruitment').then((m) => ({ default: m.AdminRecruitment })));
 const AdminWorkforceCenter = lazyRoute('AdminWorkforceCenter', () => import('@/pages/admin/AdminWorkforceCenter').then((m) => ({ default: m.AdminWorkforceCenter })));
+const AdminDocumentRepository = lazyRoute('AdminDocumentRepository', () => import('@/pages/admin/AdminDocumentRepository').then((m) => ({ default: m.AdminDocumentRepository })));
 const AdminNexusCenter = lazyRoute('AdminNexusCenter', () => import('@/pages/admin/AdminNexusCenter').then((m) => ({ default: m.AdminNexusCenter })));
 const ProfilePage = lazyRoute('ProfilePage', () => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const StaffDashboard = lazyRoute('StaffDashboard', () => import('@/pages/staff/StaffDashboard').then((m) => ({ default: m.StaffDashboard })));
@@ -125,7 +126,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
 function admin(
   permission: AdminPermission,
   page: ReactNode,
-  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode; denyTeamlead?: boolean } = {},
+  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode; denyTeamlead?: boolean; teamleadEmployeeDocuments?: boolean } = {},
 ) {
   return <ProtectedRoute permission={permission} {...options}><AdminLayout>{page}</AdminLayout></ProtectedRoute>;
 }
@@ -215,7 +216,7 @@ function AppRoutes() {
       <Route path="/admin/process-library" element={admin('training', <AdminProcessLibrary />)} />
       <Route path="/admin/recruitment" element={adminAny(['users', 'projects'], <AdminRecruitment />)} />
       <Route path="/admin/workforce" element={admin('users', <AdminWorkforceCenter section="workers" />, { functionCode: 'admin.workforce' })} />
-      <Route path="/admin/worker-documents" element={admin('users', <AdminWorkforceCenter section="documents" />, { functionCode: 'admin.worker_documents' })} />
+      <Route path="/admin/worker-documents" element={admin('users', <AdminDocumentRepository />, { functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/performance" element={admin('reports', <AdminNexusCenter section="performance" />, { functionCode: 'admin.performance_manage' })} />
       {/* Dia chi cu cua "Gan KPI": gio nam ngay trong man bo KPI nhan su. */}

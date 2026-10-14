@@ -29,6 +29,7 @@ export interface Profile {
   manager_id?: string | null;
   hire_date?: string | null;
   employment_status?: EmploymentStatus;
+  training_audience?: 'INTERN' | 'PROBATION' | 'PART_TIME' | 'FULL_TIME' | 'OFFICIAL' | null;
   /** Số điện thoại — nhân viên tự sửa được ở trang Hồ sơ cá nhân. */
   phone: string | null;
   hometown?: string | null;
@@ -170,6 +171,8 @@ export interface TrainingCourse {
   duration_hours: number;
   deadline: string | null;
   resource_url: string | null;
+  document_path: string | null;
+  document_file_name: string | null;
   video_path: string | null;
   video_file_name: string | null;
   status: TrainingCourseStatus;

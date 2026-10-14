@@ -123,9 +123,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     (item) =>
       (item.anyPermissions
         ? item.anyPermissions.some((permission) => hasPermission(profile, permission))
-        : hasPermission(profile, item.permission)) &&
+        : (hasPermission(profile, item.permission) || (item.teamleadEmployeeDocuments && isTeamlead(profile)))) &&
       (!item.fullAdminOnly || isFullAdmin(profile)) &&
-      (!item.functionCode || hasAdminFunction(profile, item.functionCode)) &&
+      (!item.functionCode || hasAdminFunction(profile, item.functionCode) || (item.teamleadEmployeeDocuments && isTeamlead(profile))) &&
       !(item.hideForTeamlead && isTeamlead(profile)),
   );
 
@@ -213,7 +213,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const openNotification = async (notification: Notification) => {
     await markNotificationRead(notification.id);
     setNotifOpen(false);
-    navigate(notificationRoute(notification.type));
+    navigate(notificationRoute(notification.type, notification.message));
   };
 
   const currentPage = navItems

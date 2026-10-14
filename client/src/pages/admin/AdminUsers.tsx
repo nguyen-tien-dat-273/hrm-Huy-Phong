@@ -109,6 +109,7 @@ export function AdminUsers() {
     education_level: '' as Profile['education_level'] | '', school_name: '', major: '', graduation_year: '',
     unit_id: '', position_id: '', manager_id: '', hire_date: '',
     employment_status: 'active' as EmploymentStatus,
+    training_audience: '' as Profile['training_audience'] | '',
     permissions: [] as AdminPermission[],
   });
   const [submitting, setSubmitting] = useState(false);
@@ -121,7 +122,7 @@ export function AdminUsers() {
       name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '',
       employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '',
       education_level: '', school_name: '', major: '', graduation_year: '',
-      unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active', permissions: [],
+      unit_id: '', position_id: '', manager_id: '', hire_date: '', employment_status: 'active', training_audience: '', permissions: [],
     });
     setModalOpen(true);
   };
@@ -348,6 +349,7 @@ export function AdminUsers() {
       manager_id: user.manager_id || '',
       hire_date: user.hire_date || '',
       employment_status: user.employment_status || 'active',
+      training_audience: user.training_audience || '',
       permissions: (user.permissions ?? []).filter((p): p is AdminPermission =>
         (ADMIN_PERMISSIONS as readonly string[]).includes(p),
       ),
@@ -398,6 +400,7 @@ export function AdminUsers() {
         school_name: form.school_name.trim() || null,
         major: form.major.trim() || null,
         graduation_year: form.graduation_year ? Number(form.graduation_year) : null,
+        training_audience: form.training_audience || null,
         // Quyền lẻ CHỈ gửi đi khi người dùng thực sự đổi nó ở form này.
         //
         // Trước đây mọi lần lưu đều gửi `[]` cho ai không phải staff, nên sửa
@@ -454,6 +457,10 @@ export function AdminUsers() {
       if (error) {
         toast('Tạo người dùng thất bại: ' + error, 'error');
       } else {
+        if (id && form.training_audience) {
+          const { error: audienceError } = await supabase.from('profiles').update({ training_audience: form.training_audience }).eq('id', id);
+          if (audienceError) toast('Hồ sơ đã tạo nhưng chưa lưu được đối tượng đào tạo: ' + describeDbError(audienceError), 'warning');
+        }
         const needsOrganizationAssignment = Boolean(
           form.unit_id || form.hire_date || form.employment_status !== 'active',
         );
@@ -949,6 +956,19 @@ export function AdminUsers() {
               </div>
             </div>
           )}
+
+          <Select
+            label="Đối tượng đào tạo"
+            value={form.training_audience}
+            onChange={(event) => setForm({ ...form, training_audience: event.target.value as Profile['training_audience'] | '' })}
+          >
+            <option value="">Chưa phân loại</option>
+            <option value="INTERN">Thực tập sinh</option>
+            <option value="PROBATION">Thử việc</option>
+            <option value="PART_TIME">Part-time</option>
+            <option value="FULL_TIME">Full-time</option>
+            <option value="OFFICIAL">Chính thức</option>
+          </Select>
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">

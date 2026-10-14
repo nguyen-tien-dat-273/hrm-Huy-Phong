@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, FileCheck2,
-  Handshake, Plus, Search, Trash2, UserRoundCheck, UsersRound, XCircle,
+  ExternalLink, Handshake, Plus, Search, Trash2, UserRoundCheck, UsersRound, XCircle,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -40,6 +40,7 @@ interface RecruitmentRequest {
   review_due_at: string | null;
   reviewed_at: string | null;
   review_note: string | null;
+  external_form_url?: string | null;
   created_at: string;
 }
 
@@ -49,6 +50,7 @@ interface Candidate {
   full_name: string;
   email: string | null;
   phone: string | null;
+  cv_url?: string | null;
   source: string | null;
   stage: CandidateStage;
   test_due_at: string | null;
@@ -94,7 +96,6 @@ const blankRequest = {
   title: '', unit_id: '', position_id: '', headcount: '1', employment_type: 'FULL_TIME',
   reason: '', salary_min: '', salary_max: '', desired_start_date: '',
 };
-const blankCandidate = { requisition_id: '', full_name: '', email: '', phone: '', source: '', consent: false };
 const blankInterview = { round: '1', scheduled_at: '', interviewer_id: '', mode: 'OFFLINE', location_or_link: '', score: '', recommendation: '', feedback: '' };
 const blankOffer = { proposed_salary: '', start_date: '', status: 'DRAFT' as Offer['status'], note: '' };
 const blankHandoff = { planned_start_date: '', note: '' };
@@ -127,9 +128,10 @@ export function AdminRecruitment() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [requestOpen, setRequestOpen] = useState(false);
-  const [candidateOpen, setCandidateOpen] = useState(false);
+  const [externalFormOpen, setExternalFormOpen] = useState(false);
+  const [externalFormRequestId, setExternalFormRequestId] = useState('');
+  const [externalFormUrl, setExternalFormUrl] = useState('');
   const [requestForm, setRequestForm] = useState(blankRequest);
-  const [candidateForm, setCandidateForm] = useState(blankCandidate);
   const [reviewing, setReviewing] = useState<RecruitmentRequest | null>(null);
   const [reviewNote, setReviewNote] = useState('');
   const [rejecting, setRejecting] = useState<Candidate | null>(null);
@@ -253,17 +255,23 @@ export function AdminRecruitment() {
     else { toast(canDelete ? 'Đã xóa đề xuất.' : 'Đã hủy đề xuất và giữ lịch sử.', 'success'); await load(); }
   };
 
-  const createCandidate = async (event: React.FormEvent) => {
+  const saveExternalForm = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!candidateForm.consent) { toast('Cần xác nhận ứng viên đồng ý lưu thông tin.', 'warning'); return; }
+    if (!externalFormRequestId) return;
+    const trimmedUrl = externalFormUrl.trim();
+    if (trimmedUrl) {
+      try { if (new URL(trimmedUrl).protocol !== 'https:') throw new Error(); }
+      catch { toast('URL form phải là địa chỉ HTTPS hợp lệ.', 'warning'); return; }
+    }
     setSaving(true);
-    const { error } = await supabase.from('recruitment_candidates').insert({
-      requisition_id: candidateForm.requisition_id, full_name: candidateForm.full_name.trim(),
-      email: candidateForm.email.trim() || null, phone: candidateForm.phone.trim() || null,
-      source: candidateForm.source.trim() || null, consent_at: new Date().toISOString(), stage: 'APPLIED',
-    });
-    if (error) toast('Không thêm được ứng viên: ' + describeDbError(error), 'error');
-    else { toast('Đã tiếp nhận ứng viên.', 'success'); setCandidateOpen(false); setCandidateForm(blankCandidate); await load(); }
+    const { error } = await supabase.from('recruitment_requisitions')
+      .update({ external_form_url: trimmedUrl || null }).eq('id', externalFormRequestId);
+    if (error) toast('Không lưu được cấu hình form: ' + describeDbError(error), 'error');
+    else {
+      toast(trimmedUrl ? 'Đã lưu liên kết form ngoài.' : 'Đã gỡ liên kết form ngoài.', 'success');
+      setExternalFormOpen(false);
+      await load();
+    }
     setSaving(false);
   };
 
@@ -389,7 +397,7 @@ export function AdminRecruitment() {
         <p className="mt-1 text-sm text-slate-500">Quản lý đề xuất tuyển dụng và hồ sơ ứng viên.</p>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => { setTab('candidates'); setCandidateOpen(true); }} disabled={!canReview || activeRequests.length === 0}><Plus className="h-4 w-4" />Tiếp nhận hồ sơ</Button>
+        <Button variant="secondary" onClick={() => { setExternalFormRequestId(activeRequests[0]?.id || ''); setExternalFormUrl(activeRequests[0]?.external_form_url || ''); setExternalFormOpen(true); }} disabled={!canReview || activeRequests.length === 0}><ExternalLink className="h-4 w-4" />Kết nối form ngoài</Button>
         <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất tuyển dụng</Button>
       </div>
     </div>
@@ -404,7 +412,7 @@ export function AdminRecruitment() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="inline-flex rounded-xl bg-slate-100 p-1">
           <button onClick={() => setTab('requests')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'requests' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Đề xuất tuyển dụng ({requests.length})</button>
-          <button onClick={() => setTab('candidates')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'candidates' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Ứng viên ({candidates.length})</button>
+          <button onClick={() => setTab('candidates')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'candidates' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Kho hồ sơ ứng viên ({candidates.length})</button>
         </div>
         <div className="relative w-full sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã, vị trí, ứng viên..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400" /></div>
       </div>
@@ -420,6 +428,7 @@ export function AdminRecruitment() {
               <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-indigo-600">{item.code}</p><h3 className="mt-1 font-display text-base font-bold text-slate-900">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{unitNames.get(item.unit_id || '') || 'Chưa chọn đơn vị'} · {positionNames.get(item.position_id || '') || 'Chưa gắn vị trí'}</p></div><Badge className={requestStatus[item.status].color}>{requestStatus[item.status].label}</Badge></div>
               <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-xs"><div><span className="text-slate-400">Số lượng</span><p className="mt-1 font-bold text-slate-700">{item.headcount} người</p></div><div><span className="text-slate-400">Quản lý tuyển</span><p className="mt-1 font-bold text-slate-700">{names.get(item.hiring_manager_id) || '—'}</p></div><div><span className="text-slate-400">Khoảng lương</span><p className="mt-1 font-bold text-slate-700">{money(item.salary_min)} – {money(item.salary_max)}</p></div><div><span className="text-slate-400">Ứng viên</span><p className="mt-1 font-bold text-slate-700">{candidateCounts.get(item.id) || 0} hồ sơ</p></div></div>
               <p className="mt-3 line-clamp-2 text-sm text-slate-600">{item.reason}</p>
+              {item.status === 'OPEN' && <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs"><span className="font-semibold text-slate-600">Form ngoài: </span>{item.external_form_url ? <a className="text-indigo-700 underline" href={item.external_form_url} target="_blank" rel="noreferrer">Mở form</a> : <span className="text-amber-700">Chưa cấu hình</span>}<button type="button" className="ml-2 font-semibold text-indigo-700" onClick={() => { setExternalFormRequestId(item.id); setExternalFormUrl(item.external_form_url || ''); setExternalFormOpen(true); }}>Cấu hình</button></div>}
               {item.review_note && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"><strong>Phản hồi:</strong> {item.review_note}</p>}
               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
                 {deadline ? <span className={`flex items-center gap-1.5 text-xs font-semibold ${deadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4" />{deadline.text} để HR trình BGĐ</span> : <span className="text-xs text-slate-400">Đề xuất bởi {names.get(item.requested_by) || 'người dùng'}</span>}
@@ -438,7 +447,7 @@ export function AdminRecruitment() {
             return <Card key={candidate.id}><CardContent>
               <div className="flex items-start justify-between gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 font-bold text-indigo-700">{candidate.full_name.slice(0, 1).toUpperCase()}</div><Badge className="bg-indigo-50 text-indigo-700">{stageLabel[candidate.stage]}</Badge></div>
               <h3 className="mt-3 font-bold text-slate-900">{candidate.full_name}</h3><p className="mt-1 text-xs text-slate-500">{request?.code || '—'} · {request?.title || 'Yêu cầu không còn tồn tại'}</p>
-              <div className="mt-3 space-y-1 text-xs text-slate-500"><p>{candidate.email || 'Chưa có email'}</p><p>{candidate.phone || 'Chưa có số điện thoại'}{candidate.source ? ` · Nguồn: ${candidate.source}` : ''}</p></div>
+              <div className="mt-3 space-y-1 text-xs text-slate-500"><p>{candidate.email || 'Chưa có email'}</p><p>{candidate.phone || 'Chưa có số điện thoại'}{candidate.source ? ` · Nguồn: ${candidate.source === 'EXTERNAL_FORM' ? 'Form ngoài' : candidate.source}` : ''}</p>{candidate.cv_url && <a href={candidate.cv_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-indigo-700 underline"><ExternalLink className="h-3 w-3" />Mở CV</a>}</div>
               {testDeadline && <p className={`mt-3 flex items-center gap-1 text-xs font-semibold ${testDeadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4" />{testDeadline.text} để hoàn thành bài test</p>}
               {candidate.rejection_reason && <p className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-700">{candidate.rejection_reason}</p>}
               <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -456,7 +465,7 @@ export function AdminRecruitment() {
 
     <Modal open={!!reviewing} onClose={() => setReviewing(null)} title="Trình và ghi nhận phê duyệt"><div className="space-y-4"><p className="rounded-xl bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">HR kiểm tra đề xuất, trình Ban Giám đốc và ghi nhận kết quả phê duyệt tại đây.</p><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-600">{reviewing?.code}</p><p className="mt-1 font-bold text-slate-900">{reviewing?.title}</p><p className="mt-1 text-sm text-slate-500">{reviewing?.headcount} người · {reviewing?.reason}</p></div><Textarea label="Ý kiến của Ban Giám đốc (bắt buộc khi từ chối)" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} /><div className="flex justify-end gap-2"><Button variant="danger" onClick={() => void reviewRequest('REJECTED')} disabled={saving}><XCircle className="h-4 w-4" />Không phê duyệt</Button><Button theme="admin" onClick={() => void reviewRequest('APPROVED')} disabled={saving}><CheckCircle2 className="h-4 w-4" />Ghi nhận phê duyệt</Button></div></div></Modal>
 
-    <Modal open={candidateOpen} onClose={() => setCandidateOpen(false)} title="Tiếp nhận hồ sơ ứng viên"><form onSubmit={createCandidate} className="space-y-4"><Select label="Đợt tuyển dụng" value={candidateForm.requisition_id} onChange={(e) => setCandidateForm({ ...candidateForm, requisition_id: e.target.value })} required><option value="">Chọn đợt đang triển khai tuyển dụng</option>{activeRequests.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.title}</option>)}</Select><Input label="Họ tên ứng viên" value={candidateForm.full_name} onChange={(e) => setCandidateForm({ ...candidateForm, full_name: e.target.value })} required /><div className="grid gap-3 sm:grid-cols-2"><Input label="Email" type="email" value={candidateForm.email} onChange={(e) => setCandidateForm({ ...candidateForm, email: e.target.value })} /><Input label="Số điện thoại" value={candidateForm.phone} onChange={(e) => setCandidateForm({ ...candidateForm, phone: e.target.value })} /></div><Input label="Nguồn ứng viên" value={candidateForm.source} onChange={(e) => setCandidateForm({ ...candidateForm, source: e.target.value })} placeholder="Website, giới thiệu, mạng xã hội..." /><label className="flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600"><input type="checkbox" checked={candidateForm.consent} onChange={(e) => setCandidateForm({ ...candidateForm, consent: e.target.checked })} className="mt-0.5 h-4 w-4" /><span>Đã thông báo và được ứng viên đồng ý cho lưu thông tin phục vụ tuyển dụng.</span></label><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setCandidateOpen(false)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang lưu...' : 'Tiếp nhận hồ sơ'}</Button></div></form></Modal>
+    <Modal open={externalFormOpen} onClose={() => setExternalFormOpen(false)} title="Kết nối form tuyển dụng bên ngoài" size="lg"><form onSubmit={saveExternalForm} className="space-y-4"><Select label="Đợt tuyển dụng đang mở" value={externalFormRequestId} onChange={(e) => { setExternalFormRequestId(e.target.value); setExternalFormUrl(requests.find((item) => item.id === e.target.value)?.external_form_url || ''); }} required><option value="">Chọn đợt tuyển dụng</option>{activeRequests.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.title}</option>)}</Select><Input label="URL form ngoài" type="url" value={externalFormUrl} onChange={(e) => setExternalFormUrl(e.target.value)} placeholder="https://forms.example.com/..." /><div className="rounded-xl bg-indigo-50 p-4 text-xs leading-relaxed text-indigo-800"><p className="font-bold">API nhận câu trả lời</p><p className="mt-1">POST <code>/api/recruitment-applications</code> · Header: <code>Authorization: Bearer {'<RECRUITMENT_INTAKE_TOKEN>'}</code></p><p className="mt-2">JSON: <code>{'{ requisition_code, submission_id, full_name, email, phone, cv_url, note, consent: true }'}</code></p><p className="mt-2">Mã yêu cầu của đợt này: <strong>{requests.find((item) => item.id === externalFormRequestId)?.code || '—'}</strong>. Máy chủ cần cấu hình biến <code>RECRUITMENT_INTAKE_TOKEN</code>; form phải lấy xác nhận đồng ý lưu thông tin và gửi CV bằng URL HTTPS có thể truy cập bởi HR.</p></div><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setExternalFormOpen(false)}>Đóng</Button><Button type="submit" theme="admin" disabled={saving || !externalFormRequestId}>{saving ? 'Đang lưu...' : 'Lưu cấu hình'}</Button></div></form></Modal>
 
     <Modal open={!!interviewing} onClose={() => setInterviewing(null)} title="Phỏng vấn và đánh giá ứng viên" size="lg"><form onSubmit={saveInterview} className="space-y-4"><p className="text-sm text-slate-500">HR phối hợp với bộ phận chuyên môn đánh giá <strong className="text-slate-800">{interviewing?.full_name}</strong>. Kết quả là căn cứ để xác định và thông báo kết quả tuyển dụng.</p><div className="grid gap-3 sm:grid-cols-2"><Select label="Vòng phỏng vấn" value={interviewForm.round} onChange={(e) => setInterviewForm({ ...interviewForm, round: e.target.value })}><option value="1">Vòng 1 · Bộ phận chuyên môn</option><option value="2">Vòng 2 · BGĐ/vị trí quan trọng</option></Select><Input label="Thời gian" type="datetime-local" value={interviewForm.scheduled_at} onChange={(e) => setInterviewForm({ ...interviewForm, scheduled_at: e.target.value })} required /></div><div className="grid gap-3 sm:grid-cols-2"><Select label="Người phỏng vấn" value={interviewForm.interviewer_id} onChange={(e) => setInterviewForm({ ...interviewForm, interviewer_id: e.target.value })}><option value="">Chưa phân công</option>{people.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Hình thức" value={interviewForm.mode} onChange={(e) => setInterviewForm({ ...interviewForm, mode: e.target.value })}><option value="OFFLINE">Trực tiếp</option><option value="ONLINE">Trực tuyến</option><option value="PHONE">Điện thoại</option></Select></div><Input label="Địa điểm hoặc liên kết" value={interviewForm.location_or_link} onChange={(e) => setInterviewForm({ ...interviewForm, location_or_link: e.target.value })} /><div className="grid gap-3 sm:grid-cols-2"><Input label="Điểm (0–100)" type="number" min="0" max="100" value={interviewForm.score} onChange={(e) => setInterviewForm({ ...interviewForm, score: e.target.value })} /><Select label="Kết quả đánh giá" value={interviewForm.recommendation} onChange={(e) => setInterviewForm({ ...interviewForm, recommendation: e.target.value })}><option value="">Chưa có kết quả</option><option value="PASS">Đạt</option><option value="HOLD">Cân nhắc</option><option value="FAIL">Không đạt</option></Select></div><Textarea label="Nhận xét / minh chứng" value={interviewForm.feedback} onChange={(e) => setInterviewForm({ ...interviewForm, feedback: e.target.value })} /><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setInterviewing(null)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu kết quả đánh giá'}</Button></div></form></Modal>
 

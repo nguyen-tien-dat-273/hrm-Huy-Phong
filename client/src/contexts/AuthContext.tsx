@@ -230,7 +230,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   };
 
-  const updateUser = async (id: string, updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code'>>) => {
+  const updateUser = async (id: string, updates: Partial<Pick<Profile, 'name' | 'role' | 'access_role_code' | 'department' | 'is_active' | 'permissions' | 'phone' | 'hometown' | 'permanent_address' | 'current_address' | 'education_level' | 'school_name' | 'major' | 'graduation_year' | 'employee_code' | 'training_audience'>>) => {
     const result = await updateProfile(id, updates);
     if (result.error) return { error: result.error };
     await loadUsers();
