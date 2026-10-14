@@ -14,6 +14,7 @@
 import { kpiSchemeFor, unitLineage, type KpiSchemeData, type ResolvableUnit } from '../kpiSchemeFor';
 import { describeLevelIssues, scoreFromLevels } from '../kpiScoring';
 import { countWorkingDays } from '../leave';
+import { leaveEntitlement } from '../leaveEntitlement';
 import { evaluateFormula } from '../payrollFormula';
 import {
   buildPayFormula, isDayCount, parsePayFormula,
@@ -457,6 +458,51 @@ for (const [ten, goc] of [
     Math.round(evaluateFormula(dungLai, SO_MAU).value * 100),
     Math.round(evaluateFormula(goc, SO_MAU).value * 100));
 }
+
+// --- Phép năm theo thâm niên (Điều 113, 114 BLLĐ 2019) ---------------------
+//
+// Trước đây hạn mức phép là một con số HR gõ tay. Hai chỗ sai âm thầm: mốc 5
+// năm thâm niên không ai nhắc, và người vào làm giữa năm được cấp tròn 12
+// ngày. Cả hai đều không có gì báo ra.
+const chinhSach = { baseDays: 12, seniorityStepYears: 5, seniorityStepDays: 1 };
+const phep = (hire: string | null, year: number) =>
+  leaveEntitlement(hire, year, chinhSach);
+
+// Điều 113: làm đủ năm, chưa tới mốc thâm niên nào.
+check('vào làm 2020, xét 2024: 12 ngày', phep('2020-03-01', 2024).total, 12);
+
+// Điều 114: đủ 5 năm thì thêm 1 ngày. Mốc tính tới CUỐI năm, nên người vào
+// 01/03/2020 đã đủ 5 năm trong năm 2025.
+check('đủ 5 năm trong năm 2025: 13 ngày', phep('2020-03-01', 2025).total, 13);
+check('năm 2029 (9 năm): vẫn 13 ngày', phep('2020-03-01', 2029).total, 13);
+check('năm 2030 (10 năm): 14 ngày', phep('2020-03-01', 2030).total, 14);
+check('năm 2030: phần thâm niên là 2 ngày', phep('2020-03-01', 2030).seniority, 2);
+
+// Chạm mốc vào tháng 12 vẫn được hưởng cho CẢ năm đó.
+check('vào 20/12/2020, xét 2025: đã đủ 5 năm', phep('2020-12-20', 2025).total, 13);
+// Nhưng chưa tới sinh nhật thứ 5 trong năm thì chưa được.
+check('vào 20/12/2020, xét 2024: chưa đủ', phep('2020-12-20', 2024).total, 12);
+
+// Điều 113 khoản 2: chưa đủ 12 tháng thì tính theo số tháng làm việc.
+check('vào tháng 11, năm đó được 2/12 của 12 ngày', phep('2026-11-20', 2026).total, 2);
+check('vào tháng 11: đếm 2 tháng', phep('2026-11-20', 2026).monthsInYear, 2);
+check('vào tháng 1 thì vẫn đủ 12 tháng', phep('2026-01-15', 2026).total, 12);
+check('vào tháng 7: nửa năm, 6 ngày', phep('2026-07-01', 2026).total, 6);
+// Năm SAU năm vào làm thì hưởng đủ, không chia tỷ lệ nữa.
+check('năm kế tiếp hưởng đủ 12 ngày', phep('2026-11-20', 2027).total, 12);
+
+// Chưa vào làm thì chưa có phép.
+check('vào làm năm sau, năm nay 0 ngày', phep('2027-01-01', 2026).total, 0);
+
+// Thiếu ngày vào làm: cấp đủ rồi BÁO, chứ không cấp 0 cho người đi làm thật.
+check('thiếu ngày vào làm vẫn cấp đủ', phep(null, 2026).total, 12);
+check('thiếu ngày vào làm thì bật cờ báo', phep(null, 2026).unknownHireDate, true);
+check('ngày vào làm hỏng cũng bật cờ', phep('khong-phai-ngay', 2026).unknownHireDate, true);
+
+// Công ty cho cao hơn luật vẫn chạy đúng.
+check('chính sách 14 ngày, 5 năm +2',
+  leaveEntitlement('2020-03-01', 2025,
+    { baseDays: 14, seniorityStepYears: 5, seniorityStepDays: 2 }).total, 16);
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);

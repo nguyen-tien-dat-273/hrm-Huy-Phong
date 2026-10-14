@@ -17,6 +17,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { DEFAULT_LEAVE_POLICY, leaveEntitlement } from '@/lib/leaveEntitlement';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -32,6 +33,19 @@ export function LeaveQuotaPanel() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const { defaultAnnualLeave } = useAppSettings();
+
+  /**
+   * Số ngày phép LUẬT cho, tính từ ngày vào làm của từng người.
+   *
+   * Chỉ tính để ĐỐI CHIẾU, không tự ghi đè: quỹ phép là thứ người lao động đã
+   * nhìn thấy và có thể đã lên kế hoạch dùng, nên đổi nó phải do người quyết.
+   * Màn hình chỉ chỉ ra ai đang lệch, và lệch bao nhiêu.
+   */
+  const chinhSach = useMemo(
+    () => ({ ...DEFAULT_LEAVE_POLICY, baseDays: defaultAnnualLeave || DEFAULT_LEAVE_POLICY.baseDays }),
+    [defaultAnnualLeave],
+  );
+  const theoLuat = (p: Profile) => leaveEntitlement(p.hire_date, year, chinhSach);
 
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
@@ -194,6 +208,7 @@ export function LeaveQuotaPanel() {
                 <thead>
                   <tr className="text-left text-xs font-semibold text-slate-500 border-b border-slate-100">
                     <th className="px-5 py-3">Nhân sự</th>
+                    <th className="px-3 py-3 text-center w-28">Theo luật</th>
                     <th className="px-3 py-3 text-center w-32">Hạn mức / năm</th>
                     <th className="px-3 py-3 text-center w-24">Đã dùng</th>
                     <th className="px-3 py-3 text-center w-24">Chờ duyệt</th>
@@ -204,6 +219,8 @@ export function LeaveQuotaPanel() {
                   {rows.map(({ profile: p, balance }) => {
                     const draft = drafts[p.id] ?? String(p.annual_leave_quota);
                     const changed = Number(draft) !== p.annual_leave_quota;
+                    const luat = theoLuat(p);
+                    const lech = !luat.unknownHireDate && luat.total !== p.annual_leave_quota;
                     return (
                       <tr key={p.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="px-5 py-3">
@@ -216,6 +233,33 @@ export function LeaveQuotaPanel() {
                               )}
                             </div>
                           </div>
+                        </td>
+                        {/* Cột này KHÔNG sửa được: nó là con số luật cho, suy
+                            ra từ ngày vào làm. Cho sửa thì nó thành một ô nhập
+                            thứ hai, không còn là mốc đối chiếu nữa. */}
+                        <td className="px-3 py-3 text-center">
+                          {luat.unknownHireDate ? (
+                            <span
+                              className="text-xs font-semibold text-amber-600"
+                              title="Chưa khai ngày vào làm nên không tính được thâm niên"
+                            >
+                              thiếu ngày vào
+                            </span>
+                          ) : (
+                            <span
+                              className={`font-semibold ${lech ? 'text-amber-700' : 'text-slate-500'}`}
+                              title={luat.seniority > 0
+                                ? `${luat.base} ngày cơ bản + ${luat.seniority} ngày thâm niên (${luat.serviceYears} năm)`
+                                : `${luat.base} ngày${luat.monthsInYear < 12 ? ` (làm ${luat.monthsInYear}/12 tháng)` : ''}`}
+                            >
+                              {luat.total}
+                              {luat.seniority > 0 && (
+                                <span className="ml-1 text-[10px] font-bold text-indigo-600">
+                                  +{luat.seniority} TN
+                                </span>
+                              )}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex items-center justify-center gap-1.5">
