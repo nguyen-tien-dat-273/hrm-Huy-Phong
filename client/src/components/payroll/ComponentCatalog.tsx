@@ -122,12 +122,11 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   }, [searched, categoryFilter, categoryOrder]);
 
   const usageOf = (component: PayComponent) => {
-    const templateIds = new Set(data.templateItems
-      .filter((item) => item.component_id === component.id && !item.effective_to).map((item) => item.template_id));
+    const unitIds = new Set(data.unitItems
+      .filter((item) => item.component_id === component.id && !item.effective_to && item.mode !== 'OFF').map((item) => item.unit_id));
     return {
-      mechanisms: data.templates.filter((template) => templateIds.has(template.id)).map((template) => template.name),
+      mechanisms: data.units.filter((unit) => unitIds.has(unit.id)).map((unit) => unit.name),
       people: new Set(data.items.filter((item) => item.component_id === component.id && !item.effective_to).map((item) => item.user_id)).size,
-      units: new Set(data.unitItems.filter((item) => item.component_id === component.id && !item.effective_to).map((item) => item.unit_id)).size,
     };
   };
 
@@ -241,13 +240,13 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
 
   const handleDelete = async (component: PayComponent) => {
     const usage = usageOf(component);
-    const used = usage.mechanisms.length + usage.people + usage.units;
+    const used = usage.mechanisms.length + usage.people;
     const ok = await confirm({
       title: `Xoá “${component.name}”?`,
       message:
         (used > 0
-          ? `Đầu mục đang có trong ${usage.mechanisms.length} cơ chế${usage.mechanisms.length ? ` (${usage.mechanisms.join(', ')})` : ''}, `
-            + `${usage.people} nhân sự và ${usage.units} đơn vị khai riêng — các dòng đó mất theo ở kỳ chưa chốt. `
+          ? `Đầu mục đang có trong cơ chế chung của ${usage.mechanisms.length} đơn vị${usage.mechanisms.length ? ` (${usage.mechanisms.join(', ')})` : ''} `
+            + `và khai riêng của ${usage.people} nhân sự — các dòng đó mất theo ở kỳ chưa chốt. `
           : '')
         + 'Nếu đầu mục đã phát sinh trong kỳ lương đã chốt, hệ thống KHÔNG xoá mà tự chuyển sang “Khóa” để giữ số liệu cũ.',
       confirmLabel: 'Xoá đầu mục',
@@ -586,14 +585,14 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
                 <Field label="Nhãn báo cáo" value={reportTagLabel(detail.report_tag) ?? 'Không gắn'} />
                 <Field label="Trạng thái" value={detail.is_active ? 'Kích hoạt' : 'Khóa'} />
                 <Field label="Giá trị mặc định" value={Number(detail.default_amount) ? formatFormulaNumber(Number(detail.default_amount)) : '—'} />
-                <Field label="Có trong cơ chế" value={usage.mechanisms.length ? usage.mechanisms.join(', ') : 'Chưa có'} />
-                <Field label="Khai riêng" value={`${usage.people} nhân sự · ${usage.units} đơn vị`} />
+                <Field label="Có trong cơ chế chung của" value={usage.mechanisms.length ? usage.mechanisms.join(', ') : 'Chưa có đơn vị nào'} />
+                <Field label="Khai riêng" value={`${usage.people} nhân sự`} />
               </dl>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Mô tả</p>
                 <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{detail.note || 'Chưa có mô tả.'}</p>
               </div>
-              {usage.mechanisms.length + usage.people + usage.units === 0 && detail.is_active && (
+              {usage.mechanisms.length + usage.people === 0 && detail.is_active && (
                 <p className="flex items-start gap-2 text-xs text-amber-700">
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
                   Chưa có trong cơ chế nào — đầu mục chưa đi vào phiếu lương của ai.

@@ -312,6 +312,8 @@ export interface PayrollAdjustment {
   taxable: boolean;
   /** Kỳ phát sinh sai sót, để phiếu nói rõ khoản này bù cho tháng nào. */
   origin_month: string | null;
+  /** Đầu mục mà điều chỉnh cộng / trừ vào. Trống: dòng điều chỉnh riêng ở cuối phiếu. */
+  component_code?: string | null;
 }
 
 export interface ComputePayslipArgs {
@@ -456,9 +458,29 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
   const rowByCode = new Map(rows.map((row) => [rowCode(row), row]));
   const nameOf = (code: string) => rowByCode.get(code)?.component.name ?? args.nameOf?.(code) ?? code;
 
-  const recovery = adjustments.filter((item) => item.kind === 'RECOVERY')
+  // Điều chỉnh gắn vào đầu mục "chỉ để tính" (số người phụ thuộc, lương cơ bản…)
+  // là điều chỉnh GIÁ TRỊ, không phải tiền: cộng / trừ thẳng vào giá trị của
+  // đầu mục TRƯỚC khi các công thức đọc nó, nên thuế, bảo hiểm… tính theo số mới.
+  const infoTarget = (adjustment: PayrollAdjustment): string | null => {
+    const code = adjustment.component_code?.trim().toUpperCase();
+    return code && rowByCode.get(code)?.component.kind === 'INFO' ? code : null;
+  };
+  const infoShift = new Map<string, { delta: number; notes: string[] }>();
+  for (const adjustment of adjustments) {
+    const code = infoTarget(adjustment);
+    const size = Number(adjustment.amount);
+    if (!code || !(size > 0)) continue;
+    const signed = adjustment.kind === 'RECOVERY' ? size : -size;
+    const entry = infoShift.get(code) ?? { delta: 0, notes: [] };
+    entry.delta += signed;
+    entry.notes.push(`${signed > 0 ? '+' : '−'}${new Intl.NumberFormat('vi-VN').format(size)} điều chỉnh: ${adjustmentDetail(adjustment)}`);
+    infoShift.set(code, entry);
+  }
+
+  const moneyAdjustments = adjustments.filter((item) => !infoTarget(item));
+  const recovery = moneyAdjustments.filter((item) => item.kind === 'RECOVERY')
     .reduce((sum, item) => sum + Math.max(0, round(Number(item.amount))), 0);
-  const clawback = adjustments.filter((item) => item.kind === 'CLAWBACK')
+  const clawback = moneyAdjustments.filter((item) => item.kind === 'CLAWBACK')
     .reduce((sum, item) => sum + Math.max(0, round(Number(item.amount))), 0);
 
   const system = systemScope(stats, params, inputs, { recovery, clawback });
@@ -564,6 +586,12 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
       detail = row.origin ? `Giá trị · ${row.origin}` : 'Giá trị';
     }
 
+    const shift = row.component.kind === 'INFO' ? infoShift.get(code) : undefined;
+    if (shift) {
+      value += shift.delta;
+      detail = [detail, ...shift.notes].filter(Boolean).join(' · ');
+    }
+
     if (!Number.isFinite(value)) {
       value = 0;
       failed = true;
@@ -600,16 +628,42 @@ export function computePayslip(args: ComputePayslipArgs): ComputedPayslip {
     tag: componentByCode.get(line.code)?.report_tag, kind: line.kind, amount: line.amount,
   })));
 
-  // Điều chỉnh tăng / giảm (truy lĩnh, truy thu) — dòng hệ thống ở cuối phiếu.
+  // Điều chỉnh tăng / giảm (truy lĩnh, truy thu). Gắn vào đầu mục nào thì sửa
+  // thẳng số của đầu mục đó trên phiếu; không gắn thì là dòng riêng ở cuối phiếu.
+  // `kind` luôn là chiều tác động lên THỰC NHẬN, nên với đầu mục là khoản trừ
+  // thì "tăng thực nhận" nghĩa là giảm khoản trừ.
   for (const adjustment of adjustments) {
     const amount = round(Number(adjustment.amount));
     if (!(amount > 0)) continue;
+    if (infoTarget(adjustment)) continue; // đã cộng vào giá trị đầu mục ở trên
     const recoveryLine = adjustment.kind === 'RECOVERY';
+    const targetCode = adjustment.component_code?.trim().toUpperCase();
+    const target = targetCode
+      ? lines.find((line) => line.code.toUpperCase() === targetCode
+        && (line.kind === 'EARNING' || line.kind === 'DEDUCTION') && !line.code.startsWith('ADJ_'))
+      : undefined;
+    if (target) {
+      const sign = recoveryLine === (target.kind === 'EARNING') ? 1 : -1;
+      target.amount = round(target.amount + sign * amount);
+      const note = `${sign > 0 ? '+' : '−'}${new Intl.NumberFormat('vi-VN').format(amount)} điều chỉnh: ${adjustmentDetail(adjustment)}`;
+      target.detail = target.detail ? `${target.detail} · ${note}` : note;
+      if (target.amount < 0) {
+        warnings.push(`${profile.name}: điều chỉnh làm “${target.name}” âm — kiểm tra lại số tiền điều chỉnh.`);
+      }
+      trace?.push({
+        code: target.code, label: target.name, kind: target.kind, mode: 'ADJUSTMENT',
+        result: sign * amount, note: adjustment.reason,
+      });
+      continue;
+    }
+    const targetName = targetCode ? nameOf(targetCode) : null;
     const line: ComputedLine = {
       code: recoveryLine ? 'ADJ_RECOVERY' : 'ADJ_CLAWBACK',
-      name: recoveryLine
-        ? (adjustment.origin_month ? 'Truy lĩnh kỳ trước' : 'Điều chỉnh tăng')
-        : (adjustment.origin_month ? 'Truy thu kỳ trước' : 'Điều chỉnh giảm'),
+      name: targetName
+        ? `${targetName} — ${recoveryLine ? 'điều chỉnh tăng' : 'điều chỉnh giảm'}`
+        : recoveryLine
+          ? (adjustment.origin_month ? 'Truy lĩnh kỳ trước' : 'Điều chỉnh tăng')
+          : (adjustment.origin_month ? 'Truy thu kỳ trước' : 'Điều chỉnh giảm'),
       kind: recoveryLine ? 'EARNING' : 'DEDUCTION',
       amount,
       detail: adjustmentDetail(adjustment),

@@ -74,7 +74,7 @@ chốt khi chỉ còn một kết quả; `+ − × ÷ ( )` và `x`, `:`, `%` th�
 - **Quyền theo chức năng** (`can_function()` / `hasAdminFunction()`): `admin.payroll_components`
   (danh mục), `admin.payroll_settings` (tham số, thiết kế cơ chế), `admin.payroll_schemes`
   (áp dụng cho nhân sự), `admin.payroll_inputs`, `admin.payroll_adjustments`,
-  `admin.payroll`, `admin.payroll_approve` (Ban Giám đốc).
+  `admin.payroll`, `admin.payroll_approve` (Phê duyệt lương — Admin/CEO có sẵn; giao thêm cho Ban Giám đốc, Kế toán trưởng hoặc người được uỷ quyền).
 - **Giao diện không dẫn chiếu tài liệu đặc tả** (mã BR-PAY / FR06…), kể cả câu lỗi từ
   database và ghi chú gieo sẵn.
 
@@ -258,7 +258,7 @@ cũng khớp engine cũ cho cả 12 người. Khác biệt đã biết:
 1. Chạy sáu migration M06 theo thứ tự tên file.
 2. **Bật MFA TOTP cho Supabase Auth** (local: `supabase/config.toml` `[auth.mfa.totp]`;
    hosted: Dashboard → Authentication → Multi-Factor). Chưa bật thì không khoá kỳ được.
-3. Giao chức năng **Phê duyệt lương** (`admin.payroll_approve`) cho Ban Giám đốc.
+3. Giao chức năng **Phê duyệt lương** (`admin.payroll_approve`) cho Ban Giám đốc và/hoặc Kế toán trưởng. Admin/CEO có sẵn quyền này. Người khoá kỳ (hoặc người trình đề xuất) không tự duyệt kỳ/đề xuất của chính mình, trừ Admin/CEO.
 4. Kế toán: kiểm tra bộ tham số (đặc biệt các điểm ở mục cuối) → mở *Cơ chế lương*, rà
    *Cơ chế chung* và các cơ chế đã chuyển (hoặc tạo từ gợi ý khối Văn phòng / Kinh doanh)
    → gán cơ chế cho các khối → khai giá trị riêng cho từng người rồi trình BGĐ → khai tài

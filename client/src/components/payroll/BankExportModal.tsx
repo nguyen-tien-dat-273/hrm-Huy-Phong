@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { stripVietnamese } from '@/lib/tableExport';
 import { fetchBankAccounts, fetchBankTemplates, recordBankExport } from '@/lib/payrollData';
 import type { BankExportField, EmployeeBankAccount, PayrollBankTemplate, PayrollRun, Profile } from '@/types';
@@ -115,7 +116,14 @@ export function BankExportModal({ open, run, rows, onClose, onExported }: BankEx
   return (
     <Modal open={open} onClose={busy ? () => undefined : onClose} title={`File chi lương tháng ${mm}/${yyyy}`} size="lg">
       {loading ? (
-        <p className="py-8 text-center text-sm text-slate-500">Đang tải mẫu ngân hàng…</p>
+        <div className="space-y-4" role="status" aria-busy="true">
+          <span className="sr-only">Đang tải mẫu ngân hàng…</span>
+          <div className="space-y-1.5">
+            <Skeleton className="h-4 w-36 !rounded-md" />
+            <Skeleton className="h-11 w-full" />
+          </div>
+          <Skeleton className="h-28 w-full" />
+        </div>
       ) : templates.length === 0 ? (
         <p className="py-8 text-center text-sm text-slate-500">Chưa có mẫu file ngân hàng nào đang dùng.</p>
       ) : (

@@ -209,7 +209,7 @@ function AppRoutes() {
       <Route path="/admin/payroll/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
       <Route path="/admin/payroll/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
       {/* Trang cũ "Công thức theo khối" đã gộp vào Cơ chế lương. */}
-      <Route path="/admin/payroll/formulas" element={<Navigate to="/admin/payroll/schemes?tab=design" replace />} />
+      <Route path="/admin/payroll/formulas" element={<Navigate to="/admin/payroll/schemes" replace />} />
       <Route path="/admin/payroll/approvals" element={admin('attendance', <AdminPayroll section="approvals" />, { functionCode: 'admin.payroll_approve' })} />
       <Route path="/admin/leave" element={adminAny(['leave', 'attendance', 'users'], <AdminLeave />)} />
       <Route path="/admin/training" element={admin('training', <AdminTraining />)} />

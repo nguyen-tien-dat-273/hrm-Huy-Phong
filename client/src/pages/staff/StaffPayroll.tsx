@@ -18,7 +18,7 @@ import {
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { MonthNav } from '@/components/ui/MonthNav';
-import { Skeleton } from '@/components/ui/Skeleton';
+import { PayslipSkeleton } from '@/components/payroll/PayrollSkeletons';
 import { PayslipBreakdown, type BreakdownLine } from '@/components/payroll/PayslipBreakdown';
 import { ReauthDialog } from '@/components/payroll/ReauthDialog';
 import { OrgContact } from '@/components/OrgContact';
@@ -102,7 +102,7 @@ export function StaffPayroll() {
       </div>
 
       {loading ? (
-        <div className="space-y-5"><Skeleton className="h-36" /><Skeleton className="h-80" /></div>
+        <PayslipSkeleton />
       ) : payslip ? (
         <PayslipView payslip={payslip} lines={breakdown} monthLabel={monthLabel} employeeName={profile?.name ?? payslip.employee_name} />
       ) : status?.published ? (
@@ -131,7 +131,7 @@ export function StaffPayroll() {
             </h2>
             <p className="mx-auto mt-1 max-w-lg text-sm text-slate-500">
               {status?.inProgress
-                ? 'Phiếu lương sẽ hiện ở đây khi Ban Giám đốc duyệt chi và công ty xác nhận đã chi trả. Bạn sẽ nhận được thông báo.'
+                ? 'Phiếu lương sẽ hiện ở đây khi kỳ lương được duyệt chi và công ty xác nhận đã chi trả. Bạn sẽ nhận được thông báo.'
                 : 'Kỳ lương tháng này chưa được tính hoặc bạn không có phiếu trong kỳ.'}
             </p>
           </CardContent>
@@ -223,7 +223,7 @@ function PayslipView({ payslip, lines, monthLabel, employeeName }: {
 
       <p className="flex items-start gap-2 text-xs leading-relaxed text-slate-400 no-print">
         <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        Phiếu đã được Ban Giám đốc duyệt và không thay đổi. Nếu thấy sai sót, liên hệ HR/C&B — điều chỉnh sẽ ghi vào kỳ lương sau.
+        Phiếu đã được duyệt chi và không thay đổi. Nếu thấy sai sót, liên hệ HR/C&B — điều chỉnh sẽ ghi vào kỳ lương sau.
       </p>
     </>
   );

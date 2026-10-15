@@ -455,9 +455,8 @@ export interface PayComponent {
 }
 
 /**
- * Hồ sơ lương của một người, áp dụng từ `effective_from`. Giờ chỉ còn dùng
- * `template_id` (cơ chế gán riêng); các cột thuế / bảo hiểm còn lại để đọc
- * lịch sử.
+ * Hồ sơ lương của một người, áp dụng từ `effective_from`. Chỉ còn để đọc lịch
+ * sử — cơ chế lương không đọc bảng này nữa.
  */
 export interface EmployeePayProfile {
   id: string;
@@ -473,21 +472,8 @@ export interface EmployeePayProfile {
   tax_mode: TaxMode;
   flat_tax_rate: number;
   standard_days_override: number | null;
-  /** Cơ chế lương gán riêng. NULL = theo cơ chế của đơn vị trên cây tổ chức. */
-  template_id?: string | null;
   note: string | null;
   created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/** Cơ chế lương: bộ đầu mục và cách tính, gán cho đơn vị hoặc từng người. */
-export interface PayrollTemplate {
-  id: string;
-  code: string;
-  name: string;
-  description: string | null;
-  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -495,30 +481,8 @@ export interface PayrollTemplate {
 /** Cách một dòng cơ chế lấy giá trị — xem `lib/payrollVariables.ts`. */
 export type PayrollRowMode = 'FORMULA' | 'VALUE' | 'PER_PERSON' | 'MONTHLY_INPUT';
 
-/** Một dòng của cơ chế lương, có ngày hiệu lực. */
-export interface PayrollTemplateItem {
-  id: string;
-  template_id: string;
-  component_id: string;
-  mode?: PayrollRowMode;
-  /** Thứ tự hiện trên phiếu. */
-  sort_order?: number;
-  /** Giá trị của dòng "Giá trị" (NULL = theo danh mục). */
-  amount: number | null;
-  formula: string | null;
-  effective_from: string;
-  effective_to: string | null;
-  note: string | null;
-}
-
-/** Cơ chế áp cho đơn vị từ tháng nào. `template_id` NULL = chặn thừa hưởng từ cấp trên. */
-export interface UnitPayrollTemplate {
-  id: string;
-  unit_id: string;
-  template_id: string | null;
-  effective_from: string;
-  note: string | null;
-}
+/** Dòng của cơ chế chung đơn vị: thêm `OFF` = đơn vị này bỏ dòng của cấp trên. */
+export type UnitRowMode = PayrollRowMode | 'OFF';
 
 export type SchemeRequestStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
@@ -531,11 +495,9 @@ export interface SchemePayloadItem {
   amount: number | null;
   formula: string | null;
   note?: string | null;
-}
-
-/** Phần hồ sơ trong đề xuất của một người: cơ chế gán riêng (NULL = theo đơn vị). */
-export interface SchemePayloadProfile {
-  template_id: string | null;
+  /** Chỉ dòng của đơn vị: cách lấy giá trị. Khai riêng của người không có. */
+  mode?: UnitRowMode;
+  sort_order?: number | null;
 }
 
 /** Đề xuất khai riêng (giá trị / công thức / cơ chế) cho một người hoặc đơn vị, chờ BGĐ ký duyệt. */
@@ -547,7 +509,7 @@ export interface PayrollSchemeRequest {
   unit_id: string | null;
   effective_from: string;
   status: SchemeRequestStatus;
-  payload: { profile?: SchemePayloadProfile; items: SchemePayloadItem[] };
+  payload: { items: SchemePayloadItem[] };
   note: string | null;
   created_by: string | null;
   created_at: string;
@@ -651,15 +613,19 @@ export interface EmployeePayItem {
 }
 
 /**
- * Một khoản lương gán cho cả ĐƠN VỊ. Mọi người trong đơn vị thừa hưởng; ai có
- * bản gán riêng (`EmployeePayItem`) cùng khoản thì bản riêng thắng.
+ * Một dòng của CƠ CHẾ CHUNG của đơn vị. Đơn vị con thừa hưởng; khai lại ở đơn
+ * vị con thì thay hẳn dòng cấp trên, `OFF` thì bỏ dòng đó. Ai có khai riêng
+ * (`EmployeePayItem`) cùng khoản thì bản riêng thắng.
  */
 export interface UnitPayItem {
   id: string;
   unit_id: string;
   component_id: string;
+  mode: UnitRowMode;
   amount: number | null;
   formula: string | null;
+  /** Thứ tự hiện trên phiếu (NULL = theo danh mục). */
+  sort_order: number | null;
   effective_from: string;
   effective_to: string | null;
   note: string | null;

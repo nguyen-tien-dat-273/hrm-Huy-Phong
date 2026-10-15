@@ -1,7 +1,7 @@
 // Kiểm chứng engine lương. Chạy: npm run check:payroll
 import { evaluateFormula, progressiveLookup, tierLookup } from '../payrollFormula';
 import {
-  applyOverride, diffSchemeItems, earliestSchemeMonth, openRequestFor, resolveMechanismRows, resolveTemplateFor,
+  applyOverride, diffSchemeItems, earliestSchemeMonth, openRequestFor, resolveMechanismRows,
 } from '../payrollScheme';
 import {
   computePayslip, orderMechanismRows, splitOvertimeHours, summarisePeriod, systemScope,
@@ -375,6 +375,22 @@ check('truy thu không đổi gross', truyThu.gross, monthly.gross);
 check('truy thu không đổi thu nhập tính thuế', truyThu.values.THU_NHAP_TINH_THUE, monthly.values.THU_NHAP_TINH_THUE);
 check('truy thu trừ vào thực nhận', truyThu.netPay, monthly.netPay - 500_000);
 check('không có điều chỉnh thì không đổi gì', slip(standardRows(), stats(), { adjustments: [] }).netPay, monthly.netPay);
+
+// Điều chỉnh gắn vào đầu mục: sửa thẳng số của đầu mục, không thêm dòng riêng
+const baseWork = amountOf(monthly, 'BASE_WORK');
+const congVaoKhoan = slip(standardRows(), stats(), { adjustments: [adj({ component_code: 'BASE_WORK', amount: 300_000 })] });
+check('cộng vào đầu mục: số đầu mục tăng đúng số điều chỉnh', amountOf(congVaoKhoan, 'BASE_WORK'), baseWork + 300_000);
+check('cộng vào đầu mục: không sinh dòng điều chỉnh riêng', congVaoKhoan.lines.some((l) => l.code === 'ADJ_RECOVERY'), false);
+check('cộng vào đầu mục: gross tăng đúng số điều chỉnh', congVaoKhoan.gross, monthly.gross + 300_000);
+const truKhoan = slip(standardRows(), stats(), { adjustments: [adj({ kind: 'CLAWBACK', component_code: 'BASE_WORK', amount: 200_000 })] });
+check('trừ bớt khỏi đầu mục thu nhập: số đầu mục giảm', amountOf(truKhoan, 'BASE_WORK'), baseWork - 200_000);
+check('trừ bớt khỏi đầu mục thu nhập: thực nhận giảm đúng số đó', truKhoan.netPay, monthly.netPay - 200_000);
+const doiLuongCoBan = slip(standardRows(), stats(), { adjustments: [adj({ component_code: 'LUONG_CO_BAN', amount: 5_000_000 })] });
+check('điều chỉnh đầu mục chỉ để tính: cộng vào giá trị', amountOf(doiLuongCoBan, 'LUONG_CO_BAN'), 25_000_000);
+check('điều chỉnh đầu mục chỉ để tính: không thành dòng tiền riêng', doiLuongCoBan.lines.some((l) => l.code === 'ADJ_RECOVERY'), false);
+check('điều chỉnh đầu mục chỉ để tính: công thức đọc giá trị mới', (amountOf(doiLuongCoBan, 'BASE_WORK') ?? 0) > (baseWork ?? 0), true);
+const khoanChuaCo = slip(standardRows(), stats(), { adjustments: [adj({ component_code: 'KHONG_CO_TREN_PHIEU', amount: 100_000 })] });
+check('đầu mục không có trên phiếu: thành dòng điều chỉnh riêng', khoanChuaCo.lines.some((l) => l.code === 'ADJ_RECOVERY'), true);
 
 // --- Làm tròn thực lĩnh tới hàng nghìn ---------------------------------------
 const lamTron = slip(standardRows({ base: 20_123_456 }), stats(), {
@@ -778,16 +794,12 @@ const donVi = new Map([
   ['kd', { id: 'kd', name: 'Khối Kinh doanh', parent_id: 'hp' }],
   ['kd1', { id: 'kd1', name: 'Phòng KD1', parent_id: 'kd' }],
 ]);
-const bl01 = { id: 'bl01', code: 'BL01', name: 'Khối Văn phòng', description: null, is_active: true, created_at: '', updated_at: '' };
-const bl02 = { id: 'bl02', code: 'BL02', name: 'Khối Kinh doanh', description: null, is_active: true, created_at: '', updated_at: '' };
 const phuCap = comp('PHU_CAP', 'EARNING', { id: 'pc', name: 'Phụ cấp' });
-const dongMau = (id: string, templateId: string, amount: number | null, over: Record<string, unknown> = {}) => ({
-  id, template_id: templateId, component_id: 'pc', mode: 'VALUE' as const, amount, formula: null,
-  taxable: null, insurable: null, sort_order: 10, effective_from: '2026-01-01', effective_to: null, note: null, ...over,
-});
-const dongDonVi = (id: string, unitId: string, amount: number): UnitPayItem => ({
-  id, unit_id: unitId, component_id: 'pc', amount, formula: null, effective_from: '2026-01-01', effective_to: null,
-  note: null, created_by: null, created_at: '', updated_at: '',
+/** Dòng cơ chế chung của một đơn vị; mặc định là dòng "Giá trị" 100.000 từ 01/2026. */
+const dongDonVi = (id: string, unitId: string, over: Partial<UnitPayItem> = {}): UnitPayItem => ({
+  id, unit_id: unitId, component_id: 'pc', mode: 'VALUE', amount: 100_000, formula: null, sort_order: 10,
+  effective_from: '2026-01-01', effective_to: null, note: null, created_by: null, created_at: '', updated_at: '',
+  ...over,
 } as UnitPayItem);
 const dongRieng = (amount: number | null, formula: string | null = null): EmployeePayItem => ({
   id: 'e1', user_id: 'u9', component_id: 'pc', amount, formula, effective_from: '2026-01-01', effective_to: null,
@@ -796,41 +808,40 @@ const dongRieng = (amount: number | null, formula: string | null = null): Employ
 const nguonCay = {
   components: [phuCap],
   unitById: donVi,
-  templates: [bl01, bl02],
-  templateItems: [dongMau('t1', 'bl01', 100_000), dongMau('t2', 'bl02', 200_000)],
-  unitTemplates: [
-    { id: 'a1', unit_id: 'hp', template_id: 'bl01', effective_from: '2026-01-01', note: null },
-    { id: 'a2', unit_id: 'kd', template_id: 'bl02', effective_from: '2026-10-01', note: null },
-  ],
-  unitItems: [] as UnitPayItem[],
+  unitItems: [dongDonVi('c1', 'hp')] as UnitPayItem[],
   employeeItems: [] as EmployeePayItem[],
 };
 const nvKd1 = { id: 'u9', unit_id: 'kd1' };
 const giai = (data: typeof nguonCay, month = '2026-10-01', end = '2026-10-31') =>
-  resolveMechanismRows(nvKd1, null, data as never, month, end);
-check('trước 10/2026: phòng KD1 thừa hưởng cơ chế của công ty',
-  resolveTemplateFor(nvKd1, null, nguonCay as never, '2026-09-01').template?.code, 'BL01');
-check('từ 10/2026: đơn vị GẦN nhất (Khối KD) thắng',
-  resolveTemplateFor(nvKd1, null, nguonCay as never, '2026-10-01').template?.code, 'BL02');
-check('cơ chế gán riêng cho người thắng cơ chế của đơn vị',
-  resolveTemplateFor(nvKd1, { template_id: 'bl01' }, nguonCay as never, '2026-10-01').template?.code, 'BL01');
-check('dòng từ cơ chế ra đúng giá trị của cơ chế, ghi nguồn bằng tên cơ chế',
-  giai(nguonCay).map((r) => [r.amount, r.origin]), [[200_000, 'Khối Kinh doanh']]);
-const coDonVi = { ...nguonCay, unitItems: [dongDonVi('up1', 'kd', 300_000), dongDonVi('up2', 'kd1', 400_000)] };
-check('giá trị chung của đơn vị GẦN nhất thắng cấp trên và cơ chế',
-  giai(coDonVi).map((r) => [r.amount, r.origin]), [[400_000, 'Phòng KD1']]);
+  resolveMechanismRows(nvKd1, data as never, month, end);
+check('đơn vị con thừa hưởng cơ chế chung của công ty, ghi nguồn bằng tên đơn vị',
+  giai(nguonCay).map((r) => [r.amount, r.origin]), [[100_000, 'Huy Phong']]);
+const coKhoi = { ...nguonCay, unitItems: [dongDonVi('c1', 'hp'), dongDonVi('c2', 'kd', { amount: 300_000 })] };
+check('đơn vị GẦN nhất khai lại thì thay hẳn dòng của cấp trên',
+  giai(coKhoi).map((r) => [r.amount, r.origin]), [[300_000, 'Khối Kinh doanh']]);
+const coPhong = { ...coKhoi, unitItems: [...coKhoi.unitItems, dongDonVi('c3', 'kd1', { amount: 400_000 })] };
+check('phòng khai lại thì thắng khối',
+  giai(coPhong).map((r) => [r.amount, r.origin]), [[400_000, 'Phòng KD1']]);
+check('đơn vị khác nhánh không ảnh hưởng',
+  resolveMechanismRows({ id: 'x', unit_id: 'hp' }, coPhong as never, '2026-10-01', '2026-10-31').map((r) => r.amount), [100_000]);
 check('khai riêng của người thắng tất cả',
-  giai({ ...coDonVi, employeeItems: [dongRieng(999_000)] }).map((r) => [r.amount, r.origin]), [[999_000, 'Riêng']]);
-check('cơ chế đã tắt thì không có dòng nào',
-  giai({ ...nguonCay, templates: [bl01, { ...bl02, is_active: false }] }).length, 0);
+  giai({ ...coPhong, employeeItems: [dongRieng(999_000)] }).map((r) => [r.amount, r.origin]), [[999_000, 'Riêng']]);
+check('đơn vị con đặt OFF thì bỏ dòng của cấp trên',
+  giai({ ...nguonCay, unitItems: [dongDonVi('c1', 'hp'), dongDonVi('c4', 'kd', { mode: 'OFF', amount: null })] }).length, 0);
+check('khai riêng thêm lại được dòng đã OFF',
+  giai({ ...nguonCay, unitItems: [dongDonVi('c1', 'hp'), dongDonVi('c4', 'kd', { mode: 'OFF', amount: null })],
+    employeeItems: [dongRieng(50_000)] }).map((r) => [r.mode, r.amount]), [['VALUE', 50_000]]);
 check('đầu mục đã khóa thì không lên phiếu',
   giai({ ...nguonCay, components: [{ ...phuCap, is_active: false }] }).length, 0);
-const coCongThuc = { ...nguonCay, templateItems: [dongMau('t3', 'bl02', null, { mode: 'FORMULA', formula: 'MUC_RIENG * WORK_DAYS' })] };
+const coCongThuc = { ...nguonCay, unitItems: [dongDonVi('c5', 'kd', { mode: 'FORMULA', formula: 'MUC_RIENG * WORK_DAYS', amount: null })] };
 check('mức riêng trên dòng công thức đọc MUC_RIENG: công thức giữ nguyên',
   giai({ ...coCongThuc, employeeItems: [dongRieng(50_000)] }).map((r) => [r.mode, r.formula, r.amount]),
   [['FORMULA', 'MUC_RIENG * WORK_DAYS', 50_000]]);
 check('dòng cơ chế hết hiệu lực trước tháng tính thì không lên phiếu',
-  giai({ ...nguonCay, templateItems: [dongMau('t4', 'bl02', 200_000, { effective_to: '2026-09-30' })] }).length, 0);
+  giai({ ...nguonCay, unitItems: [dongDonVi('c6', 'hp', { effective_to: '2026-09-30' })] }).length, 0);
+check('dòng "Từng người" chưa khai giữ amount null để báo thiếu',
+  giai({ ...nguonCay, unitItems: [dongDonVi('c7', 'hp', { mode: 'PER_PERSON', amount: null })] }).map((r) => [r.mode, r.amount]),
+  [['PER_PERSON', null]]);
 
 // --- Đề xuất cơ chế lương ----------------------------------------------------
 check('tháng áp dụng sớm nhất = tháng sau kỳ đã chốt khi chưa có phiên bản sau đó',

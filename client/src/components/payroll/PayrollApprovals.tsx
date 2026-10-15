@@ -1,5 +1,5 @@
 // ============================================================================
-// Phê duyệt lương — màn của Ban Giám đốc.
+// Phê duyệt lương — màn của người có chức năng Phê duyệt lương (Admin/CEO, Ban Giám đốc, Kế toán trưởng…).
 // ----------------------------------------------------------------------------
 // Hai loại hồ sơ cùng một hàng chờ:
 //   • Đề xuất cơ chế lương — BGĐ thấy đúng phần THAY ĐỔI so với cơ chế hiện
@@ -18,14 +18,14 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
 import { ReauthDialog } from '@/components/payroll/ReauthDialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { isFullAdmin } from '@/lib/permissions';
 import { useToast } from '@/contexts/ToastContext';
 import { formatDateTime, formatVND } from '@/lib/utils';
-import { payProfileForPeriod } from '@/lib/payroll';
 import { paramsOf, versionForMonth } from '@/lib/payrollSettings';
 import { describeFormula, formatFormulaNumber } from '@/lib/formulaTokens';
 import { nameResolver } from '@/lib/payrollRun';
 import {
-  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, diffSchemeItems, personalItemsAt, profilePayloadOf, unitItemsAt,
+  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, diffSchemeItems, personalItemsAt, unitItemsAt,
 } from '@/lib/payrollScheme';
 import { stripVietnamese } from '@/lib/tableExport';
 import {
@@ -33,6 +33,8 @@ import {
   reviewPayrollRun, reviewSchemeRequest, type PayrollWorkspace, type RunTotals,
 } from '@/lib/payrollData';
 import { notifyUsers } from '@/lib/assignments';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { ApprovalListSkeleton } from '@/components/payroll/PayrollSkeletons';
 import type { PayComponent, PayrollApprovalEvent, PayrollRun, PayrollSchemeRequest, SchemePayloadItem } from '@/types';
 
 interface PayrollApprovalsProps {
@@ -46,7 +48,7 @@ type Kind = 'ALL' | 'SCHEME' | 'RUN';
 type Decision = 'APPROVED' | 'REJECTED';
 
 const RUN_STATUS_TEXT: Record<PayrollRun['status'], string> = {
-  DRAFT: 'Bản nháp', CALCULATED: 'Đã tính', LOCKED: 'Chờ BGĐ duyệt', APPROVED: 'Đã duyệt chi', PAID: 'Đã chi trả & phát hành',
+  DRAFT: 'Bản nháp', CALCULATED: 'Đã tính', LOCKED: 'Chờ duyệt', APPROVED: 'Đã duyệt chi', PAID: 'Đã chi trả & phát hành',
 };
 
 export const PAYROLL_EVENT_TEXT: Record<string, string> = {
@@ -98,12 +100,11 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
     return (id: string | null | undefined) => (id ? byId.get(id) ?? 'Người dùng đã nghỉ' : '—');
   }, [data.profiles]);
   const componentById = useMemo(() => new Map(data.components.map((c) => [c.id, c])), [data.components]);
-  const templateById = useMemo(() => new Map(data.templates.map((t) => [t.id, t])), [data.templates]);
   const formulaNameOf = useMemo(() => nameResolver(data.components, null), [data.components]);
 
   const targetOf = (request: PayrollSchemeRequest) => (request.target_type === 'USER'
     ? { name: nameOf(request.user_id), sub: data.profiles.find((p) => p.id === request.user_id)?.department ?? 'Nhân sự' }
-    : { name: data.units.find((u) => u.id === request.unit_id)?.name ?? 'Đơn vị đã xoá', sub: 'Giá trị chung của đơn vị' });
+    : { name: data.units.find((u) => u.id === request.unit_id)?.name ?? 'Đơn vị đã xoá', sub: 'Cơ chế chung của đơn vị' });
 
   const toggle = async (key: string, type: 'SCHEME' | 'RUN', id: string) => {
     setExpanded((current) => (current === key ? null : key));
@@ -203,12 +204,12 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
 
       {!canApprove && view === 'pending' && pendingTotal > 0 && (
         <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Bạn đang xem với quyền đọc. Chỉ người có chức năng <strong>Phê duyệt lương</strong> (Ban Giám đốc) được ký.
+          Bạn đang xem với quyền đọc. Chỉ người có chức năng <strong>Phê duyệt lương</strong> được ký.
         </p>
       )}
 
       {loading ? (
-        <Card><CardContent><p className="py-8 text-center text-sm text-slate-500">Đang tải hồ sơ…</p></CardContent></Card>
+        <ApprovalListSkeleton />
       ) : shownSchemes.length === 0 && shownRuns.length === 0 ? (
         <Card>
           <CardContent>
@@ -272,7 +273,8 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
             const key = `scheme-${request.id}`;
             const target = targetOf(request);
             const open = expanded === key || view === 'pending';
-            const ownRequest = request.submitted_by === profile?.id;
+            // Database miễn quy tắc "người trình không tự duyệt" cho Admin/CEO — giao diện khớp theo.
+            const ownRequest = request.submitted_by === profile?.id && !isFullAdmin(profile);
             return (
               <Card key={key}>
                 <CardContent className="space-y-3">
@@ -295,17 +297,17 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                   </div>
                   {request.note && <p className="text-xs text-slate-600"><strong>Căn cứ:</strong> {request.note}</p>}
                   {request.review_note && request.status !== 'SUBMITTED' && (
-                    <p className="text-xs text-slate-600"><strong>Ý kiến BGĐ:</strong> {request.review_note}</p>
+                    <p className="text-xs text-slate-600"><strong>Ý kiến người duyệt:</strong> {request.review_note}</p>
                   )}
                   {open && (
                     request.status === 'SUBMITTED'
-                      ? <SchemeChanges request={request} data={data} componentById={componentById} templateName={(id) => templateById.get(id)?.name ?? 'Cơ chế đã xoá'} />
+                      ? <SchemeChanges request={request} data={data} componentById={componentById} />
                       : <PayloadList items={request.payload.items} componentById={componentById} nameOf={formulaNameOf} />
                   )}
                   {expanded === key && <Timeline rows={events[request.id]} nameOf={nameOf} />}
                   {request.status === 'SUBMITTED' && canApprove && (
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      {ownRequest && <span className="mr-auto text-xs text-slate-500">Bạn là người trình — người khác trong BGĐ phải duyệt.</span>}
+                      {ownRequest && <span className="mr-auto text-xs text-slate-500">Bạn là người trình — người có quyền duyệt khác phải duyệt.</span>}
                       <Button size="sm" variant="danger" disabled={ownRequest} onClick={() => setAction({ type: 'SCHEME', item: request, decision: 'REJECTED' })}>
                         <XCircle className="h-4 w-4" /> Từ chối
                       </Button>
@@ -378,11 +380,10 @@ function PayloadList({ items, componentById, nameOf }: {
 }
 
 /** Phần THAY ĐỔI so với cơ chế đang áp ở tháng hiệu lực — thứ BGĐ ký. */
-function SchemeChanges({ request, data, componentById, templateName }: {
+function SchemeChanges({ request, data, componentById }: {
   request: PayrollSchemeRequest;
   data: PayrollWorkspace;
   componentById: Map<string, PayComponent>;
-  templateName: (id: string) => string;
 }) {
   const month = request.effective_from;
   const monthEnd = monthEndOf(month);
@@ -393,12 +394,6 @@ function SchemeChanges({ request, data, componentById, templateName }: {
     : request.unit_id ? unitItemsAt(data.unitItems, request.unit_id, month, monthEnd) : [];
   const changes = diffSchemeItems(before, request.payload.items).filter((change) => change.kind !== 'SAME');
 
-  const currentTemplate = request.target_type === 'USER' && request.user_id
-    ? profilePayloadOf(payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === request.user_id), monthEnd)).template_id
-    : null;
-  const nextTemplate = request.payload.profile?.template_id ?? null;
-  const templateChanged = request.target_type === 'USER' && (currentTemplate ?? null) !== (nextTemplate ?? null);
-
   // Kiểm tra mức sàn của bộ tham số (nếu có khai), để BGĐ thấy trước khi ký.
   const floorComponent = version?.floorComponentCode ? data.components.find((item) => item.code === version.floorComponentCode) : undefined;
   const floorParam = version?.floorParamCode ? paramsOf(version).find((item) => item.code === version.floorParamCode) : undefined;
@@ -406,7 +401,7 @@ function SchemeChanges({ request, data, componentById, templateName }: {
 
   return (
     <div className="space-y-2">
-      {changes.length === 0 && !templateChanged ? (
+      {changes.length === 0 ? (
         <p className="text-xs text-slate-500">Không đổi gì so với cơ chế hiện hành.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
@@ -419,13 +414,6 @@ function SchemeChanges({ request, data, componentById, templateName }: {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {templateChanged && (
-                <tr>
-                  <td className="px-3 py-1.5 font-semibold text-slate-700">Cơ chế lương</td>
-                  <td className="px-3 py-1.5 text-slate-500">{currentTemplate ? templateName(currentTemplate) : 'Theo đơn vị'}</td>
-                  <td className="px-3 py-1.5 font-semibold text-amber-700">{nextTemplate ? templateName(nextTemplate) : 'Theo đơn vị'}</td>
-                </tr>
-              )}
               {changes.map((change) => {
                 const component = componentById.get(change.componentId);
                 return (
@@ -457,7 +445,15 @@ function SchemeChanges({ request, data, componentById, templateName }: {
 }
 
 export function Timeline({ rows, nameOf }: { rows: PayrollApprovalEvent[] | undefined; nameOf: (id: string | null) => string }) {
-  if (!rows) return <p className="text-xs text-slate-400">Đang tải lịch sử…</p>;
+  if (!rows) {
+    return (
+      <div className="space-y-2 border-l-2 border-slate-100 pl-3" role="status" aria-busy="true">
+        <span className="sr-only">Đang tải lịch sử…</span>
+        <Skeleton className="h-3.5 w-3/4 !rounded-md" />
+        <Skeleton className="h-3.5 w-1/2 !rounded-md" />
+      </div>
+    );
+  }
   if (rows.length === 0) return <p className="text-xs text-slate-400">Chưa có lịch sử.</p>;
   return (
     <ol className="space-y-1.5 border-l-2 border-slate-100 pl-3 text-xs">

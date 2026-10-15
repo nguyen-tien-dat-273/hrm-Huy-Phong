@@ -1,22 +1,18 @@
 // ============================================================================
 // Cơ chế lương của một người, giải theo CÂY tổ chức.
 // ----------------------------------------------------------------------------
-// Dòng lương của một người đến từ ba lớp, lớp trên thắng lớp dưới cho CÙNG một
+// Dòng lương của một người đến từ hai lớp, lớp trên thắng lớp dưới cho CÙNG một
 // đầu mục:
 //
-//   1. Khai riêng cho người          (employee_pay_items)
-//   2. Giá trị chung của đơn vị      (unit_pay_items) — đơn vị GẦN NHẤT trên
-//                                     cây thắng, rồi mới tới cấp trên
-//   3. Cơ chế lương                  (payroll_templates + _items) — cơ chế gán
-//                                     riêng cho người thắng cơ chế của đơn vị
-//                                     gần nhất
-//
-// Lớp 1 và 2 không tạo cơ chế mới: chúng KHAI GIÁ TRỊ cho dòng "Từng người" /
-// "Giá trị", hoặc đổi riêng công thức của một dòng. Đầu mục chưa có trong cơ
-// chế mà vẫn khai riêng thì thành một dòng thêm của riêng người đó.
+//   1. Khai riêng cho người      (employee_pay_items) — thay một dòng, hoặc
+//                                 thêm dòng chỉ người này có.
+//   2. Cơ chế chung của đơn vị   (unit_pay_items) — đi từ đơn vị CAO NHẤT
+//                                 xuống đơn vị của người đó; đơn vị gần nhất
+//                                 thắng. Mỗi dòng mang đủ định nghĩa (công
+//                                 thức / giá trị / từng người / hằng tháng);
+//                                 `OFF` là bỏ dòng của cấp trên.
 //
 // Đi cây bằng đúng `unitLineage` mà KPI đang dùng (`lib/kpiSchemeFor.ts`).
-// Bản database tương ứng: `payroll_template_for(uuid, date)`.
 // ============================================================================
 
 import { unitLineage, type ResolvableUnit } from './kpiSchemeFor';
@@ -24,93 +20,33 @@ import { activeInPeriod, type MechanismRow } from './payroll';
 import { referencedCodes } from './formulaTokens';
 import { OWN_AMOUNT_CODE, type RowMode } from './payrollVariables';
 import type {
-  EmployeePayItem, EmployeePayProfile, PayComponent, PayrollSchemeRequest, PayrollTemplate, PayrollTemplateItem,
-  SchemePayloadItem, SchemePayloadProfile, SchemeRequestStatus, UnitPayItem, UnitPayrollTemplate,
+  EmployeePayItem, PayComponent, PayrollSchemeRequest, SchemePayloadItem, SchemeRequestStatus, UnitPayItem, UnitRowMode,
 } from '@/types';
 
 export interface SchemeSourceData {
   components: readonly PayComponent[];
   unitById: Map<string, ResolvableUnit>;
-  templates: readonly PayrollTemplate[];
-  templateItems: readonly PayrollTemplateItem[];
-  unitTemplates: readonly UnitPayrollTemplate[];
   unitItems: readonly UnitPayItem[];
   employeeItems: readonly EmployeePayItem[];
 }
 
-export interface ResolvedTemplate {
-  template: PayrollTemplate | null;
-  /** 'PERSONAL' = gán riêng; 'UNIT' = thừa hưởng từ đơn vị; null = không có cơ chế. */
-  source: 'PERSONAL' | 'UNIT' | null;
-  fromUnit: ResolvableUnit | null;
-  /** Nhãn ngắn hiện lên màn, ví dụ "Khối Kinh doanh · theo Phòng KD1". */
-  label: string;
-}
-
-/**
- * Cơ chế đang áp cho một người trong tháng.
- *
- * Đơn vị khai "không áp cơ chế" (template_id NULL) là CHẶN thừa hưởng: người
- * trong đơn vị đó không có cơ chế nào, kể cả khi cấp trên có.
- */
-export function resolveTemplateFor(
-  person: { id: string; unit_id?: string | null },
-  payProfile: Pick<EmployeePayProfile, 'template_id'> | null,
-  data: Pick<SchemeSourceData, 'templates' | 'unitTemplates' | 'unitById'>,
-  monthStart: string,
-): ResolvedTemplate {
-  const templateById = new Map(data.templates.map((template) => [template.id, template]));
-
-  if (payProfile?.template_id) {
-    const template = templateById.get(payProfile.template_id) ?? null;
-    return {
-      template, source: 'PERSONAL', fromUnit: null,
-      label: template ? `${template.name} · gán riêng` : 'Cơ chế gán riêng đã bị xoá',
-    };
-  }
-
-  for (const unit of unitLineage(person.unit_id, data.unitById)) {
-    const row = data.unitTemplates
-      .filter((entry) => entry.unit_id === unit.id && entry.effective_from <= monthStart)
-      .sort((a, b) => b.effective_from.localeCompare(a.effective_from))[0];
-    if (!row) continue;
-    if (!row.template_id) {
-      return { template: null, source: 'UNIT', fromUnit: unit, label: `Không áp cơ chế (chặn tại ${unit.name})` };
-    }
-    const template = templateById.get(row.template_id) ?? null;
-    return {
-      template, source: 'UNIT', fromUnit: unit,
-      label: template ? `${template.name} · theo ${unit.name}` : 'Cơ chế đã bị xoá',
-    };
-  }
-
-  return { template: null, source: null, fromUnit: null, label: 'Chưa có cơ chế lương' };
-}
-
-/** Cơ chế áp cho một ĐƠN VỊ (để vẽ cây): của chính nó hoặc cấp trên gần nhất. */
-export function resolveTemplateForUnit(
-  unitId: string,
-  data: Pick<SchemeSourceData, 'templates' | 'unitTemplates' | 'unitById'>,
-  monthStart: string,
-): ResolvedTemplate {
-  return resolveTemplateFor({ id: '', unit_id: unitId }, null, data, monthStart);
-}
-
-/** Dòng của một cơ chế còn hiệu lực trong tháng, đúng thứ tự hiện trên phiếu. */
-export function templateRowsAt(
-  templateItems: readonly PayrollTemplateItem[],
-  templateId: string,
-  monthStart: string,
-  monthEnd: string,
-): PayrollTemplateItem[] {
-  return activeInPeriod(templateItems.filter((item) => item.template_id === templateId), monthStart, monthEnd)
-    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-}
-
-/** Cách lấy giá trị của một dòng cơ chế đã lưu (dòng cũ chưa có cột mode thì suy ra). */
-export function rowModeOf(item: Pick<PayrollTemplateItem, 'mode' | 'formula'>): RowMode {
+/** Cách lấy giá trị của một dòng đơn vị đã lưu (dòng cũ chưa có cột mode thì suy ra). */
+export function unitRowModeOf(item: Pick<UnitPayItem, 'mode' | 'formula'>): UnitRowMode {
   if (item.mode) return item.mode;
   return item.formula?.trim() ? 'FORMULA' : 'VALUE';
+}
+
+/** Dòng cơ chế đọc từ một dòng đơn vị (không phải OFF). */
+function rowOfUnitItem(item: UnitPayItem, component: PayComponent, origin: string): MechanismRow {
+  const mode = unitRowModeOf(item) as RowMode;
+  return {
+    component,
+    mode,
+    formula: mode === 'FORMULA' ? item.formula : null,
+    amount: item.amount == null ? null : Number(item.amount),
+    sortOrder: item.sort_order ?? component.sort_order,
+    origin,
+  };
 }
 
 /**
@@ -148,83 +84,77 @@ export function applyOverride(
 }
 
 /**
+ * Dòng của cơ chế chung áp cho một ĐƠN VỊ: đi từ cấp cao nhất xuống đơn vị đó,
+ * dòng khai lại thay dòng cấp trên, `OFF` bỏ dòng. Đầu mục đã ngừng hoạt động
+ * thì bỏ.
+ */
+export function unitMechanismRows(
+  unitId: string | null | undefined,
+  data: Pick<SchemeSourceData, 'components' | 'unitById' | 'unitItems'>,
+  monthStart: string,
+  monthEnd: string,
+): Map<string, MechanismRow> {
+  const componentById = new Map(data.components.map((component) => [component.id, component]));
+  const rows = new Map<string, MechanismRow>();
+  for (const unit of [...unitLineage(unitId, data.unitById)].reverse()) {
+    for (const item of activeInPeriod(data.unitItems.filter((row) => row.unit_id === unit.id), monthStart, monthEnd)) {
+      const component = componentById.get(item.component_id);
+      if (!component) continue;
+      if (unitRowModeOf(item) === 'OFF') { rows.delete(component.id); continue; }
+      if (!component.is_active) continue;
+      rows.set(component.id, rowOfUnitItem(item, component, unit.name));
+    }
+  }
+  return rows;
+}
+
+/**
  * Toàn bộ dòng lương áp cho một người trong tháng, mỗi dòng kèm nguồn.
  * Đầu mục đã ngừng hoạt động thì bỏ.
  */
 export function resolveMechanismRows(
   person: { id: string; unit_id?: string | null },
-  payProfile: Pick<EmployeePayProfile, 'template_id'> | null,
   data: SchemeSourceData,
   monthStart: string,
   monthEnd: string,
 ): MechanismRow[] {
   const componentById = new Map(data.components.map((component) => [component.id, component]));
-  const rows = new Map<string, MechanismRow>();
+  const rows = unitMechanismRows(person.unit_id, data, monthStart, monthEnd);
 
-  // Lớp 3 — cơ chế.
-  const template = resolveTemplateFor(person, payProfile, data, monthStart).template;
-  if (template && template.is_active) {
-    for (const item of templateRowsAt(data.templateItems, template.id, monthStart, monthEnd)) {
-      const component = componentById.get(item.component_id);
-      if (!component || !component.is_active) continue;
-      rows.set(component.id, {
-        component,
-        mode: rowModeOf(item),
-        formula: item.formula,
-        amount: item.amount == null ? null : Number(item.amount),
-        sortOrder: item.sort_order ?? component.sort_order,
-        origin: template.name,
-      });
-    }
+  for (const item of activeInPeriod(data.employeeItems.filter((row) => row.user_id === person.id), monthStart, monthEnd)) {
+    const component = componentById.get(item.component_id);
+    if (!component || !component.is_active) continue;
+    rows.set(component.id, applyOverride(rows.get(component.id), component, item, 'Riêng'));
   }
-
-  const apply = (items: ReadonlyArray<{ component_id: string; amount: number | null; formula: string | null }>, origin: string) => {
-    for (const item of items) {
-      const component = componentById.get(item.component_id);
-      if (!component || !component.is_active) continue;
-      rows.set(component.id, applyOverride(rows.get(component.id), component, item, origin));
-    }
-  };
-
-  // Lớp 2 — giá trị chung của đơn vị, đi từ CẤP CAO NHẤT xuống đơn vị của người
-  // đó để đơn vị gần nhất ghi đè sau cùng.
-  const lineage = unitLineage(person.unit_id, data.unitById);
-  for (const unit of [...lineage].reverse()) {
-    apply(activeInPeriod(data.unitItems.filter((row) => row.unit_id === unit.id), monthStart, monthEnd), unit.name);
-  }
-
-  // Lớp 1 — khai riêng.
-  apply(activeInPeriod(data.employeeItems.filter((row) => row.user_id === person.id), monthStart, monthEnd), 'Riêng');
 
   return [...rows.values()].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-/** Dòng cơ chế của một ĐƠN VỊ (không gồm khai riêng của chính đơn vị đó) — để xem khi khai giá trị chung. */
-export function resolveUnitRows(
-  unitId: string,
+/** Dòng cơ chế của một người KHÔNG gồm khai riêng — để so với khai riêng đang soạn. */
+export function resolveSharedRows(
+  person: { id: string; unit_id?: string | null },
   data: SchemeSourceData,
   monthStart: string,
   monthEnd: string,
 ): MechanismRow[] {
-  return resolveMechanismRows(
-    { id: '', unit_id: unitId },
-    null,
-    { ...data, unitItems: data.unitItems.filter((row) => row.unit_id !== unitId), employeeItems: [] },
-    monthStart,
-    monthEnd,
-  );
+  return [...unitMechanismRows(person.unit_id, data, monthStart, monthEnd).values()].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 // ---------------------------------------------------------------------------
 // Đề xuất cơ chế lương
 // ---------------------------------------------------------------------------
 
-function payloadItemOf(row: { component_id: string; amount: number | null; formula: string | null; note: string | null }): SchemePayloadItem {
+function payloadItemOf(row: {
+  component_id: string; amount: number | null; formula: string | null; note: string | null;
+  mode?: UnitRowMode; sort_order?: number | null;
+}): SchemePayloadItem {
   return {
     component_id: row.component_id,
     amount: row.amount == null ? null : Number(row.amount),
     formula: row.formula?.trim() || null,
     note: row.note,
+    ...(row.mode ? { mode: row.mode } : {}),
+    ...(row.sort_order != null ? { sort_order: row.sort_order } : {}),
   };
 }
 
@@ -235,21 +165,19 @@ export function personalItemsAt(
   monthStart: string,
   monthEnd: string,
 ): SchemePayloadItem[] {
-  return activeInPeriod(employeeItems.filter((row) => row.user_id === userId), monthStart, monthEnd).map(payloadItemOf);
+  return activeInPeriod(employeeItems.filter((row) => row.user_id === userId), monthStart, monthEnd)
+    .map((row) => payloadItemOf({ ...row, mode: undefined, sort_order: undefined }));
 }
 
-/** Giá trị chung của một đơn vị còn hiệu lực ở tháng. */
+/** Dòng cơ chế chung KHAI TRỰC TIẾP ở một đơn vị, còn hiệu lực ở tháng (không gồm dòng thừa hưởng). */
 export function unitItemsAt(
   unitItems: readonly UnitPayItem[],
   unitId: string,
   monthStart: string,
   monthEnd: string,
 ): SchemePayloadItem[] {
-  return activeInPeriod(unitItems.filter((row) => row.unit_id === unitId), monthStart, monthEnd).map(payloadItemOf);
-}
-
-export function profilePayloadOf(current: Pick<EmployeePayProfile, 'template_id'> | null): SchemePayloadProfile {
-  return { template_id: current?.template_id ?? null };
+  return activeInPeriod(unitItems.filter((row) => row.unit_id === unitId), monthStart, monthEnd)
+    .map((row) => payloadItemOf({ ...row, mode: unitRowModeOf(row) }));
 }
 
 export type SchemeChangeKind = 'ADDED' | 'REMOVED' | 'CHANGED' | 'SAME';
@@ -263,7 +191,8 @@ export interface SchemeItemChange {
 
 const sameItem = (a: SchemePayloadItem, b: SchemePayloadItem) =>
   (a.amount ?? null) === (b.amount ?? null)
-  && (a.formula?.trim() || null) === (b.formula?.trim() || null);
+  && (a.formula?.trim() || null) === (b.formula?.trim() || null)
+  && (a.mode ?? null) === (b.mode ?? null);
 
 /**
  * So khai riêng hiện hành với đề xuất, từng đầu mục một — thứ BGĐ cần nhìn
@@ -285,7 +214,7 @@ export function diffSchemeItems(
 }
 
 export const SCHEME_STATUS_LABEL: Record<SchemeRequestStatus, string> = {
-  DRAFT: 'Nháp', SUBMITTED: 'Chờ BGĐ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Bị từ chối', CANCELLED: 'Đã huỷ',
+  DRAFT: 'Nháp', SUBMITTED: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Bị từ chối', CANCELLED: 'Đã huỷ',
 };
 
 export const SCHEME_STATUS_TONE: Record<SchemeRequestStatus, string> = {

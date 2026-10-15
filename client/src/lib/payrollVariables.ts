@@ -153,7 +153,7 @@ export const ROW_MODE_LABEL: Record<RowMode, string> = {
 
 export const ROW_MODE_HINT: Record<RowMode, string> = {
   FORMULA: 'Tính từ tham số, dữ liệu chấm công và các đầu mục khác — hoặc gõ thẳng một con số cố định',
-  VALUE: 'Một con số chung; từng người / đơn vị khai riêng được',
-  PER_PERSON: 'Khai cho từng người ở tab Áp dụng — bắt buộc',
+  VALUE: 'Một con số chung; từng người khai riêng được',
+  PER_PERSON: 'Khai cho từng người ở trang Cơ chế lương — bắt buộc',
   MONTHLY_INPUT: 'Nhập mỗi tháng ở màn Số liệu lương tháng',
 };

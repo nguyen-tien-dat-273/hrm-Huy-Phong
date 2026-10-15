@@ -3,7 +3,7 @@ import {
   BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
-  ArrowLeftRight, Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
+  Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
   FileBarChart, Fingerprint, WalletCards,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
@@ -55,11 +55,10 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   // bảng lương → BGĐ phê duyệt.
   { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: 'Danh sách đầu mục: cộng vào lương, trừ khỏi lương hoặc chỉ để tính', icon: Receipt, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'khoan luong dau muc phu cap thuong phat tam ung nhom danh muc', functionCode: 'admin.payroll_components' },
   { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Bảng tham số tự tạo: tỷ lệ, đơn giá, thời gian theo ngày hiệu lực', icon: Scale, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tham so ty le don gia thoi gian bang bac thang hieu luc bao hiem', functionCode: 'admin.payroll_settings' },
-  { to: '/admin/payroll/schemes', label: 'Cơ chế lương', description: 'Dựng công thức cho từng đầu mục, áp cho đơn vị và nhân sự', icon: Calculator, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'co che luong cong thuc dau muc ap dung nhan su so do to chuc trinh duyet chay thu', functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] },
-  { to: '/admin/payroll/inputs', label: 'Số liệu lương tháng', description: 'Doanh số, số chuyến… nhập mỗi tháng cho cơ chế lương', icon: SlidersHorizontal, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'so lieu thang doanh so so chuyen nhap hang thang', functionCode: 'admin.payroll_inputs' },
-  { to: '/admin/payroll/adjustments', label: 'Điều chỉnh lương', description: 'Điều chỉnh tăng/giảm, truy lĩnh, truy thu kèm lý do', icon: ArrowLeftRight, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'truy linh truy thu dieu chinh thuong tien mat sai sot ky truoc', functionCode: 'admin.payroll_adjustments' },
+  { to: '/admin/payroll/schemes', label: 'Cơ chế lương', description: 'Cơ chế chung của đơn vị và khai riêng từng nhân sự', icon: Calculator, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'co che luong cong thuc dau muc ap dung nhan su so do to chuc trinh duyet chay thu', functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] },
+  { to: '/admin/payroll/inputs', label: 'Số liệu lương tháng', description: 'Nhập hệ số thay đổi mỗi tháng (doanh số, số chuyến…) và xem lương tạm tính', icon: SlidersHorizontal, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'so lieu thang doanh so so chuyen nhap hang thang', functionCode: 'admin.payroll_inputs' },
   { to: '/admin/payroll', label: 'Bảng lương', description: 'Chạy nháp, khoá kỳ 2FA, file ngân hàng, chi trả & phát hành phiếu', icon: Wallet, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong khoa ky ngan hang', functionCode: 'admin.payroll' },
-  { to: '/admin/payroll/approvals', label: 'Phê duyệt lương', description: 'Ban Giám đốc ký duyệt cơ chế lương và lệnh chi', icon: ClipboardCheck, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'phe duyet bgd ky duyet co che luong chi luong', functionCode: 'admin.payroll_approve' },
+  { to: '/admin/payroll/approvals', label: 'Phê duyệt lương', description: 'Ký duyệt cơ chế lương và lệnh chi lương', icon: ClipboardCheck, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'phe duyet bgd ky duyet co che luong chi luong', functionCode: 'admin.payroll_approve' },
 
   { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
   { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'thu vien quy trinh quy che huong dan pdf' },
