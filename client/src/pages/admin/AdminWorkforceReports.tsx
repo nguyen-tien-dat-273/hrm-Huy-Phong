@@ -502,6 +502,10 @@ function InsuranceReport({ rows }: {
         <SummaryCard icon={<ShieldCheck className="h-4 w-4" />} label="BH NLĐ + doanh nghiệp" value={formatVND(insuranceTotal)} />
         <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Thuế TNCN đã khấu trừ" value={formatVND(taxTotal)} />
       </div>
+      <p className="text-xs leading-relaxed text-slate-500">
+        Số liệu cộng từ các đầu mục có <strong>Nhãn báo cáo</strong> (Danh mục khoản lương) tại thời điểm chốt kỳ.
+        Kỳ mà đầu mục chưa gắn nhãn sẽ hiện 0 ở cột tương ứng — gắn nhãn rồi chạy kỳ sau để có số.
+      </p>
       <ReportTable title="Tổng hợp bảo hiểm và thuế theo kỳ lương đã duyệt">
         <thead><tr><Th>Tháng</Th><Th>Phiếu lương</Th><Th>Thu nhập tính thuế</Th><Th>BH người lao động</Th><Th>BH doanh nghiệp</Th><Th>Thuế TNCN</Th></tr></thead>
         <tbody>{rows.map((row) => <tr key={row.month}><Td>{reportMonthLabel(row.month)}</Td><Td>{row.employees}</Td><Td>{formatVND(row.taxable)}</Td><Td>{formatVND(row.employeeInsurance)}</Td><Td>{formatVND(row.employerInsurance)}</Td><Td>{formatVND(row.incomeTax)}</Td></tr>)}</tbody>

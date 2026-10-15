@@ -125,7 +125,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
 function admin(
   permission: AdminPermission,
   page: ReactNode,
-  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode; denyTeamlead?: boolean } = {},
+  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode | readonly AdminFunctionCode[]; denyTeamlead?: boolean } = {},
 ) {
   return <ProtectedRoute permission={permission} {...options}><AdminLayout>{page}</AdminLayout></ProtectedRoute>;
 }
@@ -203,12 +203,13 @@ function AppRoutes() {
           (lead có quyền chấm công vẫn không vào được). RLS và RPC phía
           database mới là hàng rào thật. */}
       <Route path="/admin/payroll" element={admin('attendance', <AdminPayroll section="register" />, { functionCode: 'admin.payroll' })} />
-      <Route path="/admin/payroll/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: 'admin.payroll_schemes' })} />
+      <Route path="/admin/payroll/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] })} />
       <Route path="/admin/payroll/inputs" element={admin('attendance', <AdminPayroll section="inputs" />, { functionCode: 'admin.payroll_inputs' })} />
       <Route path="/admin/payroll/adjustments" element={admin('attendance', <AdminPayroll section="adjustments" />, { functionCode: 'admin.payroll_adjustments' })} />
       <Route path="/admin/payroll/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
       <Route path="/admin/payroll/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
-      <Route path="/admin/payroll/formulas" element={admin('attendance', <AdminPayroll section="formulas" />, { functionCode: 'admin.payroll_settings' })} />
+      {/* Trang cũ "Công thức theo khối" đã gộp vào Cơ chế lương. */}
+      <Route path="/admin/payroll/formulas" element={<Navigate to="/admin/payroll/schemes?tab=design" replace />} />
       <Route path="/admin/payroll/approvals" element={admin('attendance', <AdminPayroll section="approvals" />, { functionCode: 'admin.payroll_approve' })} />
       <Route path="/admin/leave" element={adminAny(['leave', 'attendance', 'users'], <AdminLeave />)} />
       <Route path="/admin/training" element={admin('training', <AdminTraining />)} />

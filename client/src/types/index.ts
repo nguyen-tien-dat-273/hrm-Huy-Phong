@@ -362,14 +362,21 @@ export interface WorkerStatusLog {
 // Bộ máy lương theo thành phần — xem migration 20260921090000_payroll_engine.
 // ============================================================================
 
-/** Cách quy đổi một khoản lương ra tiền. */
+/** Cách tính kiểu cũ của danh mục — chỉ còn trong dữ liệu cũ; cách tính nay nằm ở dòng cơ chế. */
 export type PayCalcType = 'FIXED' | 'PER_DAY' | 'PER_HOUR' | 'PER_UNIT' | 'PERCENT' | 'FORMULA';
 
 /**
- * EARNING cộng vào lương, DEDUCTION trừ khỏi lương, EMPLOYER_COST là phần
- * doanh nghiệp chịu — hiện trong báo cáo chi phí nhưng KHÔNG trừ của nhân viên.
+ * Loại dòng của một đầu mục: EARNING cộng vào lương, DEDUCTION trừ khỏi
+ * lương, INFO chỉ để tính / hiển thị (không cộng trừ). EMPLOYER_COST chỉ còn
+ * trên phiếu lương cũ (phần doanh nghiệp đóng, không trừ của nhân viên).
  */
-export type PayComponentKind = 'EARNING' | 'DEDUCTION' | 'EMPLOYER_COST';
+export type PayComponentKind = 'EARNING' | 'DEDUCTION' | 'INFO' | 'EMPLOYER_COST';
+
+/**
+ * Nhãn báo cáo của đầu mục: cho báo cáo (nhân sự, bảo hiểm & thuế) biết con số
+ * của đầu mục cộng vào cột nào. Chỉ để báo cáo — công thức và engine không đọc.
+ */
+export type PayReportTag = 'INSURANCE_EMPLOYEE' | 'INSURANCE_EMPLOYER' | 'INCOME_TAX' | 'TAXABLE_INCOME';
 
 /** Cơ chế trả lương gốc. Quyết định `base_amount` mang nghĩa gì. */
 export type PayBasis = 'MONTHLY' | 'HOURLY' | 'DAILY' | 'PIECE' | 'COMMISSION';
@@ -384,9 +391,9 @@ export type TaxMode = 'PROGRESSIVE' | 'FLAT' | 'NONE';
  */
 export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'LOCKED' | 'APPROVED' | 'PAID';
 
-/** Năm nhóm phân loại bắt buộc của khoản lương (BR-PAY-001). */
+/** Nhóm hiển thị của đầu mục trong danh mục. */
 export type PayComponentCategoryCode =
-  | 'THU_NHAP_CO_DINH' | 'THU_NHAP_BIEN_DOI' | 'LAM_THEM_GIO' | 'THUONG_PHAT_SINH' | 'KHAU_TRU_PHAT';
+  | 'THU_NHAP_CO_DINH' | 'THU_NHAP_BIEN_DOI' | 'LAM_THEM_GIO' | 'THUONG_PHAT_SINH' | 'KHAU_TRU_PHAT' | 'SO_LIEU';
 
 export interface PayComponentCategory {
   code: PayComponentCategoryCode;
@@ -397,42 +404,34 @@ export interface PayComponentCategory {
   sort_order: number;
 }
 
-/** Cố định định kỳ / Biến đổi theo hiệu suất, thời gian. */
-export type PayComponentNature = 'FIXED' | 'VARIABLE';
+/** Cố định / Biến đổi theo hiệu suất, thời gian / cả hai. */
+export type PayComponentNature = 'FIXED' | 'VARIABLE' | 'BOTH';
 
-/** ASSIGNED: gán cho người/phòng/mẫu. ENGINE: hệ thống tự tính, không gán được. */
+/** Còn để đọc dữ liệu cũ — mọi đầu mục nay đều là ASSIGNED (không còn khoản hệ thống tự tính). */
 export type PayComponentSource = 'ASSIGNED' | 'ENGINE';
 
-/** Định nghĩa một khoản lương ở cấp công ty. */
+/** Một đầu mục trong danh mục lương. */
 export interface PayComponent {
   id: string;
-  /** Viết hoa không dấu — dùng làm biến trong biểu thức của khoản khác. */
+  /** Viết hoa không dấu — dùng làm biến trong công thức của dòng khác. */
   code: string;
   name: string;
   kind: PayComponentKind;
-  calc_type: PayCalcType;
+  /** Giá trị dùng khi dòng "Giá trị" để trống. */
   default_amount: number;
-  /** PER_HOUR/PER_UNIT: lấy số lượng từ `payroll_inputs` có cùng mã này. */
+  // Cách tính, cờ thuế / bảo hiểm và trần kiểu cũ của danh mục: engine không
+  // còn đọc — mọi cách tính nằm ở công thức của dòng cơ chế. Giữ để đọc lịch sử.
+  calc_type: PayCalcType;
   input_code: string | null;
-  /** PERCENT: tính phần trăm trên giá trị của mã này. */
   base_code: string | null;
   formula: string | null;
   taxable: boolean;
   insurable: boolean;
   prorate: boolean;
-  /** Hệ số làm thêm giờ (1.5/2/3). Phần vượt 100% được miễn thuế TNCN (T04). */
   ot_multiplier: number | null;
-  /** Ngưỡng miễn thuế. Phần vượt vẫn chịu thuế dù `taxable` = false. */
   tax_exempt_cap: number | null;
-  /**
-   * Khoản này là LƯƠNG GỐC.
-   *
-   * Engine lấy nó làm căn cứ suy đơn giá giờ tăng ca và mức đóng bảo hiểm —
-   * nên chỉ một khoản trong danh mục được bật cờ này (database có unique
-   * index chặn).
-   */
+  /** Đầu mục lương gốc kiểu cũ (tối đa một trong danh mục) — engine không còn đọc. */
   is_base: boolean;
-  /** Trần số tiền của khoản, áp sau khi tính xong. */
   max_amount: number | null;
   sort_order: number;
   /**
@@ -442,8 +441,10 @@ export interface PayComponent {
    * một khoản lương nên không có số tiền nào thuộc về nó.
    */
   group_name: string | null;
-  /** Một trong năm nhóm bắt buộc (BR-PAY-001). */
+  /** Nhóm hiển thị trong danh mục — không ảnh hưởng cách tính. */
   category_code: PayComponentCategoryCode;
+  /** Nhãn báo cáo — khi chốt kỳ, số của đầu mục cộng vào cột báo cáo tương ứng. Không ảnh hưởng cách tính. */
+  report_tag?: PayReportTag | null;
   nature: PayComponentNature;
   calc_source: PayComponentSource;
   is_active: boolean;
@@ -453,7 +454,11 @@ export interface PayComponent {
   updated_at: string;
 }
 
-/** Cơ chế lương của một người, áp dụng từ `effective_from`. */
+/**
+ * Hồ sơ lương của một người, áp dụng từ `effective_from`. Giờ chỉ còn dùng
+ * `template_id` (cơ chế gán riêng); các cột thuế / bảo hiểm còn lại để đọc
+ * lịch sử.
+ */
 export interface EmployeePayProfile {
   id: string;
   user_id: string;
@@ -468,7 +473,7 @@ export interface EmployeePayProfile {
   tax_mode: TaxMode;
   flat_tax_rate: number;
   standard_days_override: number | null;
-  /** Mẫu bảng lương gán riêng. NULL = theo mẫu của đơn vị trên cây tổ chức. */
+  /** Cơ chế lương gán riêng. NULL = theo cơ chế của đơn vị trên cây tổ chức. */
   template_id?: string | null;
   note: string | null;
   created_by: string | null;
@@ -476,7 +481,7 @@ export interface EmployeePayProfile {
   updated_at: string;
 }
 
-/** Mẫu bảng lương theo khối (BL 01 / BL 02) — F06.02. */
+/** Cơ chế lương: bộ đầu mục và cách tính, gán cho đơn vị hoặc từng người. */
 export interface PayrollTemplate {
   id: string;
   code: string;
@@ -487,20 +492,26 @@ export interface PayrollTemplate {
   updated_at: string;
 }
 
+/** Cách một dòng cơ chế lấy giá trị — xem `lib/payrollVariables.ts`. */
+export type PayrollRowMode = 'FORMULA' | 'VALUE' | 'PER_PERSON' | 'MONTHLY_INPUT';
+
+/** Một dòng của cơ chế lương, có ngày hiệu lực. */
 export interface PayrollTemplateItem {
   id: string;
   template_id: string;
   component_id: string;
+  mode?: PayrollRowMode;
+  /** Thứ tự hiện trên phiếu. */
+  sort_order?: number;
+  /** Giá trị của dòng "Giá trị" (NULL = theo danh mục). */
   amount: number | null;
   formula: string | null;
-  taxable: boolean | null;
-  insurable: boolean | null;
   effective_from: string;
   effective_to: string | null;
   note: string | null;
 }
 
-/** Mẫu áp cho đơn vị từ tháng nào. `template_id` NULL = chặn thừa hưởng từ cấp trên. */
+/** Cơ chế áp cho đơn vị từ tháng nào. `template_id` NULL = chặn thừa hưởng từ cấp trên. */
 export interface UnitPayrollTemplate {
   id: string;
   unit_id: string;
@@ -511,28 +522,23 @@ export interface UnitPayrollTemplate {
 
 export type SchemeRequestStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
-/** Một khoản trong đề xuất cơ chế lương. */
+/**
+ * Một dòng khai riêng trong đề xuất: giá trị riêng (`amount`) hoặc công thức
+ * riêng (`formula`) cho một đầu mục.
+ */
 export interface SchemePayloadItem {
   component_id: string;
   amount: number | null;
   formula: string | null;
-  taxable?: boolean | null;
-  insurable?: boolean | null;
-  is_base?: boolean | null;
   note?: string | null;
 }
 
+/** Phần hồ sơ trong đề xuất của một người: cơ chế gán riêng (NULL = theo đơn vị). */
 export interface SchemePayloadProfile {
-  dependents: number;
-  insurance_enabled: boolean;
-  insurance_base: number | null;
-  tax_mode: TaxMode;
-  flat_tax_rate: number | null;
-  standard_days_override: number | null;
   template_id: string | null;
 }
 
-/** Đề xuất thay đổi cơ chế lương chờ BGĐ ký duyệt (F06.03, BR-PAY-012). */
+/** Đề xuất khai riêng (giá trị / công thức / cơ chế) cho một người hoặc đơn vị, chờ BGĐ ký duyệt. */
 export interface PayrollSchemeRequest {
   id: string;
   code: string;

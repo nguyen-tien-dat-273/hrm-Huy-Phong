@@ -1,58 +1,39 @@
 // ============================================================================
-// Tham số tính lương theo NGÀY HIỆU LỰC (F06.02).
+// Tham số lương theo NGÀY HIỆU LỰC, xếp trong các BẢNG do người dùng tự tạo.
 // ----------------------------------------------------------------------------
-// Một bộ tham số = mọi con số mà engine cần để tính lương của một tháng:
-// tham số luật định (công chuẩn, bảo hiểm hai phía, KPCĐ, trần đóng, giảm trừ
-// gia cảnh, lương cơ sở / tối thiểu vùng), biểu thuế, tham số công ty dùng
-// trong công thức và biểu bậc thang. Kỳ lương tháng M dùng bộ có
-// `effectiveFrom` lớn nhất mà không vượt M (migration 20261013110000).
+// Một bộ tham số áp từ một tháng tới bộ kế tiếp. Trong bộ có:
 //
-// File này CỐ Ý không còn bộ số "mặc định". Bản trước giữ sẵn biểu thuế, tỷ lệ
-// bảo hiểm, giảm trừ gia cảnh trong code và rơi về đó khi database thiếu — tức
-// con số pháp lý vẫn nằm trong phần mềm, trái yêu cầu "tuyệt đối không
-// hard-code" của F06.02. Giờ thiếu bộ tham số thì bảng lương NÓI là thiếu và
-// không tính, thay vì lặng lẽ tính bằng một bộ số không ai khai.
+//   * Thiết lập chung — thứ hệ thống cần để chạy: công chuẩn khi chưa khai ca
+//     làm việc, cách làm tròn thực lĩnh, (tuỳ chọn) kiểm tra mức sàn.
+//   * Các BẢNG tham số người dùng tự đặt tên và tự thêm tham số: "Bảo hiểm",
+//     "Khấu trừ", "Làm thêm giờ"… Mỗi tham số có loại (thời gian / giá / tỷ lệ
+//     / số lượng) và đơn vị. Hệ thống KHÔNG biết tham số nào là bảo hiểm hay
+//     thuế — nó chỉ là một con số có tên, dùng trong công thức của cơ chế.
+//   * Bảng bậc thang: gọi như một hàm trong công thức, kiểu tra mức (hoa
+//     hồng) hoặc lũy tiến từng phần.
 //
-// `standardHoursPerDay` KHÔNG nằm ở đây: Bảng công dùng nó làm ngưỡng đủ giờ
-// công nên nó là thiết lập vận hành dùng chung, payroll chỉ đọc ké.
+// Kỳ lương tháng M dùng bộ có `effectiveFrom` lớn nhất mà không vượt M. Bộ đã
+// dùng cho kỳ lương đã chốt thì khoá (database chặn).
 // ============================================================================
 
 import { supabase } from './supabase';
 import { describeDbError } from './dbError';
-import { tierLookup, type FormulaFunctions } from './payrollFormula';
+import { progressiveLookup, tierLookup, type FormulaFunctions } from './payrollFormula';
+import {
+  ALL_PARAM_UNITS, PARAM_TYPE_UNITS, formulaValueOf, typeOfUnit,
+  type ParamType, type ParamUnit,
+} from './payrollVariables';
 import type { AppSettings } from './settings';
 
-/** Một bậc của biểu thuế lũy tiến từng phần. */
-export interface PitBracket {
-  step: number;
-  /** NULL ở bậc cuối: không có cận trên. */
-  upperBound: number | null;
-  /** Thuế suất theo phần trăm, ví dụ 5 nghĩa là 5%. */
-  rate: number;
-}
+export type { ParamType, ParamUnit } from './payrollVariables';
 
-export type ParamUnit = 'VND' | '%' | 'HE_SO' | 'NGAY' | 'GIO' | 'LAN';
-export type ParamGroup = 'OT' | 'PENALTY' | 'FUND' | 'COMMISSION' | 'OTHER';
-
-export const PARAM_UNIT_LABEL: Record<ParamUnit, string> = {
-  VND: 'đồng', '%': '%', HE_SO: 'hệ số', NGAY: 'ngày', GIO: 'giờ', LAN: 'lần',
-};
-
-export const PARAM_GROUP_LABEL: Record<ParamGroup, string> = {
-  OT: 'Làm thêm giờ & ca đêm',
-  PENALTY: 'Phạt & khấu trừ tự động',
-  FUND: 'Trích quỹ',
-  COMMISSION: 'Doanh thu & hoa hồng',
-  OTHER: 'Tham số khác',
-};
-
-/** Tham số tự khai — mã dùng thẳng trong công thức. */
-export interface NamedParamDef {
+/** Một tham số — mã của nó dùng thẳng trong công thức. */
+export interface ParamDef {
   code: string;
   name: string;
-  value: number;
+  type: ParamType;
   unit: ParamUnit;
-  group: ParamGroup;
+  value: number;
   note: string | null;
 }
 
@@ -62,88 +43,115 @@ export interface TierRow {
   value: number;
 }
 
-/** Biểu bậc thang — gọi trong công thức như một hàm: `HH_BL02(TY_LE)`. */
-export interface TierTable {
-  code: string;
+/** LOOKUP: trả về mức của bậc chứa giá trị tra. PROGRESSIVE: cộng dồn từng phần. */
+export type TierMode = 'LOOKUP' | 'PROGRESSIVE';
+
+export interface ListParamTable {
+  id: string;
+  kind: 'LIST';
   name: string;
-  inputLabel: string | null;
-  unit: ParamUnit;
   note: string | null;
+  params: ParamDef[];
+}
+
+export interface TierParamTable {
+  id: string;
+  kind: 'TIER';
+  name: string;
+  note: string | null;
+  /** Tên hàm trong công thức. */
+  code: string;
+  mode: TierMode;
+  /** Giá trị đưa vào tra, để người khai công thức biết truyền gì. */
+  inputLabel: string | null;
+  /** Đơn vị của cột giá trị (lũy tiến luôn là %). */
+  unit: ParamUnit;
   rows: TierRow[];
 }
 
-/** Các con số engine hiểu theo NGHĨA RIÊNG (không chỉ là biến trong công thức). */
-export interface PayrollSettings {
-  /** Mẫu số cho người hưởng lương tháng. */
-  standardWorkDays: number;
+export type ParamTable = ListParamTable | TierParamTable;
 
-  /** Phần người lao động trích đóng (%). */
-  socialInsuranceRate: number;
-  healthInsuranceRate: number;
-  unemploymentInsuranceRate: number;
+export type NetRoundingUnit = 1 | 10 | 100 | 1000 | 10000;
+export type NetRoundingMode = 'NEAREST' | 'DOWN' | 'UP';
 
-  /** Phần doanh nghiệp đóng (%). Không trừ vào lương nhân viên. */
-  employerSocialRate: number;
-  employerHealthRate: number;
-  employerUnemploymentRate: number;
-  /** Kinh phí công đoàn doanh nghiệp đóng (%). 0 = không tự tính. */
-  employerUnionFundRate: number;
-
-  /** Trần tiền lương đóng — BHXH/BHYT và BHTN có trần khác nhau. */
-  insuranceSalaryCap: number;
-  unemploymentSalaryCap: number;
-
-  /** Giảm trừ gia cảnh khi tính thuế TNCN. */
-  taxPersonalDeduction: number;
-  taxDependentDeduction: number;
-
-  /** Mức lương cơ sở và lương tối thiểu vùng — gốc của các trần ở trên. */
-  baseSalaryLevel: number;
-  regionalMinimumWage: number;
-  regionCode: 'I' | 'II' | 'III' | 'IV';
-
-  /** Thuế khấu trừ thẳng cho hợp đồng dưới 3 tháng (%). */
-  flatTaxRate: number;
-  /** Số ngày nghỉ không lương trong tháng từ đó trở lên thì không đóng bảo hiểm. */
-  unpaidDaysWaiveInsurance: number;
-  /** Làm tròn thực lĩnh (FR06.04.01) — 1000 nghĩa là tới hàng nghìn. */
-  netRoundingUnit: 1 | 10 | 100 | 1000 | 10000;
-  netRoundingMode: 'NEAREST' | 'DOWN' | 'UP';
-}
-
-export interface PayrollParamVersion extends PayrollSettings {
+export interface PayrollParamVersion {
   /** NULL = bộ đang soạn, chưa lưu. */
   id: string | null;
   /** Ngày đầu tháng bắt đầu hiệu lực, dạng 'YYYY-MM-DD'. */
   effectiveFrom: string;
   label: string | null;
   note: string | null;
-  brackets: PitBracket[];
-  namedParams: NamedParamDef[];
-  tierTables: TierTable[];
   updatedAt: string | null;
+  /** Công chuẩn dùng khi tháng chưa khai ca làm việc. */
+  standardWorkDays: number;
+  netRoundingUnit: NetRoundingUnit;
+  netRoundingMode: NetRoundingMode;
+  /**
+   * Kiểm tra mức sàn khi trình cơ chế (tuỳ chọn): giá trị khai riêng của đầu
+   * mục này không được thấp hơn tham số kia — ví dụ Lương cơ bản ≥ Lương tối
+   * thiểu vùng.
+   */
+  floorComponentCode: string | null;
+  floorParamCode: string | null;
+  tables: ParamTable[];
 }
 
 /**
  * PostgREST trả `numeric` về dạng chuỗi để không mất độ chính xác với số lớn.
- * Ném thẳng chuỗi vào phép chia lương sẽ ra `NaN` im lặng.
+ * Ném thẳng chuỗi vào phép tính lương sẽ ra `NaN` im lặng.
  */
 function num(value: unknown): number {
   const parsed = typeof value === 'string' ? parseFloat(value) : value;
   return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-const UNITS = Object.keys(PARAM_UNIT_LABEL) as ParamUnit[];
-const GROUPS = Object.keys(PARAM_GROUP_LABEL) as ParamGroup[];
+const ROUNDING_UNITS: readonly NetRoundingUnit[] = [1, 10, 100, 1000, 10000];
+
+export function newTableId(): string {
+  return `t${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+}
+
+function unitOf(value: unknown, fallback: ParamUnit): ParamUnit {
+  return ALL_PARAM_UNITS.find((unit) => unit === value) ?? fallback;
+}
+
+function tableFromJson(raw: Record<string, unknown>): ParamTable {
+  const id = typeof raw.id === 'string' && raw.id ? raw.id : newTableId();
+  const name = String(raw.name ?? '');
+  const note = typeof raw.note === 'string' && raw.note.trim() ? raw.note : null;
+  if (raw.kind === 'TIER') {
+    return {
+      id, kind: 'TIER', name, note,
+      code: String(raw.code ?? ''),
+      mode: raw.mode === 'PROGRESSIVE' ? 'PROGRESSIVE' : 'LOOKUP',
+      inputLabel: typeof raw.input_label === 'string' ? raw.input_label : null,
+      unit: unitOf(raw.unit, '%'),
+      rows: (Array.isArray(raw.rows) ? raw.rows as Array<Record<string, unknown>> : [])
+        .map((row) => ({ from: num(row.from), value: num(row.value) })),
+    };
+  }
+  return {
+    id, kind: 'LIST', name, note,
+    params: (Array.isArray(raw.params) ? raw.params as Array<Record<string, unknown>> : []).map((param) => {
+      const unit = unitOf(param.unit, 'VND');
+      const declared = String(param.type ?? '');
+      const type = (Object.keys(PARAM_TYPE_UNITS) as ParamType[]).find((item) => item === declared) ?? typeOfUnit(unit);
+      return {
+        code: String(param.code ?? ''),
+        name: String(param.name ?? ''),
+        type,
+        unit: PARAM_TYPE_UNITS[type].includes(unit) ? unit : PARAM_TYPE_UNITS[type][0],
+        value: num(param.value),
+        note: typeof param.note === 'string' && param.note.trim() ? param.note : null,
+      };
+    }),
+  };
+}
 
 export function versionFromRow(row: Record<string, unknown>): PayrollParamVersion {
-  const brackets = Array.isArray(row.pit_brackets) ? row.pit_brackets as Array<Record<string, unknown>> : [];
-  const params = Array.isArray(row.named_params) ? row.named_params as Array<Record<string, unknown>> : [];
-  const tiers = Array.isArray(row.tier_tables) ? row.tier_tables as Array<Record<string, unknown>> : [];
-  const region = String(row.region_code ?? '');
   const rounding = num(row.net_rounding_unit);
   const mode = String(row.net_rounding_mode ?? '');
-
+  const tables = Array.isArray(row.param_tables) ? row.param_tables as Array<Record<string, unknown>> : [];
   return {
     id: (row.id as string) ?? null,
     effectiveFrom: String(row.effective_from ?? ''),
@@ -151,45 +159,28 @@ export function versionFromRow(row: Record<string, unknown>): PayrollParamVersio
     note: (row.note as string) ?? null,
     updatedAt: (row.updated_at as string) ?? null,
     standardWorkDays: num(row.standard_work_days),
-    socialInsuranceRate: num(row.social_insurance_rate),
-    healthInsuranceRate: num(row.health_insurance_rate),
-    unemploymentInsuranceRate: num(row.unemployment_insurance_rate),
-    employerSocialRate: num(row.employer_social_rate),
-    employerHealthRate: num(row.employer_health_rate),
-    employerUnemploymentRate: num(row.employer_unemployment_rate),
-    employerUnionFundRate: num(row.employer_union_fund_rate),
-    insuranceSalaryCap: num(row.insurance_salary_cap),
-    unemploymentSalaryCap: num(row.unemployment_salary_cap),
-    taxPersonalDeduction: num(row.tax_personal_deduction),
-    taxDependentDeduction: num(row.tax_dependent_deduction),
-    baseSalaryLevel: num(row.base_salary_level),
-    regionalMinimumWage: num(row.regional_minimum_wage),
-    regionCode: (['I', 'II', 'III', 'IV'] as const).find((code) => code === region) ?? 'I',
-    flatTaxRate: num(row.flat_tax_rate),
-    unpaidDaysWaiveInsurance: num(row.unpaid_days_waive_insurance),
-    netRoundingUnit: ([1, 10, 100, 1000, 10000] as const).find((unit) => unit === rounding) ?? 1,
+    netRoundingUnit: ROUNDING_UNITS.find((unit) => unit === rounding) ?? 1,
     netRoundingMode: mode === 'DOWN' || mode === 'UP' ? mode : 'NEAREST',
-    brackets: brackets.map((bracket, index) => ({
-      step: index + 1,
-      upperBound: bracket.upper_bound == null ? null : num(bracket.upper_bound),
-      rate: num(bracket.rate),
-    })),
-    namedParams: params.map((param) => ({
-      code: String(param.code ?? ''),
-      name: String(param.name ?? ''),
-      value: num(param.value),
-      unit: UNITS.find((unit) => unit === param.unit) ?? 'VND',
-      group: GROUPS.find((group) => group === param.group) ?? 'OTHER',
-      note: (param.note as string) ?? null,
-    })),
-    tierTables: tiers.map((tier) => ({
-      code: String(tier.code ?? ''),
-      name: String(tier.name ?? ''),
-      inputLabel: (tier.input_label as string) ?? null,
-      unit: UNITS.find((unit) => unit === tier.unit) ?? '%',
-      note: (tier.note as string) ?? null,
-      rows: (Array.isArray(tier.rows) ? tier.rows as Array<Record<string, unknown>> : [])
-        .map((r) => ({ from: num(r.from), value: num(r.value) })),
+    floorComponentCode: (row.floor_component_code as string) || null,
+    floorParamCode: (row.floor_param_code as string) || null,
+    tables: tables.map(tableFromJson),
+  };
+}
+
+function tableToJson(table: ParamTable): Record<string, unknown> {
+  if (table.kind === 'TIER') {
+    return {
+      id: table.id, kind: 'TIER', name: table.name.trim(), note: table.note?.trim() || null,
+      code: table.code, mode: table.mode, input_label: table.inputLabel?.trim() || null,
+      unit: table.mode === 'PROGRESSIVE' ? '%' : table.unit,
+      rows: table.rows.map((row) => ({ from: row.from, value: row.value })),
+    };
+  }
+  return {
+    id: table.id, kind: 'LIST', name: table.name.trim(), note: table.note?.trim() || null,
+    params: table.params.map((param) => ({
+      code: param.code, name: param.name.trim(), type: param.type, unit: param.unit,
+      value: param.value, note: param.note?.trim() || null,
     })),
   };
 }
@@ -200,43 +191,22 @@ export function versionToRow(version: PayrollParamVersion): Record<string, unkno
     label: version.label?.trim() || null,
     note: version.note?.trim() || null,
     standard_work_days: version.standardWorkDays,
-    social_insurance_rate: version.socialInsuranceRate,
-    health_insurance_rate: version.healthInsuranceRate,
-    unemployment_insurance_rate: version.unemploymentInsuranceRate,
-    employer_social_rate: version.employerSocialRate,
-    employer_health_rate: version.employerHealthRate,
-    employer_unemployment_rate: version.employerUnemploymentRate,
-    employer_union_fund_rate: version.employerUnionFundRate,
-    insurance_salary_cap: version.insuranceSalaryCap,
-    unemployment_salary_cap: version.unemploymentSalaryCap,
-    tax_personal_deduction: version.taxPersonalDeduction,
-    tax_dependent_deduction: version.taxDependentDeduction,
-    base_salary_level: version.baseSalaryLevel,
-    regional_minimum_wage: version.regionalMinimumWage,
-    region_code: version.regionCode,
-    flat_tax_rate: version.flatTaxRate,
-    unpaid_days_waive_insurance: version.unpaidDaysWaiveInsurance,
     net_rounding_unit: version.netRoundingUnit,
     net_rounding_mode: version.netRoundingMode,
-    pit_brackets: version.brackets.map((bracket) => ({ upper_bound: bracket.upperBound, rate: bracket.rate })),
-    named_params: version.namedParams.map((param) => ({
-      code: param.code, name: param.name, value: param.value, unit: param.unit, group: param.group, note: param.note,
-    })),
-    tier_tables: version.tierTables.map((tier) => ({
-      code: tier.code, name: tier.name, input_label: tier.inputLabel, unit: tier.unit, note: tier.note,
-      rows: tier.rows.map((r) => ({ from: r.from, value: r.value })),
-    })),
+    floor_component_code: version.floorComponentCode || null,
+    floor_param_code: version.floorParamCode || null,
+    param_tables: version.tables.map(tableToJson),
   };
 }
 
 export interface ParamVersionsResult {
   versions: PayrollParamVersion[];
-  /** Bảng chưa tồn tại = migration F06.02 chưa chạy. */
+  /** Bảng chưa tồn tại = migration chưa chạy. */
   supported: boolean;
   error: string | null;
 }
 
-/** Mọi bộ tham số, mới nhất trước. Ít dòng (mỗi lần luật đổi một dòng) nên nạp hết. */
+/** Mọi bộ tham số, mới nhất trước. Ít dòng (mỗi lần chính sách đổi một dòng) nên nạp hết. */
 export async function fetchParamVersions(): Promise<ParamVersionsResult> {
   if (!supabase) return { versions: [], supported: false, error: 'Chưa kết nối Supabase.' };
   const { data, error } = await supabase
@@ -281,6 +251,12 @@ export async function deleteParamVersion(id: string): Promise<string | null> {
   return error ? describeDbError(error) : null;
 }
 
+function cloneTable(table: ParamTable): ParamTable {
+  return table.kind === 'TIER'
+    ? { ...table, rows: table.rows.map((row) => ({ ...row })) }
+    : { ...table, params: table.params.map((param) => ({ ...param })) };
+}
+
 /** Bản sao để soạn bộ mới từ một bộ đang có — đổi số nào thì sửa số đó. */
 export function copyVersion(base: PayrollParamVersion, effectiveFrom: string): PayrollParamVersion {
   return {
@@ -290,143 +266,124 @@ export function copyVersion(base: PayrollParamVersion, effectiveFrom: string): P
     label: null,
     note: null,
     updatedAt: null,
-    brackets: base.brackets.map((bracket) => ({ ...bracket })),
-    namedParams: base.namedParams.map((param) => ({ ...param })),
-    tierTables: base.tierTables.map((tier) => ({ ...tier, rows: tier.rows.map((r) => ({ ...r })) })),
+    tables: base.tables.map(cloneTable),
   };
 }
 
-/** Lỗi theo từng ô, để màn hình đỏ đúng ô sai (UI_03). Khoá là tên trường. */
+/** Mọi tham số của bộ, kèm tên bảng chứa nó. */
+export function paramsOf(version: PayrollParamVersion | null): Array<ParamDef & { tableName: string }> {
+  if (!version) return [];
+  return version.tables.flatMap((table) => (table.kind === 'LIST'
+    ? table.params.map((param) => ({ ...param, tableName: table.name }))
+    : []));
+}
+
+export function tierTablesOf(version: PayrollParamVersion | null): TierParamTable[] {
+  return version ? version.tables.filter((table): table is TierParamTable => table.kind === 'TIER') : [];
+}
+
+/** Lỗi theo từng ô, để màn hình đỏ đúng ô sai. Khoá: `general.<trường>`, `table.<id>`, `param.<id>.<chỉ số>`. */
 export type ParamIssues = Partial<Record<string, string>>;
 
+const CODE_PATTERN = /^[A-Z][A-Z0-9_]*$/;
+
 /**
- * Kiểm tra tại chỗ trước khi lưu — cùng ngưỡng với CHECK và trigger ở
- * database, để người khai thấy lỗi ngay ở ô đang gõ chứ không phải lúc bấm lưu.
+ * Kiểm tra tại chỗ trước khi lưu — cùng ngưỡng với trigger ở database, để
+ * người khai thấy lỗi ngay ở ô đang gõ chứ không phải lúc bấm lưu.
  *
- * `reserved`: tên đã có nghĩa trong engine / bộ đánh giá công thức (biến hệ
- * thống, hàm dựng sẵn) — tham số trùng tên sẽ đè biến hệ thống.
+ * `reserved`: tên đã có nghĩa (dữ liệu tự động, hàm dựng sẵn, mã đầu mục) —
+ * tham số trùng tên sẽ đè lên chúng trong công thức.
  */
 export function validateParamVersion(
   version: PayrollParamVersion,
   reserved: ReadonlySet<string>,
 ): ParamIssues {
   const issues: ParamIssues = {};
-  const rate = (key: keyof PayrollSettings, label: string) => {
-    const value = version[key] as number;
-    if (!Number.isFinite(value) || value < 0 || value > 100) issues[key] = `${label} phải từ 0 đến 100%.`;
-  };
-  const money = (key: keyof PayrollSettings, label: string, positive = false) => {
-    const value = version[key] as number;
-    if (!Number.isFinite(value) || value < 0 || (positive && value === 0)) {
-      issues[key] = positive ? `${label} phải lớn hơn 0.` : `${label} không được âm.`;
-    }
-  };
-
-  if (!/^\d{4}-\d{2}-01$/.test(version.effectiveFrom)) issues.effectiveFrom = 'Chọn tháng bắt đầu hiệu lực.';
+  if (!/^\d{4}-\d{2}-01$/.test(version.effectiveFrom)) issues['general.effectiveFrom'] = 'Chọn tháng bắt đầu hiệu lực.';
   if (!Number.isFinite(version.standardWorkDays) || version.standardWorkDays <= 0 || version.standardWorkDays > 31) {
-    issues.standardWorkDays = 'Ngày công chuẩn phải trong khoảng 0–31.';
+    issues['general.standardWorkDays'] = 'Công chuẩn phải trong khoảng 0–31.';
   }
-  rate('socialInsuranceRate', 'BHXH');
-  rate('healthInsuranceRate', 'BHYT');
-  rate('unemploymentInsuranceRate', 'BHTN');
-  rate('employerSocialRate', 'BHXH doanh nghiệp');
-  rate('employerHealthRate', 'BHYT doanh nghiệp');
-  rate('employerUnemploymentRate', 'BHTN doanh nghiệp');
-  rate('employerUnionFundRate', 'KPCĐ');
-  rate('flatTaxRate', 'Thuế khấu trừ thẳng');
-  if (!issues.socialInsuranceRate
-    && version.socialInsuranceRate + version.healthInsuranceRate + version.unemploymentInsuranceRate > 100) {
-    issues.socialInsuranceRate = 'Tổng tỷ lệ người lao động đóng vượt 100%.';
+  if (!!version.floorComponentCode !== !!version.floorParamCode) {
+    issues['general.floor'] = 'Chọn đủ cả đầu mục và tham số để kiểm tra mức sàn, hoặc bỏ trống cả hai.';
   }
-  money('insuranceSalaryCap', 'Trần đóng BHXH/BHYT');
-  money('unemploymentSalaryCap', 'Trần đóng BHTN');
-  money('taxPersonalDeduction', 'Giảm trừ bản thân');
-  money('taxDependentDeduction', 'Giảm trừ người phụ thuộc');
-  money('baseSalaryLevel', 'Mức lương cơ sở', true);
-  money('regionalMinimumWage', 'Lương tối thiểu vùng', true);
-  if (!Number.isFinite(version.unpaidDaysWaiveInsurance)
-    || version.unpaidDaysWaiveInsurance <= 0 || version.unpaidDaysWaiveInsurance > 31) {
-    issues.unpaidDaysWaiveInsurance = 'Số ngày phải trong khoảng 0–31.';
-  }
-
-  if (version.brackets.length === 0) issues.brackets = 'Biểu thuế phải có ít nhất một bậc.';
-  version.brackets.forEach((bracket, index) => {
-    const last = index === version.brackets.length - 1;
-    if (!Number.isFinite(bracket.rate) || bracket.rate < 0 || bracket.rate > 100) {
-      issues[`bracket.${index}`] = `Thuế suất bậc ${index + 1} phải từ 0 đến 100%.`;
-    } else if (!last && bracket.upperBound == null) {
-      issues[`bracket.${index}`] = `Bậc ${index + 1} phải có cận trên — chỉ bậc cuối để trống.`;
-    } else if (last && bracket.upperBound != null) {
-      issues[`bracket.${index}`] = 'Bậc cuối phải để trống cận trên, nếu không thu nhập vượt bậc cuối không bị tính thuế.';
-    } else if (index > 0 && bracket.upperBound != null
-      && (version.brackets[index - 1].upperBound ?? Infinity) >= bracket.upperBound) {
-      issues[`bracket.${index}`] = `Các bậc phải tăng dần (bậc ${index + 1}).`;
-    }
-  });
 
   const seen = new Set<string>();
-  const checkCode = (code: string) => {
-    if (!/^[A-Z][A-Z0-9_]*$/.test(code)) return `Mã "${code || '(trống)'}" phải viết hoa không dấu, bắt đầu bằng chữ.`;
-    if (reserved.has(code)) return `Mã "${code}" trùng tên biến hệ thống.`;
-    if (seen.has(code)) return `Mã "${code}" bị khai hai lần.`;
+  const checkCode = (code: string, what: string) => {
+    if (!CODE_PATTERN.test(code)) return `Mã ${what} "${code || '(trống)'}" phải viết hoa không dấu, bắt đầu bằng chữ.`;
+    if (reserved.has(code)) return `Mã "${code}" trùng tên đầu mục hoặc dữ liệu hệ thống — đổi tên khác.`;
+    if (seen.has(code)) return `Mã "${code}" bị dùng hai lần.`;
     seen.add(code);
     return null;
   };
-  version.namedParams.forEach((param, index) => {
-    const codeIssue = checkCode(param.code);
-    if (codeIssue) issues[`param.${index}`] = codeIssue;
-    else if (!param.name.trim()) issues[`param.${index}`] = `Tham số ${param.code} chưa có tên.`;
-    else if (!Number.isFinite(param.value)) issues[`param.${index}`] = `Giá trị ${param.code} phải là số.`;
-  });
-  version.tierTables.forEach((tier, index) => {
-    const codeIssue = checkCode(tier.code);
-    if (codeIssue) issues[`tier.${index}`] = codeIssue;
-    else if (!tier.name.trim()) issues[`tier.${index}`] = `Biểu ${tier.code} chưa có tên.`;
-    else if (tier.rows.length === 0) issues[`tier.${index}`] = `Biểu ${tier.code} phải có ít nhất một mức.`;
-    else if (tier.rows.some((row) => !Number.isFinite(row.from) || !Number.isFinite(row.value))) {
-      issues[`tier.${index}`] = `Mọi mức của biểu ${tier.code} phải có ngưỡng và giá trị là số.`;
-    } else if (tier.rows.some((row, i) => i > 0 && row.from <= tier.rows[i - 1].from)) {
-      issues[`tier.${index}`] = `Ngưỡng của biểu ${tier.code} phải tăng dần, không trùng nhau.`;
+
+  version.tables.forEach((table) => {
+    if (!table.name.trim()) issues[`table.${table.id}`] = 'Bảng chưa có tên.';
+    if (table.kind === 'TIER') {
+      const codeIssue = checkCode(table.code, 'bảng');
+      if (codeIssue) issues[`table.${table.id}`] = codeIssue;
+      else if (table.rows.length === 0) issues[`table.${table.id}`] = 'Bảng bậc thang phải có ít nhất một bậc.';
+      else if (table.rows.some((row) => !Number.isFinite(row.from) || !Number.isFinite(row.value))) {
+        issues[`table.${table.id}`] = 'Mọi bậc phải có ngưỡng và giá trị là số.';
+      } else if (table.rows.some((row, index) => index > 0 && row.from <= table.rows[index - 1].from)) {
+        issues[`table.${table.id}`] = 'Ngưỡng các bậc phải tăng dần, không trùng nhau.';
+      }
+      return;
     }
+    table.params.forEach((param, index) => {
+      const key = `param.${table.id}.${index}`;
+      if (!param.name.trim()) { issues[key] = 'Tham số chưa có tên.'; return; }
+      const codeIssue = checkCode(param.code, 'tham số');
+      if (codeIssue) { issues[key] = codeIssue; return; }
+      if (!Number.isFinite(param.value)) { issues[key] = `Giá trị "${param.name}" phải là số.`; return; }
+      if (!PARAM_TYPE_UNITS[param.type].includes(param.unit)) issues[key] = 'Đơn vị không thuộc loại tham số đã chọn.';
+    });
   });
 
   return issues;
 }
 
 /**
- * Bộ tham số đầy đủ mà engine cần cho MỘT tháng: bộ có hiệu lực, cộng giờ
- * chuẩn mỗi ngày từ cấu hình hệ thống, và công chuẩn theo lịch làm việc nếu có.
- *
- * Gộp ở đây thay vì để engine tự đọc nhiều nguồn, nhờ vậy `lib/payroll.ts`
- * không phụ thuộc database và kiểm chứng được bằng dữ liệu thuần.
+ * Bộ số engine cần cho MỘT tháng: bộ tham số hiệu lực, giờ chuẩn mỗi ngày và
+ * công chuẩn theo lịch làm việc.
  */
-export interface PayrollParams extends PayrollSettings {
-  /** Giờ làm chuẩn mỗi ngày — dùng quy đổi đơn giá giờ cho tăng ca. */
-  hoursPerDay: number;
-  /** Biểu thuế lũy tiến đang áp dụng. */
-  brackets: PitBracket[];
-  /** Tham số tự khai: mã → giá trị. */
-  namedParams: Readonly<Record<string, number>>;
-  /** Biểu bậc thang, dạng hàm cho bộ đánh giá công thức. */
-  tierFunctions: FormulaFunctions;
-  /** Bộ tham số gốc, để phiếu lương ghi lại đã tính theo bộ nào. */
+export interface PayrollParams {
   versionEffectiveFrom: string;
+  /** Công chuẩn của tháng: theo lịch làm việc, chưa khai ca thì theo bộ tham số. */
+  standardDays: number;
+  hoursPerDay: number;
+  netRoundingUnit: NetRoundingUnit;
+  netRoundingMode: NetRoundingMode;
+  /** Mã tham số → giá trị đưa vào công thức (% đã đổi ra phần trăm thật). */
+  values: Readonly<Record<string, number>>;
+  /** Bảng bậc thang, dạng hàm cho bộ đánh giá công thức. */
+  functions: FormulaFunctions;
+  /** Mã tham số / bảng → tên hiển thị, cho nhật ký tính và cảnh báo. */
+  names: Readonly<Record<string, string>>;
+}
+
+export function tierFunctionOf(table: TierParamTable): (value: number) => number {
+  if (table.mode === 'PROGRESSIVE') return progressiveLookup(table.rows);
+  return tierLookup(table.rows.map((row) => ({ from: row.from, value: formulaValueOf(row.value, table.unit) })));
 }
 
 export function toPayrollParams(
   version: PayrollParamVersion,
   app: Pick<AppSettings, 'standardHoursPerDay'>,
-  /** Công chuẩn theo lịch làm việc của tháng (BR-PAY-001), thắng con số khai tay. */
+  /** Công chuẩn theo lịch làm việc của tháng, thắng con số khai tay. */
   calendarStandardDays?: number | null,
 ): PayrollParams {
   return {
-    ...version,
-    standardWorkDays: calendarStandardDays ?? version.standardWorkDays,
-    hoursPerDay: app.standardHoursPerDay,
-    brackets: version.brackets,
-    namedParams: Object.fromEntries(version.namedParams.map((param) => [param.code, param.value])),
-    tierFunctions: Object.fromEntries(version.tierTables.map((tier) => [tier.code, tierLookup(tier.rows)])),
     versionEffectiveFrom: version.effectiveFrom,
+    standardDays: calendarStandardDays ?? version.standardWorkDays,
+    hoursPerDay: app.standardHoursPerDay,
+    netRoundingUnit: version.netRoundingUnit,
+    netRoundingMode: version.netRoundingMode,
+    values: Object.fromEntries(paramsOf(version).map((param) => [param.code, formulaValueOf(param.value, param.unit)])),
+    functions: Object.fromEntries(tierTablesOf(version).map((table) => [table.code, tierFunctionOf(table)])),
+    names: Object.fromEntries([
+      ...paramsOf(version).map((param) => [param.code, param.name] as const),
+      ...tierTablesOf(version).map((table) => [table.code, table.name] as const),
+    ]),
   };
 }
 
@@ -438,4 +395,23 @@ export function firstEditableMonth(lastClosedMonth: string | null, today: string
   const next = new Date(year, month, 1);
   const nextStr = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
   return nextStr > current ? nextStr : current;
+}
+
+/** Mã viết hoa không dấu từ tên: "Tỷ lệ BHYT" → "TY_LE_BHYT". Trùng thì thêm số. */
+export function codeFromName(name: string, taken: Iterable<string>, fallback = 'MA'): string {
+  const takenSet = new Set(taken);
+  const base = name
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'D')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/^([0-9])/, `${fallback}_$1`)
+    .slice(0, 40) || fallback;
+  if (!takenSet.has(base)) return base;
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${base}_${i}`;
+    if (!takenSet.has(candidate)) return candidate;
+  }
+  return `${base}_${Date.now().toString().slice(-5)}`;
 }

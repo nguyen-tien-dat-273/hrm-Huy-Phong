@@ -147,7 +147,7 @@ export function AdjustmentsTab({
         <div>
           <h3 className="text-base font-bold text-slate-800">Điều chỉnh lương tháng {monthLabel}</h3>
           <p className="mt-0.5 text-sm leading-relaxed text-slate-500">
-            Điều chỉnh tăng (+) / giảm (−) trên bảng lương nháp (FR06.04.02). Mỗi dòng bắt buộc ghi lý do;
+            Điều chỉnh tăng (+) / giảm (−) trên bảng lương nháp. Mỗi dòng bắt buộc ghi lý do;
             sai sót của kỳ đã khoá ghi ở kỳ này kèm kỳ phát sinh để về sau tra được.
           </p>
         </div>
@@ -162,7 +162,7 @@ export function AdjustmentsTab({
 
       {readOnly && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Kỳ lương tháng {monthLabel} đã khoá nên không thêm / sửa điều chỉnh được (BR-PAY-009). Sai sót
+          Kỳ lương tháng {monthLabel} đã khoá nên không thêm / sửa điều chỉnh được. Sai sót
           phát hiện lúc này ghi vào điều chỉnh của kỳ đang mở.
         </p>
       )}
@@ -222,11 +222,6 @@ export function AdjustmentsTab({
                         }`}>
                           {KIND_SHORT[adjustment.kind]}
                         </span>
-                        {!adjustment.taxable && (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-                            KHÔNG CHỊU THUẾ
-                          </span>
-                        )}
                       </div>
                       <p className="mt-1 text-xs leading-relaxed text-slate-600">{adjustment.reason}</p>
                       <p className="mt-0.5 text-xs text-slate-400">
@@ -319,24 +314,6 @@ export function AdjustmentsTab({
               value={draft.reason}
               onChange={(e) => setDraft({ ...draft, reason: e.target.value })}
             />
-
-            {draft.kind === 'RECOVERY' && (
-              <label className="flex items-start gap-2.5 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={draft.taxable}
-                  onChange={(e) => setDraft({ ...draft, taxable: e.target.checked })}
-                  className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-slate-300"
-                />
-                <span>
-                  Tính vào thu nhập chịu thuế
-                  <span className="block text-xs leading-relaxed text-slate-500">
-                    Bỏ chọn khi đây là khoản hoàn lại, ví dụ trả lại tiền phạt đã trừ nhầm —
-                    hoàn tiền không phải thu nhập mới.
-                  </span>
-                </span>
-              </label>
-            )}
 
             <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
               <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />

@@ -18,7 +18,8 @@ export interface AdminNavItem {
   group: string;
   keywords?: string;
   fullAdminOnly?: boolean;
-  functionCode?: AdminFunctionCode;
+  /** Mảng = mở khi có một trong các chức năng. */
+  functionCode?: AdminFunctionCode | readonly AdminFunctionCode[];
   hideForTeamlead?: boolean;
 }
 
@@ -49,14 +50,13 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
 
   // Module lương tách thành các mục con để đặt dấu trang được, tìm nhanh thấy
-  // được, và cấp quyền riêng từng phần. Thứ tự theo đúng luồng M06: danh mục
-  // (F06.01) → tham số & công thức (F06.02) → cơ chế theo sơ đồ tổ chức
-  // (F06.03) → số liệu, điều chỉnh, bảng lương (F06.04) → BGĐ phê duyệt.
-  { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: '26 khoản chuẩn trong 5 nhóm, cờ thuế và bảo hiểm', icon: Receipt, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'khoan luong phu cap thuong phat tam ung nhom danh muc chuan', functionCode: 'admin.payroll_components' },
-  { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Bộ tham số theo ngày hiệu lực: bảo hiểm, thuế, giảm trừ, hệ số', icon: Scale, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'ngay cong chuan bao hiem thue tncn giam tru tham so hieu luc bac thang', functionCode: 'admin.payroll_settings' },
-  { to: '/admin/payroll/formulas', label: 'Công thức theo khối', description: 'Mẫu bảng lương BL 01 / BL 02 gán theo khối và chạy thử', icon: Calculator, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'cong thuc mau bang luong bl01 bl02 khoi chay thu', functionCode: 'admin.payroll_settings' },
-  { to: '/admin/payroll/schemes', label: 'Cơ chế lương', description: 'Sơ đồ tổ chức → nhân sự → bậc lương, người phụ thuộc, khoản riêng', icon: Users, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'co che luong bac luong phu cap rieng nguoi phu thuoc so do to chuc trinh duyet', functionCode: 'admin.payroll_schemes' },
-  { to: '/admin/payroll/inputs', label: 'Số liệu lương tháng', description: 'Giờ tăng ca, sản lượng và doanh số của kỳ lương', icon: SlidersHorizontal, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tang ca san luong doanh so so lieu thang', functionCode: 'admin.payroll_inputs' },
+  // được, và cấp quyền riêng từng phần. Thứ tự theo luồng làm lương: danh mục
+  // → tham số → cơ chế (công thức + áp cho nhân sự) → số liệu, điều chỉnh,
+  // bảng lương → BGĐ phê duyệt.
+  { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: 'Danh sách đầu mục: cộng vào lương, trừ khỏi lương hoặc chỉ để tính', icon: Receipt, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'khoan luong dau muc phu cap thuong phat tam ung nhom danh muc', functionCode: 'admin.payroll_components' },
+  { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Bảng tham số tự tạo: tỷ lệ, đơn giá, thời gian theo ngày hiệu lực', icon: Scale, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tham so ty le don gia thoi gian bang bac thang hieu luc bao hiem', functionCode: 'admin.payroll_settings' },
+  { to: '/admin/payroll/schemes', label: 'Cơ chế lương', description: 'Dựng công thức cho từng đầu mục, áp cho đơn vị và nhân sự', icon: Calculator, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'co che luong cong thuc dau muc ap dung nhan su so do to chuc trinh duyet chay thu', functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] },
+  { to: '/admin/payroll/inputs', label: 'Số liệu lương tháng', description: 'Doanh số, số chuyến… nhập mỗi tháng cho cơ chế lương', icon: SlidersHorizontal, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'so lieu thang doanh so so chuyen nhap hang thang', functionCode: 'admin.payroll_inputs' },
   { to: '/admin/payroll/adjustments', label: 'Điều chỉnh lương', description: 'Điều chỉnh tăng/giảm, truy lĩnh, truy thu kèm lý do', icon: ArrowLeftRight, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'truy linh truy thu dieu chinh thuong tien mat sai sot ky truoc', functionCode: 'admin.payroll_adjustments' },
   { to: '/admin/payroll', label: 'Bảng lương', description: 'Chạy nháp, khoá kỳ 2FA, file ngân hàng, chi trả & phát hành phiếu', icon: Wallet, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong khoa ky ngan hang', functionCode: 'admin.payroll' },
   { to: '/admin/payroll/approvals', label: 'Phê duyệt lương', description: 'Ban Giám đốc ký duyệt cơ chế lương và lệnh chi', icon: ClipboardCheck, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'phe duyet bgd ky duyet co che luong chi luong', functionCode: 'admin.payroll_approve' },

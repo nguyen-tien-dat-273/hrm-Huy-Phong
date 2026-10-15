@@ -356,7 +356,7 @@ export function AdminTimesheet() {
             <Button variant="outline" onClick={() => setPeriodStatus('OPEN')} disabled={changingPeriod}><Unlock className="w-4 h-4" />Mở lại kỳ</Button>
           )}
           {periodStatus === 'LOCKED' && payrollClosed && (
-            <span className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-semibold text-slate-500" title="Kỳ lương tháng này đã khoá — sai sót chấm công xử lý bằng Điều chỉnh lương kỳ sau (BR-PAY-009).">
+            <span className="inline-flex items-center gap-1.5 rounded-xl bg-slate-100 px-3 text-xs font-semibold text-slate-500" title="Kỳ lương tháng này đã khoá — sai sót chấm công xử lý bằng Điều chỉnh lương kỳ sau.">
               <Lock className="h-3.5 w-3.5" /> Kỳ lương đã khoá — không mở lại kỳ công
             </span>
           )}

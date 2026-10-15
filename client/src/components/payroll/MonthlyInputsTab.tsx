@@ -1,92 +1,99 @@
 // ============================================================================
-// Số liệu biến động theo tháng.
+// Số liệu lương tháng — con số nhập mỗi tháng cho các dòng "Hằng tháng".
 // ----------------------------------------------------------------------------
-// Giờ tăng ca, sản lượng khoán, doanh số — những con số đổi mỗi tháng và không
-// suy ra được từ chấm công. Chúng trở thành BIẾN trong công thức lương, nên
-// nhập ở đây là đủ để cả loạt khoản tự tính lại.
+// Cột là các đầu mục mà cơ chế lương khai cách lấy "Hằng tháng" (doanh số, số
+// chuyến…). Ô của người không theo cơ chế có dòng đó thì khoá, để người nhập
+// không điền nhầm chỗ không ai dùng tới.
 //
-// Lưới nhập cố ý để trống thay vì điền 0: ô trống nghĩa là "chưa nhập", khác
-// hẳn với "tháng này thực sự bằng 0" — và người nhập cần phân biệt được.
+// Ô để trống thay vì điền 0: trống là "chưa nhập", khác hẳn "tháng này bằng
+// 0" — và người nhập cần phân biệt được.
 // ============================================================================
 
 import { useMemo, useState } from 'react';
-import { Save, SlidersHorizontal } from 'lucide-react';
+import { Save, Search, SlidersHorizontal } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { useToast } from '@/contexts/ToastContext';
-import { savePayrollInput } from '@/lib/payrollData';
-import { ENGINE_VARIABLE_NAMES } from '@/lib/payroll';
-import { BUILTIN_FUNCTION_NAMES } from '@/lib/payrollFormula';
-import type { EmployeePayItem, PayComponent, PayrollInput, PayrollTemplateItem, Profile, UnitPayItem } from '@/types';
+import { savePayrollInput, type PayrollWorkspace } from '@/lib/payrollData';
+import { payProfileForPeriod } from '@/lib/payroll';
+import { resolveMechanismRows } from '@/lib/payrollScheme';
+import { schemeSourceOf } from '@/lib/payrollRun';
+import { SYSTEM_VARIABLE_BY_CODE } from '@/lib/payrollVariables';
+import { stripVietnamese } from '@/lib/tableExport';
 
 interface MonthlyInputsTabProps {
-  profiles: Profile[];
-  components: PayComponent[];
-  employeeItems: EmployeePayItem[];
-  unitItems: UnitPayItem[];
-  /** Khoản của mẫu BL theo khối — công thức của mẫu cũng có thể dùng số liệu tháng. */
-  templateItems: PayrollTemplateItem[];
-  /** Mã tham số / biểu bậc thang của bộ tham số hiệu lực — là hằng số, không phải số liệu nhập. */
-  paramCodes: readonly string[];
-  inputs: PayrollInput[];
+  data: PayrollWorkspace;
   monthStart: string;
+  monthEnd: string;
   actorId: string | null;
-  /** Kỳ đã duyệt thì khóa nhập — số liệu đã đóng băng vào phiếu lương. */
+  /** Kỳ đã khoá thì khóa nhập — số liệu đã đóng băng vào phiếu lương. */
   readOnly: boolean;
   onChanged: () => void;
 }
 
-export function MonthlyInputsTab({
-  profiles, components, employeeItems, unitItems, templateItems, paramCodes, inputs, monthStart, actorId, readOnly, onChanged,
-}: MonthlyInputsTabProps) {
+interface Column {
+  code: string;
+  name: string;
+  /** Cột của dòng "Hằng tháng" — chỉ người có dòng đó mới nhập. */
+  mechanism: boolean;
+}
+
+/** Số liệu do hệ thống tự đẩy sang, không nhập tay ở đây. */
+const AUTO_CODES = new Set(['KPI_PCT']);
+
+export function MonthlyInputsTab({ data, monthStart, monthEnd, actorId, readOnly, onChanged }: MonthlyInputsTabProps) {
   const { toast } = useToast();
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState('');
+  const [onlyNeeded, setOnlyNeeded] = useState(true);
 
-  // Chỉ hiện cột cho mã thực sự được khoản nào đó dùng tới. Bảng nhập liệu mà
-  // có cột không ai dùng thì người nhập sẽ đoán và điền bừa.
-  const codes = useMemo(() => {
-    // Biến engine, hàm dựng sẵn và mã tham số đều là thứ hệ thống cấp sẵn —
-    // không phải số liệu người nhập. Lấy từ nguồn gốc, không chép tay danh sách.
-    const RESERVED = new Set([...ENGINE_VARIABLE_NAMES, ...BUILTIN_FUNCTION_NAMES, ...paramCodes]);
-    const seen = new Map<string, string>();
-    for (const component of components) {
-      if (!component.is_active || component.calc_source === 'ENGINE' || !component.input_code) continue;
-      if (!seen.has(component.input_code)) seen.set(component.input_code, component.name);
+  const source = useMemo(() => schemeSourceOf(data), [data]);
+
+  /** Mã "Hằng tháng" của từng người theo cơ chế đang áp. */
+  const neededByPerson = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const person of data.profiles) {
+      const profile = payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === person.id), monthEnd);
+      const rows = resolveMechanismRows(person, profile, source, monthStart, monthEnd);
+      map.set(person.id, new Set(rows.filter((row) => row.mode === 'MONTHLY_INPUT').map((row) => row.component.code)));
     }
-    // Công thức cũng tham chiếu mã số liệu mà không khai báo input_code
-    // (ví dụ REVENUE trong công thức hoa hồng), nên quét thêm từ công thức.
-    for (const component of components) {
-      if (!component.is_active) continue;
-      const source = `${component.formula ?? ''} ${component.base_code ?? ''}`;
-      for (const token of source.match(/[A-Z][A-Z0-9_]*/g) ?? []) {
-        if (RESERVED.has(token)) continue;
-        if (components.some((item) => item.code === token)) continue;
-        if (!seen.has(token)) seen.set(token, component.name);
-      }
+    return map;
+  }, [data.payProfiles, data.profiles, monthEnd, monthStart, source]);
+
+  const columns = useMemo<Column[]>(() => {
+    const componentByCode = new Map(data.components.map((component) => [component.code, component]));
+    const used = new Set<string>();
+    for (const codes of neededByPerson.values()) for (const code of codes) used.add(code);
+    const list: Column[] = [...used]
+      .map((code) => ({ code, name: componentByCode.get(code)?.name ?? code, mechanism: true }))
+      .sort((a, b) => (componentByCode.get(a.code)?.sort_order ?? 0) - (componentByCode.get(b.code)?.sort_order ?? 0));
+    // Số đã nhập từ trước cho mã không còn dòng "Hằng tháng" nào: vẫn hiện để
+    // xem / sửa, không để số liệu nằm đó mà không ai thấy.
+    for (const input of data.inputs) {
+      if (used.has(input.code) || AUTO_CODES.has(input.code) || list.some((column) => column.code === input.code)) continue;
+      list.push({
+        code: input.code,
+        name: componentByCode.get(input.code)?.name ?? SYSTEM_VARIABLE_BY_CODE.get(input.code)?.name ?? input.code,
+        mechanism: false,
+      });
     }
-    // Công thức gán riêng ở nhân viên/phòng ban có thể biến một khoản cố định
-    // thành khoản theo KPI, doanh số... Các biến đó cũng phải tự tạo cột nhập
-    // liệu; nếu chỉ quét công thức chung trong danh mục thì công thức riêng lưu
-    // được nhưng không có nơi nhập số liệu để chạy.
-    const assigned = [...employeeItems, ...unitItems, ...templateItems];
-    for (const item of assigned) {
-      const source = item.formula ?? '';
-      const component = components.find((entry) => entry.id === item.component_id);
-      for (const token of source.match(/[A-Z][A-Z0-9_]*/g) ?? []) {
-        if (RESERVED.has(token)) continue;
-        if (components.some((entry) => entry.code === token)) continue;
-        if (!seen.has(token)) seen.set(token, component?.name ?? 'Công thức riêng');
-      }
-    }
-    return [...seen.entries()].map(([code, usedBy]) => ({ code, usedBy }));
-  }, [components, employeeItems, unitItems, templateItems, paramCodes]);
+    return list;
+  }, [data.components, data.inputs, neededByPerson]);
+
+  const keyword = stripVietnamese(query).toLowerCase().trim();
+  const people = data.profiles.filter((person) => {
+    if (keyword && !stripVietnamese(`${person.name} ${person.employee_code ?? ''}`).toLowerCase().includes(keyword)) return false;
+    if (onlyNeeded && (neededByPerson.get(person.id)?.size ?? 0) === 0
+      && !data.inputs.some((input) => input.user_id === person.id && !AUTO_CODES.has(input.code))) return false;
+    return true;
+  });
 
   const valueOf = (userId: string, code: string): string => {
     const key = `${userId}|${code}`;
     if (edits[key] !== undefined) return edits[key];
-    const existing = inputs.find((input) => input.user_id === userId && input.code === code);
+    const existing = data.inputs.find((input) => input.user_id === userId && input.code === code);
     return existing ? String(Number(existing.quantity)) : '';
   };
 
@@ -100,7 +107,7 @@ export function MonthlyInputsTab({
         user_id: userId,
         month_start: monthStart,
         code,
-        quantity: Number(raw) || 0,
+        quantity: Number(raw.replace(',', '.')) || 0,
         created_by: actorId,
       });
       if (error) {
@@ -115,16 +122,15 @@ export function MonthlyInputsTab({
     onChanged();
   };
 
-  if (codes.length === 0) {
+  if (columns.length === 0) {
     return (
       <Card>
         <CardContent className="py-10 text-center">
           <SlidersHorizontal className="mx-auto h-10 w-10 text-slate-300" />
-          <h3 className="mt-3 text-base font-bold text-slate-800">Chưa có mã số liệu nào</h3>
+          <h3 className="mt-3 text-base font-bold text-slate-800">Chưa có số liệu nào cần nhập hằng tháng</h3>
           <p className="mx-auto mt-1.5 max-w-lg text-sm leading-relaxed text-slate-500">
-            Số liệu tháng chỉ hiện ra khi có khoản lương dùng tới. Sang tab{' '}
-            <strong>Danh mục khoản</strong> tạo khoản tính theo giờ, theo sản lượng hoặc theo công
-            thức có biến đầu vào.
+            Cột ở đây là các dòng có cách lấy giá trị <strong>Thay đổi theo tháng</strong> trong cơ chế lương (ví dụ Doanh số, Số
+            chuyến). Khai ở <strong>Cơ chế lương › Thiết kế cơ chế</strong>.
           </p>
         </CardContent>
       </Card>
@@ -133,13 +139,24 @@ export function MonthlyInputsTab({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        {/* Tiêu đề do trang in, xem ghi chú trong ComponentCatalog. */}
-        <p className="max-w-2xl text-xs leading-relaxed text-slate-400">
-          Giờ tăng ca, sản lượng, doanh số — đầu vào cho công thức lương của tháng này.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[220px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Tìm nhân viên…"
+              className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"
+            />
+          </div>
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+            <input type="checkbox" className="h-3.5 w-3.5 accent-indigo-600" checked={onlyNeeded} onChange={(event) => setOnlyNeeded(event.target.checked)} />
+            Chỉ người cần nhập
+          </label>
+        </div>
         {!readOnly && (
-          <Button onClick={handleSave} disabled={saving || dirtyCount === 0}>
+          <Button onClick={() => void handleSave()} disabled={saving || dirtyCount === 0}>
             <Save className="h-4 w-4" />
             {saving ? 'Đang lưu…' : dirtyCount > 0 ? `Lưu ${dirtyCount} thay đổi` : 'Chưa có thay đổi'}
           </Button>
@@ -148,7 +165,8 @@ export function MonthlyInputsTab({
 
       {readOnly && (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          Kỳ lương đã duyệt nên số liệu khóa lại. Mở lại kỳ ở tab Bảng lương nếu cần sửa.
+          Kỳ lương tháng này đã khoá nên số liệu khóa lại. Kỳ đang chờ BGĐ duyệt thì rút lại ở tab
+          Bảng lương để sửa; kỳ đã duyệt thì ghi sai sót vào Điều chỉnh lương của kỳ sau.
         </p>
       )}
 
@@ -161,51 +179,60 @@ export function MonthlyInputsTab({
                   <th className="sticky left-0 z-10 bg-[#FCFAF8] px-5 py-4 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">
                     Nhân sự
                   </th>
-                  {codes.map(({ code, usedBy }) => (
-                    <th key={code} className="px-3 py-4 text-center" title={`Dùng bởi: ${usedBy}`}>
-                      <span className="block font-mono text-[10px] font-bold text-slate-600">{code}</span>
-                      <span className="mt-0.5 block text-[9px] font-medium normal-case text-slate-400">
-                        {usedBy}
-                      </span>
+                  {columns.map((column) => (
+                    <th key={column.code} className="px-3 py-4 text-center" title={column.mechanism ? 'Dòng “Thay đổi theo tháng” của cơ chế' : 'Số đã nhập trước đây'}>
+                      <span className="block text-xs font-bold text-slate-700">{column.name}</span>
+                      {!column.mechanism && <span className="mt-0.5 block text-[9px] font-medium text-amber-600">không còn dòng nào dùng</span>}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {profiles.map((person) => (
-                  <tr key={person.id} className="hover:bg-[#FCFAF8]">
-                    <td className="sticky left-0 z-10 bg-white px-5 py-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <Avatar name={person.name} url={person.avatar_url} size="sm" />
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-800">{person.name}</p>
-                          <p className="text-[10px] uppercase tracking-tighter text-slate-400">
-                            {person.department || '—'}
-                          </p>
+                {people.map((person) => {
+                  const needed = neededByPerson.get(person.id) ?? new Set<string>();
+                  return (
+                    <tr key={person.id} className="hover:bg-[#FCFAF8]">
+                      <td className="sticky left-0 z-10 bg-white px-5 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Avatar name={person.name} url={person.avatar_url} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-800">{person.name}</p>
+                            <p className="text-[10px] uppercase tracking-tighter text-slate-400">{person.department || '—'}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    {codes.map(({ code }) => (
-                      <td key={code} className="px-2 py-3 text-center">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          disabled={readOnly}
-                          value={valueOf(person.id, code)}
-                          onChange={(event) => setEdits((current) => ({
-                            ...current,
-                            [`${person.id}|${code}`]: event.target.value.replace(/[^\d.]/g, ''),
-                          }))}
-                          placeholder="—"
-                          className="h-9 w-24 rounded-lg border border-slate-200 px-2 text-center text-sm tabular-nums text-slate-800 transition-colors placeholder:text-slate-300 focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
-                        />
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      {columns.map((column) => {
+                        const applies = !column.mechanism || needed.has(column.code);
+                        const value = valueOf(person.id, column.code);
+                        return (
+                          <td key={column.code} className="px-2 py-3 text-center">
+                            {applies || value ? (
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                disabled={readOnly}
+                                value={value}
+                                onChange={(event) => setEdits((current) => ({
+                                  ...current,
+                                  [`${person.id}|${column.code}`]: event.target.value.replace(/[^\d.,]/g, ''),
+                                }))}
+                                placeholder="—"
+                                aria-label={`${column.name} của ${person.name}`}
+                                className="h-9 w-28 rounded-lg border border-slate-200 px-2 text-center text-sm tabular-nums text-slate-800 transition-colors placeholder:text-slate-300 focus:border-indigo-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+                              />
+                            ) : (
+                              <span className="text-xs text-slate-300" title="Cơ chế của người này không có dòng này">·</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+          {people.length === 0 && <p className="px-5 py-8 text-center text-sm text-slate-500">Không có nhân sự nào cần nhập.</p>}
         </CardContent>
       </Card>
     </div>

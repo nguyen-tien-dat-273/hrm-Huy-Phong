@@ -544,3 +544,25 @@ export function tierLookup(rows: ReadonlyArray<{ from: number; value: number }>)
     return result;
   };
 }
+
+/**
+ * Biểu lũy tiến TỪNG PHẦN: mỗi bậc chỉ đánh trên phần giá trị nằm trong bậc
+ * đó, rồi cộng lại. `value` của bậc là tỷ lệ phần trăm (5 nghĩa là 5%). Bậc
+ * cuối không có cận trên.
+ *
+ * Khác `tierLookup`: tra bậc trả về MỘT mức áp cho cả giá trị, còn lũy tiến
+ * cộng dồn từng phần — nhầm hai cách là tính dư thuế rất nhiều.
+ */
+export function progressiveLookup(rows: ReadonlyArray<{ from: number; value: number }>): (value: number) => number {
+  const sorted = [...rows].sort((a, b) => a.from - b.from);
+  return (input: number) => {
+    let total = 0;
+    for (let index = 0; index < sorted.length; index += 1) {
+      const lower = sorted[index].from;
+      const upper = sorted[index + 1]?.from ?? Number.POSITIVE_INFINITY;
+      if (input <= lower) break;
+      total += (Math.min(input, upper) - lower) * (sorted[index].value / 100);
+    }
+    return total;
+  };
+}

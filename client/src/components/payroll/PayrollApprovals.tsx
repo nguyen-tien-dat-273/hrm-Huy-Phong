@@ -1,10 +1,10 @@
 // ============================================================================
-// Phê duyệt lương — màn của Ban Giám đốc (UI_04).
+// Phê duyệt lương — màn của Ban Giám đốc.
 // ----------------------------------------------------------------------------
 // Hai loại hồ sơ cùng một hàng chờ:
-//   • Đề xuất cơ chế lương (BR-PAY-012) — BGĐ thấy đúng phần THAY ĐỔI so với
-//     cơ chế hiện hành, không phải đọc lại cả cơ chế;
-//   • Kỳ lương đã khoá (FR06.04.04) — BGĐ thấy tổng quỹ lương rồi ký chi.
+//   • Đề xuất cơ chế lương — BGĐ thấy đúng phần THAY ĐỔI so với cơ chế hiện
+//     hành (đổi cơ chế, đổi giá trị riêng), không phải đọc lại cả cơ chế;
+//   • Kỳ lương đã khoá — BGĐ thấy tổng quỹ lương rồi ký chi.
 //
 // "Ký" = xác thực lại bằng mật khẩu ngay trước thao tác (ReauthDialog);
 // database chỉ nhận khi phiên vừa xác thực trong vài phút. Từ chối bắt buộc
@@ -21,10 +21,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { formatDateTime, formatVND } from '@/lib/utils';
 import { payProfileForPeriod } from '@/lib/payroll';
-import { versionForMonth } from '@/lib/payrollSettings';
+import { paramsOf, versionForMonth } from '@/lib/payrollSettings';
+import { describeFormula, formatFormulaNumber } from '@/lib/formulaTokens';
+import { nameResolver } from '@/lib/payrollRun';
 import {
-  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, baseAmountOf, diffSchemeItems, personalItemsAt, profilePayloadOf,
-  unitItemsAt,
+  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, diffSchemeItems, personalItemsAt, profilePayloadOf, unitItemsAt,
 } from '@/lib/payrollScheme';
 import { stripVietnamese } from '@/lib/tableExport';
 import {
@@ -32,9 +33,7 @@ import {
   reviewPayrollRun, reviewSchemeRequest, type PayrollWorkspace, type RunTotals,
 } from '@/lib/payrollData';
 import { notifyUsers } from '@/lib/assignments';
-import type {
-  PayComponent, PayrollApprovalEvent, PayrollRun, PayrollSchemeRequest, SchemePayloadItem, SchemePayloadProfile,
-} from '@/types';
+import type { PayComponent, PayrollApprovalEvent, PayrollRun, PayrollSchemeRequest, SchemePayloadItem } from '@/types';
 
 interface PayrollApprovalsProps {
   data: PayrollWorkspace;
@@ -55,16 +54,6 @@ export const PAYROLL_EVENT_TEXT: Record<string, string> = {
   CALCULATED: 'Tính lương', LOCKED: 'Khoá kỳ (2FA)', WITHDRAWN: 'Rút lại để sửa',
   PAID: 'Xác nhận chi trả & phát hành phiếu', BANK_EXPORTED: 'Xuất file ngân hàng',
 };
-
-const PROFILE_FIELDS: Array<{ key: keyof SchemePayloadProfile; label: string }> = [
-  { key: 'dependents', label: 'Người phụ thuộc' },
-  { key: 'tax_mode', label: 'Cách tính thuế' },
-  { key: 'flat_tax_rate', label: 'Thuế suất khấu trừ (%)' },
-  { key: 'insurance_enabled', label: 'Tham gia bảo hiểm' },
-  { key: 'insurance_base', label: 'Mức đóng bảo hiểm' },
-  { key: 'standard_days_override', label: 'Công chuẩn riêng' },
-  { key: 'template_id', label: 'Mẫu bảng lương' },
-];
 
 const monthText = (iso: string) => `${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const monthEndOf = (monthStart: string) => {
@@ -110,10 +99,11 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
   }, [data.profiles]);
   const componentById = useMemo(() => new Map(data.components.map((c) => [c.id, c])), [data.components]);
   const templateById = useMemo(() => new Map(data.templates.map((t) => [t.id, t])), [data.templates]);
+  const formulaNameOf = useMemo(() => nameResolver(data.components, null), [data.components]);
 
   const targetOf = (request: PayrollSchemeRequest) => (request.target_type === 'USER'
     ? { name: nameOf(request.user_id), sub: data.profiles.find((p) => p.id === request.user_id)?.department ?? 'Nhân sự' }
-    : { name: data.units.find((u) => u.id === request.unit_id)?.name ?? 'Đơn vị đã xoá', sub: 'Khoản chung của đơn vị' });
+    : { name: data.units.find((u) => u.id === request.unit_id)?.name ?? 'Đơn vị đã xoá', sub: 'Giá trị chung của đơn vị' });
 
   const toggle = async (key: string, type: 'SCHEME' | 'RUN', id: string) => {
     setExpanded((current) => (current === key ? null : key));
@@ -160,7 +150,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
         await notifyUsers(
           [recipient],
           approved ? `Bảng lương ${monthText(action.item.month_start)} đã được duyệt chi` : `Bảng lương ${monthText(action.item.month_start)} bị từ chối`,
-          approved ? 'Có thể xuất file ngân hàng và xác nhận chi trả.' : `Lý do: ${note}. Kỳ đã mở lại để điều chỉnh.`,
+          approved ? 'Có thể xuất file ngân hàng và xác nhận chi trả.' : `Lý do: ${note}. Kỳ đã trả về Đã tính để Kế toán điều chỉnh.`,
           'payroll_run_reviewed',
         );
       }
@@ -252,13 +242,11 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                     </span>
                   </div>
                   {total && (
-                    <div className="grid gap-2 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-6">
+                    <div className="grid gap-2 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-4">
                       <Stat label="Số phiếu" text={String(total.count)} />
-                      <Stat label="Tổng Gross" text={formatVND(total.gross)} />
-                      <Stat label="BH người lao động" text={formatVND(total.insuranceEmployee)} />
-                      <Stat label="Thuế TNCN" text={formatVND(total.pit)} />
-                      <Stat label="BH doanh nghiệp" text={formatVND(total.insuranceEmployer)} />
-                      <Stat label="Tổng thực chi (Net)" text={formatVND(total.net)} strong />
+                      <Stat label="Tổng các khoản cộng" text={formatVND(total.gross)} />
+                      <Stat label="Tổng các khoản trừ" text={formatVND(total.deductions)} />
+                      <Stat label="Tổng thực chi" text={formatVND(total.net)} strong />
                     </div>
                   )}
                   {open && <Timeline rows={events[run.id]} nameOf={nameOf} />}
@@ -311,8 +299,8 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                   )}
                   {open && (
                     request.status === 'SUBMITTED'
-                      ? <SchemeChanges request={request} data={data} componentById={componentById} templateName={(id) => templateById.get(id)?.code ?? 'Mẫu đã xoá'} />
-                      : <PayloadList items={request.payload.items} componentById={componentById} />
+                      ? <SchemeChanges request={request} data={data} componentById={componentById} templateName={(id) => templateById.get(id)?.name ?? 'Cơ chế đã xoá'} />
+                      : <PayloadList items={request.payload.items} componentById={componentById} nameOf={formulaNameOf} />
                   )}
                   {expanded === key && <Timeline rows={events[request.id]} nameOf={nameOf} />}
                   {request.status === 'SUBMITTED' && canApprove && (
@@ -366,21 +354,23 @@ function Stat({ label, text, strong = false }: { label: string; text: string; st
   );
 }
 
-function itemText(item: SchemePayloadItem | null, component: PayComponent | undefined): string {
+function itemText(item: SchemePayloadItem | null, nameOf: (code: string) => string | undefined): string {
   if (!item) return '—';
-  if (item.formula?.trim()) return item.formula.trim();
-  if (item.amount == null) return 'theo danh mục';
-  return component?.calc_type === 'PERCENT' ? `${item.amount}%` : formatVND(item.amount);
+  if (item.formula?.trim()) return describeFormula(item.formula.trim(), nameOf);
+  if (item.amount == null) return 'theo mức chung';
+  return formatFormulaNumber(item.amount);
 }
 
-function PayloadList({ items, componentById }: { items: SchemePayloadItem[]; componentById: Map<string, PayComponent> }) {
-  if (items.length === 0) return <p className="text-xs text-slate-500">Không có khoản khai riêng.</p>;
+function PayloadList({ items, componentById, nameOf }: {
+  items: SchemePayloadItem[]; componentById: Map<string, PayComponent>; nameOf: (code: string) => string | undefined;
+}) {
+  if (items.length === 0) return <p className="text-xs text-slate-500">Không có giá trị khai riêng.</p>;
   return (
     <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-xs">
       {items.map((item) => (
         <li key={item.component_id} className="flex items-center gap-2 px-3 py-1.5">
           <span className="font-semibold text-slate-700">{componentById.get(item.component_id)?.name ?? '?'}</span>
-          <span className="ml-auto font-mono text-slate-500">{itemText(item, componentById.get(item.component_id))}</span>
+          <span className="ml-auto text-slate-500">{itemText(item, nameOf)}</span>
         </li>
       ))}
     </ul>
@@ -397,35 +387,27 @@ function SchemeChanges({ request, data, componentById, templateName }: {
   const month = request.effective_from;
   const monthEnd = monthEndOf(month);
   const version = versionForMonth(data.paramVersions, month);
+  const nameOf = nameResolver(data.components, null);
   const before = request.target_type === 'USER' && request.user_id
     ? personalItemsAt(data.items, request.user_id, month, monthEnd)
     : request.unit_id ? unitItemsAt(data.unitItems, request.unit_id, month, monthEnd) : [];
   const changes = diffSchemeItems(before, request.payload.items).filter((change) => change.kind !== 'SAME');
 
-  const currentProfile = request.target_type === 'USER' && request.user_id
-    ? profilePayloadOf(
-      payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === request.user_id), monthEnd),
-      version?.flatTaxRate ?? 0,
-    )
+  const currentTemplate = request.target_type === 'USER' && request.user_id
+    ? profilePayloadOf(payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === request.user_id), monthEnd)).template_id
     : null;
-  const nextProfile = request.payload.profile ?? null;
-  const fieldText = (key: keyof SchemePayloadProfile, value: unknown) => {
-    if (value == null || value === '') return key === 'template_id' ? 'Theo đơn vị' : '—';
-    if (key === 'template_id') return templateName(String(value));
-    if (key === 'insurance_enabled') return value ? 'Có' : 'Không';
-    if (key === 'tax_mode') return { PROGRESSIVE: 'Lũy tiến', FLAT: 'Khấu trừ thẳng', NONE: 'Không khấu trừ' }[String(value)] ?? String(value);
-    if (key === 'insurance_base') return formatVND(Number(value));
-    return String(value);
-  };
-  const profileChanges = currentProfile && nextProfile
-    ? PROFILE_FIELDS.filter(({ key }) => (currentProfile[key] ?? null) !== (nextProfile[key] ?? null))
-    : [];
-  const base = baseAmountOf(request.payload.items, data.components);
+  const nextTemplate = request.payload.profile?.template_id ?? null;
+  const templateChanged = request.target_type === 'USER' && (currentTemplate ?? null) !== (nextTemplate ?? null);
+
+  // Kiểm tra mức sàn của bộ tham số (nếu có khai), để BGĐ thấy trước khi ký.
+  const floorComponent = version?.floorComponentCode ? data.components.find((item) => item.code === version.floorComponentCode) : undefined;
+  const floorParam = version?.floorParamCode ? paramsOf(version).find((item) => item.code === version.floorParamCode) : undefined;
+  const floorValue = floorComponent ? request.payload.items.find((item) => item.component_id === floorComponent.id)?.amount ?? null : null;
 
   return (
     <div className="space-y-2">
-      {changes.length === 0 && profileChanges.length === 0 ? (
-        <p className="text-xs text-slate-500">Không đổi khoản nào so với cơ chế hiện hành.</p>
+      {changes.length === 0 && !templateChanged ? (
+        <p className="text-xs text-slate-500">Không đổi gì so với cơ chế hiện hành.</p>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full min-w-[480px] text-xs">
@@ -437,13 +419,13 @@ function SchemeChanges({ request, data, componentById, templateName }: {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {profileChanges.map(({ key, label }) => (
-                <tr key={key}>
-                  <td className="px-3 py-1.5 font-semibold text-slate-700">{label}</td>
-                  <td className="px-3 py-1.5 text-slate-500">{fieldText(key, currentProfile?.[key])}</td>
-                  <td className="px-3 py-1.5 font-semibold text-amber-700">{fieldText(key, nextProfile?.[key])}</td>
+              {templateChanged && (
+                <tr>
+                  <td className="px-3 py-1.5 font-semibold text-slate-700">Cơ chế lương</td>
+                  <td className="px-3 py-1.5 text-slate-500">{currentTemplate ? templateName(currentTemplate) : 'Theo đơn vị'}</td>
+                  <td className="px-3 py-1.5 font-semibold text-amber-700">{nextTemplate ? templateName(nextTemplate) : 'Theo đơn vị'}</td>
                 </tr>
-              ))}
+              )}
               {changes.map((change) => {
                 const component = componentById.get(change.componentId);
                 return (
@@ -453,11 +435,11 @@ function SchemeChanges({ request, data, componentById, templateName }: {
                       <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold ${
                         change.kind === 'ADDED' ? 'bg-emerald-50 text-emerald-700' : change.kind === 'REMOVED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
                       }`}>
-                        {change.kind === 'ADDED' ? 'THÊM' : change.kind === 'REMOVED' ? 'BỎ' : 'ĐỔI'}
+                        {change.kind === 'ADDED' ? 'MỚI' : change.kind === 'REMOVED' ? 'BỎ' : 'ĐỔI'}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 font-mono text-slate-500">{itemText(change.before, component)}</td>
-                    <td className="px-3 py-1.5 font-mono font-semibold text-slate-800">{itemText(change.after, component)}</td>
+                    <td className="px-3 py-1.5 text-slate-500">{itemText(change.before, nameOf)}</td>
+                    <td className="px-3 py-1.5 font-semibold text-slate-800">{itemText(change.after, nameOf)}</td>
                   </tr>
                 );
               })}
@@ -465,9 +447,9 @@ function SchemeChanges({ request, data, componentById, templateName }: {
           </table>
         </div>
       )}
-      {base != null && version && (
-        <p className={`text-xs ${base < version.regionalMinimumWage ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-          Lương cơ bản đề xuất {formatVND(base)} · lương tối thiểu vùng {version.regionCode}: {formatVND(version.regionalMinimumWage)}
+      {floorComponent && floorParam && floorValue != null && (
+        <p className={`text-xs ${floorValue < floorParam.value ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+          {floorComponent.name} đề xuất {formatVND(floorValue)} · {floorParam.name}: {formatVND(floorParam.value)}
         </p>
       )}
     </div>

@@ -30,10 +30,10 @@ export const ADMIN_FUNCTIONS: Record<AdminFunctionCode, { label: string; descrip
   'admin.workforce': { label: 'Hồ sơ người lao động', description: 'Quản lý hồ sơ và tiến trình tuyển chọn.', module: 'users' },
   'admin.worker_documents': { label: 'Hồ sơ giấy tờ lao động', description: 'Theo dõi hợp đồng, visa và tài liệu.', module: 'users' },
   'admin.payroll': { label: 'Bảng lương', description: 'Chạy bảng lương nháp, khoá kỳ bằng 2FA, xuất file ngân hàng, xác nhận chi trả.', module: 'attendance' },
-  'admin.payroll_schemes': { label: 'Cơ chế lương', description: 'Đặt cách tính lương và các khoản riêng của từng nhân sự.', module: 'attendance' },
-  'admin.payroll_inputs': { label: 'Số liệu lương tháng', description: 'Nhập giờ tăng ca, sản lượng, doanh số cho kỳ lương.', module: 'attendance' },
-  'admin.payroll_components': { label: 'Danh mục khoản lương', description: 'Quản lý các khoản cộng, trừ và mô tả sử dụng.', module: 'attendance' },
-  'admin.payroll_settings': { label: 'Tham số & công thức lương', description: 'Bộ tham số theo ngày hiệu lực, biểu thuế, mẫu bảng lương BL 01/BL 02 theo khối.', module: 'attendance' },
+  'admin.payroll_schemes': { label: 'Áp cơ chế lương cho nhân sự', description: 'Gán cơ chế và khai giá trị riêng (lương cơ bản, số người phụ thuộc…) cho từng nhân sự, trình duyệt.', module: 'attendance' },
+  'admin.payroll_inputs': { label: 'Số liệu lương tháng', description: 'Nhập số liệu hằng tháng của cơ chế lương: doanh số, số chuyến…', module: 'attendance' },
+  'admin.payroll_components': { label: 'Danh mục khoản lương', description: 'Quản lý danh sách đầu mục dùng trong cơ chế lương.', module: 'attendance' },
+  'admin.payroll_settings': { label: 'Tham số & thiết kế cơ chế lương', description: 'Bảng tham số theo ngày hiệu lực và công thức tính của từng cơ chế lương.', module: 'attendance' },
   'admin.payroll_adjustments': { label: 'Điều chỉnh lương', description: 'Điều chỉnh tăng/giảm, truy lĩnh, truy thu kèm lý do giải trình.', module: 'attendance' },
   'admin.payroll_approve': { label: 'Phê duyệt lương (BGĐ)', description: 'Ký duyệt thay đổi cơ chế lương và lệnh chi lương của kỳ đã khoá.', module: 'attendance' },
   'admin.timesheet_lock': { label: 'Khóa/mở kỳ bảng công', description: 'Mở kỳ duyệt, khóa kỳ và chốt dữ liệu bảng công.', module: 'attendance' },
@@ -102,10 +102,15 @@ export function hasPermission(profile: Profile | null | undefined, permission: A
 }
 
 /** Admin/CEO có tất cả; vai trò/vị trí khác chỉ có chức năng được cấp rõ ràng. */
-export function hasAdminFunction(profile: Profile | null | undefined, functionCode: AdminFunctionCode): boolean {
+/** Có chức năng này không. Truyền mảng = chỉ cần có một trong các chức năng. */
+export function hasAdminFunction(
+  profile: Profile | null | undefined,
+  functionCode: AdminFunctionCode | readonly AdminFunctionCode[],
+): boolean {
   if (!profile || !profile.is_active) return false;
   if (isFullAdmin(profile)) return true;
-  return profile.function_permissions?.includes(functionCode) ?? false;
+  const codes: readonly AdminFunctionCode[] = typeof functionCode === 'string' ? [functionCode] : functionCode;
+  return codes.some((code) => profile.function_permissions?.includes(code) ?? false);
 }
 
 /** Có vào được khu quản trị không (dù chỉ một quyền). */

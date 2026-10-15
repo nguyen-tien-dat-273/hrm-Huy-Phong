@@ -29,8 +29,8 @@ export interface PermissionFunction {
   label: string;
   /** Có quyền module vẫn chưa đủ — phải là Admin/CEO. */
   adminOnly?: boolean;
-  /** Có quyền module vẫn chưa đủ — phải được cấp riêng mã chức năng này. */
-  functionCode?: AdminFunctionCode;
+  /** Có quyền module vẫn chưa đủ — phải được cấp riêng mã chức năng này (mảng = một trong các mã). */
+  functionCode?: AdminFunctionCode | readonly AdminFunctionCode[];
 }
 
 /**

@@ -1,18 +1,18 @@
 // ============================================================================
 // Tính phiếu lương của MỘT người trong MỘT tháng từ dữ liệu workspace.
 // ----------------------------------------------------------------------------
-// Bảng lương (F06.04), Chạy thử (F06.02) và xem trước ở Cơ chế lương (F06.03)
-// đều cần đúng một phép tính này. Để mỗi màn tự ghép thì sớm muộn ba màn ra
-// ba con số khác nhau cho cùng một người — đúng loại lệch mà kế toán chỉ phát
-// hiện khi nhân viên thắc mắc phiếu lương.
+// Bảng lương, Chạy thử và phần ước tính ở Cơ chế lương đều cần đúng một phép
+// tính này. Để mỗi màn tự ghép thì sớm muộn ba màn ra ba con số khác nhau cho
+// cùng một người.
 // ============================================================================
 
 import {
   computePayslip, payProfileForPeriod, splitOvertimeHours, summarisePeriod,
-  type AssignedPayItem, type ComputedPayslip, type PeriodStats,
+  type ComputedPayslip, type MechanismRow, type PeriodStats,
 } from './payroll';
-import { resolvePayItems, resolveTemplateFor, type ResolvedTemplate, type SchemeSourceData } from './payrollScheme';
+import { resolveMechanismRows, resolveTemplateFor, type ResolvedTemplate, type SchemeSourceData } from './payrollScheme';
 import { toPayrollParams, versionForMonth, type PayrollParamVersion, type PayrollParams } from './payrollSettings';
+import { BUILTIN_FUNCTIONS, OWN_AMOUNT_CODE, OWN_AMOUNT_NAME, SYSTEM_VARIABLE_BY_CODE } from './payrollVariables';
 import { monthStandardDays } from './workSchedule';
 import type { ResolvableUnit } from './kpiSchemeFor';
 import type { PayrollWorkspace } from './payrollData';
@@ -37,8 +37,8 @@ export function schemeSourceOf(data: PayrollWorkspace): SchemeSourceData {
 
 /**
  * Bộ tham số engine cho tháng: bộ có hiệu lực + giờ chuẩn + công chuẩn theo
- * lịch làm việc (BR-PAY-001: "hiệu chỉnh được theo lịch làm việc thực tế").
- * Null khi chưa có bộ nào hiệu lực — bảng lương phải dừng, không đoán số.
+ * lịch làm việc. Null khi chưa có bộ nào hiệu lực — bảng lương phải dừng,
+ * không đoán số.
  */
 export function paramsForMonth(
   data: Pick<PayrollWorkspace, 'paramVersions' | 'schedules' | 'holidays'>,
@@ -54,19 +54,33 @@ export function paramsForMonth(
   return toPayrollParams(version, app, calendarDays);
 }
 
+/** Tên hiển thị của một mã bất kỳ: đầu mục, tham số, dữ liệu tự động, hàm. */
+export function nameResolver(
+  components: ReadonlyArray<{ code: string; name: string }>,
+  params: Pick<PayrollParams, 'names'> | null,
+): (code: string) => string | undefined {
+  const byCode = new Map<string, string>([[OWN_AMOUNT_CODE, OWN_AMOUNT_NAME]]);
+  for (const fn of BUILTIN_FUNCTIONS) byCode.set(fn.code, fn.name);
+  for (const variable of SYSTEM_VARIABLE_BY_CODE.values()) byCode.set(variable.code, variable.name);
+  for (const [code, name] of Object.entries(params?.names ?? {})) byCode.set(code, name);
+  for (const component of components) byCode.set(component.code.toUpperCase(), component.name);
+  return (code) => byCode.get(code.toUpperCase());
+}
+
 export interface StatsOverride {
   workDays?: number;
   leaveDays?: number;
   holidayDays?: number;
   workHours?: number;
   lateCount?: number;
+  lateMinutes?: number;
   earlyCount?: number;
 }
 
 export interface PersonComputation {
   computed: ComputedPayslip;
   payProfile: EmployeePayProfile | null;
-  items: AssignedPayItem[];
+  rows: MechanismRow[];
   template: ResolvedTemplate;
   inputs: Record<string, number>;
   stats: PeriodStats;
@@ -84,8 +98,10 @@ export function computeForPerson(
     /** Số liệu giả định khi chạy thử — đè lên số liệu thật. */
     statsOverride?: StatsOverride;
     inputsOverride?: Record<string, number>;
-    /** Thử một mẫu bảng lương khác mẫu người này đang theo. */
+    /** Thử một cơ chế khác cơ chế người này đang theo. */
     templateIdOverride?: string | null;
+    /** Thử bộ dòng đang soạn (màn thiết kế, ước tính khi khai riêng). */
+    rowsOverride?: MechanismRow[];
     trace?: boolean;
   } = {},
 ): PersonComputation {
@@ -98,7 +114,8 @@ export function computeForPerson(
     ? { template_id: options.templateIdOverride }
     : payProfile;
   const template = resolveTemplateFor(person, profileForTemplate, source, monthStartStr);
-  const items = resolvePayItems(person, profileForTemplate, source, monthStartStr, monthEndStr);
+  const rows = options.rowsOverride
+    ?? resolveMechanismRows(person, profileForTemplate, source, monthStartStr, monthEndStr);
 
   const inputs: Record<string, number> = {};
   for (const input of data.inputs) {
@@ -113,8 +130,8 @@ export function computeForPerson(
     approvedRequests.filter((request) => request.request_type === 'EARLY_LEAVE').map((request) => request.work_date),
   );
 
-  // Đơn OT đã duyệt tự chảy vào ba biến chuẩn. Số kế toán nhập tay vẫn được
-  // ưu tiên để họ có thể điều chỉnh khi cần đối soát.
+  // Đơn OT đã duyệt tự chảy vào ba biến giờ làm thêm. Số kế toán nhập tay vẫn
+  // được ưu tiên để đối soát khi cần.
   const ot = splitOvertimeHours(approvedRequests, data.schedules, new Set(data.holidays));
   if (inputs.OT_WEEKDAY_HOURS == null && ot.weekday > 0) inputs.OT_WEEKDAY_HOURS = ot.weekday;
   if (inputs.OT_WEEKEND_HOURS == null && ot.weekend > 0) inputs.OT_WEEKEND_HOURS = ot.weekend;
@@ -138,23 +155,22 @@ export function computeForPerson(
     holidayDays: override.holidayDays ?? real.holidayDays,
     workHours: override.workHours ?? real.workHours,
     lateCount: override.lateCount ?? real.lateCount,
+    lateMinutes: override.lateMinutes ?? real.lateMinutes,
     earlyCount: override.earlyCount ?? real.earlyCount,
   };
   stats.paidDays = stats.workDays + stats.leaveDays + stats.holidayDays;
 
   const computed = computePayslip({
     profile: person,
-    payProfile,
-    items,
-    inputs,
+    rows,
     stats,
-    settings: params,
-    // Chỉ khoản GÁN được mới thành biến 0 mặc định; khoản engine tự tính đã có
-    // biến riêng do engine cấp.
-    catalogCodes: data.components.filter((component) => component.calc_source !== 'ENGINE').map((component) => component.code),
+    params,
+    inputs,
+    catalogCodes: data.components.map((component) => component.code),
     adjustments: data.adjustments.filter((adjustment) => adjustment.user_id === person.id),
+    nameOf: nameResolver(data.components, params),
     trace: options.trace,
   });
 
-  return { computed, payProfile, items, template, inputs, stats, hasScheme: !!payProfile || items.length > 0 };
+  return { computed, payProfile, rows, template, inputs, stats, hasScheme: rows.length > 0 };
 }

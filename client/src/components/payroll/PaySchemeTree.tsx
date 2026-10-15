@@ -1,14 +1,13 @@
 // ============================================================================
-// F06.03 — Cơ chế lương theo SƠ ĐỒ TỔ CHỨC.
+// Áp cơ chế lương theo SƠ ĐỒ TỔ CHỨC.
 // ----------------------------------------------------------------------------
-// Luồng đúng như đặc tả: chọn đơn vị trên cây → xem danh sách nhân sự → chọn
-// một người → "Thiết lập Cơ chế Lương". Cây lấy thẳng từ Cơ cấu tổ chức và vẽ
-// bằng cùng `UnitTreeList` với phần Mẫu bảng lương / KPI; mẫu BL và khoản
-// chung đi xuống đơn vị con theo đúng `unitLineage`.
+// Chọn đơn vị trên cây → danh sách nhân sự → một người → khai cơ chế và giá
+// trị riêng. Cơ chế gán cho đơn vị đi xuống đơn vị con theo `unitLineage`,
+// cùng quy ước với KPI.
 //
-// Mọi thay đổi ở đây là ĐỀ XUẤT chờ BGĐ duyệt (BR-PAY-012) — xem
-// `PaySchemeModal`. Cây cho thấy ai đang chờ duyệt, ai bị từ chối, ai chưa có
-// cơ chế, để kế toán biết còn việc gì trước khi chạy lương.
+// Mọi thay đổi ở đây là ĐỀ XUẤT chờ BGĐ duyệt — xem `PaySchemeModal`. Cây cho
+// thấy ai đang chờ duyệt, ai chưa có cơ chế, ai còn thiếu giá trị bắt buộc,
+// để kế toán biết còn việc gì trước khi chạy lương.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -20,13 +19,15 @@ import { Avatar } from '@/components/ui/Avatar';
 import { UnitTreeList, flattenUnitTree } from '@/components/payroll/UnitTree';
 import { PaySchemeModal, type SchemeTarget } from '@/components/payroll/PaySchemeModal';
 import { useToast } from '@/contexts/ToastContext';
-import { formatVND } from '@/lib/utils';
-import { payProfileForPeriod } from '@/lib/payroll';
+import { payProfileForPeriod, type MechanismRow } from '@/lib/payroll';
+import { describeFormula, formatFormulaNumber } from '@/lib/formulaTokens';
+import { KIND_SIGN } from '@/lib/formulaEntries';
 import {
-  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, openRequestFor, personalItemsAt, resolvePayItems,
-  resolveTemplateFor, resolveTemplateForUnit, unitItemsAt,
+  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, openRequestFor, resolveMechanismRows, resolveTemplateFor,
+  resolveTemplateForUnit, unitItemsAt,
 } from '@/lib/payrollScheme';
-import { schemeSourceOf, unitMapOf } from '@/lib/payrollRun';
+import { computeForPerson, nameResolver, paramsForMonth, schemeSourceOf } from '@/lib/payrollRun';
+import { useAppSettings } from '@/contexts/SettingsContext';
 import { stripVietnamese } from '@/lib/tableExport';
 import { fetchBankAccounts, saveBankAccount, type PayrollWorkspace } from '@/lib/payrollData';
 import type { EmployeeBankAccount, OrganizationUnit, Profile } from '@/types';
@@ -42,9 +43,10 @@ interface PaySchemeTreeProps {
 
 const NO_UNIT = '__none__';
 
-const TAX_MODE_SHORT = { PROGRESSIVE: 'Lũy tiến', FLAT: 'Khấu trừ thẳng', NONE: 'Không khấu trừ' } as const;
-
 const stripTone = (text: string) => stripVietnamese(text).toLowerCase().trim();
+
+/** Dòng "Từng người" mà người này chưa có giá trị. */
+const missingOf = (rows: readonly MechanismRow[]) => rows.filter((row) => row.mode === 'PER_PERSON' && row.amount == null);
 
 export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, canManage, onChanged }: PaySchemeTreeProps) {
   const [unitId, setUnitId] = useState<string | null>(null);
@@ -58,7 +60,6 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
   useEffect(reloadAccounts, []);
 
   const source = useMemo(() => schemeSourceOf(data), [data]);
-  const unitById = useMemo(() => unitMapOf(data), [data]);
   const rows = useMemo(() => flattenUnitTree(data.units), [data.units]);
   const activeUnitIds = useMemo(() => new Set(rows.map((row) => row.unit.id)), [rows]);
 
@@ -82,23 +83,15 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
     return result;
   };
 
-  const statusOf = (person: Profile) => {
+  const profileOf = (person: Profile) => payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === person.id), monthEnd);
+  const rowsOf = (person: Profile) => resolveMechanismRows(person, profileOf(person), source, monthStart, monthEnd);
+
+  const statusOf = (person: Profile, personRows: MechanismRow[]) => {
     const request = openRequestFor(data.schemeRequests, { type: 'USER', id: person.id });
     if (request) return { label: SCHEME_STATUS_LABEL[request.status], tone: SCHEME_STATUS_TONE[request.status] };
-    const own = payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === person.id), monthEnd)
-      || personalItemsAt(data.items, person.id, monthStart, monthEnd).length > 0;
-    if (own) return { label: 'Đã thiết lập', tone: 'bg-emerald-50 text-emerald-700' };
-    const inherited = resolvePayItems(person, null, source, monthStart, monthEnd).length > 0;
-    return inherited
-      ? { label: 'Theo mẫu / đơn vị', tone: 'bg-sky-50 text-sky-700' }
-      : { label: 'Chưa thiết lập', tone: 'bg-red-50 text-red-600' };
-  };
-
-  const baseOf = (person: Profile): number | null => {
-    const profile = payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === person.id), monthEnd);
-    const items = resolvePayItems(person, profile, source, monthStart, monthEnd);
-    const base = items.find((entry) => entry.item.is_base ?? entry.component.is_base);
-    return base?.item.amount ?? null;
+    if (personRows.length === 0) return { label: 'Chưa có cơ chế', tone: 'bg-red-50 text-red-600' };
+    if (missingOf(personRows).length > 0) return { label: 'Thiếu giá trị', tone: 'bg-amber-50 text-amber-700' };
+    return { label: 'Đủ', tone: 'bg-emerald-50 text-emerald-700' };
   };
 
   const pendingCount = (unit: OrganizationUnit) => {
@@ -144,7 +137,6 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
             onSelect={(selected) => { setUnitId(selected.id); setPersonId(null); setQuery(''); }}
             meta={(row) => `${data.profiles.filter((p) => p.unit_id === row.id).length} người`}
             badge={(row) => {
-              const template = resolveTemplateForUnit(row.id, source, monthStart).template;
               const pending = pendingCount(row);
               return (
                 <span className="flex shrink-0 items-center gap-1">
@@ -152,9 +144,6 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                     <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700" title="Đề xuất chờ duyệt">
                       {pending}
                     </span>
-                  )}
-                  {template && (
-                    <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">{template.code}</span>
                   )}
                 </span>
               );
@@ -181,11 +170,13 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
           <PersonPanel
             person={person}
             data={data}
+            personRows={rowsOf(person)}
+            templateLabel={resolveTemplateFor(person, profileOf(person), source, monthStart).label}
             monthStart={monthStart}
             monthEnd={monthEnd}
             canManage={canManage}
             account={accounts.find((row) => row.user_id === person.id) ?? null}
-            status={statusOf(person)}
+            status={statusOf(person, rowsOf(person))}
             onBack={() => setPersonId(null)}
             onOpenScheme={() => setTarget({ type: 'USER', person })}
             onAccountSaved={reloadAccounts}
@@ -200,7 +191,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                 </CardTitle>
                 {unit && !query.trim() && (
                   <p className="mt-1 text-xs text-slate-500">
-                    Mẫu bảng lương: {resolveTemplateForUnit(unit.id, source, monthStart).label}
+                    Cơ chế lương: {resolveTemplateForUnit(unit.id, source, monthStart).label}
                   </p>
                 )}
               </div>
@@ -211,7 +202,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                     Gồm đơn vị con
                   </label>
                   <Button size="sm" variant="outline" onClick={() => setTarget({ type: 'UNIT', unit })}>
-                    <Settings2 className="h-4 w-4" /> {canManage ? 'Khoản chung của đơn vị' : 'Xem khoản chung'}
+                    <Settings2 className="h-4 w-4" /> {canManage ? 'Giá trị chung của đơn vị' : 'Xem giá trị chung'}
                   </Button>
                 </>
               )}
@@ -230,18 +221,18 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                     <thead>
                       <tr className="border-b border-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
                         <th className="py-2 pr-3">Nhân viên</th>
-                        <th className="py-2 pr-3">Mẫu</th>
-                        <th className="py-2 pr-3 text-right">Lương gốc</th>
-                        <th className="py-2 pr-3 text-center">NPT</th>
                         <th className="py-2 pr-3">Cơ chế</th>
+                        <th className="py-2 pr-3">Giá trị riêng</th>
+                        <th className="py-2 pr-3">Tình trạng</th>
                         <th className="py-2" />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
                       {people.map((row) => {
-                        const profile = payProfileForPeriod(data.payProfiles.filter((p) => p.user_id === row.id), monthEnd);
-                        const status = statusOf(row);
-                        const base = baseOf(row);
+                        const personRows = rowsOf(row);
+                        const status = statusOf(row, personRows);
+                        const perPerson = personRows.filter((item) => item.mode === 'PER_PERSON');
+                        const missing = missingOf(personRows);
                         return (
                           <tr key={row.id} className="cursor-pointer hover:bg-slate-50/70" onClick={() => setPersonId(row.id)}>
                             <td className="py-2 pr-3">
@@ -253,11 +244,16 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                                 </div>
                               </div>
                             </td>
-                            <td className="py-2 pr-3 text-xs text-slate-600">
-                              {resolveTemplateFor(row, profile, source, monthStart).template?.code ?? '—'}
+                            <td className="max-w-[12rem] truncate py-2 pr-3 text-xs text-slate-600">
+                              {resolveTemplateFor(row, profileOf(row), source, monthStart).template?.name ?? '—'}
                             </td>
-                            <td className="py-2 pr-3 text-right tabular-nums text-slate-700">{base != null ? formatVND(base) : '—'}</td>
-                            <td className="py-2 pr-3 text-center tabular-nums">{profile?.dependents ?? 0}</td>
+                            <td className="py-2 pr-3 text-xs">
+                              {perPerson.length === 0
+                                ? <span className="text-slate-400">—</span>
+                                : missing.length > 0
+                                  ? <span className="font-semibold text-amber-700" title={missing.map((item) => item.component.name).join(', ')}>Thiếu {missing.length}/{perPerson.length}</span>
+                                  : <span className="text-slate-600">Đủ {perPerson.length}/{perPerson.length}</span>}
+                            </td>
                             <td className="py-2 pr-3">
                               <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${status.tone}`}>{status.label}</span>
                             </td>
@@ -305,12 +301,13 @@ function UnitItemsSummary({ data, unit, monthStart, monthEnd }: {
   if (items.length === 0 && !request) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-50 px-3 py-2 text-xs">
-      <span className="font-semibold text-slate-600">Khoản chung của đơn vị:</span>
+      <span className="font-semibold text-slate-600">Giá trị chung của đơn vị:</span>
       {items.length === 0 && <span className="text-slate-400">chưa có</span>}
       {items.map((item) => (
         <span key={item.component_id} className="rounded bg-white px-1.5 py-0.5 font-semibold text-slate-700 shadow-sm">
           {componentById.get(item.component_id)?.name ?? '?'}
-          {item.amount != null && <span className="ml-1 font-normal text-slate-500">{formatVND(item.amount)}</span>}
+          {item.amount != null && <span className="ml-1 font-normal text-slate-500">{formatFormulaNumber(item.amount)}</span>}
+          {item.formula && <span className="ml-1 font-normal text-slate-500">công thức riêng</span>}
         </span>
       ))}
       {request && (
@@ -323,10 +320,12 @@ function UnitItemsSummary({ data, unit, monthStart, monthEnd }: {
 }
 
 function PersonPanel({
-  person, data, monthStart, monthEnd, canManage, account, status, onBack, onOpenScheme, onAccountSaved,
+  person, data, personRows, templateLabel, monthStart, monthEnd, canManage, account, status, onBack, onOpenScheme, onAccountSaved,
 }: {
   person: Profile;
   data: PayrollWorkspace;
+  personRows: MechanismRow[];
+  templateLabel: string;
   monthStart: string;
   monthEnd: string;
   canManage: boolean;
@@ -336,11 +335,22 @@ function PersonPanel({
   onOpenScheme: () => void;
   onAccountSaved: () => void;
 }) {
-  const source = schemeSourceOf(data);
-  const profile = payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === person.id), monthEnd);
-  const template = resolveTemplateFor(person, profile, source, monthStart);
-  const items = resolvePayItems(person, profile, source, monthStart, monthEnd);
   const request = openRequestFor(data.schemeRequests, { type: 'USER', id: person.id });
+  const nameOf = nameResolver(data.components, null);
+  const missing = missingOf(personRows);
+  const app = useAppSettings();
+
+  // Giá trị tính được của từng dòng theo số liệu thật của người này trong tháng.
+  const lineByCode = useMemo(() => {
+    const params = paramsForMonth(data, app, new Date(`${monthStart}T00:00:00`), monthStart);
+    if (!params) return new Map<string, { amount: number; failed?: boolean }>();
+    try {
+      const { computed } = computeForPerson(person, data, params, new Date(`${monthStart}T00:00:00`), monthStart, monthEnd);
+      return new Map(computed.lines.map((line) => [line.code, line]));
+    } catch {
+      return new Map<string, { amount: number; failed?: boolean }>();
+    }
+  }, [app, data, monthEnd, monthStart, person]);
 
   return (
     <>
@@ -356,7 +366,7 @@ function PersonPanel({
           </div>
           <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${status.tone}`}>{status.label}</span>
           <Button onClick={onOpenScheme}>
-            <Settings2 className="h-4 w-4" /> {canManage ? 'Thiết lập Cơ chế Lương' : 'Xem cơ chế lương'}
+            <Settings2 className="h-4 w-4" /> {canManage ? 'Thiết lập cơ chế lương' : 'Xem cơ chế lương'}
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -365,36 +375,42 @@ function PersonPanel({
               Đề xuất {request.code} bị BGĐ từ chối: {request.review_note}
             </p>
           )}
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Fact label="Mẫu bảng lương" value={template.label} />
-            <Fact label="Người phụ thuộc" value={String(profile?.dependents ?? 0)} />
-            <Fact label="Thuế TNCN" value={profile ? TAX_MODE_SHORT[profile.tax_mode] : 'Lũy tiến'} />
-            <Fact
-              label="Bảo hiểm"
-              value={profile && !profile.insurance_enabled
-                ? 'Không tham gia'
-                : profile?.insurance_base != null ? `Mức đóng ${formatVND(Number(profile.insurance_base))}` : 'Theo khoản tính BH'}
-            />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Fact label="Cơ chế lương" value={templateLabel} />
+            <Fact label="Còn thiếu" value={missing.length === 0 ? 'Không' : missing.map((row) => row.component.name).join(', ')} />
           </div>
           <div className="rounded-xl border border-slate-200">
             <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">
-              Khoản lương áp tháng {monthStart.slice(5, 7)}/{monthStart.slice(0, 4)} ({items.length})
+              Các dòng áp tháng {monthStart.slice(5, 7)}/{monthStart.slice(0, 4)} ({personRows.length})
             </p>
-            {items.length === 0 ? (
-              <p className="px-3 py-4 text-center text-xs text-slate-500">Chưa có khoản nào — phiếu lương sẽ ra 0đ.</p>
+            {personRows.length === 0 ? (
+              <p className="px-3 py-4 text-center text-xs text-slate-500">Chưa có cơ chế — phiếu lương sẽ ra 0đ.</p>
             ) : (
               <ul className="divide-y divide-slate-100">
-                {items.map((entry) => (
-                  <li key={entry.component.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
-                    <span className="font-semibold text-slate-800">
-                      {entry.component.kind === 'DEDUCTION' ? '− ' : '+ '}{entry.component.name}
-                    </span>
-                    {(entry.item.is_base ?? entry.component.is_base) && (
-                      <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">LƯƠNG GỐC</span>
-                    )}
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">{entry.origin}</span>
-                    <span className="ml-auto font-mono text-[11px] text-slate-600">
-                      {entry.item.formula?.trim() || (entry.item.amount != null ? formatVND(entry.item.amount) : entry.component.formula ?? 'theo danh mục')}
+                {personRows.map((row) => (
+                  <li key={row.component.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
+                    <span className="w-4 text-center font-black text-slate-400">{KIND_SIGN[row.component.kind]}</span>
+                    <span className="font-semibold text-slate-800">{row.component.name}</span>
+                    {(() => {
+                      const line = lineByCode.get(row.component.code);
+                      return (
+                        <span
+                          title="Giá trị tính được theo số liệu thật của tháng"
+                          className={`ml-auto shrink-0 text-right text-sm font-bold tabular-nums ${
+                            line?.failed ? 'text-amber-600' : row.component.kind === 'DEDUCTION' ? 'text-red-600' : 'text-slate-900'
+                          }`}
+                        >
+                          {line ? `${row.component.kind === 'DEDUCTION' ? '−' : ''}${formatFormulaNumber(line.amount)}` : '—'}
+                        </span>
+                      );
+                    })()}
+                    <span className={`w-full truncate text-right text-[11px] sm:w-auto sm:max-w-[40%] ${row.mode === 'PER_PERSON' && row.amount == null ? 'font-semibold text-red-600' : 'text-slate-600'}`}>
+                      {row.mode === 'FORMULA'
+                        ? (row.formula ? describeFormula(row.formula, nameOf) : 'chưa có công thức')
+                        : row.mode === 'MONTHLY_INPUT'
+                          ? 'nhập hằng tháng'
+                          : row.amount != null ? formatFormulaNumber(row.amount)
+                            : row.mode === 'PER_PERSON' ? 'chưa khai' : formatFormulaNumber(Number(row.component.default_amount ?? 0))}
                     </span>
                   </li>
                 ))}
@@ -417,7 +433,7 @@ function Fact({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Tài khoản nhận lương — nguồn cho file chi lương ngân hàng (FR06.04.04). */
+/** Tài khoản nhận lương — nguồn cho file chi lương ngân hàng. */
 function BankAccountCard({ person, account, canManage, onSaved }: {
   person: Profile; account: EmployeeBankAccount | null; canManage: boolean; onSaved: () => void;
 }) {

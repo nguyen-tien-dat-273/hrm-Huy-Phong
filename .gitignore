@@ -123,3 +123,4 @@ patches/
 
 # Goi cai bridge - chua token that, khong day len git
 dist-bridge/
+.local-pg/

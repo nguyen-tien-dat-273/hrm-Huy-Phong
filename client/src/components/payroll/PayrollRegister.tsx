@@ -1,13 +1,13 @@
 // ============================================================================
-// F06.04 — Bảng lương tháng: tính → khoá kỳ (2FA) → BGĐ ký duyệt chi →
-// file ngân hàng → xác nhận chi trả & phát hành phiếu.
+// Bảng lương tháng: tính → khoá kỳ (2FA) → BGĐ ký duyệt chi → file ngân hàng
+// → xác nhận chi trả & phát hành phiếu.
 // ----------------------------------------------------------------------------
-// • Bản nháp / Đã tính: số liệu tính TRỰC TIẾP từ chấm công (M03), KPI (M05),
-//   cơ chế lương đã duyệt và bộ tham số hiệu lực — mỗi lần "Tính lại" ghi đè
-//   bộ phiếu nháp. Thực lĩnh làm tròn theo tham số (FR06.04.01).
+// • Bản nháp / Đã tính: số liệu tính TRỰC TIẾP từ chấm công, KPI, cơ chế lương
+//   đã duyệt và bộ tham số hiệu lực — mỗi lần "Tính lại" ghi đè bộ phiếu nháp.
 // • Đã khoá trở đi: hiển thị ĐÚNG bộ phiếu đã ghi, không tính lại. Sai sót sau
-//   khi khoá xử lý bằng Điều chỉnh lương của kỳ sau (BR-PAY-009) — không có
-//   nút "mở lại kỳ".
+//   khi khoá xử lý bằng Điều chỉnh lương của kỳ sau — không có nút mở lại kỳ.
+// • Bảng điền THEO ĐẦU MỤC: mỗi đầu mục của cơ chế một cột, đúng như bảng
+//   lương kế toán vẫn làm trên Excel.
 // • Mọi chuyển trạng thái đi qua RPC ở database; màn này chỉ gọi và hiển thị.
 // ============================================================================
 
@@ -38,13 +38,15 @@ import type { ComputedPayslip } from '@/lib/payroll';
 import type { PayrollParams } from '@/lib/payrollSettings';
 import { computeForPerson } from '@/lib/payrollRun';
 import { buildPayrollJournal } from '@/lib/payrollJournal';
+import { formatFormulaNumber } from '@/lib/formulaTokens';
+import { KIND_SIGN } from '@/lib/formulaEntries';
 import { stripVietnamese } from '@/lib/tableExport';
 import {
-  REAUTH_REQUIRED, ensurePayrollRun, fetchPayrollApproverIds, lockPayrollRun, markPayrollRunPaid, persistPayslips,
-  withdrawPayrollRun, type PayrollWorkspace,
+  REAUTH_REQUIRED, ensurePayrollRun, fetchPayrollApproverIds, lockPayrollRun, markPayrollRunPaid, payslipDeductions,
+  persistPayslips, withdrawPayrollRun, type PayrollWorkspace,
 } from '@/lib/payrollData';
 import { notifyUsers } from '@/lib/assignments';
-import type { PayrollRunStatus, Profile } from '@/types';
+import type { PayComponentKind, PayrollRunStatus, Profile } from '@/types';
 
 interface PayrollRegisterProps {
   data: PayrollWorkspace;
@@ -60,6 +62,14 @@ interface PayrollRow {
   profile: Profile;
   computed: ComputedPayslip;
   hasScheme: boolean;
+  /** Tên cơ chế đang áp (chỉ có khi tính trực tiếp). */
+  mechanism: string | null;
+}
+
+interface ItemColumn {
+  code: string;
+  name: string;
+  kind: PayComponentKind;
 }
 
 export const RUN_STATUS_LABEL: Record<PayrollRunStatus, string> = {
@@ -87,31 +97,30 @@ function rowsFromPayslips(data: PayrollWorkspace): PayrollRow[] {
     profile: data.profiles.find((person) => person.id === slip.user_id)
       ?? ({ id: slip.user_id, name: slip.employee_name, department: slip.department, employee_code: slip.employee_code, avatar_url: null } as Profile),
     hasScheme: true,
+    mechanism: null,
     computed: {
-      payBasis: slip.pay_basis,
       stats: {
         workDays: Number(slip.work_days), leaveDays: Number(slip.leave_days), holidayDays: 0,
         paidDays: Number(slip.paid_days), workHours: Number(slip.work_hours), missingCheckout: 0,
         lateMinutes: 0, lateCount: 0, lateAfterCutoffCount: 0, earlyMinutes: 0, earlyCount: 0,
       },
       standardDays: Number(slip.standard_days),
-      hourlyRate: 0,
-      insuranceBase: 0,
       lines: (linesBySlip.get(slip.id) ?? []).map((line) => ({
-        code: line.code, name: line.name, kind: line.kind, quantity: line.quantity, rate: line.rate,
-        amount: Number(line.amount), taxable: line.taxable, insurable: line.insurable, detail: line.detail ?? '',
+        code: line.code, name: line.name, kind: line.kind, amount: Number(line.amount), detail: line.detail ?? '',
       })),
       gross: Number(slip.gross_pay),
-      taxableIncome: Number(slip.taxable_income),
-      insuranceEmployee: Number(slip.insurance_employee),
-      insuranceEmployer: Number(slip.insurance_employer),
-      personalIncomeTax: Number(slip.personal_income_tax),
-      taxSteps: [],
-      otherDeductions: Number(slip.other_deductions),
+      totalDeductions: payslipDeductions(slip),
       roundingAdjustment: Number(slip.rounding_adjustment ?? 0),
+      reportTotals: {
+        insuranceEmployee: Number(slip.insurance_employee) || 0,
+        insuranceEmployer: Number(slip.insurance_employer) || 0,
+        incomeTax: Number(slip.personal_income_tax) || 0,
+        taxableIncome: Number(slip.taxable_income) || 0,
+      },
       netPay: Number(slip.net_pay),
       snapshot: slip.snapshot,
       warnings: [],
+      values: {},
     },
   }));
 }
@@ -131,6 +140,7 @@ export function PayrollRegister({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [sort, setSort] = useState<SortKey>('name');
   const [page, setPage] = useState(0);
+  const [showInfo, setShowInfo] = useState(true);
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
   const [schemeTarget, setSchemeTarget] = useState<SchemeTarget | null>(null);
   const [busy, setBusy] = useState<'calc' | 'paid' | 'journal' | null>(null);
@@ -149,7 +159,7 @@ export function PayrollRegister({
     if (!params || closed) return [];
     return data.profiles.map((person) => {
       const result = computeForPerson(person, data, params, monthStart, monthStartStr, monthEndStr);
-      return { profile: person, computed: result.computed, hasScheme: result.hasScheme };
+      return { profile: person, computed: result.computed, hasScheme: result.hasScheme, mechanism: result.template.template?.name ?? null };
     });
   }, [closed, data, monthStart, monthStartStr, monthEndStr, params]);
   const frozenRows = useMemo(() => (closed ? rowsFromPayslips(data) : []), [closed, data]);
@@ -190,15 +200,28 @@ export function PayrollRegister({
   const currentPage = Math.min(page, pageCount - 1);
   const pageRows = sorted.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
+  /** Mỗi đầu mục một cột, theo thứ tự xuất hiện trên phiếu. */
+  const columns = useMemo<ItemColumn[]>(() => {
+    const seen = new Map<string, ItemColumn>();
+    for (const row of sorted) {
+      for (const line of row.computed.lines) {
+        if (!seen.has(line.code)) seen.set(line.code, { code: line.code, name: line.name, kind: line.kind });
+      }
+    }
+    return [...seen.values()];
+  }, [sorted]);
+  const shownColumns = showInfo ? columns : columns.filter((column) => column.kind !== 'INFO');
+  const amountOf = (row: PayrollRow, code: string) => {
+    const lines = row.computed.lines.filter((line) => line.code === code);
+    return lines.length === 0 ? null : lines.reduce((sum, line) => sum + line.amount, 0);
+  };
+
   const sum = (pick: (row: PayrollRow) => number, list: PayrollRow[] = filtered) => list.reduce((total, row) => total + pick(row), 0);
   const totals = {
     gross: sum((row) => row.computed.gross),
-    insurance: sum((row) => row.computed.insuranceEmployee),
-    tax: sum((row) => row.computed.personalIncomeTax),
-    other: sum((row) => row.computed.otherDeductions),
+    deductions: sum((row) => row.computed.totalDeductions),
     rounding: sum((row) => row.computed.roundingAdjustment),
     net: sum((row) => row.computed.netPay),
-    employer: sum((row) => row.computed.insuranceEmployer),
   };
   const payableRows = rows.filter((row) => row.hasScheme);
   const allTotalsNet = sum((row) => row.computed.netPay, payableRows);
@@ -209,8 +232,8 @@ export function PayrollRegister({
   const readiness = data.readiness;
 
   const checklist = [
-    { ok: !!readiness?.timesheetLocked, blocking: true, label: 'Kỳ công tháng đã khoá (M03)', hint: 'Khoá ở Bảng công trước.' },
-    { ok: (readiness?.openKpiReviews ?? 0) === 0, blocking: true, label: 'Phiếu KPI tháng đã khoá (M05)', hint: `Còn ${readiness?.openKpiReviews ?? 0} phiếu KPI chưa khoá.` },
+    { ok: !!readiness?.timesheetLocked, blocking: true, label: 'Kỳ công tháng đã khoá', hint: 'Khoá ở Bảng công trước.' },
+    { ok: (readiness?.openKpiReviews ?? 0) === 0, blocking: true, label: 'Phiếu KPI tháng đã khoá', hint: `Còn ${readiness?.openKpiReviews ?? 0} phiếu KPI chưa khoá.` },
     { ok: runStatus === 'CALCULATED' && staleCount === 0, blocking: true, label: 'Bộ phiếu đã tính khớp số liệu hiện tại', hint: runStatus === 'CALCULATED' ? `${staleCount} phiếu đã đổi — bấm Tính lại.` : 'Chưa tính lương.' },
     { ok: missingSchemeCount === 0, blocking: false, label: 'Mọi người có công đều có cơ chế lương', hint: `${missingSchemeCount} người có công nhưng chưa có cơ chế.` },
     { ok: pendingSchemes === 0, blocking: false, label: 'Không còn đề xuất cơ chế chờ duyệt cho tháng này', hint: `${pendingSchemes} đề xuất chờ BGĐ — duyệt xong phải tính lại.` },
@@ -299,7 +322,7 @@ export function PayrollRegister({
     onChanged();
   };
 
-  /** Bút toán kết chuyển (TT200) — chỉ có nghĩa khi số liệu đã được duyệt. */
+  /** Bút toán kết chuyển — chỉ có nghĩa khi số liệu đã được duyệt. */
   const handleExportJournal = async () => {
     setBusy('journal');
     try {
@@ -308,7 +331,7 @@ export function PayrollRegister({
       const sheet: (string | number)[][] = [
         [`BÚT TOÁN KẾT CHUYỂN LƯƠNG THÁNG ${monthLabel}`],
         [`Trạng thái kỳ: ${RUN_STATUS_LABEL[runStatus]}`],
-        ['Tài khoản chi phí mặc định 642 (quản lý doanh nghiệp). Bộ phận sản xuất đổi sang 622, bán hàng 641 — kế toán tự chỉnh theo cơ cấu thực tế.'],
+        ['Tài khoản chi phí mặc định 642, khoản trừ mặc định 338 — kế toán chỉnh theo cơ cấu và từng khoản trừ thực tế.'],
         [],
         ['Nhóm bút toán', 'Bộ phận', 'Nợ', 'Có', 'Số tiền', 'Diễn giải'],
         ...journal.entries.map((entry) => [entry.group, entry.department, entry.debit, entry.credit, entry.amount, entry.description]),
@@ -316,12 +339,9 @@ export function PayrollRegister({
         ['', '', '', 'TỔNG PHÁT SINH', journal.totalDebit, journal.balanced ? 'Nợ = Có' : 'LỆCH — kiểm tra lại'],
         [],
         ['ĐỐI CHIẾU'],
-        ['Tổng thu nhập (Có 334)', '', '', '', journal.totals.gross, ''],
-        ['Bảo hiểm người lao động đóng', '', '', '', journal.totals.insuranceEmployee, ''],
-        ['Thuế TNCN khấu trừ', '', '', '', journal.totals.personalIncomeTax, ''],
-        ['Khấu trừ khác', '', '', '', journal.totals.otherDeductions, ''],
+        ['Tổng các khoản cộng (Có 334)', '', '', '', journal.totals.gross, ''],
+        ['Tổng các khoản trừ', '', '', '', journal.totals.deductions, ''],
         ['THỰC CHI CHO NGƯỜI LAO ĐỘNG', '', '', '', journal.totals.netPay, ''],
-        ['Bảo hiểm doanh nghiệp đóng thêm', '', '', '', journal.totals.insuranceEmployer, ''],
       ];
       const worksheet = XLSX.utils.aoa_to_sheet(sheet);
       worksheet['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 8 }, { wch: 8 }, { wch: 16 }, { wch: 44 }];
@@ -334,42 +354,42 @@ export function PayrollRegister({
     setBusy(null);
   };
 
-  /** Mỗi khoản một cột để kế toán đối chiếu từng khoản, không chỉ ba con số tổng. */
-  const exportOptions = () => {
-    const keys = [...new Set(sorted.flatMap((row) => row.computed.lines.map((line) => `${line.kind}|${line.code}|${line.name}`)))];
-    const amountOf = (row: PayrollRow, key: string) => row.computed.lines.find((line) => line.code === key.split('|')[1])?.amount ?? 0;
-    const column = (key: string) => ({ header: key.split('|')[2], value: (row: PayrollRow) => amountOf(row, key), width: 16 });
-    return {
-      filename: `bang-luong-${format(monthStart, 'yyyy-MM')}`,
-      sheetName: 'Bảng lương',
-      title: `BẢNG LƯƠNG THÁNG ${monthLabel}`,
-      subtitle: `Trạng thái kỳ: ${RUN_STATUS_LABEL[runStatus]}${closed ? ' (số liệu đã chốt)' : ' (bản xem trước)'}`,
-      rows: sorted,
-      columns: [
-        { header: 'Mã NV', value: (row: PayrollRow) => row.profile.employee_code ?? '', width: 10 },
-        { header: 'Họ tên', value: (row: PayrollRow) => row.profile.name, width: 24 },
-        { header: 'Đơn vị', value: (row: PayrollRow) => unitNames.get(row.profile.unit_id ?? '') ?? row.profile.department ?? '', width: 20 },
-        { header: 'Ngày công', value: (row: PayrollRow) => row.computed.stats.workDays, width: 10 },
-        { header: 'Ngày phép', value: (row: PayrollRow) => row.computed.stats.leaveDays, width: 10 },
-        { header: 'Công chuẩn', value: (row: PayrollRow) => row.computed.standardDays, width: 10 },
-        ...keys.filter((key) => key.startsWith('EARNING|')).map(column),
-        { header: 'TỔNG THU NHẬP', value: (row: PayrollRow) => row.computed.gross },
-        ...keys.filter((key) => key.startsWith('DEDUCTION|')).map(column),
-        { header: 'LÀM TRÒN', value: (row: PayrollRow) => row.computed.roundingAdjustment, width: 10 },
-        { header: 'THỰC NHẬN', value: (row: PayrollRow) => row.computed.netPay },
-      ],
-    };
-  };
+  /** Mỗi đầu mục một cột — đúng như bảng lương kế toán vẫn đối chiếu. */
+  const exportOptions = () => ({
+    filename: `bang-luong-${format(monthStart, 'yyyy-MM')}`,
+    sheetName: 'Bảng lương',
+    title: `BẢNG LƯƠNG THÁNG ${monthLabel}`,
+    subtitle: `Trạng thái kỳ: ${RUN_STATUS_LABEL[runStatus]}${closed ? ' (số liệu đã chốt)' : ' (bản xem trước)'}`,
+    rows: sorted,
+    columns: [
+      { header: 'Mã NV', value: (row: PayrollRow) => row.profile.employee_code ?? '', width: 10 },
+      { header: 'Họ tên', value: (row: PayrollRow) => row.profile.name, width: 24 },
+      { header: 'Đơn vị', value: (row: PayrollRow) => unitNames.get(row.profile.unit_id ?? '') ?? row.profile.department ?? '', width: 20 },
+      { header: 'Ngày công', value: (row: PayrollRow) => row.computed.stats.workDays, width: 10 },
+      { header: 'Công chuẩn', value: (row: PayrollRow) => row.computed.standardDays, width: 10 },
+      ...columns.map((column) => ({
+        header: `${KIND_SIGN[column.kind]} ${column.name}`,
+        value: (row: PayrollRow) => amountOf(row, column.code) ?? '',
+        width: 16,
+      })),
+      { header: 'TỔNG CỘNG', value: (row: PayrollRow) => row.computed.gross },
+      { header: 'TỔNG TRỪ', value: (row: PayrollRow) => row.computed.totalDeductions },
+      { header: 'LÀM TRÒN', value: (row: PayrollRow) => row.computed.roundingAdjustment, width: 10 },
+      { header: 'THỰC NHẬN', value: (row: PayrollRow) => row.computed.netPay },
+    ],
+  });
 
   // ---- Giao diện -------------------------------------------------------------
   if (!params && !closed) {
     return (
       <Banner tone="amber" icon={<TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />}>
         Chưa có <strong>bộ tham số lương hiệu lực</strong> cho tháng {monthLabel} — bảng lương không tính được.
-        Khai ở <strong>Tham số lương</strong> (bảo hiểm, thuế, giảm trừ, lương tối thiểu vùng) trước.
+        Khai ở <strong>Tham số lương</strong> trước.
       </Banner>
     );
   }
+
+  const cellTone = (kind: PayComponentKind) => (kind === 'DEDUCTION' ? 'text-red-600' : kind === 'INFO' ? 'text-slate-400' : 'text-slate-800');
 
   return (
     <div className="space-y-5">
@@ -436,7 +456,7 @@ export function PayrollRegister({
       {runStatus === 'PAID' && (
         <Banner tone="emerald" icon={<CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" />}>
           Đã chi trả và phát hành phiếu lương lúc {formatDateTime(run?.published_at ?? run?.paid_at ?? null)}. Sai sót phát hiện sau
-          xử lý bằng <strong>Điều chỉnh lương</strong> của kỳ sau (BR-PAY-009).
+          xử lý bằng <strong>Điều chỉnh lương</strong> của kỳ sau.
         </Banner>
       )}
 
@@ -478,10 +498,10 @@ export function PayrollRegister({
       )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard label="Tổng thu nhập (Gross)" value={formatVND(totals.gross)} />
-        <SummaryCard label="Bảo hiểm + thuế NLĐ" value={formatVND(totals.insurance + totals.tax)} tone="red" />
-        <SummaryCard label="Tổng thực chi (Net)" value={formatVND(totals.net)} tone="indigo" hint={totals.rounding ? `Gồm làm tròn ${formatVND(totals.rounding)}` : undefined} />
-        <SummaryCard label="Chi phí doanh nghiệp" value={formatVND(totals.gross + totals.employer)} hint="Gồm bảo hiểm phần công ty đóng" />
+        <SummaryCard label="Tổng các khoản cộng" value={formatVND(totals.gross)} />
+        <SummaryCard label="Tổng các khoản trừ" value={formatVND(totals.deductions)} tone="red" />
+        <SummaryCard label="Tổng thực chi" value={formatVND(totals.net)} tone="indigo" hint={totals.rounding ? `Gồm làm tròn ${formatVND(totals.rounding)}` : undefined} />
+        <SummaryCard label="Số phiếu" value={`${filtered.filter((row) => row.hasScheme).length} / ${filtered.length} người`} />
       </div>
 
       <Card>
@@ -517,6 +537,10 @@ export function PayrollRegister({
                 <option value="net_asc">Thực nhận thấp → cao</option>
               </Select>
             </div>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+              <input type="checkbox" className="h-3.5 w-3.5 accent-indigo-600" checked={showInfo} onChange={(event) => setShowInfo(event.target.checked)} />
+              Hiện dòng chỉ để tính
+            </label>
             <span className="text-xs font-semibold text-slate-500">{filtered.length}/{rows.length} nhân sự</span>
           </div>
 
@@ -526,74 +550,82 @@ export function PayrollRegister({
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px]">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-slate-100 bg-[#FCFAF8]">
-                    <Th align="left" className="px-6">Nhân sự</Th>
-                    <Th align="left">Cơ chế</Th>
-                    <Th align="center">Công</Th>
-                    <Th align="right">Thu nhập</Th>
-                    <Th align="right">Khấu trừ</Th>
-                    <Th align="right" className="px-6">Thực nhận</Th>
-                    <th className="w-12 px-4 py-4 no-print" />
+                    <th className="sticky left-0 z-10 min-w-[220px] bg-[#FCFAF8] px-4 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-slate-400">Nhân sự</th>
+                    <th className="px-3 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-slate-400">Công</th>
+                    {shownColumns.map((column) => (
+                      <th key={column.code} className="min-w-[96px] px-3 py-3 text-right align-bottom">
+                        <span className={`block text-[11px] font-bold leading-tight ${column.kind === 'DEDUCTION' ? 'text-red-500' : column.kind === 'INFO' ? 'text-slate-400' : 'text-slate-600'}`}>
+                          {KIND_SIGN[column.kind]} {column.name}
+                        </span>
+                      </th>
+                    ))}
+                    <th className="min-w-[110px] px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-slate-500">Tổng cộng</th>
+                    <th className="min-w-[100px] px-3 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-red-400">Tổng trừ</th>
+                    <th className="min-w-[120px] px-4 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-indigo-500">Thực nhận</th>
+                    <th className="w-12 px-2 py-3 no-print" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {pageRows.map((row) => {
-                    const deductions = row.computed.insuranceEmployee + row.computed.personalIncomeTax + row.computed.otherDeductions;
-                    return (
-                      <tr key={row.profile.id} className="cursor-pointer transition-colors hover:bg-[#FCFAF8]" onClick={() => setDetailUserId(row.profile.id)}>
-                        <td className="px-6 py-3.5">
-                          <div className="flex min-w-0 items-center gap-3">
-                            <Avatar name={row.profile.name} url={row.profile.avatar_url} size="sm" />
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-bold text-slate-800">{row.profile.name}</p>
-                              <p className="text-[10px] font-medium uppercase tracking-tighter text-slate-400">
-                                {row.profile.employee_code ?? '—'} · {unitNames.get(row.profile.unit_id ?? '') ?? row.profile.department ?? 'Chưa có đơn vị'}
-                              </p>
-                            </div>
+                  {pageRows.map((row) => (
+                    <tr key={row.profile.id} className="cursor-pointer transition-colors hover:bg-[#FCFAF8]" onClick={() => setDetailUserId(row.profile.id)}>
+                      <td className="sticky left-0 z-10 bg-white px-4 py-3">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <Avatar name={row.profile.name} url={row.profile.avatar_url} size="sm" />
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-1 truncate text-sm font-bold text-slate-800">
+                              {row.profile.name}
+                              {row.computed.warnings.length > 0 && <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-label="Có cảnh báo" />}
+                            </p>
+                            <p className="truncate text-[10px] font-medium text-slate-400">
+                              {row.hasScheme ? (row.mechanism ?? (unitNames.get(row.profile.unit_id ?? '') ?? row.profile.department ?? '')) : <span className="font-bold uppercase text-red-400">Chưa có cơ chế</span>}
+                            </p>
                           </div>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {row.hasScheme ? (
-                            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600">
-                              {row.computed.lines.filter((line) => line.kind === 'EARNING').length} khoản
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-bold uppercase text-red-400">Chưa thiết lập</span>
-                          )}
-                          {row.computed.warnings.length > 0 && (
-                            <TriangleAlert className="ml-1.5 inline h-3.5 w-3.5 text-amber-500" aria-label="Có cảnh báo" />
-                          )}
-                        </td>
-                        <td className="px-3 py-3.5 text-center text-xs font-bold tabular-nums text-slate-800">
-                          {row.computed.stats.paidDays}
-                          <span className="ml-0.5 text-[9px] text-slate-300">/{row.computed.standardDays}</span>
-                        </td>
-                        <td className="px-4 py-3.5 text-right text-xs font-bold tabular-nums text-slate-800">{formatVND(row.computed.gross)}</td>
-                        <td className="px-4 py-3.5 text-right text-xs font-medium tabular-nums text-red-500">−{formatVND(deductions)}</td>
-                        <td className="px-6 py-3.5 text-right text-sm font-bold tabular-nums text-slate-900">{formatVND(row.computed.netPay)}</td>
-                        <td className="px-4 py-3.5 text-center no-print">
-                          <button
-                            onClick={(event) => { event.stopPropagation(); setSchemeTarget({ type: 'USER', person: row.profile }); }}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
-                            aria-label={`Cơ chế lương của ${row.profile.name}`}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-center font-bold tabular-nums text-slate-700">
+                        {row.computed.stats.paidDays}
+                        <span className="ml-0.5 text-[9px] text-slate-300">/{row.computed.standardDays}</span>
+                      </td>
+                      {shownColumns.map((column) => {
+                        const amount = amountOf(row, column.code);
+                        return (
+                          <td key={column.code} className={`px-3 py-3 text-right tabular-nums ${cellTone(column.kind)}`}>
+                            {amount == null ? <span className="text-slate-200">—</span> : formatFormulaNumber(amount)}
+                          </td>
+                        );
+                      })}
+                      <td className="px-3 py-3 text-right font-bold tabular-nums text-slate-800">{formatFormulaNumber(row.computed.gross)}</td>
+                      <td className="px-3 py-3 text-right tabular-nums text-red-600">{row.computed.totalDeductions ? `−${formatFormulaNumber(row.computed.totalDeductions)}` : '—'}</td>
+                      <td className="px-4 py-3 text-right text-sm font-bold tabular-nums text-slate-900">{formatVND(row.computed.netPay)}</td>
+                      <td className="px-2 py-3 text-center no-print">
+                        <button
+                          onClick={(event) => { event.stopPropagation(); setSchemeTarget({ type: 'USER', person: row.profile }); }}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                          aria-label={`Cơ chế lương của ${row.profile.name}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
                 <tfoot className="border-t border-slate-200 bg-[#FCFAF8] font-bold">
                   <tr>
-                    <td className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-900" colSpan={3}>
+                    <td className="sticky left-0 z-10 bg-[#FCFAF8] px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-900">
                       Tổng ({filtered.length} nhân sự)
                     </td>
-                    <td className="px-4 py-4 text-right text-xs tabular-nums text-slate-800">{formatVND(totals.gross)}</td>
-                    <td className="px-4 py-4 text-right text-xs tabular-nums text-red-700">−{formatVND(totals.insurance + totals.tax + totals.other)}</td>
-                    <td className="px-6 py-4 text-right text-base tabular-nums text-indigo-700">{formatVND(totals.net)}</td>
+                    <td />
+                    {shownColumns.map((column) => (
+                      <td key={column.code} className={`px-3 py-4 text-right tabular-nums ${cellTone(column.kind)}`}>
+                        {column.kind === 'INFO' ? '' : formatFormulaNumber(sum((row) => amountOf(row, column.code) ?? 0))}
+                      </td>
+                    ))}
+                    <td className="px-3 py-4 text-right tabular-nums text-slate-800">{formatFormulaNumber(totals.gross)}</td>
+                    <td className="px-3 py-4 text-right tabular-nums text-red-700">−{formatFormulaNumber(totals.deductions)}</td>
+                    <td className="px-4 py-4 text-right text-sm tabular-nums text-indigo-700">{formatVND(totals.net)}</td>
                     <td className="no-print" />
                   </tr>
                 </tfoot>
@@ -629,7 +661,7 @@ export function PayrollRegister({
         description={(
           <>
             Khoá bộ phiếu đã tính ({data.payslips.length} phiếu, tổng thực chi <strong>{formatVND(allTotalsNet)}</strong>) và trình
-            Ban Giám đốc ký duyệt chi. Sau khi khoá, chấm công và số liệu tháng {monthLabel} không sửa được nữa (BR-PAY-009).
+            Ban Giám đốc ký duyệt chi. Sau khi khoá, chấm công và số liệu tháng {monthLabel} không sửa được nữa.
           </>
         )}
         onClose={() => setLockOpen(false)}
@@ -698,6 +730,7 @@ export function PayrollRegister({
   );
 }
 
+
 /** Vòng đời kỳ lương thành năm chặng — người làm lương thấy cả đường đi, không chỉ một nhãn. */
 function RunLifecycle({ status }: { status: PayrollRunStatus }) {
   const current = RUN_ORDER.indexOf(status);
@@ -737,11 +770,6 @@ function MiniStat({ label, value }: { label: string; value: string }) {
       <p className="mt-0.5 truncate text-sm font-bold text-slate-800">{value}</p>
     </div>
   );
-}
-
-function Th({ children, align, className = '' }: { children?: React.ReactNode; align: 'left' | 'center' | 'right'; className?: string }) {
-  const alignment = { left: 'text-left', center: 'text-center', right: 'text-right' }[align];
-  return <th className={`${alignment} px-4 py-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 ${className}`}>{children}</th>;
 }
 
 export function Banner({ tone, icon, children }: { tone: 'amber' | 'emerald' | 'red'; icon: React.ReactNode; children: React.ReactNode }) {
