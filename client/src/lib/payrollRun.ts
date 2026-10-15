@@ -7,17 +7,17 @@
 // ============================================================================
 
 import {
-  computePayslip, payProfileForPeriod, splitOvertimeHours, summarisePeriod,
+  computePayslip, splitOvertimeHours, summarisePeriod,
   type ComputedPayslip, type MechanismRow, type PeriodStats,
 } from './payroll';
-import { resolveMechanismRows, resolveTemplateFor, type ResolvedTemplate, type SchemeSourceData } from './payrollScheme';
+import { resolveMechanismRows, type SchemeSourceData } from './payrollScheme';
 import { toPayrollParams, versionForMonth, type PayrollParamVersion, type PayrollParams } from './payrollSettings';
 import { BUILTIN_FUNCTIONS, OWN_AMOUNT_CODE, OWN_AMOUNT_NAME, SYSTEM_VARIABLE_BY_CODE } from './payrollVariables';
 import { monthStandardDays } from './workSchedule';
 import type { ResolvableUnit } from './kpiSchemeFor';
 import type { PayrollWorkspace } from './payrollData';
 import type { AppSettings } from './settings';
-import type { EmployeePayProfile, Profile } from '@/types';
+import type { Profile } from '@/types';
 
 export function unitMapOf(data: Pick<PayrollWorkspace, 'units'>): Map<string, ResolvableUnit> {
   return new Map(data.units.map((unit) => [unit.id, { id: unit.id, name: unit.name, parent_id: unit.parent_id }]));
@@ -27,9 +27,6 @@ export function schemeSourceOf(data: PayrollWorkspace): SchemeSourceData {
   return {
     components: data.components,
     unitById: unitMapOf(data),
-    templates: data.templates,
-    templateItems: data.templateItems,
-    unitTemplates: data.unitTemplates,
     unitItems: data.unitItems,
     employeeItems: data.items,
   };
@@ -75,13 +72,14 @@ export interface StatsOverride {
   lateCount?: number;
   lateMinutes?: number;
   earlyCount?: number;
+  earlyMinutes?: number;
+  lateAfterCutoffCount?: number;
+  missingCheckout?: number;
 }
 
 export interface PersonComputation {
   computed: ComputedPayslip;
-  payProfile: EmployeePayProfile | null;
   rows: MechanismRow[];
-  template: ResolvedTemplate;
   inputs: Record<string, number>;
   stats: PeriodStats;
   hasScheme: boolean;
@@ -98,24 +96,13 @@ export function computeForPerson(
     /** Số liệu giả định khi chạy thử — đè lên số liệu thật. */
     statsOverride?: StatsOverride;
     inputsOverride?: Record<string, number>;
-    /** Thử một cơ chế khác cơ chế người này đang theo. */
-    templateIdOverride?: string | null;
-    /** Thử bộ dòng đang soạn (màn thiết kế, ước tính khi khai riêng). */
+    /** Thử bộ dòng đang soạn (cơ chế chung, ước tính khi khai riêng). */
     rowsOverride?: MechanismRow[];
     trace?: boolean;
   } = {},
 ): PersonComputation {
-  const payProfile = payProfileForPeriod(
-    data.payProfiles.filter((item) => item.user_id === person.id),
-    monthEndStr,
-  );
-  const source = schemeSourceOf(data);
-  const profileForTemplate = options.templateIdOverride !== undefined
-    ? { template_id: options.templateIdOverride }
-    : payProfile;
-  const template = resolveTemplateFor(person, profileForTemplate, source, monthStartStr);
   const rows = options.rowsOverride
-    ?? resolveMechanismRows(person, profileForTemplate, source, monthStartStr, monthEndStr);
+    ?? resolveMechanismRows(person, schemeSourceOf(data), monthStartStr, monthEndStr);
 
   const inputs: Record<string, number> = {};
   for (const input of data.inputs) {
@@ -157,6 +144,9 @@ export function computeForPerson(
     lateCount: override.lateCount ?? real.lateCount,
     lateMinutes: override.lateMinutes ?? real.lateMinutes,
     earlyCount: override.earlyCount ?? real.earlyCount,
+    earlyMinutes: override.earlyMinutes ?? real.earlyMinutes,
+    lateAfterCutoffCount: override.lateAfterCutoffCount ?? real.lateAfterCutoffCount,
+    missingCheckout: override.missingCheckout ?? real.missingCheckout,
   };
   stats.paidDays = stats.workDays + stats.leaveDays + stats.holidayDays;
 
@@ -172,5 +162,5 @@ export function computeForPerson(
     trace: options.trace,
   });
 
-  return { computed, payProfile, rows, template, inputs, stats, hasScheme: rows.length > 0 };
+  return { computed, rows, inputs, stats, hasScheme: rows.length > 0 };
 }

@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 //   Danh mục khoản lương          → catalog
 //   Tham số lương                 → params
-//   Cơ chế lương (thiết kế + áp)  → schemes
+//   Cơ chế lương (chung + riêng)  → schemes
 //   Số liệu tháng / Điều chỉnh    → inputs / adjustments
 //   Bảng lương (tính → khoá → chi) → register
 //   Phê duyệt lương (BGĐ)         → approvals
@@ -16,14 +16,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
-import { Calculator, PencilRuler, ShieldAlert, TriangleAlert, UsersRound } from 'lucide-react';
+import { Calculator, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { MonthNav } from '@/components/ui/MonthNav';
-import { TableSkeleton } from '@/components/ui/Skeleton';
+import { PayrollSectionSkeleton } from '@/components/payroll/PayrollSkeletons';
 import { ComponentCatalog } from '@/components/payroll/ComponentCatalog';
 import { PayrollParamsTab } from '@/components/payroll/PayrollParamsTab';
-import { MechanismDesigner } from '@/components/payroll/MechanismDesigner';
 import { PayrollDryRunModal } from '@/components/payroll/PayrollDryRunModal';
 import { PaySchemeTree } from '@/components/payroll/PaySchemeTree';
 import { MonthlyInputsTab } from '@/components/payroll/MonthlyInputsTab';
@@ -63,7 +62,7 @@ const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: bool
   },
   inputs: {
     title: 'Số liệu lương tháng',
-    hint: 'Con số nhập mỗi tháng cho các dòng “Thay đổi theo tháng” của cơ chế: doanh số, số chuyến…',
+    hint: 'Nhập hệ số thay đổi mỗi tháng (doanh số, số chuyến…) — lương của từng người tính lại ngay.',
     monthScoped: true, fn: ['admin.payroll_inputs'],
   },
   adjustments: {
@@ -73,18 +72,18 @@ const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: bool
   },
   register: {
     title: 'Bảng lương tháng',
-    hint: 'Tính bảng lương nháp theo cơ chế, khoá kỳ bằng 2FA, Ban Giám đốc ký duyệt chi, xuất file ngân hàng và phát hành phiếu.',
+    hint: '',
     monthScoped: true, fn: ['admin.payroll'],
   },
   approvals: {
     title: 'Phê duyệt lương',
-    hint: 'Ban Giám đốc ký duyệt đề xuất cơ chế lương và lệnh chi lương; từ chối phải ghi lý do.',
+    hint: 'Ký duyệt cơ chế lương và lệnh chi lương; từ chối phải ghi lý do.',
     monthScoped: false, fn: ['admin.payroll_approve'],
   },
 };
 
 export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { profile } = useAuth();
   const app = useAppSettings();
@@ -99,7 +98,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   });
   const [data, setData] = useState<PayrollWorkspace | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dryRun, setDryRun] = useState<{ draftVersion?: PayrollParamVersion; templateId?: string } | null>(null);
+  const [dryRun, setDryRun] = useState<{ draftVersion?: PayrollParamVersion } | null>(null);
 
   const monthStartStr = toDateString(monthStart);
   const monthEndStr = toDateString(endOfMonth(monthStart));
@@ -119,7 +118,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       { table: 'employee_pay_profiles' }, { table: 'employee_pay_items' }, { table: 'unit_pay_items' },
       { table: 'payroll_components' }, { table: 'payroll_inputs' }, { table: 'payroll_adjustments' },
       { table: 'payroll_runs' }, { table: 'payroll_scheme_requests' }, { table: 'payroll_param_versions' },
-      { table: 'payroll_templates' }, { table: 'payroll_template_items' }, { table: 'unit_payroll_templates' },
     ],
     () => loadData(true),
     { enabled: canView, channelKey: 'payroll' },
@@ -134,16 +132,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   const monthClosed = runStatus === 'LOCKED' || runStatus === 'APPROVED' || runStatus === 'PAID';
   const reload = () => { void loadData(true); };
 
-  // Cơ chế lương có hai phần: thiết kế (công thức) và áp cho nhân sự.
-  const canDesign = can('admin.payroll_settings');
-  const canApply = can('admin.payroll_schemes');
-  const requestedTab = searchParams.get('tab');
-  const schemeTab: 'design' | 'apply' = !canDesign ? 'apply' : !canApply ? 'design' : requestedTab === 'apply' ? 'apply' : 'design';
-  const setSchemeTab = (next: 'design' | 'apply') => {
-    const params = new URLSearchParams(searchParams);
-    params.set('tab', next);
-    setSearchParams(params, { replace: true });
-  };
+  const canManageSchemes = can('admin.payroll_schemes');
 
   if (!canView) {
     return (
@@ -159,7 +148,25 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
     );
   }
   if (loading) {
-    return <div className="rounded-2xl border border-slate-200 bg-white p-5"><TableSkeleton rows={6} /></div>;
+    // Giữ nguyên tiêu đề + bộ chọn tháng, chỉ phần thân là khung chờ khớp bố cục từng mục.
+    return (
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">
+              {meta.title}{meta.monthScoped && tab === 'register' ? ` ${monthLabel}` : ''}
+            </h2>
+            {meta.hint && <p className="mt-0.5 max-w-3xl text-sm text-slate-500">{meta.hint}</p>}
+          </div>
+          {meta.monthScoped && (
+            <div className="flex flex-wrap items-center gap-2 no-print">
+              <MonthNav value={monthStart} onChange={setMonthStart} />
+            </div>
+          )}
+        </div>
+        <PayrollSectionSkeleton section={tab} />
+      </div>
+    );
   }
   if (data?.error) {
     return (
@@ -236,48 +243,15 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       )}
 
       {tab === 'schemes' && (
-        <div className="space-y-4">
-          {canDesign && canApply && (
-            <div className="inline-flex rounded-xl bg-slate-100 p-1 no-print" role="tablist" aria-label="Cơ chế lương">
-              {([
-                ['design', 'Thiết kế cơ chế', PencilRuler],
-                ['apply', 'Áp dụng cho nhân sự', UsersRound],
-              ] as const).map(([value, label, Icon]) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={schemeTab === value}
-                  onClick={() => setSchemeTab(value)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
-                    schemeTab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" /> {label}
-                </button>
-              ))}
-            </div>
-          )}
-          {schemeTab === 'design' ? (
-            <MechanismDesigner
-              data={data}
-              monthStart={monthStartStr}
-              lastClosedMonth={lastClosedMonth}
-              canManage={canDesign}
-              onChanged={reload}
-              onDryRun={(templateId) => setDryRun({ templateId })}
-            />
-          ) : (
-            <PaySchemeTree
-              data={data}
-              monthStart={monthStartStr}
-              monthEnd={monthEndStr}
-              lastClosedMonth={lastClosedMonth}
-              canManage={canApply}
-              onChanged={reload}
-            />
-          )}
-        </div>
+        <PaySchemeTree
+          data={data}
+          monthStart={monthStartStr}
+          monthEnd={monthEndStr}
+          lastClosedMonth={lastClosedMonth}
+          canManage={canManageSchemes}
+          focusUserId={searchParams.get('user')}
+          onChanged={reload}
+        />
       )}
 
       {tab === 'inputs' && (
@@ -287,6 +261,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           monthEnd={monthEndStr}
           actorId={profile?.id ?? null}
           readOnly={monthClosed}
+          focusUserId={searchParams.get('user')}
           onChanged={reload}
         />
       )}
@@ -294,6 +269,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       {tab === 'adjustments' && (
         <AdjustmentsTab
           profiles={data.profiles}
+          components={data.components}
           adjustments={data.adjustments}
           monthStart={monthStartStr}
           monthLabel={monthLabel}
@@ -332,7 +308,6 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         monthStartStr={monthStartStr}
         monthEndStr={monthEndStr}
         draftVersion={dryRun?.draftVersion ?? null}
-        templateId={dryRun?.templateId ?? null}
       />
     </div>
   );

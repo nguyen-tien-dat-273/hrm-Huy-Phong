@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Check, CheckCircle2, Copy, FlaskConical, Layers, Lock, Pencil, Plus, Save, Settings2,
+  Check, CheckCircle2, Copy, FlaskConical, Layers, Lock, Pencil, Plus, Save, Search, Settings2,
   Table2, Trash2, TriangleAlert,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -108,6 +108,7 @@ export function PayrollParamsTab({
   const [creating, setCreating] = useState<'LIST' | 'TIER' | null>(null);
   const [createForm, setCreateForm] = useState<NewTableForm>(BLANK_NEW_TABLE);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [tableQuery, setTableQuery] = useState('');
 
   // Mở bộ đang áp dụng khi vào màn / khi dữ liệu mới về và người dùng chưa sửa dở.
   useEffect(() => {
@@ -137,18 +138,18 @@ export function PayrollParamsTab({
     const map = new Map<string, Set<string>>();
     const add = (code: string, where: string) => map.set(code, new Set([...(map.get(code) ?? []), where]));
     const componentById = new Map(data.components.map((component) => [component.id, component]));
-    const templateById = new Map(data.templates.map((template) => [template.id, template]));
-    for (const item of data.templateItems) {
+    const unitById = new Map(data.units.map((unit) => [unit.id, unit]));
+    for (const item of data.unitItems) {
       if (!item.formula || (item.effective_to && item.effective_to < currentMonth)) continue;
-      const where = `${templateById.get(item.template_id)?.name ?? 'Cơ chế'} · ${componentById.get(item.component_id)?.name ?? '?'}`;
+      const where = `${unitById.get(item.unit_id)?.name ?? 'Đơn vị'} · ${componentById.get(item.component_id)?.name ?? '?'}`;
       for (const code of [...referencedCodes(item.formula), ...referencedFunctions(item.formula)]) add(code, where);
     }
-    for (const item of [...data.items, ...data.unitItems]) {
+    for (const item of data.items) {
       if (!item.formula || item.effective_to) continue;
       for (const code of [...referencedCodes(item.formula), ...referencedFunctions(item.formula)]) add(code, 'Công thức khai riêng');
     }
     return map;
-  }, [currentMonth, data.components, data.items, data.templateItems, data.templates, data.unitItems]);
+  }, [currentMonth, data.components, data.items, data.unitItems, data.units]);
 
   const update = (patch: Partial<PayrollParamVersion>) => {
     setTouched(true);
@@ -208,6 +209,7 @@ export function PayrollParamsTab({
         rows: [{ from: 0, value: 0 }],
       };
     update({ tables: [...draft.tables, table] });
+    setTableQuery('');
     setCreating(null);
   };
 
@@ -303,6 +305,19 @@ export function PayrollParamsTab({
   };
   const unsavedNew = touched && !draft.id;
   const activeVersion = sorted.find((version) => version.id === activeId) ?? null;
+
+  // Lọc theo tên bảng, ghi chú hoặc tên tham số; bảng chưa đặt tên luôn hiện để còn nhập.
+  const needle = tableQuery.trim().toLowerCase();
+  const visibleTables = needle
+    ? draft.tables.filter((table) => {
+      if (!table.name.trim()) return true;
+      const haystack = [
+        table.name, table.note ?? '',
+        ...(table.kind === 'LIST' ? table.params.map((param) => param.name) : [table.inputLabel ?? '']),
+      ];
+      return haystack.some((text) => text.toLowerCase().includes(needle));
+    })
+    : draft.tables;
 
   return (
     <div className={`space-y-4 ${touched ? 'pb-24' : ''}`}>
@@ -450,21 +465,39 @@ export function PayrollParamsTab({
       </Card>
 
       {/* --- 3. Các bảng tham số --- */}
-      {!readOnly && (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button size="sm" variant="outline" onClick={() => openCreate('LIST')}>
-            <Plus className="h-3.5 w-3.5" /> Bảng tham số
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => openCreate('TIER')}>
-            <Layers className="h-3.5 w-3.5" /> Bảng bậc thang
-          </Button>
+      {(!readOnly || draft.tables.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[14rem] flex-1 sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              value={tableQuery}
+              onChange={(event) => setTableQuery(event.target.value)}
+              placeholder="Tìm bảng hoặc tham số…"
+              aria-label="Tìm bảng tham số"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+            />
+          </div>
+          {!readOnly && (
+            <div className="ml-auto flex flex-wrap justify-end gap-2">
+              <Button size="sm" variant="outline" onClick={() => openCreate('LIST')}>
+                <Plus className="h-3.5 w-3.5" /> Bảng tham số
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openCreate('TIER')}>
+                <Layers className="h-3.5 w-3.5" /> Bảng bậc thang
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
       {draft.tables.length === 0 && (
         <Card><CardContent className="py-10 text-center text-sm text-slate-500">Bộ này chưa có bảng nào.</CardContent></Card>
       )}
-      {draft.tables.map((table) => (table.kind === 'LIST' ? (
+      {draft.tables.length > 0 && visibleTables.length === 0 && (
+        <Card><CardContent className="py-10 text-center text-sm text-slate-500">Không có bảng nào khớp “{tableQuery.trim()}”.</CardContent></Card>
+      )}
+      {visibleTables.map((table) => (table.kind === 'LIST' ? (
         <ListTableEditor
           key={table.id}
           table={table}

@@ -26,6 +26,8 @@ import type { Profile } from '@/types';
 
 interface AdjustmentsTabProps {
   profiles: Profile[];
+  /** Danh mục đầu mục — để gọi tên khoản mà điều chỉnh gắn vào. */
+  components?: Array<{ code: string; name: string }>;
   adjustments: PayrollAdjustment[];
   monthStart: string;
   monthLabel: string;
@@ -56,7 +58,7 @@ const toMonthInput = (iso: string | null) => (iso ? iso.slice(0, 7) : '');
 const fromMonthInput = (value: string) => (value ? `${value}-01` : null);
 
 export function AdjustmentsTab({
-  profiles, adjustments, monthStart, monthLabel, actorId, readOnly, onChanged,
+  profiles, components = [], adjustments, monthStart, monthLabel, actorId, readOnly, onChanged,
 }: AdjustmentsTabProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -222,6 +224,12 @@ export function AdjustmentsTab({
                         }`}>
                           {KIND_SHORT[adjustment.kind]}
                         </span>
+                        {adjustment.component_code && (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                            {components.find((item) => item.code.toUpperCase() === adjustment.component_code?.toUpperCase())?.name
+                              ?? adjustment.component_code}
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-xs leading-relaxed text-slate-600">{adjustment.reason}</p>
                       <p className="mt-0.5 text-xs text-slate-400">

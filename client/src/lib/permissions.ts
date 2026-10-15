@@ -35,7 +35,7 @@ export const ADMIN_FUNCTIONS: Record<AdminFunctionCode, { label: string; descrip
   'admin.payroll_components': { label: 'Danh mục khoản lương', description: 'Quản lý danh sách đầu mục dùng trong cơ chế lương.', module: 'attendance' },
   'admin.payroll_settings': { label: 'Tham số & thiết kế cơ chế lương', description: 'Bảng tham số theo ngày hiệu lực và công thức tính của từng cơ chế lương.', module: 'attendance' },
   'admin.payroll_adjustments': { label: 'Điều chỉnh lương', description: 'Điều chỉnh tăng/giảm, truy lĩnh, truy thu kèm lý do giải trình.', module: 'attendance' },
-  'admin.payroll_approve': { label: 'Phê duyệt lương (BGĐ)', description: 'Ký duyệt thay đổi cơ chế lương và lệnh chi lương của kỳ đã khoá.', module: 'attendance' },
+  'admin.payroll_approve': { label: 'Phê duyệt lương', description: 'Ký duyệt cơ chế lương và lệnh chi lương của kỳ đã khoá. Admin/CEO có sẵn; giao thêm cho Ban Giám đốc, Kế toán trưởng hoặc người được uỷ quyền.', module: 'attendance' },
   'admin.timesheet_lock': { label: 'Khóa/mở kỳ bảng công', description: 'Mở kỳ duyệt, khóa kỳ và chốt dữ liệu bảng công.', module: 'attendance' },
   'admin.performance_manage': { label: 'Quản lý KPI & đánh giá', description: 'Tạo chu kỳ, mục tiêu và kết quả hiệu suất.', module: 'reports' },
   'admin.work_locations': { label: 'Địa điểm chấm công', description: 'Quản lý điểm GPS, bán kính, Wi-Fi và đơn vị áp dụng.', module: 'settings' },

@@ -3,8 +3,7 @@
 // ----------------------------------------------------------------------------
 // Chạy đúng phép tính của Bảng lương (`computeForPerson`) — không có bản tính
 // riêng cho chạy thử, nên con số ở đây là con số bảng lương sẽ ra. Chạy được
-// với bộ tham số ĐANG SOẠN (chưa lưu) và thử một cơ chế khác cơ chế người đó
-// đang theo. Không ghi gì xuống database.
+// với bộ tham số ĐANG SOẠN (chưa lưu). Không ghi gì xuống database.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -31,18 +30,15 @@ interface PayrollDryRunModalProps {
   monthEndStr: string;
   /** Bộ tham số đang soạn ở màn Tham số lương — null = bộ đã lưu của tháng. */
   draftVersion?: PayrollParamVersion | null;
-  /** Cơ chế đang thử ở màn Thiết kế cơ chế. */
-  templateId?: string | null;
 }
 
 const OT_CODES = ['OT_WEEKDAY_HOURS', 'OT_WEEKEND_HOURS', 'OT_HOLIDAY_HOURS'];
 
 export function PayrollDryRunModal({
-  open, onClose, data, monthStart, monthStartStr, monthEndStr, draftVersion = null, templateId,
+  open, onClose, data, monthStart, monthStartStr, monthEndStr, draftVersion = null,
 }: PayrollDryRunModalProps) {
   const app = useAppSettings();
   const [personId, setPersonId] = useState('');
-  const [templateChoice, setTemplateChoice] = useState<string>('');
   const [assumed, setAssumed] = useState<Record<string, string>>({});
   const [result, setResult] = useState<PersonComputation | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +47,8 @@ export function PayrollDryRunModal({
     if (!open) return;
     setResult(null);
     setError(null);
-    setTemplateChoice(templateId ?? '');
     setPersonId((current) => current || data.profiles[0]?.id || '');
-  }, [open, templateId, data.profiles]);
+  }, [open, data.profiles]);
 
   const params = useMemo(
     () => paramsForMonth(data, app, monthStart, monthStartStr, draftVersion),
@@ -64,10 +59,8 @@ export function PayrollDryRunModal({
   /** Tính một lượt với số liệu thật để làm điểm xuất phát cho số liệu giả định. */
   const baseline = useMemo(() => {
     if (!person || !params) return null;
-    return computeForPerson(person, data, params, monthStart, monthStartStr, monthEndStr, {
-      templateIdOverride: templateChoice ? templateChoice : undefined,
-    });
-  }, [person, params, data, monthStart, monthStartStr, monthEndStr, templateChoice]);
+    return computeForPerson(person, data, params, monthStart, monthStartStr, monthEndStr);
+  }, [person, params, data, monthStart, monthStartStr, monthEndStr]);
 
   /** Số liệu tháng cơ chế của người này đọc tới — để điền số giả định đúng chỗ. */
   const inputCodes = useMemo(() => {
@@ -78,7 +71,7 @@ export function PayrollDryRunModal({
     ];
   }, [baseline]);
 
-  // Nạp lại số liệu giả định từ số thật khi đổi người hoặc đổi cơ chế.
+  // Nạp lại số liệu giả định từ số thật khi đổi người.
   useEffect(() => {
     if (!baseline) return;
     const next: Record<string, string> = {
@@ -110,7 +103,6 @@ export function PayrollDryRunModal({
       const inputsOverride: Record<string, number> = {};
       for (const { code } of inputCodes) inputsOverride[code] = num(`input:${code}`);
       setResult(computeForPerson(person, data, params, monthStart, monthStartStr, monthEndStr, {
-        templateIdOverride: templateChoice ? templateChoice : undefined,
         statsOverride: {
           workDays: num('workDays'), leaveDays: num('leaveDays'), holidayDays: num('holidayDays'),
           lateCount: num('lateCount'), earlyCount: num('earlyCount'),
@@ -143,7 +135,7 @@ export function PayrollDryRunModal({
           </p>
         ) : (
           <>
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr]">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
               <Select label="Nhân sự" value={personId} onChange={(event) => setPersonId(event.target.value)}>
                 {data.profiles.map((item) => (
                   <option key={item.id} value={item.id}>{item.name}{item.employee_code ? ` · ${item.employee_code}` : ''}</option>
@@ -152,16 +144,10 @@ export function PayrollDryRunModal({
               <div className="flex items-end">
                 <Button variant="outline" onClick={pickRandom}><Dices className="h-4 w-4" /> Ngẫu nhiên</Button>
               </div>
-              <Select label="Cơ chế thử" value={templateChoice} onChange={(event) => setTemplateChoice(event.target.value)}>
-                <option value="">Theo cơ chế hiện hành của người này</option>
-                {data.templates.filter((template) => template.is_active).map((template) => (
-                  <option key={template.id} value={template.id}>{template.name}</option>
-                ))}
-              </Select>
             </div>
             {baseline && (
               <p className="-mt-2 text-xs text-slate-500">
-                Cơ chế đang áp: <strong>{baseline.template.label}</strong> · {baseline.rows.length} dòng
+                Cơ chế đang áp cho người này: {baseline.rows.length} dòng
               </p>
             )}
 

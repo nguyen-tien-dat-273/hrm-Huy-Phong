@@ -21,8 +21,8 @@ Danh mục đầu mục → Tham số theo bảng → Cơ chế lương (mỗi �
 
 | Ký hiệu | Vai trò | Chức năng cần giao |
 |---|---|---|
-| **KT** | Kế toán trưởng | `admin.payroll`, `admin.payroll_components`, `admin.payroll_settings`, `admin.payroll_schemes`, `admin.payroll_inputs`, `admin.payroll_adjustments`. **Không** giao `admin.payroll_approve`. |
-| **BGD** | Ban Giám đốc | Chỉ giao `admin.payroll_approve` (Phê duyệt lương). |
+| **KT** | Kế toán trưởng | `admin.payroll`, `admin.payroll_components`, `admin.payroll_settings`, `admin.payroll_schemes`, `admin.payroll_inputs`, `admin.payroll_adjustments`. Trong các ca phân quyền này **không** giao `admin.payroll_approve` để kiểm tra chặn đúng; ngoài thực tế có thể giao thêm — khi đó KT vẫn không duyệt được kỳ do chính mình khoá. |
+| **BGD** | Người duyệt (Ban Giám đốc) | Chỉ giao `admin.payroll_approve` (Phê duyệt lương). |
 | **NV1** | Nhân viên Phòng A (đơn vị con của Khối Văn phòng) | Không giao gì. |
 | **NV2** | Nhân viên Khối Kinh doanh, **không** khai tài khoản ngân hàng | Không giao gì. |
 | **NOQ** | Người dùng không có quyền lương | Không giao gì. |
