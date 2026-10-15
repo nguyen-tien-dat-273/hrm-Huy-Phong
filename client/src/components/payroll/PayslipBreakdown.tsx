@@ -1,13 +1,13 @@
 // ============================================================================
 // Bảng chi tiết phiếu lương — dùng chung cho admin và nhân viên.
 // ----------------------------------------------------------------------------
-// Mỗi dòng mang theo câu giải thích cách ra con số. Bảng lương cũ chỉ hiện ba
-// cột tổng (lương theo công / BHXH / thuế), nên khi nhân viên hỏi "sao tháng
-// này ít hơn" thì kế toán phải mở Excel tính tay để trả lời.
+// Mỗi dòng mang theo cách ra con số ("12.000.000 ÷ 23,5 × 22,5"), để khi nhân
+// viên hỏi "sao tháng này ít hơn" thì phiếu tự trả lời được.
 // ============================================================================
 
 import { CircleAlert } from 'lucide-react';
 import { formatVND } from '@/lib/utils';
+import { formatFormulaNumber } from '@/lib/formulaTokens';
 import type { PayComponentKind } from '@/types';
 
 export interface BreakdownLine {
@@ -23,9 +23,9 @@ export interface BreakdownLine {
 interface PayslipBreakdownProps {
   lines: BreakdownLine[];
   netPay: number;
-  /** Chênh lệch làm tròn thực lĩnh (FR06.04.01) — hiện để phiếu cộng trừ khớp. */
+  /** Chênh lệch làm tròn thực lĩnh — hiện để phiếu cộng trừ khớp. */
   roundingAdjustment?: number;
-  /** Ẩn phần chi phí doanh nghiệp khi nhân viên tự xem phiếu của mình. */
+  /** Ẩn phần chi phí doanh nghiệp (phiếu cũ) khi nhân viên tự xem phiếu của mình. */
   showEmployerCost?: boolean;
   warnings?: string[];
   theme?: 'admin' | 'staff';
@@ -39,6 +39,7 @@ export function PayslipBreakdown({
   warnings = [],
   theme = 'admin',
 }: PayslipBreakdownProps) {
+  const info = lines.filter((line) => line.kind === 'INFO');
   const earnings = lines.filter((line) => line.kind === 'EARNING');
   const deductions = lines.filter((line) => line.kind === 'DEDUCTION');
   const employerCosts = lines.filter((line) => line.kind === 'EMPLOYER_COST');
@@ -61,10 +62,27 @@ export function PayslipBreakdown({
         </ul>
       )}
 
-      <Section title="Thu nhập" total={totalEarnings} lines={earnings} tone="positive" />
+      {info.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-slate-200">
+          <p className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">Thông tin</p>
+          <dl className="grid gap-x-6 sm:grid-cols-2">
+            {info.map((line) => (
+              <div key={`${line.code}-${line.name}`} className="flex items-baseline justify-between gap-3 border-b border-slate-50 px-4 py-2 last:border-0">
+                <dt className="min-w-0 text-xs text-slate-500">
+                  {line.name}
+                  {line.detail && <span className="block text-[10px] text-slate-400 break-words">{line.detail}</span>}
+                </dt>
+                <dd className="shrink-0 text-sm font-semibold tabular-nums text-slate-700">{formatFormulaNumber(line.amount)}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      <Section title="Các khoản cộng" total={totalEarnings} lines={earnings} tone="positive" />
 
       {deductions.length > 0 && (
-        <Section title="Khấu trừ" total={totalDeductions} lines={deductions} tone="negative" />
+        <Section title="Các khoản trừ" total={totalDeductions} lines={deductions} tone="negative" />
       )}
 
       {roundingAdjustment !== 0 && (
@@ -82,18 +100,7 @@ export function PayslipBreakdown({
       </div>
 
       {showEmployerCost && employerCosts.length > 0 && (
-        <div>
-          <Section
-            title="Chi phí doanh nghiệp đóng thêm"
-            total={totalEmployer}
-            lines={employerCosts}
-            tone="neutral"
-          />
-          <p className="mt-2 px-1 text-xs text-slate-500">
-            Không trừ vào lương nhân viên. Tổng chi phí thực tế cho người này:{' '}
-            <strong className="text-slate-700">{formatVND(totalEarnings + totalEmployer)}</strong>.
-          </p>
-        </div>
+        <Section title="Doanh nghiệp chi thêm" total={totalEmployer} lines={employerCosts} tone="neutral" />
       )}
     </div>
   );
@@ -120,21 +127,25 @@ function Section({
         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{title}</span>
         <span className={`text-sm font-bold tabular-nums ${amountColor}`}>{sign}{formatVND(total)}</span>
       </div>
-      <ul className="divide-y divide-slate-50">
-        {lines.map((line) => (
-          <li key={`${line.code}-${line.name}`} className="flex items-start justify-between gap-4 px-4 py-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-slate-700">{line.name}</p>
-              {line.detail && (
-                <p className="mt-0.5 text-xs leading-relaxed text-slate-400 break-words">{line.detail}</p>
-              )}
-            </div>
-            <span className={`flex-shrink-0 text-sm font-bold tabular-nums ${amountColor}`}>
-              {sign}{formatVND(line.amount)}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {lines.length === 0 ? (
+        <p className="px-4 py-3 text-xs text-slate-400">Không có dòng nào.</p>
+      ) : (
+        <ul className="divide-y divide-slate-50">
+          {lines.map((line) => (
+            <li key={`${line.code}-${line.name}`} className="flex items-start justify-between gap-4 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-700">{line.name}</p>
+                {line.detail && (
+                  <p className="mt-0.5 text-xs leading-relaxed text-slate-400 break-words">{line.detail}</p>
+                )}
+              </div>
+              <span className={`flex-shrink-0 text-sm font-bold tabular-nums ${amountColor}`}>
+                {sign}{formatVND(line.amount)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

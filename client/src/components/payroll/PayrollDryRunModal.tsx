@@ -1,13 +1,10 @@
 // ============================================================================
-// F06.02 — Chạy thử công thức (dry-run nghiệm thu).
+// Chạy thử cơ chế lương với một nhân sự.
 // ----------------------------------------------------------------------------
-// Bước 8–9 của luồng hoạt động: "chọn một nhân sự ngẫu nhiên để hệ thống ráp
-// số liệu giả định và xuất nhật ký tính toán chi tiết".
-//
-// Chạy đúng engine của Bảng lương (`computeForPerson`) — không có bản tính
-// riêng cho chạy thử, nên con số ở đây là con số bảng lương sẽ ra. Có thể
-// chạy với bộ tham số ĐANG SOẠN (chưa lưu) và thử một mẫu BL khác mẫu người
-// đó đang theo. Không ghi gì xuống database.
+// Chạy đúng phép tính của Bảng lương (`computeForPerson`) — không có bản tính
+// riêng cho chạy thử, nên con số ở đây là con số bảng lương sẽ ra. Chạy được
+// với bộ tham số ĐANG SOẠN (chưa lưu) và thử một cơ chế khác cơ chế người đó
+// đang theo. Không ghi gì xuống database.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
@@ -18,16 +15,12 @@ import { Input, Select } from '@/components/ui/Input';
 import { PayslipBreakdown } from '@/components/payroll/PayslipBreakdown';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import { formatVND } from '@/lib/utils';
-import { ENGINE_VARIABLE_NAMES, type CalcTraceStep } from '@/lib/payroll';
-import { BUILTIN_FUNCTION_NAMES } from '@/lib/payrollFormula';
+import { formatFormulaNumber } from '@/lib/formulaTokens';
+import { KIND_SIGN } from '@/lib/formulaEntries';
+import { ROW_MODE_LABEL, SYSTEM_VARIABLE_BY_CODE } from '@/lib/payrollVariables';
 import { computeForPerson, paramsForMonth, type PersonComputation } from '@/lib/payrollRun';
 import type { PayrollParamVersion } from '@/lib/payrollSettings';
 import type { PayrollWorkspace } from '@/lib/payrollData';
-
-const SECTION_LABEL: Record<CalcTraceStep['section'], string> = {
-  BASE: 'Lương gốc', EARNING: 'Khoản cộng', INSURANCE: 'Bảo hiểm', TAX: 'Thuế TNCN',
-  DEDUCTION: 'Khấu trừ', EMPLOYER: 'Doanh nghiệp', NET: 'Thực lĩnh',
-};
 
 interface PayrollDryRunModalProps {
   open: boolean;
@@ -38,9 +31,11 @@ interface PayrollDryRunModalProps {
   monthEndStr: string;
   /** Bộ tham số đang soạn ở màn Tham số lương — null = bộ đã lưu của tháng. */
   draftVersion?: PayrollParamVersion | null;
-  /** Mẫu BL đang thử ở màn Công thức theo khối. */
+  /** Cơ chế đang thử ở màn Thiết kế cơ chế. */
   templateId?: string | null;
 }
+
+const OT_CODES = ['OT_WEEKDAY_HOURS', 'OT_WEEKEND_HOURS', 'OT_HOLIDAY_HOURS'];
 
 export function PayrollDryRunModal({
   open, onClose, data, monthStart, monthStartStr, monthEndStr, draftVersion = null, templateId,
@@ -74,29 +69,16 @@ export function PayrollDryRunModal({
     });
   }, [person, params, data, monthStart, monthStartStr, monthEndStr, templateChoice]);
 
-  /**
-   * Số liệu tháng mà công thức của người này đọc tới — để người thử điền số
-   * giả định đúng chỗ công thức cần, không phải đoán tên biến.
-   */
+  /** Số liệu tháng cơ chế của người này đọc tới — để điền số giả định đúng chỗ. */
   const inputCodes = useMemo(() => {
     if (!baseline) return [];
-    const reserved = new Set([
-      ...ENGINE_VARIABLE_NAMES, ...BUILTIN_FUNCTION_NAMES,
-      ...data.components.map((component) => component.code),
-      ...Object.keys(params?.namedParams ?? {}), ...Object.keys(params?.tierFunctions ?? {}),
-    ]);
-    const codes = new Set<string>(['OT_WEEKDAY_HOURS', 'OT_WEEKEND_HOURS', 'OT_HOLIDAY_HOURS']);
-    for (const entry of baseline.items) {
-      const formula = `${entry.item.formula ?? ''} ${entry.component.formula ?? ''}`;
-      for (const token of formula.toUpperCase().match(/[A-Z][A-Z0-9_]*/g) ?? []) {
-        if (!reserved.has(token)) codes.add(token);
-      }
-      if (entry.component.input_code) codes.add(entry.component.input_code);
-    }
-    return [...codes].sort();
-  }, [baseline, data.components, params]);
+    return [
+      ...baseline.rows.filter((row) => row.mode === 'MONTHLY_INPUT').map((row) => ({ code: row.component.code, name: row.component.name })),
+      ...OT_CODES.map((code) => ({ code, name: SYSTEM_VARIABLE_BY_CODE.get(code)?.name ?? code })),
+    ];
+  }, [baseline]);
 
-  // Nạp lại số liệu giả định từ số thật khi đổi người hoặc đổi mẫu.
+  // Nạp lại số liệu giả định từ số thật khi đổi người hoặc đổi cơ chế.
   useEffect(() => {
     if (!baseline) return;
     const next: Record<string, string> = {
@@ -106,7 +88,7 @@ export function PayrollDryRunModal({
       lateCount: String(baseline.stats.lateCount),
       earlyCount: String(baseline.stats.earlyCount),
     };
-    for (const code of inputCodes) next[`input:${code}`] = String(baseline.inputs[code] ?? 0);
+    for (const { code } of inputCodes) next[`input:${code}`] = String(baseline.inputs[code] ?? 0);
     setAssumed(next);
     setResult(null);
   }, [baseline, inputCodes]);
@@ -121,12 +103,12 @@ export function PayrollDryRunModal({
     if (!person || !params) return;
     setError(null);
     const num = (key: string) => {
-      const value = Number(assumed[key]);
+      const value = Number((assumed[key] ?? '').replace(',', '.'));
       return Number.isFinite(value) ? value : 0;
     };
     try {
       const inputsOverride: Record<string, number> = {};
-      for (const code of inputCodes) inputsOverride[code] = num(`input:${code}`);
+      for (const { code } of inputCodes) inputsOverride[code] = num(`input:${code}`);
       setResult(computeForPerson(person, data, params, monthStart, monthStartStr, monthEndStr, {
         templateIdOverride: templateChoice ? templateChoice : undefined,
         statsOverride: {
@@ -143,14 +125,14 @@ export function PayrollDryRunModal({
 
   const field = (key: string, label: string) => (
     <Input key={key} label={label} inputMode="decimal" value={assumed[key] ?? ''}
-      onChange={(event) => setAssumed((current) => ({ ...current, [key]: event.target.value.replace(/[^\d.]/g, '') }))} />
+      onChange={(event) => setAssumed((current) => ({ ...current, [key]: event.target.value.replace(/[^\d.,]/g, '') }))} />
   );
 
   return (
-    <Modal open={open} onClose={onClose} title="Chạy thử công thức lương" size="xl">
+    <Modal open={open} onClose={onClose} title="Chạy thử cơ chế lương" size="xl">
       <div className="space-y-5">
         <p className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm leading-relaxed text-indigo-900">
-          Chạy đúng engine của Bảng lương với số liệu tháng {monthStartStr.slice(5, 7)}/{monthStartStr.slice(0, 4)} của
+          Chạy đúng phép tính của Bảng lương với số liệu tháng {monthStartStr.slice(5, 7)}/{monthStartStr.slice(0, 4)} của
           một nhân sự, đè bằng số liệu giả định bạn nhập. {draftVersion ? 'Dùng bộ tham số ĐANG SOẠN (chưa lưu). ' : ''}
           Không ghi gì xuống hệ thống.
         </p>
@@ -170,7 +152,7 @@ export function PayrollDryRunModal({
               <div className="flex items-end">
                 <Button variant="outline" onClick={pickRandom}><Dices className="h-4 w-4" /> Ngẫu nhiên</Button>
               </div>
-              <Select label="Mẫu bảng lương thử" value={templateChoice} onChange={(event) => setTemplateChoice(event.target.value)}>
+              <Select label="Cơ chế thử" value={templateChoice} onChange={(event) => setTemplateChoice(event.target.value)}>
                 <option value="">Theo cơ chế hiện hành của người này</option>
                 {data.templates.filter((template) => template.is_active).map((template) => (
                   <option key={template.id} value={template.id}>{template.name}</option>
@@ -179,15 +161,14 @@ export function PayrollDryRunModal({
             </div>
             {baseline && (
               <p className="-mt-2 text-xs text-slate-500">
-                Mẫu đang áp: <strong>{baseline.template.label}</strong> · {baseline.items.length} khoản ·
-                {baseline.payProfile ? ` ${baseline.payProfile.dependents} người phụ thuộc` : ' chưa có cơ chế lương riêng'}
+                Cơ chế đang áp: <strong>{baseline.template.label}</strong> · {baseline.rows.length} dòng
               </p>
             )}
 
             <div className="rounded-xl border border-slate-200 p-4">
               <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Số liệu giả định</p>
               <div className="grid gap-3 sm:grid-cols-5">
-                {field('workDays', 'Ngày đi làm')}
+                {field('workDays', 'Ngày công thực tế')}
                 {field('leaveDays', 'Ngày phép')}
                 {field('holidayDays', 'Ngày lễ')}
                 {field('lateCount', 'Lần đi muộn')}
@@ -195,7 +176,7 @@ export function PayrollDryRunModal({
               </div>
               {inputCodes.length > 0 && (
                 <div className="mt-3 grid gap-3 border-t border-slate-100 pt-3 sm:grid-cols-4">
-                  {inputCodes.map((code) => field(`input:${code}`, code))}
+                  {inputCodes.map(({ code, name }) => field(`input:${code}`, name))}
                 </div>
               )}
               <div className="mt-4 flex justify-end">
@@ -209,45 +190,38 @@ export function PayrollDryRunModal({
 
         {result && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <Stat label="Tổng thu nhập" value={formatVND(result.computed.gross)} />
-              <Stat label="Bảo hiểm + thuế" value={formatVND(result.computed.insuranceEmployee + result.computed.personalIncomeTax)} />
-              <Stat label="Khấu trừ khác" value={formatVND(result.computed.otherDeductions)} />
+            <div className="grid grid-cols-3 gap-3">
+              <Stat label="Tổng các khoản cộng" value={formatVND(result.computed.gross)} />
+              <Stat label="Tổng các khoản trừ" value={formatVND(result.computed.totalDeductions)} />
               <Stat label="Thực lĩnh" value={formatVND(result.computed.netPay)} strong />
             </div>
 
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <p className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">
-                Nhật ký tính toán
+                Nhật ký tính — theo đúng thứ tự tính
               </p>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[720px] text-xs">
+                <table className="w-full min-w-[640px] text-xs">
                   <thead>
                     <tr className="border-b border-slate-100 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
                       <th className="px-3 py-2">#</th>
-                      <th className="px-3 py-2">Phần</th>
-                      <th className="px-3 py-2">Khoản</th>
-                      <th className="px-3 py-2">Công thức / phép tính</th>
-                      <th className="px-3 py-2">Biến đã dùng</th>
+                      <th className="px-3 py-2">Đầu mục</th>
+                      <th className="px-3 py-2">Cách lấy</th>
+                      <th className="px-3 py-2">Cách tính (đã thay số)</th>
                       <th className="px-3 py-2 text-right">Kết quả</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {(result.computed.trace ?? []).map((step, index) => (
-                      <tr key={index} className="align-top">
+                      <tr key={`${step.code}-${index}`} className="align-top">
                         <td className="px-3 py-2 text-slate-400">{index + 1}</td>
-                        <td className="px-3 py-2 font-semibold text-slate-500">{SECTION_LABEL[step.section]}</td>
-                        <td className="px-3 py-2 font-semibold text-slate-800">{step.label}</td>
-                        <td className="max-w-[260px] px-3 py-2">
-                          {step.expression && <code className="break-words font-mono text-[11px] text-indigo-700">{step.expression}</code>}
-                          {step.note && <p className="mt-0.5 text-[11px] text-slate-500">{step.note}</p>}
+                        <td className="px-3 py-2 font-semibold text-slate-800">{KIND_SIGN[step.kind]} {step.label}</td>
+                        <td className="px-3 py-2 text-slate-500">{step.mode === 'ADJUSTMENT' ? 'Điều chỉnh' : ROW_MODE_LABEL[step.mode]}</td>
+                        <td className="max-w-[320px] px-3 py-2">
+                          {step.rendered && <span className="break-words text-[11px] text-indigo-700">{step.rendered}</span>}
+                          {step.note && <p className="mt-0.5 text-[11px] text-amber-700">{step.note}</p>}
                         </td>
-                        <td className="max-w-[240px] px-3 py-2 font-mono text-[11px] text-slate-600">
-                          {Object.entries(step.variables ?? {}).map(([name, value]) => (
-                            <span key={name} className="mr-2 inline-block whitespace-nowrap">{name}={formatNumber(value)}</span>
-                          ))}
-                        </td>
-                        <td className="px-3 py-2 text-right font-bold tabular-nums text-slate-900">{formatVND(step.result)}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-slate-900">{formatFormulaNumber(step.result)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -266,10 +240,6 @@ export function PayrollDryRunModal({
       </div>
     </Modal>
   );
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value);
 }
 
 function Stat({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {

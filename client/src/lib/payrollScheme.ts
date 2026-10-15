@@ -1,30 +1,28 @@
 // ============================================================================
-// Cơ chế lương của một người, giải theo CÂY tổ chức (F06.03).
+// Cơ chế lương của một người, giải theo CÂY tổ chức.
 // ----------------------------------------------------------------------------
-// Một khoản lương của một người có thể đến từ ba lớp, lớp trên thắng lớp dưới
-// cho CÙNG một khoản:
+// Dòng lương của một người đến từ ba lớp, lớp trên thắng lớp dưới cho CÙNG một
+// đầu mục:
 //
 //   1. Khai riêng cho người          (employee_pay_items)
-//   2. Khoản chung của đơn vị        (unit_pay_items) — đơn vị GẦN NHẤT trên
+//   2. Giá trị chung của đơn vị      (unit_pay_items) — đơn vị GẦN NHẤT trên
 //                                     cây thắng, rồi mới tới cấp trên
-//   3. Mẫu bảng lương của khối       (payroll_template_items) — BL 01 / BL 02,
-//                                     mẫu gán riêng cho người thắng mẫu của
-//                                     đơn vị gần nhất
+//   3. Cơ chế lương                  (payroll_templates + _items) — cơ chế gán
+//                                     riêng cho người thắng cơ chế của đơn vị
+//                                     gần nhất
 //
-// Đi cây bằng đúng `unitLineage` mà KPI đang dùng (`lib/kpiSchemeFor.ts`):
-// cùng giới hạn 10 cấp, cùng cách chặn vòng cha-con. Hai phân hệ gán theo cây
-// mà hiểu "thừa hưởng" theo hai kiểu khác nhau là chỗ để người dùng nhầm.
+// Lớp 1 và 2 không tạo cơ chế mới: chúng KHAI GIÁ TRỊ cho dòng "Từng người" /
+// "Giá trị", hoặc đổi riêng công thức của một dòng. Đầu mục chưa có trong cơ
+// chế mà vẫn khai riêng thì thành một dòng thêm của riêng người đó.
 //
-// Bản trước chỉ khớp khoản của đúng `unit_id` của người — khoản khai ở Khối
-// không xuống tới phòng con. Hồi đó cơ cấu khách hàng phẳng nên không lộ;
-// giờ cây là Doanh nghiệp > Khối > Phòng ban (ENT-01) và công thức BL đặt theo
-// khối (BR-PAY-002) thì phải đi cây.
-//
+// Đi cây bằng đúng `unitLineage` mà KPI đang dùng (`lib/kpiSchemeFor.ts`).
 // Bản database tương ứng: `payroll_template_for(uuid, date)`.
 // ============================================================================
 
 import { unitLineage, type ResolvableUnit } from './kpiSchemeFor';
-import { itemsForPeriod, type AssignedPayItem, type PayItemAssignment } from './payroll';
+import { activeInPeriod, type MechanismRow } from './payroll';
+import { referencedCodes } from './formulaTokens';
+import { OWN_AMOUNT_CODE, type RowMode } from './payrollVariables';
 import type {
   EmployeePayItem, EmployeePayProfile, PayComponent, PayrollSchemeRequest, PayrollTemplate, PayrollTemplateItem,
   SchemePayloadItem, SchemePayloadProfile, SchemeRequestStatus, UnitPayItem, UnitPayrollTemplate,
@@ -42,18 +40,18 @@ export interface SchemeSourceData {
 
 export interface ResolvedTemplate {
   template: PayrollTemplate | null;
-  /** 'PERSONAL' = gán riêng; 'UNIT' = thừa hưởng từ đơn vị; null = không có mẫu. */
+  /** 'PERSONAL' = gán riêng; 'UNIT' = thừa hưởng từ đơn vị; null = không có cơ chế. */
   source: 'PERSONAL' | 'UNIT' | null;
   fromUnit: ResolvableUnit | null;
-  /** Nhãn ngắn hiện lên màn, ví dụ "BL02 · theo Khối Kinh doanh". */
+  /** Nhãn ngắn hiện lên màn, ví dụ "Khối Kinh doanh · theo Phòng KD1". */
   label: string;
 }
 
 /**
- * Mẫu bảng lương đang áp cho một người trong tháng.
+ * Cơ chế đang áp cho một người trong tháng.
  *
- * Đơn vị khai "không áp mẫu" (template_id NULL) là CHẶN thừa hưởng: người
- * trong đơn vị đó không có mẫu nào, kể cả khi cấp trên có.
+ * Đơn vị khai "không áp cơ chế" (template_id NULL) là CHẶN thừa hưởng: người
+ * trong đơn vị đó không có cơ chế nào, kể cả khi cấp trên có.
  */
 export function resolveTemplateFor(
   person: { id: string; unit_id?: string | null },
@@ -67,7 +65,7 @@ export function resolveTemplateFor(
     const template = templateById.get(payProfile.template_id) ?? null;
     return {
       template, source: 'PERSONAL', fromUnit: null,
-      label: template ? `${template.code} · gán riêng` : 'Mẫu gán riêng đã bị xoá',
+      label: template ? `${template.name} · gán riêng` : 'Cơ chế gán riêng đã bị xoá',
     };
   }
 
@@ -77,19 +75,19 @@ export function resolveTemplateFor(
       .sort((a, b) => b.effective_from.localeCompare(a.effective_from))[0];
     if (!row) continue;
     if (!row.template_id) {
-      return { template: null, source: 'UNIT', fromUnit: unit, label: `Không áp mẫu (chặn tại ${unit.name})` };
+      return { template: null, source: 'UNIT', fromUnit: unit, label: `Không áp cơ chế (chặn tại ${unit.name})` };
     }
     const template = templateById.get(row.template_id) ?? null;
     return {
       template, source: 'UNIT', fromUnit: unit,
-      label: template ? `${template.code} · theo ${unit.name}` : 'Mẫu đã bị xoá',
+      label: template ? `${template.name} · theo ${unit.name}` : 'Cơ chế đã bị xoá',
     };
   }
 
-  return { template: null, source: null, fromUnit: null, label: 'Chưa có mẫu bảng lương' };
+  return { template: null, source: null, fromUnit: null, label: 'Chưa có cơ chế lương' };
 }
 
-/** Mẫu áp cho một ĐƠN VỊ (để vẽ cây): của chính nó hoặc cấp trên gần nhất. */
+/** Cơ chế áp cho một ĐƠN VỊ (để vẽ cây): của chính nó hoặc cấp trên gần nhất. */
 export function resolveTemplateForUnit(
   unitId: string,
   data: Pick<SchemeSourceData, 'templates' | 'unitTemplates' | 'unitById'>,
@@ -98,133 +96,160 @@ export function resolveTemplateForUnit(
   return resolveTemplateFor({ id: '', unit_id: unitId }, null, data, monthStart);
 }
 
-function assignmentOf(row: {
-  component_id: string; amount: number | null; formula: string | null;
-  taxable?: boolean | null; insurable?: boolean | null; is_base?: boolean | null;
-  effective_from: string; effective_to: string | null;
-}): PayItemAssignment {
-  return {
-    component_id: row.component_id,
-    amount: row.amount == null ? null : Number(row.amount),
-    formula: row.formula,
-    taxable: row.taxable ?? null,
-    insurable: row.insurable ?? null,
-    is_base: row.is_base ?? null,
-    effective_from: row.effective_from,
-    effective_to: row.effective_to,
-  };
+/** Dòng của một cơ chế còn hiệu lực trong tháng, đúng thứ tự hiện trên phiếu. */
+export function templateRowsAt(
+  templateItems: readonly PayrollTemplateItem[],
+  templateId: string,
+  monthStart: string,
+  monthEnd: string,
+): PayrollTemplateItem[] {
+  return activeInPeriod(templateItems.filter((item) => item.template_id === templateId), monthStart, monthEnd)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+}
+
+/** Cách lấy giá trị của một dòng cơ chế đã lưu (dòng cũ chưa có cột mode thì suy ra). */
+export function rowModeOf(item: Pick<PayrollTemplateItem, 'mode' | 'formula'>): RowMode {
+  if (item.mode) return item.mode;
+  return item.formula?.trim() ? 'FORMULA' : 'VALUE';
 }
 
 /**
- * Toàn bộ khoản lương áp cho một người trong tháng, mỗi khoản kèm nhãn nguồn.
+ * Áp một bản khai riêng (của đơn vị hoặc của người) lên dòng cơ chế.
  *
- * Bỏ khoản ngừng hoạt động (`itemsForPeriod`) và khoản do engine tự tính —
- * database đã chặn gán chúng, đây là lớp phòng thủ cuối.
+ *  - Có công thức → dòng tính theo công thức riêng đó.
+ *  - Chỉ có con số → là giá trị riêng của dòng. Riêng dòng công thức cũ có
+ *    đọc "mức riêng" (`MUC_RIENG`) thì con số đó là mức riêng, công thức giữ
+ *    nguyên — đúng nghĩa lúc khai.
+ *  - Đầu mục chưa có trong cơ chế → thành một dòng thêm của riêng đối tượng.
  */
-export function resolvePayItems(
+export function applyOverride(
+  existing: MechanismRow | undefined,
+  component: PayComponent,
+  override: { amount: number | null; formula: string | null },
+  origin: string,
+): MechanismRow {
+  const formula = override.formula?.trim() || null;
+  const amount = override.amount == null ? null : Number(override.amount);
+  if (!existing) {
+    return {
+      component, mode: formula ? 'FORMULA' : 'VALUE', formula, amount,
+      sortOrder: 100_000 + component.sort_order, origin,
+    };
+  }
+  if (formula) return { ...existing, mode: 'FORMULA', formula, amount: amount ?? existing.amount, origin };
+  if (amount == null) return existing;
+  if (existing.mode === 'FORMULA') {
+    return referencedCodes(existing.formula).includes(OWN_AMOUNT_CODE)
+      ? { ...existing, amount, origin }
+      : { ...existing, mode: 'VALUE', formula: null, amount, origin };
+  }
+  if (existing.mode === 'MONTHLY_INPUT') return { ...existing, mode: 'VALUE', amount, origin };
+  return { ...existing, amount, origin };
+}
+
+/**
+ * Toàn bộ dòng lương áp cho một người trong tháng, mỗi dòng kèm nguồn.
+ * Đầu mục đã ngừng hoạt động thì bỏ.
+ */
+export function resolveMechanismRows(
   person: { id: string; unit_id?: string | null },
   payProfile: Pick<EmployeePayProfile, 'template_id'> | null,
   data: SchemeSourceData,
   monthStart: string,
   monthEnd: string,
-): AssignedPayItem[] {
+): MechanismRow[] {
   const componentById = new Map(data.components.map((component) => [component.id, component]));
-  const toAssigned = (
-    rows: ReadonlyArray<Parameters<typeof assignmentOf>[0]>,
-    origin: string,
-  ): AssignedPayItem[] => rows
-    .map((row) => ({ item: assignmentOf(row), component: componentById.get(row.component_id), origin }))
-    .filter((entry): entry is AssignedPayItem & { origin: string } => !!entry.component)
-    .filter((entry) => entry.component.calc_source !== 'ENGINE');
+  const rows = new Map<string, MechanismRow>();
 
-  const byComponent = new Map<string, AssignedPayItem>();
-
-  // Lớp 3 — mẫu bảng lương.
+  // Lớp 3 — cơ chế.
   const template = resolveTemplateFor(person, payProfile, data, monthStart).template;
   if (template && template.is_active) {
-    const rows = data.templateItems.filter((row) => row.template_id === template.id);
-    for (const entry of itemsForPeriod(toAssigned(rows, `Mẫu ${template.code}`), monthStart, monthEnd)) {
-      byComponent.set(entry.item.component_id, entry);
+    for (const item of templateRowsAt(data.templateItems, template.id, monthStart, monthEnd)) {
+      const component = componentById.get(item.component_id);
+      if (!component || !component.is_active) continue;
+      rows.set(component.id, {
+        component,
+        mode: rowModeOf(item),
+        formula: item.formula,
+        amount: item.amount == null ? null : Number(item.amount),
+        sortOrder: item.sort_order ?? component.sort_order,
+        origin: template.name,
+      });
     }
   }
 
-  // Lớp 2 — khoản chung của đơn vị, đi từ CẤP CAO NHẤT xuống đơn vị của người
+  const apply = (items: ReadonlyArray<{ component_id: string; amount: number | null; formula: string | null }>, origin: string) => {
+    for (const item of items) {
+      const component = componentById.get(item.component_id);
+      if (!component || !component.is_active) continue;
+      rows.set(component.id, applyOverride(rows.get(component.id), component, item, origin));
+    }
+  };
+
+  // Lớp 2 — giá trị chung của đơn vị, đi từ CẤP CAO NHẤT xuống đơn vị của người
   // đó để đơn vị gần nhất ghi đè sau cùng.
   const lineage = unitLineage(person.unit_id, data.unitById);
   for (const unit of [...lineage].reverse()) {
-    const rows = data.unitItems.filter((row) => row.unit_id === unit.id);
-    for (const entry of itemsForPeriod(toAssigned(rows, unit.name), monthStart, monthEnd)) {
-      byComponent.set(entry.item.component_id, entry);
-    }
+    apply(activeInPeriod(data.unitItems.filter((row) => row.unit_id === unit.id), monthStart, monthEnd), unit.name);
   }
 
   // Lớp 1 — khai riêng.
-  const own = data.employeeItems.filter((row) => row.user_id === person.id);
-  for (const entry of itemsForPeriod(toAssigned(own, 'Riêng'), monthStart, monthEnd)) {
-    byComponent.set(entry.item.component_id, entry);
-  }
+  apply(activeInPeriod(data.employeeItems.filter((row) => row.user_id === person.id), monthStart, monthEnd), 'Riêng');
 
-  return [...byComponent.values()];
+  return [...rows.values()].sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/** Dòng cơ chế của một ĐƠN VỊ (không gồm khai riêng của chính đơn vị đó) — để xem khi khai giá trị chung. */
+export function resolveUnitRows(
+  unitId: string,
+  data: SchemeSourceData,
+  monthStart: string,
+  monthEnd: string,
+): MechanismRow[] {
+  return resolveMechanismRows(
+    { id: '', unit_id: unitId },
+    null,
+    { ...data, unitItems: data.unitItems.filter((row) => row.unit_id !== unitId), employeeItems: [] },
+    monthStart,
+    monthEnd,
+  );
 }
 
 // ---------------------------------------------------------------------------
-// Đề xuất cơ chế lương (F06.03)
+// Đề xuất cơ chế lương
 // ---------------------------------------------------------------------------
 
-/** Khoản KHAI RIÊNG của một người còn hiệu lực ở tháng — điểm xuất phát của bản đề xuất. */
+function payloadItemOf(row: { component_id: string; amount: number | null; formula: string | null; note: string | null }): SchemePayloadItem {
+  return {
+    component_id: row.component_id,
+    amount: row.amount == null ? null : Number(row.amount),
+    formula: row.formula?.trim() || null,
+    note: row.note,
+  };
+}
+
+/** Khai riêng của một người còn hiệu lực ở tháng — điểm xuất phát của bản đề xuất. */
 export function personalItemsAt(
   employeeItems: readonly EmployeePayItem[],
   userId: string,
   monthStart: string,
   monthEnd: string,
 ): SchemePayloadItem[] {
-  return employeeItems
-    .filter((row) => row.user_id === userId
-      && row.effective_from <= monthEnd
-      && (!row.effective_to || row.effective_to >= monthStart))
-    .map((row) => ({
-      component_id: row.component_id,
-      amount: row.amount == null ? null : Number(row.amount),
-      formula: row.formula,
-      taxable: row.taxable,
-      insurable: row.insurable,
-      is_base: row.is_base,
-      note: row.note,
-    }));
+  return activeInPeriod(employeeItems.filter((row) => row.user_id === userId), monthStart, monthEnd).map(payloadItemOf);
 }
 
-/** Khoản chung của một đơn vị còn hiệu lực ở tháng. */
+/** Giá trị chung của một đơn vị còn hiệu lực ở tháng. */
 export function unitItemsAt(
   unitItems: readonly UnitPayItem[],
   unitId: string,
   monthStart: string,
   monthEnd: string,
 ): SchemePayloadItem[] {
-  return unitItems
-    .filter((row) => row.unit_id === unitId
-      && row.effective_from <= monthEnd
-      && (!row.effective_to || row.effective_to >= monthStart))
-    .map((row) => ({
-      component_id: row.component_id,
-      amount: row.amount == null ? null : Number(row.amount),
-      formula: row.formula,
-      note: row.note,
-    }));
+  return activeInPeriod(unitItems.filter((row) => row.unit_id === unitId), monthStart, monthEnd).map(payloadItemOf);
 }
 
-export function profilePayloadOf(
-  current: EmployeePayProfile | null,
-  fallbackFlatTaxRate: number,
-): SchemePayloadProfile {
-  return {
-    dependents: current?.dependents ?? 0,
-    insurance_enabled: current?.insurance_enabled ?? true,
-    insurance_base: current?.insurance_base == null ? null : Number(current.insurance_base),
-    tax_mode: current?.tax_mode ?? 'PROGRESSIVE',
-    flat_tax_rate: current?.flat_tax_rate == null ? fallbackFlatTaxRate : Number(current.flat_tax_rate),
-    standard_days_override: current?.standard_days_override == null ? null : Number(current.standard_days_override),
-    template_id: current?.template_id ?? null,
-  };
+export function profilePayloadOf(current: Pick<EmployeePayProfile, 'template_id'> | null): SchemePayloadProfile {
+  return { template_id: current?.template_id ?? null };
 }
 
 export type SchemeChangeKind = 'ADDED' | 'REMOVED' | 'CHANGED' | 'SAME';
@@ -238,14 +263,11 @@ export interface SchemeItemChange {
 
 const sameItem = (a: SchemePayloadItem, b: SchemePayloadItem) =>
   (a.amount ?? null) === (b.amount ?? null)
-  && (a.formula?.trim() || null) === (b.formula?.trim() || null)
-  && (a.taxable ?? null) === (b.taxable ?? null)
-  && (a.insurable ?? null) === (b.insurable ?? null)
-  && (a.is_base ?? null) === (b.is_base ?? null);
+  && (a.formula?.trim() || null) === (b.formula?.trim() || null);
 
 /**
- * So cơ chế hiện hành với đề xuất, từng khoản một — thứ BGĐ cần nhìn khi ký:
- * thêm gì, bỏ gì, đổi mức nào, chứ không phải đọc lại cả cơ chế.
+ * So khai riêng hiện hành với đề xuất, từng đầu mục một — thứ BGĐ cần nhìn
+ * khi ký: thêm gì, bỏ gì, đổi số nào.
  */
 export function diffSchemeItems(
   before: readonly SchemePayloadItem[],
@@ -299,14 +321,4 @@ export function earliestSchemeMonth(firstEditable: string, ownEffectiveDates: re
     floor = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
   }
   return floor > firstEditable ? floor : firstEditable;
-}
-
-/** Mức lương cơ bản (khoản lương gốc) của một bản cơ chế, nếu có khai mức. */
-export function baseAmountOf(
-  items: readonly SchemePayloadItem[],
-  components: readonly PayComponent[],
-): number | null {
-  const componentById = new Map(components.map((component) => [component.id, component]));
-  const base = items.find((item) => item.is_base ?? componentById.get(item.component_id)?.is_base);
-  return base?.amount ?? null;
 }

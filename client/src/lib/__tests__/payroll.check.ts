@@ -1,46 +1,71 @@
 // Kiểm chứng engine lương. Chạy: npm run check:payroll
-import { evaluateFormula, tierLookup } from '../payrollFormula';
+import { evaluateFormula, progressiveLookup, tierLookup } from '../payrollFormula';
 import {
-  baseAmountOf, diffSchemeItems, earliestSchemeMonth, openRequestFor, resolvePayItems, resolveTemplateFor,
+  applyOverride, diffSchemeItems, earliestSchemeMonth, openRequestFor, resolveMechanismRows, resolveTemplateFor,
 } from '../payrollScheme';
 import {
-  computePayslip, mergeUnitAndEmployeeItems, progressiveIncomeTax, splitOvertimeHours, summarisePeriod,
-  toTaxBrackets, type PayrollAdjustment,
+  computePayslip, orderMechanismRows, splitOvertimeHours, summarisePeriod, systemScope,
+  type MechanismRow, type PayrollAdjustment,
 } from '../payroll';
 import {
   EMPTY_SCHEDULES, measurePunctuality, monthStandardDays, type ScheduleSet,
 } from '../workSchedule';
 import { toPayrollParams, type PayrollParamVersion } from '../payrollSettings';
-
-/**
- * Bộ tham số dùng cho kiểm chứng. KHÔNG còn bộ "mặc định" trong code
- * (F06.02) — test tự khai đủ, đúng như kế toán khai ở màn Tham số lương.
- * Làm tròn thực lĩnh để 1đ ở bộ này để các phép so cũ giữ nguyên con số;
- * làm tròn hàng nghìn kiểm riêng ở cuối file.
- */
-export const TEST_VERSION: PayrollParamVersion = {
-  id: null, effectiveFrom: '2000-01-01', label: 'test', note: null, updatedAt: null,
-  standardWorkDays: 26,
-  socialInsuranceRate: 8, healthInsuranceRate: 1.5, unemploymentInsuranceRate: 1,
-  employerSocialRate: 17.5, employerHealthRate: 3, employerUnemploymentRate: 1, employerUnionFundRate: 0,
-  insuranceSalaryCap: 46_800_000, unemploymentSalaryCap: 99_200_000,
-  taxPersonalDeduction: 11_000_000, taxDependentDeduction: 4_400_000,
-  baseSalaryLevel: 2_340_000, regionalMinimumWage: 4_960_000, regionCode: 'I',
-  flatTaxRate: 10, unpaidDaysWaiveInsurance: 14, netRoundingUnit: 1, netRoundingMode: 'NEAREST',
-  brackets: [
-    { step: 1, upperBound: 5_000_000, rate: 5 }, { step: 2, upperBound: 10_000_000, rate: 10 },
-    { step: 3, upperBound: 18_000_000, rate: 15 }, { step: 4, upperBound: 32_000_000, rate: 20 },
-    { step: 5, upperBound: 52_000_000, rate: 25 }, { step: 6, upperBound: 80_000_000, rate: 30 },
-    { step: 7, upperBound: null, rate: 35 },
-  ],
-  namedParams: [],
-  tierTables: [],
-};
-const BRACKETS = toTaxBrackets(TEST_VERSION.brackets);
 import { describeLevelIssues, isAutoScorable, scoreFromLevels } from '../kpiScoring';
 import { buildPayrollJournal } from '../payrollJournal';
 import { buildKpiFormula } from '../kpiPayFormula';
-import type { EmployeePayProfile, PayComponent, EmployeePayItem, Profile, UnitPayItem } from '@/types';
+import {
+  otherDeductionsOf, PAY_REPORT_TAGS, reportTagFitsKind, reportTagKindProblem, sumReportTags,
+} from '../payrollReportTags';
+import type {
+  EmployeePayItem, LeaveRequest, PayComponent, PayComponentKind, PayReportTag, UnitPayItem,
+} from '@/types';
+
+/**
+ * Bộ tham số dùng cho kiểm chứng — khai đủ như kế toán khai ở màn Tham số
+ * lương: bảng tự đặt tên, mỗi tham số có loại và đơn vị, bảng bậc thang gọi
+ * như hàm. Làm tròn thực lĩnh 1đ để so số cho gọn; hàng nghìn kiểm riêng.
+ */
+export const TEST_VERSION: PayrollParamVersion = {
+  id: null, effectiveFrom: '2000-01-01', label: 'test', note: null, updatedAt: null,
+  standardWorkDays: 26, netRoundingUnit: 1, netRoundingMode: 'NEAREST',
+  floorComponentCode: null, floorParamCode: null,
+  tables: [
+    {
+      id: 'bh', kind: 'LIST', name: 'Bảo hiểm', note: null, params: [
+        { code: 'TY_LE_BHXH_NLD', name: 'BHXH người lao động', type: 'RATE', unit: '%', value: 8, note: null },
+        { code: 'TY_LE_BHYT_NLD', name: 'BHYT người lao động', type: 'RATE', unit: '%', value: 1.5, note: null },
+        { code: 'TY_LE_BHTN_NLD', name: 'BHTN người lao động', type: 'RATE', unit: '%', value: 1, note: null },
+        { code: 'TRAN_BHXH_BHYT', name: 'Trần BHXH, BHYT', type: 'MONEY', unit: 'VND', value: 46_800_000, note: null },
+        { code: 'TRAN_BHTN', name: 'Trần BHTN', type: 'MONEY', unit: 'VND', value: 99_200_000, note: null },
+        { code: 'SO_NGAY_MIEN_DONG_BH', name: 'Nghỉ không lương từ (ngày)', type: 'TIME', unit: 'NGAY', value: 14, note: null },
+      ],
+    },
+    {
+      id: 'thue', kind: 'LIST', name: 'Thuế & quỹ', note: null, params: [
+        { code: 'GIAM_TRU_BAN_THAN', name: 'Giảm trừ bản thân', type: 'MONEY', unit: 'VND_THANG', value: 11_000_000, note: null },
+        { code: 'GIAM_TRU_NPT', name: 'Giảm trừ người phụ thuộc', type: 'MONEY', unit: 'VND_THANG', value: 4_400_000, note: null },
+        { code: 'TY_LE_QUY', name: 'Tỷ lệ trích quỹ', type: 'RATE', unit: '%', value: 1, note: null },
+        { code: 'HE_SO_OT', name: 'Hệ số OT ngày thường', type: 'RATE', unit: 'HE_SO', value: 1.5, note: null },
+      ],
+    },
+    {
+      id: 'pit', kind: 'TIER', name: 'Biểu thuế lũy tiến', note: null, code: 'THUE_LUY_TIEN', mode: 'PROGRESSIVE',
+      inputLabel: 'Thu nhập tính thuế', unit: '%',
+      rows: [
+        { from: 0, value: 5 }, { from: 5_000_000, value: 10 }, { from: 10_000_000, value: 15 },
+        { from: 18_000_000, value: 20 }, { from: 32_000_000, value: 25 }, { from: 52_000_000, value: 30 },
+        { from: 80_000_000, value: 35 },
+      ],
+    },
+    {
+      id: 'hh', kind: 'TIER', name: 'Hoa hồng doanh thu', note: null, code: 'HH_BL02', mode: 'LOOKUP',
+      inputLabel: 'Tỷ lệ đạt (%)', unit: '%',
+      rows: [{ from: 0, value: 0 }, { from: 75, value: 1.5 }, { from: 90, value: 3 }, { from: 105, value: 4 }],
+    },
+  ],
+};
+const params = toPayrollParams(TEST_VERSION, { standardHoursPerDay: 8 });
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -74,203 +99,333 @@ expectError('chặn chuỗi/eval', 'constructor("return 1")()');
 expectError('chia 0', 'BASE / 0');
 expectError('thiếu ngoặc', 'MAX(1, 2');
 
-// --- Thuế lũy tiến ----------------------------------------------------------
+// --- Tham số theo bảng: % là phần trăm thật, bảng bậc thang là hàm ----------
+check('tham số % vào công thức là phần trăm thật (1% = 0,01)', params.values.TY_LE_QUY, 0.01);
+check('tham số hệ số giữ nguyên', params.values.HE_SO_OT, 1.5);
+check('tham số tiền giữ nguyên', params.values.TRAN_BHTN, 99_200_000);
+check('bảng tra bậc đơn vị %: đạt 95% → 3% = 0,03', params.functions.HH_BL02(95), 0.03);
+check('bảng tra bậc: dưới bậc đầu → 0', params.functions.HH_BL02(50), 0);
 // Thu nhập tính thuế 20tr: 5tr*5% + 5tr*10% + 8tr*15% + 2tr*20% = 250k+500k+1.2tr+400k
-check('thuế 20tr', progressiveIncomeTax(20_000_000, BRACKETS).tax, 2_350_000);
-check('thuế 5tr', progressiveIncomeTax(5_000_000, BRACKETS).tax, 250_000);
-check('thuế 0', progressiveIncomeTax(0, BRACKETS).tax, 0);
-check('thuế âm', progressiveIncomeTax(-1_000_000, BRACKETS).tax, 0);
+check('lũy tiến từng phần: 20tr → 2.350.000', Math.round(params.functions.THUE_LUY_TIEN(20_000_000)), 2_350_000);
+check('lũy tiến: 5tr → 250.000', Math.round(params.functions.THUE_LUY_TIEN(5_000_000)), 250_000);
+check('lũy tiến: 0 → 0', params.functions.THUE_LUY_TIEN(0), 0);
+check('lũy tiến: số âm → 0', params.functions.THUE_LUY_TIEN(-1_000_000), 0);
 // 100tr: 250k+500k+1.2tr+2.8tr+5tr+8.4tr+7tr = 25.15tr
-check('thuế 100tr', progressiveIncomeTax(100_000_000, BRACKETS).tax, 25_150_000);
+check('lũy tiến: 100tr → 25.150.000', Math.round(params.functions.THUE_LUY_TIEN(100_000_000)), 25_150_000);
+check('progressiveLookup dùng được độc lập',
+  Math.round(progressiveLookup([{ from: 0, value: 10 }, { from: 1000, value: 20 }])(1500)), 200);
 
-// --- Tính phiếu lương -------------------------------------------------------
-const profile = { id: 'u1', name: 'Nguyễn Văn A', department: 'Kinh doanh' } as Profile;
-const settings = toPayrollParams(TEST_VERSION, { standardHoursPerDay: 8 });
+// --- Tính phiếu lương theo dòng cơ chế -------------------------------------
+const comp = (code: string, kind: PayComponentKind = 'EARNING', over: Partial<PayComponent> = {}): PayComponent => ({
+  id: `c-${code}`, code, name: code, kind, calc_type: 'FIXED', default_amount: 0,
+  input_code: null, base_code: null, formula: null, taxable: true, insurable: false, prorate: false,
+  ot_multiplier: null, tax_exempt_cap: null, is_base: false, max_amount: null, sort_order: 100,
+  group_name: null, category_code: 'THU_NHAP_BIEN_DOI', nature: 'VARIABLE', calc_source: 'ASSIGNED',
+  is_active: true, is_system: false, note: null, created_at: '', updated_at: '', ...over,
+} as PayComponent);
 
-function payProfile(over: Partial<EmployeePayProfile>): EmployeePayProfile {
-  return {
-    id: 'p1', user_id: 'u1', effective_from: '2026-01-01', pay_basis: 'MONTHLY',
-    base_amount: 20_000_000, insurance_base: null, insurance_enabled: true, dependents: 0,
-    tax_mode: 'PROGRESSIVE', flat_tax_rate: 10, standard_days_override: null, note: null,
-    created_by: null, created_at: '', updated_at: '', ...over,
-  };
+let order = 0;
+const row = (
+  component: PayComponent, mode: MechanismRow['mode'], value: string | number | null = null, sortOrder?: number,
+): MechanismRow => ({
+  component, mode,
+  formula: typeof value === 'string' ? value : null,
+  amount: typeof value === 'number' ? value : null,
+  sortOrder: sortOrder ?? (order += 10),
+  origin: null,
+});
+
+const C = {
+  LUONG_CO_BAN: comp('LUONG_CO_BAN', 'INFO', { name: 'Lương cơ bản' }),
+  DAILY_RATE: comp('DAILY_RATE', 'INFO', { name: 'Đơn giá ngày' }),
+  HOURLY_RATE: comp('HOURLY_RATE', 'INFO', { name: 'Đơn giá giờ' }),
+  BASE_WORK: comp('BASE_WORK', 'EARNING', { name: 'Lương thời gian' }),
+  BASE_LEAVE: comp('BASE_LEAVE', 'EARNING', { name: 'Lương phép' }),
+  BASE_HOLIDAY: comp('BASE_HOLIDAY', 'EARNING', { name: 'Lương nghỉ lễ' }),
+  INSURANCE_BASE: comp('INSURANCE_BASE', 'INFO', { name: 'Lương đóng bảo hiểm' }),
+  DEPENDENTS: comp('DEPENDENTS', 'INFO', { name: 'Số người phụ thuộc' }),
+  THU_NHAP_CHIU_THUE: comp('THU_NHAP_CHIU_THUE', 'INFO', { name: 'Thu nhập chịu thuế' }),
+  THU_NHAP_TINH_THUE: comp('THU_NHAP_TINH_THUE', 'INFO', { name: 'Thu nhập tính thuế' }),
+  INS_EMPLOYEE: comp('INS_EMPLOYEE', 'DEDUCTION', { name: 'BHXH, BHYT, BHTN' }),
+  PIT: comp('PIT', 'DEDUCTION', { name: 'Thuế TNCN' }),
+};
+// Bảo hiểm chỉ là một công thức trên tham số — hệ thống không biết đó là bảo hiểm.
+const BAO_HIEM = 'IF(UNPAID_DAYS >= SO_NGAY_MIEN_DONG_BH, 0, MIN(INSURANCE_BASE, TRAN_BHXH_BHYT) * '
+  + '(TY_LE_BHXH_NLD + TY_LE_BHYT_NLD) + MIN(INSURANCE_BASE, TRAN_BHTN) * TY_LE_BHTN_NLD)';
+
+/** Cơ chế lương tháng điển hình: lương thời gian / phép / lễ, bảo hiểm, thuế. */
+function standardRows(opts: {
+  base?: number | null; dependents?: number; taxable?: string; extra?: MechanismRow[];
+} = {}): MechanismRow[] {
+  order = 0;
+  return [
+    row(C.LUONG_CO_BAN, 'PER_PERSON', opts.base === undefined ? 20_000_000 : opts.base),
+    row(C.DAILY_RATE, 'FORMULA', 'LUONG_CO_BAN / STANDARD_DAYS'),
+    row(C.HOURLY_RATE, 'FORMULA', 'DAILY_RATE / HOURS_PER_DAY'),
+    row(C.BASE_WORK, 'FORMULA', 'DAILY_RATE * WORK_DAYS'),
+    row(C.BASE_LEAVE, 'FORMULA', 'DAILY_RATE * LEAVE_DAYS'),
+    row(C.BASE_HOLIDAY, 'FORMULA', 'DAILY_RATE * HOLIDAY_DAYS'),
+    ...(opts.extra ?? []),
+    row(C.INSURANCE_BASE, 'FORMULA', 'LUONG_CO_BAN'),
+    row(C.DEPENDENTS, 'VALUE', opts.dependents ?? 0),
+    row(C.THU_NHAP_CHIU_THUE, 'FORMULA', opts.taxable ?? 'TONG_THU_NHAP'),
+    row(C.THU_NHAP_TINH_THUE, 'FORMULA', 'MAX(0, THU_NHAP_CHIU_THUE - INS_EMPLOYEE - GIAM_TRU_BAN_THAN - DEPENDENTS * GIAM_TRU_NPT)'),
+    row(C.INS_EMPLOYEE, 'FORMULA', BAO_HIEM),
+    row(C.PIT, 'FORMULA', 'THUE_LUY_TIEN(THU_NHAP_TINH_THUE)'),
+  ];
 }
 
-const stats = { workDays: 26, leaveDays: 0, holidayDays: 0, paidDays: 26, workHours: 208, missingCheckout: 0 };
+const stats = (workDays = 26, leaveDays = 0, holidayDays = 0, extra: Record<string, number> = {}) => ({
+  workDays, leaveDays, holidayDays, paidDays: workDays + leaveDays + holidayDays, workHours: workDays * 8,
+  missingCheckout: 0, lateMinutes: 0, lateCount: 0, lateAfterCutoffCount: 0, earlyMinutes: 0, earlyCount: 0, ...extra,
+});
+const profile = { id: 'u1', name: 'Nguyễn Văn A' };
+type SlipExtra = Partial<Omit<Parameters<typeof computePayslip>[0], 'profile' | 'rows' | 'stats' | 'params'>> & {
+  params?: typeof params;
+};
+const slip = (rows: MechanismRow[], s = stats(), extra: SlipExtra = {}) =>
+  computePayslip({ profile, rows, stats: s, params, ...extra });
+const amountOf = (p: ReturnType<typeof computePayslip>, code: string) => p.lines.find((l) => l.code === code)?.amount;
 
 // Lương tháng đủ công, không phụ cấp, không người phụ thuộc.
-const monthly = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats, settings,
-});
+const monthly = slip(standardRows());
 check('gross lương tháng đủ công', monthly.gross, 20_000_000);
-check('bảo hiểm 10.5%', monthly.insuranceEmployee, 2_100_000);
-// TNCT = 20tr - 2.1tr - 11tr = 6.9tr -> 5tr*5% + 1.9tr*10% = 250k + 190k = 440k
-check('thu nhập tính thuế', monthly.taxableIncome, 6_900_000);
-check('thuế TNCN', monthly.personalIncomeTax, 440_000);
+check('lương cơ bản là MỨC — không thành dòng tiền thứ hai', monthly.lines.find((l) => l.code === 'LUONG_CO_BAN')?.kind, 'INFO');
+check('bảo hiểm 10,5% tính bằng công thức', amountOf(monthly, 'INS_EMPLOYEE'), 2_100_000);
+// TNTT = 20tr - 2.1tr - 11tr = 6.9tr -> 5tr*5% + 1.9tr*10% = 250k + 190k = 440k
+check('thu nhập tính thuế', monthly.values.THU_NHAP_TINH_THUE, 6_900_000);
+check('thuế TNCN', amountOf(monthly, 'PIT'), 440_000);
+check('tổng trừ', monthly.totalDeductions, 2_540_000);
 check('thực nhận', monthly.netPay, 20_000_000 - 2_100_000 - 440_000);
+check('dòng chỉ để tính giữ số lẻ tới 2 chữ số', amountOf(monthly, 'DAILY_RATE'), 769_230.77);
+check('không cảnh báo nào cho cơ chế đầy đủ', monthly.warnings, []);
 
 // Nghỉ không lương nửa tháng: lương theo công giảm, mức đóng bảo hiểm KHÔNG giảm.
-const halfMonth = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {},
-  stats: { workDays: 13, leaveDays: 0, holidayDays: 0, paidDays: 13, workHours: 104, missingCheckout: 0 },
-  settings,
-});
+const halfMonth = slip(standardRows(), stats(13));
 check('nửa tháng công', halfMonth.gross, 10_000_000);
-check('bảo hiểm giữ nguyên mức đóng', halfMonth.insuranceEmployee, 2_100_000);
+check('bảo hiểm giữ nguyên mức đóng', amountOf(halfMonth, 'INS_EMPLOYEE'), 2_100_000);
 
-// Người phụ thuộc kéo thuế xuống.
-const withDependents = computePayslip({
-  profile, payProfile: payProfile({ dependents: 2 }), items: [], inputs: {}, stats, settings,
-});
-// TNCT = 20tr - 2.1tr - 11tr - 8.8tr < 0 -> 0
-check('2 người phụ thuộc thì hết thuế', withDependents.personalIncomeTax, 0);
+check('2 người phụ thuộc thì hết thuế', amountOf(slip(standardRows({ dependents: 2 })), 'PIT'), 0);
 
-// Bảo hiểm phần doanh nghiệp: engine tự tính, không cần gán khoản nào.
-const erLines = monthly.lines.filter((l) => l.kind === 'EMPLOYER_COST');
-check('3 dòng chi phí doanh nghiệp', erLines.length, 3);
-check('BHXH doanh nghiệp 17.5%', erLines.find((l) => l.code === 'ER_SOCIAL')?.amount, Math.round(20_000_000 * 0.175));
-check('BHYT doanh nghiệp 3%', erLines.find((l) => l.code === 'ER_HEALTH')?.amount, 600_000);
-check('BHTN doanh nghiệp 1%', erLines.find((l) => l.code === 'ER_UNEMPLOY')?.amount, 200_000);
-check('tổng chi phí doanh nghiệp', monthly.insuranceEmployer, Math.round(20_000_000 * 0.215));
-check('không trừ vào thực nhận', monthly.netPay, 20_000_000 - 2_100_000 - 440_000);
-
-// Không tham gia bảo hiểm thì doanh nghiệp cũng không tốn phần đóng.
-const noIns = computePayslip({
-  profile, payProfile: payProfile({ insurance_enabled: false }), items: [], inputs: {}, stats, settings,
-});
-check('tắt bảo hiểm thì DN không đóng', noIns.insuranceEmployer, 0);
-
-// Lương giờ.
-const hourly = computePayslip({
-  profile,
-  payProfile: payProfile({ pay_basis: 'HOURLY', base_amount: 60_000, insurance_enabled: false }),
-  items: [], inputs: {},
-  stats: { workDays: 20, leaveDays: 0, holidayDays: 0, paidDays: 20, workHours: 152, missingCheckout: 0 },
-  settings,
-});
-check('lương giờ', hourly.gross, 60_000 * 152);
-check('không đóng bảo hiểm', hourly.insuranceEmployee, 0);
-
-// Trần đóng bảo hiểm với lương rất cao.
-const highEarner = computePayslip({
-  profile, payProfile: payProfile({ base_amount: 200_000_000 }), items: [], inputs: {}, stats, settings,
-});
-// BHXH+BHYT trên trần 46.8tr = 9.5%; BHTN trên trần 99.2tr = 1%
-check('trần bảo hiểm', highEarner.insuranceEmployee,
+// Trần đóng bảo hiểm với lương rất cao: BHXH+BHYT trên trần 46.8tr = 9.5%; BHTN trên trần 99.2tr = 1%
+check('trần bảo hiểm', amountOf(slip(standardRows({ base: 200_000_000 })), 'INS_EMPLOYEE'),
   Math.round(46_800_000 * 0.095) + Math.round(99_200_000 * 0.01));
 
-// Hoa hồng theo công thức bậc thang + tăng ca.
-const component = (over: Partial<PayComponent>): PayComponent => ({
-  id: 'c', code: 'X', name: 'X', kind: 'EARNING', calc_type: 'FIXED', default_amount: 0,
-  input_code: null, base_code: null, formula: null, taxable: true, insurable: false,
-  prorate: false, sort_order: 100, is_active: true, is_system: false, note: null,
-  created_at: '', updated_at: '', ...over,
-});
-const item = (componentId: string, over: Partial<EmployeePayItem> = {}): EmployeePayItem => ({
-  id: 'i', user_id: 'u1', component_id: componentId, amount: null, formula: null,
-  effective_from: '2026-01-01', effective_to: null, note: null, created_by: null,
-  created_at: '', updated_at: '', ...over,
-});
+// Nghỉ không lương từ 14 ngày: tháng đó không đóng bảo hiểm (ngưỡng là THAM SỐ).
+const mostlyUnpaid = slip(standardRows(), stats(12));
+check('nghỉ 14 ngày thì không trừ bảo hiểm', amountOf(mostlyUnpaid, 'INS_EMPLOYEE'), 0);
+check('thực nhận không âm', mostlyUnpaid.netPay >= 0, true);
+check('nghỉ 13 ngày vẫn trừ bảo hiểm đủ', amountOf(slip(standardRows(), stats(13)), 'INS_EMPLOYEE'), 2_100_000);
+check('phép có lương và ngày lễ không tính là nghỉ không lương',
+  amountOf(slip(standardRows(), stats(10, 4, 2)), 'INS_EMPLOYEE'), 2_100_000);
+check('đổi ngưỡng ở bộ tham số thì công thức theo (16/26 công, ngưỡng 10 → miễn đóng)',
+  amountOf(slip(standardRows(), stats(16), {
+    params: toPayrollParams({
+      ...TEST_VERSION,
+      tables: TEST_VERSION.tables.map((table) => (table.kind === 'LIST' ? {
+        ...table, params: table.params.map((p) => (p.code === 'SO_NGAY_MIEN_DONG_BH' ? { ...p, value: 10 } : p)),
+      } : table)),
+    }, { standardHoursPerDay: 8 }),
+  }), 'INS_EMPLOYEE'), 0);
 
-const otComponent = component({
-  id: 'c1', code: 'OT_WEEKDAY', name: 'Tăng ca 150%', calc_type: 'FORMULA',
-  input_code: 'OT_WEEKDAY_HOURS', formula: 'HOURLY_RATE * 1.5 * OT_WEEKDAY_HOURS', sort_order: 210,
-});
-const commissionComponent = component({
-  id: 'c2', code: 'COMMISSION', name: 'Hoa hồng', calc_type: 'FORMULA',
-  formula: 'IF(REVENUE > 500000000, REVENUE * 0.05, REVENUE * 0.03)', sort_order: 320,
-});
+// Ba dòng lương thời gian / phép / lễ, cùng đơn giá ngày.
+const split = slip(standardRows(), stats(20, 2, 1));
+const dayRate = 20_000_000 / 26;
+check('dòng Lương thời gian', amountOf(split, 'BASE_WORK'), Math.round(dayRate * 20));
+check('dòng Lương phép', amountOf(split, 'BASE_LEAVE'), Math.round(dayRate * 2));
+check('dòng Lương nghỉ lễ', amountOf(split, 'BASE_HOLIDAY'), Math.round(dayRate * 1));
+check('gross = tổng ba dòng', split.gross,
+  Math.round(dayRate * 20) + Math.round(dayRate * 2) + Math.round(dayRate * 1));
 
-const sales = computePayslip({
-  profile,
-  payProfile: payProfile({ pay_basis: 'COMMISSION', base_amount: 8_000_000 }),
-  items: [
-    { item: item('c1'), component: otComponent },
-    { item: item('c2'), component: commissionComponent },
-  ],
-  inputs: { OT_WEEKDAY_HOURS: 10, REVENUE: 600_000_000 },
-  stats, settings,
-});
-// hourly rate = 8tr/26/8 = 38461.538..
-const expectedOt = Math.round((8_000_000 / 26 / 8) * 1.5 * 10);
-check('tăng ca theo công thức', sales.lines.find((l) => l.code === 'OT_WEEKDAY')?.amount, expectedOt);
-check('hoa hồng bậc thang', sales.lines.find((l) => l.code === 'COMMISSION')?.amount, 30_000_000);
-check('gross sales', sales.gross, 8_000_000 + expectedOt + 30_000_000);
+// --- Thứ tự tính theo phụ thuộc, vòng lặp, tổng thu nhập --------------------
+// Dòng đọc tới dòng xếp SAU nó vẫn ra đúng: thứ tự tính theo phụ thuộc chứ
+// không theo thứ tự hiện trên phiếu.
+const ghep = slip([
+  row(comp('THUONG_GHEP', 'EARNING', { name: 'Thưởng ghép' }), 'FORMULA', '(PC_XANG + PC_AN) * 0.1', 100),
+  row(comp('PC_XANG', 'EARNING', { name: 'Phụ cấp xăng xe' }), 'VALUE', 500_000, 900),
+  row(comp('PC_AN', 'EARNING', { name: 'Phụ cấp ăn ca' }), 'VALUE', 1_000_000, 910),
+]);
+check('dòng ghép đọc được dòng xếp sau nó', amountOf(ghep, 'THUONG_GHEP'), 150_000);
+check('phiếu vẫn hiện theo thứ tự đã xếp', ghep.lines.map((l) => l.code), ['THUONG_GHEP', 'PC_XANG', 'PC_AN']);
+check('orderMechanismRows: dòng bị đọc tới đứng trước',
+  orderMechanismRows(standardRows()).ordered.findIndex((r) => r.component.code === 'DAILY_RATE')
+    < orderMechanismRows(standardRows()).ordered.findIndex((r) => r.component.code === 'BASE_WORK'), true);
 
-// Khoản % trên khoản đứng sau nó -> cảnh báo, không làm sập phiếu.
-const badPercent = component({
-  id: 'c3', code: 'BAD', name: 'Sai thứ tự', calc_type: 'PERCENT', base_code: 'NOT_YET',
-  default_amount: 10, sort_order: 10,
-});
-const withBad = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('c3'), component: badPercent }],
-  inputs: {}, stats, settings,
-});
-check('khoản lỗi không làm sập phiếu', withBad.gross, 20_000_000);
-check('có cảnh báo', withBad.warnings.length > 0, true);
+const vong = slip([
+  row(comp('A', 'EARNING', { name: 'Dòng A' }), 'FORMULA', 'B + 1'),
+  row(comp('B', 'EARNING', { name: 'Dòng B' }), 'FORMULA', 'A + 1'),
+  row(comp('C', 'EARNING', { name: 'Dòng C' }), 'VALUE', 1_000),
+]);
+check('vòng lặp: cả hai dòng ra 0', [amountOf(vong, 'A'), amountOf(vong, 'B')], [0, 0]);
+check('vòng lặp: đánh dấu lỗi trên phiếu', vong.lines.filter((l) => l.failed).map((l) => l.code), ['A', 'B']);
+check('vòng lặp: cảnh báo gọi đúng tên', vong.warnings.some((w) => w.includes('Dòng A') && w.includes('Dòng B')), true);
+check('vòng lặp không kéo sập dòng khác', amountOf(vong, 'C'), 1_000);
 
-// Công thức hỏng cũng chỉ cảnh báo.
-const brokenFormula = component({
-  id: 'c4', code: 'BROKEN', name: 'Công thức hỏng', calc_type: 'FORMULA',
-  formula: 'KHONG_CO_BIEN_NAY * 2', sort_order: 400,
-});
-const withBroken = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('c4'), component: brokenFormula }],
-  inputs: {}, stats, settings,
-});
-check('công thức hỏng vẫn ra phiếu', withBroken.gross, 20_000_000);
-check('cảnh báo công thức hỏng', withBroken.warnings.some((w) => w.includes('Công thức hỏng')), true);
+const quy = slip([
+  row(comp('LUONG', 'EARNING'), 'VALUE', 10_000_000),
+  row(comp('PHU_CAP', 'EARNING'), 'VALUE', 2_000_000),
+  row(comp('QUY', 'DEDUCTION'), 'FORMULA', 'TONG_THU_NHAP * TY_LE_QUY'),
+]);
+check('dòng trừ đọc được tổng các khoản cộng', amountOf(quy, 'QUY'), 120_000);
+const tuDoc = slip([
+  row(comp('LUONG', 'EARNING'), 'VALUE', 10_000_000),
+  row(comp('THUONG_TONG', 'EARNING', { name: 'Thưởng theo tổng' }), 'FORMULA', 'TONG_THU_NHAP * 0.1'),
+]);
+check('dòng cộng đọc tổng các khoản cộng (gồm chính nó) là vòng lặp', amountOf(tuDoc, 'THUONG_TONG'), 0);
+check('và có cảnh báo', tuDoc.warnings.some((w) => w.includes('Thưởng theo tổng')), true);
 
-// --- Công thức lương Huy Phong -------------------------------------------
-// Ba tình huống dễ vỡ nhất của bộ khoản lương seed ở migration
-// 20260930210000, gộp trong một phiếu.
-const transportStats = {
-  workDays: 20, leaveDays: 4, holidayDays: 2, paidDays: 26, workHours: 160, missingCheckout: 0,
+// --- Từng cách lấy giá trị --------------------------------------------------
+const thuong = comp('THUONG_THANG', 'EARNING', { name: 'Thưởng tháng' });
+check('dòng Hằng tháng đọc số liệu tháng',
+  amountOf(slip([row(thuong, 'MONTHLY_INPUT')], stats(), { inputs: { THUONG_THANG: 1_500_000 } }), 'THUONG_THANG'), 1_500_000);
+const chuaNhap = slip([row(thuong, 'MONTHLY_INPUT')]);
+check('chưa nhập số liệu tháng thì 0đ, không lỗi', amountOf(chuaNhap, 'THUONG_THANG'), 0);
+check('và nói rõ là chưa nhập', chuaNhap.lines[0].detail, 'Chưa nhập số liệu tháng');
+
+const thieuLuong = slip(standardRows({ base: null }));
+check('khai từng người mà chưa khai: dòng lỗi, 0đ', thieuLuong.lines.find((l) => l.code === 'LUONG_CO_BAN')?.failed, true);
+check('cảnh báo gọi đúng tên dòng chưa khai', thieuLuong.warnings.some((w) => w.includes('chưa khai “Lương cơ bản”')), true);
+
+check('giá trị trống lùi về giá trị mặc định của danh mục',
+  amountOf(slip([row(comp('PC', 'EARNING', { default_amount: 730_000 }), 'VALUE', null)]), 'PC'), 730_000);
+
+const hong = slip(standardRows({ extra: [row(comp('HONG', 'EARNING', { name: 'Công thức hỏng' }), 'FORMULA', 'KHONG_CO_BIEN_NAY * 2', 500)] }));
+check('công thức hỏng vẫn ra phiếu', hong.gross, 20_000_000);
+check('dòng hỏng nằm trên phiếu, đánh dấu lỗi', hong.lines.find((l) => l.code === 'HONG')?.failed, true);
+check('cảnh báo công thức hỏng gọi đúng tên', hong.warnings.some((w) => w.includes('Công thức hỏng')), true);
+
+const trungMa = slip([row(comp('WORK_DAYS', 'EARNING', { name: 'Trùng mã' }), 'VALUE', 5)]);
+check('đầu mục trùng mã dữ liệu tự động bị bỏ qua', trungMa.lines.length, 0);
+check('và có cảnh báo', trungMa.warnings.some((w) => w.includes('WORK_DAYS')), true);
+
+// Công thức trỏ tới đầu mục mà cơ chế người này không có: bằng 0. Dòng ra
+// TIỀN thì phải cảnh báo; dòng "chỉ để tính" (thu nhập chịu thuế…) cố ý cộng
+// cả khoản có thể không có, nên không làm ồn.
+const thieuNguon = slip(standardRows({
+  taxable: 'TONG_THU_NHAP - MIN(ALLOW_MEAL, 730000)',
+  extra: [row(comp('QUY', 'DEDUCTION', { name: 'Trích quỹ' }), 'FORMULA', '(BASE_WORK + LUONG_VAN_CHUYEN) * TY_LE_QUY', 500)],
+}), stats(), { catalogCodes: ['LUONG_VAN_CHUYEN', 'ALLOW_MEAL'] });
+check('đầu mục vắng mặt tính bằng 0', amountOf(thieuNguon, 'QUY'), 200_000);
+check('dòng tiền đọc đầu mục vắng mặt thì cảnh báo',
+  thieuNguon.warnings.some((w) => w.includes('Trích quỹ') && w.includes('LUONG_VAN_CHUYEN')), true);
+check('dòng chỉ để tính đọc đầu mục vắng mặt thì không cảnh báo',
+  thieuNguon.warnings.some((w) => w.includes('ALLOW_MEAL')), false);
+
+// --- Khai riêng đè dòng cơ chế (applyOverride) ------------------------------
+const kpi = comp('LUONG_KPI', 'EARNING', { name: 'Lương KPI', sort_order: 200 });
+const ot = comp('OT_WEEKDAY', 'EARNING', { name: 'OT ngày thường', sort_order: 210 });
+const kpiRow: MechanismRow = { component: kpi, mode: 'FORMULA', formula: 'MUC_RIENG * TY_LE_KPI', amount: null, sortOrder: 10, origin: 'Cơ chế' };
+const otRow: MechanismRow = { component: ot, mode: 'FORMULA', formula: 'HOURLY_RATE * HE_SO_OT * OT_WEEKDAY_HOURS', amount: null, sortOrder: 20, origin: 'Cơ chế' };
+const kpiRieng = applyOverride(kpiRow, kpi, { amount: 5_000_000, formula: null }, 'Riêng');
+check('mức riêng trên dòng công thức đọc MUC_RIENG: giữ công thức', [kpiRieng.mode, kpiRieng.formula, kpiRieng.amount, kpiRieng.origin],
+  ['FORMULA', 'MUC_RIENG * TY_LE_KPI', 5_000_000, 'Riêng']);
+const otRieng = applyOverride(otRow, ot, { amount: 300_000, formula: null }, 'Riêng');
+check('mức riêng trên dòng công thức không đọc MUC_RIENG: thành giá trị', [otRieng.mode, otRieng.formula, otRieng.amount],
+  ['VALUE', null, 300_000]);
+check('công thức riêng thay công thức chung',
+  applyOverride(otRow, ot, { amount: null, formula: 'HOURLY_RATE * 2 * OT_WEEKDAY_HOURS' }, 'Riêng').formula,
+  'HOURLY_RATE * 2 * OT_WEEKDAY_HOURS');
+check('dòng hằng tháng có giá trị riêng thành giá trị',
+  applyOverride({ ...otRow, mode: 'MONTHLY_INPUT', formula: null }, ot, { amount: 1_000_000, formula: null }, 'Riêng').mode, 'VALUE');
+check('khai riêng trống thì giữ nguyên dòng', applyOverride(otRow, ot, { amount: null, formula: null }, 'Riêng'), otRow);
+const them = applyOverride(undefined, comp('PC_RIENG', 'EARNING', { sort_order: 150 }), { amount: 700_000, formula: null }, 'Riêng');
+check('đầu mục không có trong cơ chế thành dòng thêm, xếp cuối phiếu', [them.mode, them.amount, them.sortOrder], ['VALUE', 700_000, 100_150]);
+
+// --- KPI ---------------------------------------------------------------------
+check('Lương KPI = mức KPI × tỷ lệ KPI',
+  amountOf(slip([row(comp('MUC_KPI', 'INFO'), 'PER_PERSON', 5_000_000), row(kpi, 'FORMULA', 'MUC_KPI * TY_LE_KPI')],
+    stats(), { inputs: { KPI_PCT: 80 } }), 'LUONG_KPI'), 4_000_000);
+check('công thức cũ MUC_RIENG * KPI_PCT / 100 vẫn chạy',
+  amountOf(slip([{ ...kpiRow, formula: 'MUC_RIENG * KPI_PCT / 100', amount: 8_000_000 }], stats(), { inputs: { KPI_PCT: 80 } }), 'LUONG_KPI'),
+  6_400_000);
+check('MUC_RIENG trống lùi về mức mặc định của danh mục',
+  amountOf(slip([{ ...kpiRow, component: { ...kpi, default_amount: 5_000_000 } }], stats(), { inputs: { KPI_PCT: 80 } }), 'LUONG_KPI'),
+  4_000_000);
+
+// --- Phần không chịu thuế: chỉ là công thức của dòng "Thu nhập chịu thuế" ----
+const otTien = row(comp('OT150', 'EARNING'), 'VALUE', 3_000_000, 500);
+const coOt = slip(standardRows({ extra: [otTien], taxable: 'TONG_THU_NHAP - ROUND(OT150 * (1.5 - 1) / 1.5)' }));
+const thuongThuong = slip(standardRows({ extra: [otTien] }));
+check('OT vẫn vào gross đầy đủ', coOt.gross, thuongThuong.gross);
+check('OT 150%: phần trả cao hơn giờ thường để ngoài thu nhập chịu thuế',
+  thuongThuong.values.THU_NHAP_TINH_THUE - coOt.values.THU_NHAP_TINH_THUE, 1_000_000);
+const anCa = slip(standardRows({ extra: [row(comp('ALLOW_MEAL', 'EARNING'), 'VALUE', 1_000_000, 500)], taxable: 'TONG_THU_NHAP - MIN(ALLOW_MEAL, 730000)' }));
+check('ăn ca vượt mức miễn: chỉ phần vượt vào thu nhập tính thuế',
+  anCa.values.THU_NHAP_TINH_THUE - monthly.values.THU_NHAP_TINH_THUE, 270_000);
+
+// --- Trần số tiền: chỉ là MIN trong công thức --------------------------------
+const doanPhi = (base: number) => amountOf(slip(standardRows({
+  base, extra: [row(comp('UNION_FEE', 'DEDUCTION'), 'FORMULA', 'MIN(MUC_RIENG / 100 * INSURANCE_BASE, 234000)', 700)],
+}).map((r) => (r.component.code === 'UNION_FEE' ? { ...r, amount: 1 } : r))), 'UNION_FEE');
+check('đoàn phí bị chặn ở trần', doanPhi(46_800_000), 234_000);
+check('dưới trần thì giữ nguyên', doanPhi(10_000_000), 100_000);
+
+// --- Điều chỉnh truy lĩnh / truy thu -----------------------------------------
+const adj = (over: Partial<PayrollAdjustment>): PayrollAdjustment => ({
+  id: 'a1', user_id: 'u1', kind: 'RECOVERY', amount: 1_000_000,
+  reason: 'Tính thiếu tăng ca', taxable: true, origin_month: '2026-07-01', ...over,
+});
+const truyLinh = slip(standardRows(), stats(), { adjustments: [adj({ amount: 2_000_000 })] });
+check('truy lĩnh cộng vào gross', truyLinh.gross, monthly.gross + 2_000_000);
+check('truy lĩnh nằm trong tổng các khoản cộng mà công thức đọc', truyLinh.values.THU_NHAP_CHIU_THUE, 22_000_000);
+check('dòng truy lĩnh ghi rõ kỳ gốc',
+  truyLinh.lines.find((l) => l.code === 'ADJ_RECOVERY')?.detail, 'Kỳ 07/2026 — Tính thiếu tăng ca');
+const truyThu = slip(standardRows(), stats(), { adjustments: [adj({ kind: 'CLAWBACK', amount: 500_000, reason: 'Trả thừa phụ cấp' })] });
+check('truy thu không đổi gross', truyThu.gross, monthly.gross);
+check('truy thu không đổi thu nhập tính thuế', truyThu.values.THU_NHAP_TINH_THUE, monthly.values.THU_NHAP_TINH_THUE);
+check('truy thu trừ vào thực nhận', truyThu.netPay, monthly.netPay - 500_000);
+check('không có điều chỉnh thì không đổi gì', slip(standardRows(), stats(), { adjustments: [] }).netPay, monthly.netPay);
+
+// --- Làm tròn thực lĩnh tới hàng nghìn ---------------------------------------
+const lamTron = slip(standardRows({ base: 20_123_456 }), stats(), {
+  params: toPayrollParams({ ...TEST_VERSION, netRoundingUnit: 1000 }, { standardHoursPerDay: 8 }),
+});
+check('thực lĩnh làm tròn tới hàng nghìn', lamTron.netPay % 1000, 0);
+check('chênh lệch làm tròn ghi riêng, không quá nửa đơn vị',
+  Math.abs(lamTron.roundingAdjustment) <= 500
+    && lamTron.netPay === lamTron.gross - lamTron.totalDeductions + lamTron.roundingAdjustment,
+  true);
+
+// --- Công thức của một người chỉ đọc số liệu CỦA CHÍNH NGƯỜI ĐÓ ------------
+const luongCb = comp('LUONG_CB', 'INFO', { name: 'Lương cơ bản' });
+const luongCong = comp('LUONG_CONG', 'EARNING', { name: 'Lương công' });
+const slipFor = (muc: number) => slip([
+  row(luongCb, 'PER_PERSON', muc, 10),
+  row(luongCong, 'FORMULA', '(LUONG_CB / STANDARD_DAYS) * PAID_DAYS', 20),
+], { ...stats(24.5), workDays: 24.5 });
+const a = amountOf(slipFor(8_000_000), 'LUONG_CONG') ?? 0;
+const b = amountOf(slipFor(20_000_000), 'LUONG_CONG') ?? 0;
+check('mỗi người ra một con số khác nhau', a !== b && a > 0, true);
+check('tỷ lệ đúng bằng tỷ lệ mức riêng của hai người', Math.round((b / a) * 1000) / 1000, 2.5);
+check('tính lại A sau khi tính B vẫn ra đúng số của A', amountOf(slipFor(8_000_000), 'LUONG_CONG'), a);
+
+// --- Hoa hồng bậc thang ------------------------------------------------------
+const hoaHongRows = () => {
+  order = 0;
+  return [
+    row(comp('DOANH_SO', 'INFO'), 'MONTHLY_INPUT'),
+    row(comp('DOANH_SO_KHOAN', 'INFO'), 'MONTHLY_INPUT'),
+    row(comp('LUONG_DOANH_SO', 'EARNING', { name: 'Lương doanh thu' }), 'FORMULA',
+      'IF(DOANH_SO_KHOAN > 0, DOANH_SO * HH_BL02(DOANH_SO / DOANH_SO_KHOAN * 100), 0)'),
+  ];
 };
-const transportComponent = component({
-  id: 'h1', code: 'LUONG_VAN_CHUYEN', name: 'Lương vận chuyển', calc_type: 'FORMULA',
-  input_code: 'SO_CHUYEN', formula: 'SO_CHUYEN * MUC_RIENG', sort_order: 110,
-});
-const otComponentHp = component({
-  id: 'h2', code: 'LUONG_OT_THUONG', name: 'Làm thêm ngày thường', calc_type: 'FORMULA',
-  input_code: 'OT_NGAY_THUONG', formula: 'HOURLY_RATE * OT_NGAY_THUONG * 2', sort_order: 120,
-});
-const unionComponent = component({
-  id: 'h3', code: 'PHI_CONG_DOAN', name: 'Phí công đoàn', kind: 'DEDUCTION', calc_type: 'FORMULA',
-  formula: '(BASE_WORK + LUONG_VAN_CHUYEN + LUONG_DOANH_SO) * 0.01', sort_order: 900,
-});
+check('hoa hồng: đạt 95% → 3% × 950tr = 28,5tr',
+  amountOf(slip(hoaHongRows(), stats(), { inputs: { DOANH_SO: 950_000_000, DOANH_SO_KHOAN: 1_000_000_000 } }), 'LUONG_DOANH_SO'),
+  28_500_000);
+check('chưa có doanh số khoán: dòng ra 0đ, không biến mất khỏi phiếu',
+  amountOf(slip(hoaHongRows(), stats(), { inputs: { DOANH_SO: 950_000_000, DOANH_SO_KHOAN: 0 } }), 'LUONG_DOANH_SO'), 0);
 
-const huyphong = computePayslip({
-  profile,
-  payProfile: payProfile({ pay_basis: 'MONTHLY', base_amount: 26_000_000 }),
-  items: [
-    { item: item('h1', { amount: 50_000 }), component: transportComponent },
-    { item: item('h2'), component: otComponentHp },
-    { item: item('h3'), component: unionComponent },
-  ],
-  // OT_NGAY_THUONG cố tình KHÔNG nhập: tháng này không ai làm thêm.
-  inputs: { SO_CHUYEN: 30 },
-  stats: transportStats,
-  settings,
-  // LUONG_DOANH_SO có trong danh mục nhưng người này không được gán.
-  catalogCodes: ['LUONG_VAN_CHUYEN', 'LUONG_DOANH_SO', 'LUONG_OT_THUONG', 'PHI_CONG_DOAN'],
-});
+// --- Dữ liệu tự động ---------------------------------------------------------
+const tuDong = systemScope(stats(20), params, { KPI_PCT: 85 });
+check('ngày nghỉ không lương = công chuẩn − ngày hưởng lương', tuDong.UNPAID_DAYS, 6);
+check('tỷ lệ KPI là phần trăm thật', tuDong.TY_LE_KPI, 0.85);
+check('giờ chuẩn mỗi ngày', tuDong.HOURS_PER_DAY, 8);
 
-// 26tr / 26 ngày chuẩn = 1tr/ngày, 20 ngày đi làm.
-check('lương thời gian tách khỏi phép và lễ',
-  huyphong.lines.find((l) => l.code === 'BASE_WORK')?.amount, 20_000_000);
-check('lương vận chuyển theo số chuyến',
-  huyphong.lines.find((l) => l.code === 'LUONG_VAN_CHUYEN')?.amount, 1_500_000);
-// Số liệu tháng chưa nhập phải ra 0đ, KHÔNG phải lỗi "không có biến"
-// (dòng vẫn nằm trên phiếu để thấy khoản này đã được xét, chỉ là bằng 0).
-check('tháng không làm thêm thì OT bằng 0đ',
-  huyphong.lines.find((l) => l.code === 'LUONG_OT_THUONG')?.amount, 0);
-// Công đoàn = 1% x (20tr lương thời gian + 1,5tr vận chuyển), KHÔNG tính
-// tiền phép và tiền lễ; khoản LUONG_DOANH_SO không được gán nên bằng 0.
-check('phí công đoàn trên lương thời gian + vận chuyển',
-  huyphong.lines.find((l) => l.code === 'PHI_CONG_DOAN')?.amount, 215_000);
-check('không cảnh báo nào cho bộ khoản Huy Phong',
-  huyphong.warnings.filter((w) => w.includes('công thức')).length, 0);
+// --- Nhật ký tính cho Chạy thử -------------------------------------------------
+const nhatKy = slip(standardRows(), stats(), { trace: true });
+check('chạy thử ghi đủ từng dòng', nhatKy.trace?.length, standardRows().length);
+check('nhật ký có công thức đã thay số', typeof nhatKy.trace?.find((step) => step.code === 'BASE_WORK')?.rendered, 'string');
+check('tính thường không tốn công ghi nhật ký', monthly.trace, undefined);
 
 // --- Cách tính lương KPI ---------------------------------------------------
 // Form sinh ra biểu thức rồi engine tính; kiểm chứng đi qua CẢ HAI bước để
@@ -313,30 +468,6 @@ check('bậc thang: 85% rơi vào bậc giữa', kpiMoney(bacThang, 85), 5_000_0
 check('bậc thang: 65% rơi vào bậc thấp', kpiMoney(bacThang, 65), 2_500_000);
 check('bậc thang: 40% dưới mọi bậc nhận 0đ', kpiMoney(bacThang, 40), 0);
 
-// Thiếu cơ chế lương.
-const noProfile = computePayslip({ profile, payProfile: null, items: [], inputs: {}, stats, settings });
-check('không có cơ chế lương thì 0đ', noProfile.netPay, 0);
-check('cảnh báo thiếu cơ chế', noProfile.warnings.length > 0, true);
-
-// Tiền ăn ca không chịu thuế.
-const mealComponent = component({
-  id: 'c5', code: 'ALLOW_MEAL', name: 'Tiền ăn ca', calc_type: 'FIXED',
-  default_amount: 730_000, taxable: false, prorate: true, sort_order: 120,
-});
-const withMeal = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('c5'), component: mealComponent }],
-  inputs: {}, stats, settings,
-});
-check('ăn ca vào gross', withMeal.gross, 20_730_000);
-check('ăn ca không làm tăng thuế', withMeal.personalIncomeTax, monthly.personalIncomeTax);
-
-// Thuế khoán 10% cho hợp đồng ngắn hạn.
-const flat = computePayslip({
-  profile, payProfile: payProfile({ tax_mode: 'FLAT', flat_tax_rate: 10, insurance_enabled: false }),
-  items: [], inputs: {}, stats, settings,
-});
-check('thuế khoán 10%', flat.personalIncomeTax, 2_000_000);
-
 // --- Tổng hợp công ----------------------------------------------------------
 const att = [
   { id: 'a1', user_id: 'u1', date: '2026-09-01', check_in_time: '2026-09-01T01:00:00Z', check_out_time: '2026-09-01T10:00:00Z' },
@@ -368,19 +499,6 @@ check('đổi cách quy kết không làm đổi tổng ngày hưởng lương',
 check('tổng luôn bằng ba thành phần cộng lại',
   withHolidays.paidDays,
   withHolidays.workDays + withHolidays.leaveDays + withHolidays.holidayDays);
-
-// Tách 3 dòng lương gốc (L01/L02/L03) — tổng 3 dòng phải bằng ĐÚNG số tiền
-// của một dòng gộp cũ (base.rate không đổi, chỉ đổi cách chia hiển thị).
-const splitStats = { workDays: 20, leaveDays: 2, holidayDays: 1, paidDays: 23, workHours: 160, missingCheckout: 0 };
-const splitSlip = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats: splitStats, settings,
-});
-const dayRate = 20_000_000 / 26;
-check('dòng Lương thời gian (L01)', splitSlip.lines.find((l) => l.code === 'BASE_WORK')?.amount, Math.round(dayRate * 20));
-check('dòng Lương phép (L02)', splitSlip.lines.find((l) => l.code === 'BASE_LEAVE')?.amount, Math.round(dayRate * 2));
-check('dòng Lương nghỉ lễ (L03)', splitSlip.lines.find((l) => l.code === 'BASE_HOLIDAY')?.amount, Math.round(dayRate * 1));
-check('tổng 3 dòng = gross (không đổi số tiền so với khi gộp 1 dòng)',
-  splitSlip.gross, Math.round((dayRate * 23)));
 
 // --- Lịch làm việc: công chuẩn theo tháng (P02) ------------------------------
 const schedules: ScheduleSet = {
@@ -478,237 +596,12 @@ const lateStats = summarisePeriod(
 );
 check('summarisePeriod trả phút muộn', lateStats.lateMinutes, 20);
 
-const latePenalty = component({
-  id: 'c9', code: 'LATE_FINE', name: 'Phạt đi muộn', kind: 'DEDUCTION', calc_type: 'FORMULA',
-  // Đúng thang của đặc tả L16: 5.000đ/phút cho 15 phút đầu, 10.000đ từ phút 16.
-  formula: 'MIN(LATE_MINUTES, 15) * 5000 + MAX(LATE_MINUTES - 15, 0) * 10000',
-  sort_order: 600,
-});
-const withLateFine = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('c9'), component: latePenalty }],
-  inputs: {}, stats: { ...stats, lateMinutes: 20 }, settings,
-});
-check('công thức phạt đi muộn đọc được LATE_MINUTES',
-  withLateFine.lines.find((l) => l.code === 'LATE_FINE')?.amount, 15 * 5000 + 5 * 10000);
-
-// --- OT: phần trả cao hơn giờ thường được miễn thuế TNCN (T04) --------------
-// Hệ số 150% → 1/3 khoản tiền được miễn. Kiểm bằng cách so chính xác với một
-// khoản thưởng THƯỜNG cùng số tiền: chênh lệch thu nhập tính thuế phải đúng
-// bằng phần miễn, không hơn không kém.
-const otAmount = 3_000_000;
-const otPaid = component({
-  id: 'cOT', code: 'OT150', name: 'Tăng ca 150%', calc_type: 'FIXED',
-  default_amount: otAmount, ot_multiplier: 1.5, sort_order: 210,
-});
-const plainBonus = component({
-  id: 'cB', code: 'BONUS_PLAIN', name: 'Thưởng thường', calc_type: 'FIXED',
-  default_amount: otAmount, sort_order: 210,
-});
-
-const withOt = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('cOT'), component: otPaid }],
-  inputs: {}, stats, settings,
-});
-const withBonus = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('cB'), component: plainBonus }],
-  inputs: {}, stats, settings,
-});
-
-check('OT vẫn vào gross đầy đủ', withOt.gross, withBonus.gross);
-check('OT 150% miễn thuế đúng 1/3',
-  withBonus.taxableIncome - withOt.taxableIncome, Math.round(otAmount / 3));
-check('miễn thuế làm thuế TNCN thấp hơn', withOt.personalIncomeTax < withBonus.personalIncomeTax, true);
-check('OT không ảnh hưởng thực nhận qua đường khác',
-  withOt.netPay - withBonus.netPay, withBonus.personalIncomeTax - withOt.personalIncomeTax);
-
-// Hệ số 3 (ngày lễ) → miễn 2/3.
-const ot300 = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cOT3'), component: component({
-    id: 'cOT3', code: 'OT300', name: 'Tăng ca 300%', calc_type: 'FIXED',
-    default_amount: otAmount, ot_multiplier: 3, sort_order: 230,
-  }) }],
-  inputs: {}, stats, settings,
-});
-check('OT 300% miễn thuế đúng 2/3',
-  withBonus.taxableIncome - ot300.taxableIncome, Math.round((otAmount * 2) / 3));
-
-// --- Điều chỉnh truy lĩnh / truy thu (LU-14) --------------------------------
-const adj = (over: Partial<PayrollAdjustment>): PayrollAdjustment => ({
-  id: 'a1', user_id: 'u1', kind: 'RECOVERY', amount: 1_000_000,
-  reason: 'Tính thiếu tăng ca', taxable: true, origin_month: '2026-07-01', ...over,
-});
-
-const recovery = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats, settings,
-  adjustments: [adj({ amount: 2_000_000 })],
-});
-check('truy lĩnh cộng vào gross', recovery.gross, monthly.gross + 2_000_000);
-check('truy lĩnh chịu thuế', recovery.taxableIncome, monthly.taxableIncome + 2_000_000);
-check('dòng truy lĩnh ghi rõ kỳ gốc',
-  recovery.lines.find((l) => l.code === 'ADJ_RECOVERY')?.detail,
-  'Kỳ 07/2026 — Tính thiếu tăng ca');
-
-// Truy thu là thu hồi tiền đã trả thừa — KHÔNG làm giảm thu nhập chịu thuế
-// của kỳ này, chỉ trừ vào thực nhận.
-const clawback = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats, settings,
-  adjustments: [adj({ kind: 'CLAWBACK', amount: 500_000, reason: 'Trả thừa phụ cấp' })],
-});
-check('truy thu không đổi gross', clawback.gross, monthly.gross);
-check('truy thu không đổi thu nhập tính thuế', clawback.taxableIncome, monthly.taxableIncome);
-check('truy thu trừ vào thực nhận', clawback.netPay, monthly.netPay - 500_000);
-
-// Khoản hoàn lại không chịu thuế (VD trả lại tiền phạt đã trừ nhầm).
-const untaxedRecovery = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats, settings,
-  adjustments: [adj({ amount: 1_000_000, taxable: false })],
-});
-check('truy lĩnh miễn thuế không tăng thu nhập tính thuế',
-  untaxedRecovery.taxableIncome, monthly.taxableIncome);
-check('truy lĩnh miễn thuế vẫn vào gross', untaxedRecovery.gross, monthly.gross + 1_000_000);
-
-// Kỳ không có điều chỉnh phải ra y hệt như trước khi có tính năng này.
-const noAdj = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats, settings, adjustments: [],
-});
-check('không có điều chỉnh thì không đổi gì', noAdj.netPay, monthly.netPay);
-
-// --- Gán khoản theo đơn vị, cá nhân ghi đè ----------------------------------
-const unitMeal = component({
-  id: 'cUM', code: 'ALLOW_MEAL', name: 'Tiền ăn ca', calc_type: 'FIXED',
-  default_amount: 730_000, sort_order: 120,
-});
-const unitFuel = component({
-  id: 'cUF', code: 'ALLOW_FUEL', name: 'Phụ cấp xăng xe', calc_type: 'FIXED',
-  default_amount: 300_000, sort_order: 130,
-});
-
-const asAssignment = (componentId: string, amount: number | null) => ({
-  component_id: componentId, amount, formula: null,
-  effective_from: '2026-01-01', effective_to: null,
-});
-
-// Đơn vị gán 2 khoản; người này gán riêng tiền ăn ca mức cao hơn.
-const mergedItems = mergeUnitAndEmployeeItems(
-  [
-    { item: asAssignment('cUM', 730_000), component: unitMeal },
-    { item: asAssignment('cUF', 300_000), component: unitFuel },
-  ],
-  [{ item: asAssignment('cUM', 1_000_000), component: unitMeal }],
-);
-
-check('gộp xong còn đúng 2 khoản (không nhân đôi)', mergedItems.length, 2);
-check('bản riêng thắng bản đơn vị',
-  mergedItems.find((e) => e.item.component_id === 'cUM')?.item.amount, 1_000_000);
-check('khoản đơn vị không bị ghi đè thì giữ nguyên',
-  mergedItems.find((e) => e.item.component_id === 'cUF')?.item.amount, 300_000);
-
-const mergedSlip = computePayslip({
-  profile, payProfile: payProfile({}), items: mergedItems, inputs: {}, stats, settings,
-});
-// Ăn ca 1tr (bản riêng) + xăng xe 300k (thừa hưởng từ đơn vị).
-check('tiền ra đúng: mức riêng + mức đơn vị, không cộng dồn hai mức ăn ca',
-  mergedSlip.gross, monthly.gross + 1_000_000 + 300_000);
-
-// Người không thuộc đơn vị nào vẫn tính được, chỉ là không thừa hưởng gì.
-check('không có khoản đơn vị thì chỉ còn khoản riêng',
-  mergeUnitAndEmployeeItems([], [{ item: asAssignment('cUM', 500_000), component: unitMeal }]).length, 1);
-check('không có khoản riêng thì thừa hưởng hết của đơn vị',
-  mergeUnitAndEmployeeItems(
-    [{ item: asAssignment('cUF', 300_000), component: unitFuel }], [],
-  ).length, 1);
-
-// --- Bút toán kết chuyển lương (LU-14) --------------------------------------
-const journal = buildPayrollJournal([
-  { profile: { id: 'u1', name: 'A', department: 'Kinh doanh' }, computed: monthly },
-  { profile: { id: 'u2', name: 'B', department: null }, computed: monthly },
-]);
-
-check('bút toán cân Nợ = Có', journal.balanced, true);
-check('gộp theo bộ phận, không theo từng người',
-  new Set(journal.entries.map((e) => e.department)).size, 2);
-check('có bút toán chi phí lương Nợ 642 / Có 334',
-  journal.entries.some((e) => e.debit === '642' && e.credit === '334'), true);
-check('có bút toán thuế TNCN Nợ 334 / Có 3335',
-  journal.entries.some((e) => e.debit === '334' && e.credit === '3335'), true);
-check('tổng thu nhập khớp bảng lương', journal.totals.gross, monthly.gross * 2);
-check('tổng thực chi khớp bảng lương', journal.totals.netPay, monthly.netPay * 2);
-check('bảo hiểm doanh nghiệp không trừ vào thực chi',
-  journal.totals.insuranceEmployer, monthly.insuranceEmployer * 2);
-check('người chưa gán bộ phận vẫn vào sổ',
-  journal.entries.some((e) => e.department === 'Chưa gán bộ phận'), true);
-check('không sinh bút toán số tiền 0',
-  journal.entries.every((e) => e.amount > 0), true);
-
-
-// --- Trần miễn thuế: tiền ăn ca trả vượt ngưỡng --------------------------
-// Khoản đánh taxable = false mà CÓ ngưỡng thì chỉ được miễn tới ngưỡng. Kiểm
-// bằng chênh lệch thu nhập tính thuế so với phiếu không có khoản nào: phần
-// tăng thêm phải đúng bằng số tiền trả vượt ngưỡng.
-const capMeal = component({
-  id: 'cMeal', code: 'ALLOW_MEAL', name: 'Tiền ăn ca', calc_type: 'FIXED',
-  default_amount: 1_000_000, taxable: false, tax_exempt_cap: 730_000, sort_order: 120,
-});
-const overCapMeal = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('cMeal'), component: capMeal }],
-  inputs: {}, stats, settings,
-});
-check('ăn ca vượt ngưỡng: phần vượt vào thu nhập tính thuế',
-  overCapMeal.taxableIncome - monthly.taxableIncome, 1_000_000 - 730_000);
-check('ăn ca vượt ngưỡng: khoản vẫn trả đủ',
-  overCapMeal.lines.find((l) => l.code === 'ALLOW_MEAL')?.amount, 1_000_000);
-
-// Trả đúng trong ngưỡng thì miễn trọn, thu nhập tính thuế không đổi.
-const atCapMeal = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cMeal'), component: component({
-    ...capMeal, default_amount: 730_000,
-  }) }],
-  inputs: {}, stats, settings,
-});
-check('ăn ca trong ngưỡng: miễn trọn',
-  atCapMeal.taxableIncome, monthly.taxableIncome);
-
-// Không khai ngưỡng thì giữ nguyên hành vi cũ: miễn toàn bộ.
-const uncappedMeal = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cMeal'), component: component({
-    ...capMeal, default_amount: 1_000_000, tax_exempt_cap: null,
-  }) }],
-  inputs: {}, stats, settings,
-});
-check('không khai ngưỡng thì miễn toàn bộ như trước',
-  uncappedMeal.taxableIncome, monthly.taxableIncome);
-
-// --- Trần số tiền: đoàn phí công đoàn -------------------------------------
-// 1% của mức đóng bảo hiểm 46,8tr = 468.000đ, nhưng trần là 234.000đ.
-const unionFee = component({
-  id: 'cUnion', code: 'UNION_FEE', name: 'Đoàn phí công đoàn', kind: 'DEDUCTION',
-  calc_type: 'PERCENT', default_amount: 1, base_code: 'INSURANCE_BASE',
-  taxable: false, max_amount: 234_000, sort_order: 610,
-});
-const withUnion = computePayslip({
-  profile, payProfile: payProfile({ base_amount: 46_800_000 }),
-  items: [{ item: item('cUnion'), component: unionFee }],
-  inputs: {}, stats, settings,
-});
-const unionLine = withUnion.lines.find((l) => l.code === 'UNION_FEE');
-check('đoàn phí bị chặn ở trần', unionLine?.amount, 234_000);
-check('phiếu lương nói rõ đã chạm trần',
-  (unionLine?.detail ?? '').includes('chạm trần'), true);
-
-// Dưới trần thì không bị đụng tới, và diễn giải không nhắc trần.
-const smallUnion = computePayslip({
-  profile, payProfile: payProfile({ base_amount: 10_000_000 }),
-  items: [{ item: item('cUnion'), component: unionFee }],
-  inputs: {}, stats, settings,
-});
-const smallLine = smallUnion.lines.find((l) => l.code === 'UNION_FEE');
-check('dưới trần thì giữ nguyên', smallLine?.amount, 100_000);
-check('dưới trần thì không nhắc trần',
-  (smallLine?.detail ?? '').includes('chạm trần'), false);
-
+const phatMuon = slip([
+  row(comp('LATE_FINE', 'DEDUCTION', { name: 'Phạt đi muộn' }), 'FORMULA',
+    // Thang ví dụ: 5.000đ/phút cho 15 phút đầu, 10.000đ từ phút 16.
+    'MIN(LATE_MINUTES, 15) * 5000 + MAX(LATE_MINUTES - 15, 0) * 10000'),
+], stats(26, 0, 0, { lateMinutes: 20 }));
+check('công thức phạt đi muộn đọc được số phút đi muộn', amountOf(phatMuon, 'LATE_FINE'), 15 * 5000 + 5 * 10000);
 
 // --- Tự chấm KPI theo thang điểm ------------------------------------------
 // Phải khớp nguyên văn quy tắc của public.kpi_score_from_levels trong
@@ -754,165 +647,6 @@ check('phát hiện được lỗ hổng giữa hai mức',
   describeLevelIssues([{ score: 4, min: 0, max: 1 }, { score: 1, min: 5 }]).length > 0, true);
 check('thang liền mạch không báo lỗi',
   describeLevelIssues(errorLevels).length, 0);
-
-// --- Nghỉ không lương từ 14 ngày: tháng đó không đóng bảo hiểm ------------
-// Điều 85 khoản 3 Luật BHXH 2014. Trước khi có nhánh này, người nghỉ gần hết
-// tháng vẫn bị trừ đủ bảo hiểm trên mức lương đóng BH trong khi lương thực tế
-// gần bằng 0 — thực nhận ra số ÂM.
-const fewDays = { workDays: 12, leaveDays: 0, holidayDays: 0, paidDays: 12, workHours: 96, missingCheckout: 0 };
-const mostlyUnpaid = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats: fewDays, settings,
-});
-check('nghỉ 14 ngày thì không trừ bảo hiểm', mostlyUnpaid.insuranceEmployee, 0);
-check('doanh nghiệp cũng không đóng tháng đó', mostlyUnpaid.insuranceEmployer, 0);
-check('thực nhận không âm', mostlyUnpaid.netPay >= 0, true);
-check('có cảnh báo giải thích vì sao',
-  mostlyUnpaid.warnings.some((w) => w.includes('Luật BHXH')), true);
-
-// Đúng 13 ngày nghỉ (dưới ngưỡng) thì vẫn đóng bình thường.
-const justUnder = { workDays: 13, leaveDays: 0, holidayDays: 0, paidDays: 13, workHours: 104, missingCheckout: 0 };
-const stillInsured = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats: justUnder, settings,
-});
-check('nghỉ 13 ngày vẫn trừ bảo hiểm đủ',
-  stillInsured.insuranceEmployee, monthly.insuranceEmployee);
-check('dưới ngưỡng thì không cảnh báo',
-  stillInsured.warnings.some((w) => w.includes('Điều 85')), false);
-
-// Ngày lễ và nghỉ phép CÓ lương không bị tính là nghỉ không lương.
-const withPaidLeave = { workDays: 10, leaveDays: 4, holidayDays: 2, paidDays: 16, workHours: 80, missingCheckout: 0 };
-const paidLeaveOk = computePayslip({
-  profile, payProfile: payProfile({}), items: [], inputs: {}, stats: withPaidLeave, settings,
-});
-check('phép có lương và ngày lễ không tính là nghỉ không lương',
-  paidLeaveOk.insuranceEmployee, monthly.insuranceEmployee);
-
-
-// --- Bút toán gom theo ĐƠN VỊ, không theo ô chữ tự do --------------------
-// `profile.department` là ô chữ nhập tay ở trang Hồ sơ & tài khoản, còn cả hệ
-// thống dùng `unit_id`. Khai đơn vị đúng ở Cơ cấu tổ chức mà bỏ trống ô chữ
-// thì bản cũ dồn hết bút toán vào "Chưa gán bộ phận".
-const unitNames = new Map([['u-kd', 'Phòng Kinh doanh'], ['u-kt', 'Phòng Kế toán']]);
-const journalRows = [
-  { profile: { id: 'a', name: 'A', department: null, unit_id: 'u-kd' }, computed: monthly },
-  { profile: { id: 'b', name: 'B', department: null, unit_id: 'u-kt' }, computed: monthly },
-];
-const byUnit = buildPayrollJournal(journalRows, undefined, unitNames);
-check('gom theo tên đơn vị dù ô chữ bỏ trống',
-  new Set(byUnit.entries.map((e) => e.department)),
-  new Set(['Phòng Kinh doanh', 'Phòng Kế toán']));
-check('không dồn vào Chưa gán bộ phận',
-  byUnit.entries.some((e) => e.department.includes('Chưa gán')), false);
-
-// Dữ liệu cũ chưa gán đơn vị vẫn dùng được ô chữ làm phương án lùi.
-const legacy = buildPayrollJournal(
-  [{ profile: { id: 'c', name: 'C', department: 'Kho vận', unit_id: null }, computed: monthly }],
-  undefined,
-  unitNames,
-);
-check('chưa gán đơn vị thì lùi về ô chữ cũ',
-  legacy.entries.every((e) => e.department === 'Kho vận'), true);
-
-
-// --- MUC_RIENG: công thức đọc được mức gán cho từng người ---------------
-// Trước khi có biến này, một khoản FORMULA không lấy được con số tiền của
-// TỪNG NGƯỜI, nên mức lương KPI buộc phải nằm trong mẫu KPI — module KPI giữ
-// một con số tiền lương vốn không thuộc về nó.
-const kpiPay = component({
-  id: 'cKPI', code: 'LUONG_KPI', name: 'Lương KPI', calc_type: 'FORMULA',
-  formula: 'MUC_RIENG * KPI_PCT / 100', default_amount: 5_000_000, sort_order: 340,
-});
-
-// Không gán riêng -> lấy mức mặc định của danh mục.
-const kpiDefault = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cKPI'), component: kpiPay }],
-  inputs: { KPI_PCT: 80 }, stats, settings,
-});
-check('MUC_RIENG lùi về mức mặc định của danh mục',
-  kpiDefault.lines.find((l) => l.code === 'LUONG_KPI')?.amount, 4_000_000);
-
-// Gán riêng cho người này -> mức riêng thắng.
-const kpiOverride = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cKPI', { amount: 8_000_000 }), component: kpiPay }],
-  inputs: { KPI_PCT: 80 }, stats, settings,
-});
-check('MUC_RIENG lấy mức gán riêng của từng người',
-  kpiOverride.lines.find((l) => l.code === 'LUONG_KPI')?.amount, 6_400_000);
-
-// Công thức khai lúc gán phải ghi đè được cả khoản FIXED. UI trước đây cho
-// nhập trường này nhưng engine bỏ qua, khiến người dùng lưu thành công mà số
-// tiền vẫn giữ nguyên mức cố định.
-const flexibleBonus = component({
-  id: 'cFlexible', code: 'THUONG_LINH_HOAT', name: 'Thưởng linh hoạt',
-  calc_type: 'FIXED', default_amount: 2_000_000, sort_order: 350,
-});
-const flexibleResult = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{
-    item: item('cFlexible', { amount: 5_000_000, formula: 'MUC_RIENG * KPI_PCT / 100' }),
-    component: flexibleBonus,
-  }],
-  inputs: { KPI_PCT: 80 }, stats, settings,
-});
-check('công thức riêng ghi đè cách tính FIXED',
-  flexibleResult.lines.find((l) => l.code === 'THUONG_LINH_HOAT')?.amount, 4_000_000);
-
-// ---------------------------------------------------------------------------
-// Tổng lương ghép từ nhiều khoản: khoản này đọc được mã của khoản kia.
-// ---------------------------------------------------------------------------
-// Đây là cách người dùng mô tả cơ chế lương: khai sẵn các khoản trong danh
-// mục, rồi tổng là phép cộng trừ nhân chia giữa chúng.
-//
-// Phần dễ sai: khoản bị tham chiếu phải tính XONG trước. Cố ý cho khoản phụ
-// thuộc một `sort_order` NHỎ HƠN khoản nó đọc tới — sắp theo sort_order thì
-// nó chạy trước và đọc ra 0, ra 0đ thay vì 1.650.000đ.
-const phuCapXang = component({
-  id: 'cXang', code: 'PC_XANG', name: 'Phụ cấp xăng xe',
-  calc_type: 'FIXED', default_amount: 500_000, sort_order: 900,
-});
-const phuCapAn = component({
-  id: 'cAn', code: 'PC_AN', name: 'Phụ cấp ăn ca',
-  calc_type: 'FIXED', default_amount: 1_000_000, sort_order: 910,
-});
-// Thưởng = 10% của (xăng + ăn ca). Khai sort_order 100 để nó đứng TRƯỚC.
-const thuongGhep = component({
-  id: 'cGhep', code: 'THUONG_GHEP', name: 'Thưởng ghép',
-  calc_type: 'FORMULA', formula: '(PC_XANG + PC_AN) * 0.1', sort_order: 100,
-});
-const ghepResult = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [
-    { item: item('cGhep'), component: thuongGhep },
-    { item: item('cXang'), component: phuCapXang },
-    { item: item('cAn'), component: phuCapAn },
-  ],
-  inputs: {}, stats, settings,
-});
-check('khoản ghép đọc được mã của khoản xếp sau nó',
-  ghepResult.lines.find((l) => l.code === 'THUONG_GHEP')?.amount, 150_000);
-
-// ---------------------------------------------------------------------------
-// Lương gốc khai bằng một KHOẢN trong danh mục, thay cho pay_basis/base_amount.
-// ---------------------------------------------------------------------------
-// Cố ý để `base_amount` của hồ sơ là một số KHÁC (5 triệu). Engine còn đọc
-// trường cũ thì đơn giá giờ ra 5tr/26/8 chứ không phải 26tr/26/8 — bài kiểm
-// bắt được ngay, chứ không chỉ chạy cho có.
-const luongGoc = component({
-  id: 'cBase', code: 'LUONG_CO_BAN', name: 'Lương cơ bản',
-  calc_type: 'FIXED', is_base: true, default_amount: 0, sort_order: 10,
-});
-const baseByComponent = computePayslip({
-  profile,
-  payProfile: payProfile({ pay_basis: 'MONTHLY', base_amount: 5_000_000 }),
-  items: [{ item: item('cBase', { amount: 26_000_000 }), component: luongGoc }],
-  inputs: {}, stats, settings,
-});
-check('đơn giá giờ suy từ khoản được đánh dấu lương gốc',
-  baseByComponent.hourlyRate, 26_000_000 / 26 / 8);
-check('mức đóng bảo hiểm cũng theo khoản lương gốc',
-  baseByComponent.insuranceBase, 26_000_000);
 
 // --- Chia giờ tăng ca theo Điều 98 BLLĐ 2019 --------------------------------
 //
@@ -985,251 +719,85 @@ check('lễ rơi vào thứ Bảy nửa ngày vẫn hưởng 0,5 công',
 check('lễ rơi vào Chủ nhật không hưởng công nào',
   summarisePeriod([], [], new Date(2026, 7, 1), 8, ['2026-08-09'], lichT7Nua).holidayDays, 0);
 
-// --- Công thức của một người chỉ đọc số liệu CỦA CHÍNH NGƯỜI ĐÓ ------------
-//
-// Một khoản tham chiếu mã của khoản khác (`LUONG_CB * PAID_DAYS`). Cùng một
-// khoản đó được gán cho nhiều người với mức khác nhau, nên nếu phạm vi biến
-// bị dùng chung thì người này sẽ ăn mức của người kia — sai tiền hàng loạt,
-// và sai một cách im lặng vì công thức vẫn chạy ra số.
-const luongCoBan = component({
-  id: 'cb', code: 'LUONG_CB', name: 'Lương cơ bản', calc_type: 'FIXED', sort_order: 10,
-});
-const luongCong = component({
-  id: 'cc', code: 'LUONG_CONG', name: 'Lương công', calc_type: 'FORMULA',
-  formula: '(LUONG_CB / STANDARD_DAYS) * PAID_DAYS', sort_order: 20,
-});
-
-/** Cùng bộ khoản, khác mức khai riêng. */
-const slipFor = (muc: number) => computePayslip({
-  profile,
-  payProfile: payProfile({ base_amount: 0 }),
-  items: [
-    { item: item('cb', { amount: muc }), component: luongCoBan },
-    { item: item('cc'), component: luongCong },
-  ],
-  inputs: {},
-  stats: { ...stats, paidDays: 24.5 },
-  settings,
-});
-
-const nguoiA = slipFor(8_000_000);
-const nguoiB = slipFor(20_000_000);
-const dong = (slip: ReturnType<typeof computePayslip>, code: string) =>
-  slip.lines.find((line) => line.code === code)?.amount ?? null;
-
-// Khẳng định TỶ LỆ chứ không phải con số tuyệt đối: con số còn phụ thuộc ngày
-// công chuẩn của kỳ, nhưng tỷ lệ giữa hai người thì chỉ phụ thuộc mức riêng
-// của họ. B khai gấp 2,5 lần A thì lương công phải gấp đúng 2,5 lần.
-const a = dong(nguoiA, 'LUONG_CONG') ?? 0;
-const b = dong(nguoiB, 'LUONG_CONG') ?? 0;
-check('mỗi người ra một con số khác nhau', a !== b && a > 0, true);
-// Làm tròn về đồng nên tỷ lệ không khớp tuyệt đối; sai số một phần nghìn là
-// của phép làm tròn, không phải của phạm vi biến.
-check('tỷ lệ đúng bằng tỷ lệ mức riêng của hai người',
-  Math.round((b / a) * 1000) / 1000, 2.5);
-
-// Tính A trước rồi tính B, xong tính lại A: nếu phạm vi biến rò rỉ giữa hai
-// lần chạy thì lần sau A sẽ mang số của B.
-check('tính lại A sau khi tính B vẫn ra đúng số của A',
-  dong(slipFor(8_000_000), 'LUONG_CONG'), a);
-
-// Công thức trỏ tới khoản mà NGƯỜI NÀY không được gán.
-//
-// Khoản gán theo từng người, nên mã khoản trong công thức chỉ có số khi
-// chính người đó được gán khoản đó. Không gán thì nó bằng 0 — công thức vẫn
-// chạy, ra 0đ. Đúng về số, nhưng im lặng thì một người mất nguyên khoản
-// lương mà phiếu trông vẫn bình thường.
-const thieuNguon = computePayslip({
-  profile,
-  payProfile: payProfile({ base_amount: 0 }),
-  items: [{ item: item('cc'), component: luongCong }],
-  inputs: {},
-  stats,
-  settings,
-  catalogCodes: ['LUONG_CB', 'LUONG_CONG'],
-});
-check('khoản thiếu nguồn vẫn ra 0đ, không ném lỗi',
-  thieuNguon.lines.find((line) => line.code === 'LUONG_CONG')?.amount ?? 0, 0);
-check('nhưng PHẢI cảnh báo, và gọi đúng tên khoản còn thiếu',
-  thieuNguon.warnings.some((w) => w.includes('LUONG_CB') && w.includes('Lương công')), true);
-
-// Người ĐƯỢC gán đủ cả hai thì không cảnh báo gì về chuyện này.
-const duNguon = computePayslip({
-  profile,
-  payProfile: payProfile({ base_amount: 0 }),
-  items: [
-    { item: item('cb', { amount: 8_000_000 }), component: luongCoBan },
-    { item: item('cc'), component: luongCong },
-  ],
-  inputs: {},
-  stats,
-  settings,
-  catalogCodes: ['LUONG_CB', 'LUONG_CONG'],
-});
-check('gán đủ thì không cảnh báo thiếu nguồn',
-  duNguon.warnings.some((w) => w.includes('chưa được gán khoản đó')), false);
-
-// ===========================================================================
-// M06 (F06.01–F06.04) — các kiểm chứng thêm cùng đợt đặc tả lương
-// ===========================================================================
-
-// --- Khoản lương gốc là MỨC, không phải một dòng tiền thứ hai ---------------
-// Lỗi có thật trước đợt này: gán "Lương cơ bản 26tr" (cờ lương gốc) thì engine
-// vừa sinh dòng Lương thời gian 26tr vừa cộng thêm dòng Lương cơ bản 26tr —
-// gross 52tr.
-const goc26 = computePayslip({
-  profile, payProfile: payProfile({ base_amount: 0 }),
-  items: [{ item: item('cBase', { amount: 26_000_000 }), component: luongGoc }],
-  inputs: {}, stats, settings,
-});
-check('lương gốc không bị cộng hai lần (gross = 26tr)', goc26.gross, 26_000_000);
-check('không có dòng tiền riêng cho khoản lương gốc',
-  goc26.lines.some((line) => line.code === 'LUONG_CO_BAN'), false);
-const gocCongThuc = computePayslip({
-  profile, payProfile: payProfile({ base_amount: 0 }),
-  items: [{ item: item('cBase', { amount: 26_000_000, formula: '(MUC_RIENG / STANDARD_DAYS) * PAID_DAYS' }), component: luongGoc }],
-  inputs: {}, stats: { ...stats, workDays: 13, paidDays: 13 }, settings,
-});
-check('công thức chia công của khoản lương gốc (do màn cũ ghi) vẫn ra đúng nửa tháng',
-  gocCongThuc.gross, 13_000_000);
-check('và không sinh cảnh báo thừa', gocCongThuc.warnings.some((w) => w.includes('công thức riêng')), false);
-const kpiTheoBac = component({ id: 'cKpi', code: 'LUONG_KPI_BAC', name: 'KPI theo bậc', calc_type: 'FORMULA',
-  formula: 'LUONG_CO_BAN * 10 / 100', sort_order: 50 });
-const kpiBac = computePayslip({
-  profile, payProfile: payProfile({ base_amount: 0 }),
-  items: [
-    { item: item('cBase', { amount: 20_000_000 }), component: luongGoc },
-    { item: item('cKpi'), component: kpiTheoBac },
-  ],
-  inputs: {}, stats, settings, catalogCodes: ['LUONG_CO_BAN', 'LUONG_KPI_BAC'],
-});
-check('mã khoản lương gốc mang mức bậc lương cho khoản khác dùng',
-  kpiBac.lines.find((line) => line.code === 'LUONG_KPI_BAC')?.amount, 2_000_000);
-
-// --- Khoản danh mục do engine tự tính không đè biến hệ thống ----------------
-const quyTheoGio = component({ id: 'cQuy', code: 'QUY', name: 'Quỹ', kind: 'DEDUCTION', calc_type: 'FORMULA',
-  formula: 'BASE_WORK * 1 / 100', sort_order: 900 });
-const coMaEngine = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('cQuy'), component: quyTheoGio }],
-  inputs: {}, stats, settings,
-  // BASE_WORK nằm trong danh mục (khoản "Lương thời gian" liệt kê cho đủ 26).
-  catalogCodes: ['BASE_WORK', 'PIT', 'QUY'],
-});
-check('mã BASE_WORK trong danh mục không làm lương thời gian về 0',
-  coMaEngine.lines.find((line) => line.code === 'QUY')?.amount, 200_000);
-
-// --- Làm tròn thực lĩnh tới hàng nghìn (FR06.04.01) -------------------------
-const settings1000 = toPayrollParams({ ...TEST_VERSION, netRoundingUnit: 1000 }, { standardHoursPerDay: 8 });
-const lamTron = computePayslip({
-  profile, payProfile: payProfile({ base_amount: 20_123_456 }), items: [], inputs: {}, stats, settings: settings1000,
-});
-check('thực lĩnh làm tròn tới hàng nghìn', lamTron.netPay % 1000, 0);
-check('chênh lệch làm tròn ghi riêng, không quá nửa đơn vị',
-  Math.abs(lamTron.roundingAdjustment) <= 500 && lamTron.netPay
-    === lamTron.gross - lamTron.insuranceEmployee - lamTron.personalIncomeTax - lamTron.otherDeductions + lamTron.roundingAdjustment,
-  true);
-
-// --- Ngưỡng nghỉ không lương là THAM SỐ, không phải hằng số trong code -------
-const settings10 = toPayrollParams({ ...TEST_VERSION, unpaidDaysWaiveInsurance: 10 }, { standardHoursPerDay: 8 });
-check('đổi ngưỡng ở bộ tham số thì engine theo (16/26 công, ngưỡng 10 → miễn đóng)',
-  computePayslip({ profile, payProfile: payProfile({}), items: [], inputs: {},
-    stats: { ...stats, workDays: 16, paidDays: 16 }, settings: settings10 }).insuranceEmployee, 0);
-
-// --- Thuế khấu trừ thẳng lấy tỷ lệ của bộ tham số khi hồ sơ không ghi --------
-check('biểu thuế rỗng thì cảnh báo, không lẳng lặng dùng biểu trong code',
-  computePayslip({ profile, payProfile: payProfile({}), items: [], inputs: {}, stats,
-    settings: toPayrollParams({ ...TEST_VERSION, brackets: [] }, { standardHoursPerDay: 8 }) })
-    .warnings.some((w) => w.includes('biểu thuế')), true);
-
-// --- KPCĐ doanh nghiệp đóng theo tham số, không tính trùng khoản gán tay -----
-const kpcdKhoan = component({ id: 'cKpcd', code: 'ER_UNION_FUND', name: 'KPCĐ', kind: 'EMPLOYER_COST',
-  calc_type: 'PERCENT', base_code: 'INSURANCE_BASE', default_amount: 2, sort_order: 720 });
-const kpcd = computePayslip({
-  profile, payProfile: payProfile({}), items: [{ item: item('cKpcd'), component: kpcdKhoan }], inputs: {}, stats,
-  settings: toPayrollParams({ ...TEST_VERSION, employerUnionFundRate: 2 }, { standardHoursPerDay: 8 }),
-});
-check('KPCĐ 2% tính một lần dù vẫn còn khoản ER_UNION_FUND gán tay',
-  kpcd.lines.filter((line) => line.code === 'ER_UNION_FUND').length, 1);
-check('KPCĐ = 2% mức đóng', kpcd.lines.find((line) => line.code === 'ER_UNION_FUND')?.amount, 400_000);
-
 // --- Công thức: IF chỉ tính nhánh được chọn, ROUND(x, -3), biểu bậc thang ----
 check('IF không nổ chia 0 ở nhánh không chọn',
   evaluateFormula('IF(KHOAN > 0, DS / KHOAN, 0)', { KHOAN: 0, DS: 5 }).value, 0);
 check('toán tử ? : cũng vậy', evaluateFormula('KHOAN > 0 ? DS / KHOAN : 7', { KHOAN: 0, DS: 5 }).value, 7);
 check('&& đi tắt', evaluateFormula('KHOAN > 0 && DS / KHOAN > 1', { KHOAN: 0, DS: 5 }).value, 0);
-check('ROUND(x, -3) tới hàng nghìn (FR06.02.02)', evaluateFormula('ROUND(17459600, -3)', {}).value, 17_460_000);
+check('ROUND(x, -3) tới hàng nghìn', evaluateFormula('ROUND(17459600, -3)', {}).value, 17_460_000);
 check('ROUND nửa đơn vị làm tròn ra xa 0', evaluateFormula('ROUND(2500, -3)', {}).value, 3_000);
 check('ROUND(1.005, 2) = 1,01 như Excel (không vấp sai số dấu phẩy động)', evaluateFormula('ROUND(1.005, 2)', {}).value, 1.01);
 expectError('biến gõ sai ở nhánh KHÔNG chọn vẫn bị bắt', 'IF(1 > 0, 5, BIEN_SAI)');
 let viTri: number | undefined;
 try { evaluateFormula('BASE * HE_SAI', { BASE: 1 }); } catch (error) { viTri = (error as { at?: number }).at; }
-check('lỗi chỉ đúng vị trí ký tự (khoanh vùng lỗi F06.02)', viTri, 7);
+check('lỗi chỉ đúng vị trí ký tự', viTri, 7);
 const hhBl02 = tierLookup([{ from: 0, value: 0 }, { from: 75, value: 1.5 }, { from: 90, value: 3 }, { from: 105, value: 4 }]);
-check('bậc thang BR-PAY-004: 74,9% → 0', hhBl02(74.9), 0);
+check('bậc thang: 74,9% → 0', hhBl02(74.9), 0);
 check('bậc thang: 89,5% → 1,5 (lấp khoảng hở 89–90%)', hhBl02(89.5), 1.5);
 check('bậc thang: 104,5% → 3 (lấp khoảng hở 104–105%)', hhBl02(104.5), 3);
 check('bậc thang: 160% → 4', hhBl02(160), 4);
-const hoaHong = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cHH', { formula: 'IF(DOANH_SO_KHOAN > 0, DOANH_SO * HH_BL02(DOANH_SO / DOANH_SO_KHOAN * 100) / 100, 0)' }),
-    component: component({ id: 'cHH', code: 'LUONG_DOANH_SO', name: 'Lương DT', calc_type: 'FORMULA', formula: '0' }) }],
-  inputs: { DOANH_SO: 950_000_000, DOANH_SO_KHOAN: 1_000_000_000 }, stats,
-  settings: toPayrollParams({ ...TEST_VERSION, tierTables: [{ code: 'HH_BL02', name: 'HH', inputLabel: null, unit: '%', note: null,
-    rows: [{ from: 0, value: 0 }, { from: 75, value: 1.5 }, { from: 90, value: 3 }, { from: 105, value: 4 }] }] },
-  { standardHoursPerDay: 8 }),
-});
-check('hoa hồng BL 02: đạt 95% → 3% × 950tr = 28,5tr',
-  hoaHong.lines.find((line) => line.code === 'LUONG_DOANH_SO')?.amount, 28_500_000);
-const chuaCoKhoan = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cHH', { formula: 'IF(DOANH_SO_KHOAN > 0, DOANH_SO * HH_BL02(DOANH_SO / DOANH_SO_KHOAN * 100) / 100, 0)' }),
-    component: component({ id: 'cHH', code: 'LUONG_DOANH_SO', name: 'Lương DT', calc_type: 'FORMULA', formula: '0' }) }],
-  inputs: { DOANH_SO: 950_000_000, DOANH_SO_KHOAN: 0 }, stats,
-  settings: toPayrollParams({ ...TEST_VERSION, tierTables: [{ code: 'HH_BL02', name: 'HH', inputLabel: null, unit: '%', note: null,
-    rows: [{ from: 0, value: 0 }] }] }, { standardHoursPerDay: 8 }),
-});
-check('chưa có doanh số khoán: khoản ra 0đ, không biến mất khỏi phiếu',
-  chuaCoKhoan.lines.find((line) => line.code === 'LUONG_DOANH_SO')?.amount, 0);
 
-// --- Tham số tự khai vào thẳng công thức, không đè biến hệ thống --------------
-const thamSo = computePayslip({
-  profile, payProfile: payProfile({}),
-  items: [{ item: item('cOt'), component: component({ id: 'cOt', code: 'OT_T', name: 'OT', calc_type: 'FORMULA',
-    formula: 'HOURLY_RATE * HE_SO_OT_THUONG * OT_WEEKDAY_HOURS', input_code: 'OT_WEEKDAY_HOURS' }) }],
-  inputs: { OT_WEEKDAY_HOURS: 10 }, stats,
-  settings: toPayrollParams({ ...TEST_VERSION, namedParams: [
-    { code: 'HE_SO_OT_THUONG', name: 'OT', value: 1.5, unit: 'HE_SO', group: 'OT', note: null },
-    { code: 'BASE_WORK', name: 'cố tình trùng', value: 1, unit: 'VND', group: 'OTHER', note: null },
-  ] }, { standardHoursPerDay: 8 }),
-});
-check('tham số HE_SO_OT_THUONG đi vào công thức OT',
-  thamSo.lines.find((line) => line.code === 'OT_T')?.amount, Math.round((20_000_000 / 26 / 8) * 1.5 * 10));
-check('tham số trùng tên biến hệ thống bị bỏ qua (BASE_WORK giữ lương thời gian)',
-  thamSo.lines.find((line) => line.code === 'BASE_WORK')?.amount, 20_000_000);
+// --- Bút toán kết chuyển lương ----------------------------------------------
+// Hệ thống không biết dòng trừ nào là bảo hiểm hay thuế: mỗi đầu mục trừ một
+// bút toán, theo đúng tên người dùng đặt.
+const journal = buildPayrollJournal([
+  { profile: { id: 'u1', name: 'A', department: 'Kinh doanh', unit_id: null }, computed: monthly },
+  { profile: { id: 'u2', name: 'B', department: null, unit_id: null }, computed: monthly },
+]);
+check('bút toán cân Nợ = Có', journal.balanced, true);
+check('gộp theo bộ phận, không theo từng người', new Set(journal.entries.map((e) => e.department)).size, 2);
+check('chi phí lương Nợ 642 / Có 334 bằng tổng các khoản cộng',
+  journal.entries.filter((e) => e.debit === '642' && e.credit === '334').reduce((sum, e) => sum + e.amount, 0), monthly.gross * 2);
+check('mỗi đầu mục trừ một bút toán Nợ 334 / Có 338, mang tên đầu mục',
+  journal.entries.filter((e) => e.debit === '334' && e.department === 'Kinh doanh').map((e) => e.description),
+  ['BHXH, BHYT, BHTN — Kinh doanh', 'Thuế TNCN — Kinh doanh']);
+check('tổng thu nhập khớp bảng lương', journal.totals.gross, monthly.gross * 2);
+check('tổng khấu trừ khớp bảng lương', journal.totals.deductions, monthly.totalDeductions * 2);
+check('tổng thực chi khớp bảng lương', journal.totals.netPay, monthly.netPay * 2);
+check('người chưa gán bộ phận vẫn vào sổ', journal.entries.some((e) => e.department === 'Chưa gán bộ phận'), true);
+const khongThue = slip(standardRows({ dependents: 3 }));
+check('đầu mục trừ bằng 0 không sinh bút toán',
+  buildPayrollJournal([{ profile: { id: 'u3', name: 'C', department: 'Kho', unit_id: null }, computed: khongThue }])
+    .entries.some((e) => e.description.startsWith('Thuế TNCN')), false);
 
-// --- Nhật ký tính toán cho Chạy thử (F06.02) --------------------------------
-const nhatKy = computePayslip({ ...{ profile, payProfile: payProfile({}), items: [], inputs: {}, stats, settings }, trace: true });
-check('chạy thử có nhật ký đủ các phần', ['BASE', 'INSURANCE', 'TAX', 'NET'].every(
-  (section) => nhatKy.trace?.some((step) => step.section === section)), true);
-check('tính thường không tốn công ghi nhật ký', monthly.trace, undefined);
+// Gom theo ĐƠN VỊ trên cơ cấu tổ chức, ô chữ tự do chỉ là phương án lùi.
+const unitNames = new Map([['u-kd', 'Phòng Kinh doanh'], ['u-kt', 'Phòng Kế toán']]);
+const byUnit = buildPayrollJournal([
+  { profile: { id: 'a', name: 'A', department: null, unit_id: 'u-kd' }, computed: monthly },
+  { profile: { id: 'b', name: 'B', department: null, unit_id: 'u-kt' }, computed: monthly },
+], undefined, unitNames);
+check('gom theo tên đơn vị dù ô chữ bỏ trống',
+  [...new Set(byUnit.entries.map((e) => e.department))].sort(), ['Phòng Kế toán', 'Phòng Kinh doanh'].sort());
+check('chưa gán đơn vị thì lùi về ô chữ cũ',
+  buildPayrollJournal([{ profile: { id: 'c', name: 'C', department: 'Kho vận', unit_id: null }, computed: monthly }], undefined, unitNames)
+    .entries.every((e) => e.department === 'Kho vận'), true);
 
-// --- Giải khoản theo CÂY tổ chức (F06.03) -----------------------------------
+// --- Giải cơ chế theo CÂY tổ chức -------------------------------------------
 const donVi = new Map([
   ['hp', { id: 'hp', name: 'Huy Phong', parent_id: null }],
   ['kd', { id: 'kd', name: 'Khối Kinh doanh', parent_id: 'hp' }],
   ['kd1', { id: 'kd1', name: 'Phòng KD1', parent_id: 'kd' }],
 ]);
-const bl01 = { id: 'bl01', code: 'BL01', name: 'BL 01', description: null, is_active: true, created_at: '', updated_at: '' };
-const bl02 = { id: 'bl02', code: 'BL02', name: 'BL 02', description: null, is_active: true, created_at: '', updated_at: '' };
-const phuCap = component({ id: 'pc', code: 'PHU_CAP', name: 'Phụ cấp' });
+const bl01 = { id: 'bl01', code: 'BL01', name: 'Khối Văn phòng', description: null, is_active: true, created_at: '', updated_at: '' };
+const bl02 = { id: 'bl02', code: 'BL02', name: 'Khối Kinh doanh', description: null, is_active: true, created_at: '', updated_at: '' };
+const phuCap = comp('PHU_CAP', 'EARNING', { id: 'pc', name: 'Phụ cấp' });
+const dongMau = (id: string, templateId: string, amount: number | null, over: Record<string, unknown> = {}) => ({
+  id, template_id: templateId, component_id: 'pc', mode: 'VALUE' as const, amount, formula: null,
+  taxable: null, insurable: null, sort_order: 10, effective_from: '2026-01-01', effective_to: null, note: null, ...over,
+});
+const dongDonVi = (id: string, unitId: string, amount: number): UnitPayItem => ({
+  id, unit_id: unitId, component_id: 'pc', amount, formula: null, effective_from: '2026-01-01', effective_to: null,
+  note: null, created_by: null, created_at: '', updated_at: '',
+} as UnitPayItem);
+const dongRieng = (amount: number | null, formula: string | null = null): EmployeePayItem => ({
+  id: 'e1', user_id: 'u9', component_id: 'pc', amount, formula, effective_from: '2026-01-01', effective_to: null,
+  note: null, created_by: null, created_at: '', updated_at: '',
+} as EmployeePayItem);
 const nguonCay = {
   components: [phuCap],
   unitById: donVi,
   templates: [bl01, bl02],
-  templateItems: [
-    { id: 't1', template_id: 'bl01', component_id: 'pc', amount: 100_000, formula: null, taxable: null, insurable: null, effective_from: '2026-01-01', effective_to: null, note: null },
-    { id: 't2', template_id: 'bl02', component_id: 'pc', amount: 200_000, formula: null, taxable: null, insurable: null, effective_from: '2026-01-01', effective_to: null, note: null },
-  ],
+  templateItems: [dongMau('t1', 'bl01', 100_000), dongMau('t2', 'bl02', 200_000)],
   unitTemplates: [
     { id: 'a1', unit_id: 'hp', template_id: 'bl01', effective_from: '2026-01-01', note: null },
     { id: 'a2', unit_id: 'kd', template_id: 'bl02', effective_from: '2026-10-01', note: null },
@@ -1238,28 +806,33 @@ const nguonCay = {
   employeeItems: [] as EmployeePayItem[],
 };
 const nvKd1 = { id: 'u9', unit_id: 'kd1' };
-check('trước 10/2026: phòng KD1 thừa hưởng BL01 của công ty',
-  resolveTemplateFor(nvKd1, null, nguonCay, '2026-09-01').template?.code, 'BL01');
-check('từ 10/2026: đơn vị GẦN nhất (Khối KD) thắng → BL02',
-  resolveTemplateFor(nvKd1, null, nguonCay, '2026-10-01').template?.code, 'BL02');
-check('mẫu gán riêng cho người thắng mẫu của đơn vị',
-  resolveTemplateFor(nvKd1, { template_id: 'bl01' }, nguonCay, '2026-10-01').template?.code, 'BL01');
-check('khoản từ mẫu BL02 ra đúng mức của khối',
-  resolvePayItems(nvKd1, null, nguonCay, '2026-10-01', '2026-10-31')[0]?.item.amount, 200_000);
-const coKhoanPhong = { ...nguonCay, unitItems: [
-  { id: 'up1', unit_id: 'kd', component_id: 'pc', amount: 300_000, formula: null, effective_from: '2026-01-01', effective_to: null, note: null, created_by: null, created_at: '', updated_at: '' },
-  { id: 'up2', unit_id: 'kd1', component_id: 'pc', amount: 400_000, formula: null, effective_from: '2026-01-01', effective_to: null, note: null, created_by: null, created_at: '', updated_at: '' },
-] };
-check('khoản chung của phòng GẦN nhất thắng khoản của khối và của mẫu',
-  resolvePayItems(nvKd1, null, coKhoanPhong, '2026-10-01', '2026-10-31')[0]?.item.amount, 400_000);
-check('khoản riêng của người thắng tất cả',
-  resolvePayItems(nvKd1, null, { ...coKhoanPhong, employeeItems: [
-    { ...item('pc', { amount: 999_000 }), user_id: 'u9' },
-  ] }, '2026-10-01', '2026-10-31')[0]?.item.amount, 999_000);
-check('khoản được ghi nguồn để màn hình nói rõ "theo phòng KD1"',
-  resolvePayItems(nvKd1, null, coKhoanPhong, '2026-10-01', '2026-10-31')[0]?.origin, 'Phòng KD1');
+const giai = (data: typeof nguonCay, month = '2026-10-01', end = '2026-10-31') =>
+  resolveMechanismRows(nvKd1, null, data as never, month, end);
+check('trước 10/2026: phòng KD1 thừa hưởng cơ chế của công ty',
+  resolveTemplateFor(nvKd1, null, nguonCay as never, '2026-09-01').template?.code, 'BL01');
+check('từ 10/2026: đơn vị GẦN nhất (Khối KD) thắng',
+  resolveTemplateFor(nvKd1, null, nguonCay as never, '2026-10-01').template?.code, 'BL02');
+check('cơ chế gán riêng cho người thắng cơ chế của đơn vị',
+  resolveTemplateFor(nvKd1, { template_id: 'bl01' }, nguonCay as never, '2026-10-01').template?.code, 'BL01');
+check('dòng từ cơ chế ra đúng giá trị của cơ chế, ghi nguồn bằng tên cơ chế',
+  giai(nguonCay).map((r) => [r.amount, r.origin]), [[200_000, 'Khối Kinh doanh']]);
+const coDonVi = { ...nguonCay, unitItems: [dongDonVi('up1', 'kd', 300_000), dongDonVi('up2', 'kd1', 400_000)] };
+check('giá trị chung của đơn vị GẦN nhất thắng cấp trên và cơ chế',
+  giai(coDonVi).map((r) => [r.amount, r.origin]), [[400_000, 'Phòng KD1']]);
+check('khai riêng của người thắng tất cả',
+  giai({ ...coDonVi, employeeItems: [dongRieng(999_000)] }).map((r) => [r.amount, r.origin]), [[999_000, 'Riêng']]);
+check('cơ chế đã tắt thì không có dòng nào',
+  giai({ ...nguonCay, templates: [bl01, { ...bl02, is_active: false }] }).length, 0);
+check('đầu mục đã khóa thì không lên phiếu',
+  giai({ ...nguonCay, components: [{ ...phuCap, is_active: false }] }).length, 0);
+const coCongThuc = { ...nguonCay, templateItems: [dongMau('t3', 'bl02', null, { mode: 'FORMULA', formula: 'MUC_RIENG * WORK_DAYS' })] };
+check('mức riêng trên dòng công thức đọc MUC_RIENG: công thức giữ nguyên',
+  giai({ ...coCongThuc, employeeItems: [dongRieng(50_000)] }).map((r) => [r.mode, r.formula, r.amount]),
+  [['FORMULA', 'MUC_RIENG * WORK_DAYS', 50_000]]);
+check('dòng cơ chế hết hiệu lực trước tháng tính thì không lên phiếu',
+  giai({ ...nguonCay, templateItems: [dongMau('t4', 'bl02', 200_000, { effective_to: '2026-09-30' })] }).length, 0);
 
-// --- F06.03: đề xuất cơ chế lương ------------------------------------------
+// --- Đề xuất cơ chế lương ----------------------------------------------------
 check('tháng áp dụng sớm nhất = tháng sau kỳ đã chốt khi chưa có phiên bản sau đó',
   earliestSchemeMonth('2026-11-01', ['2026-03-01']), '2026-11-01');
 check('không chen trước phiên bản đã có hiệu lực sau mốc chốt (cùng tháng thì được)',
@@ -1272,17 +845,73 @@ const req = (id: string, status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED'
   submitted_at: null, reviewed_by: null, reviewed_at: null, review_note: null, approval_fingerprint: null, applied_at: null,
 });
 check('đề xuất đã duyệt / đã huỷ không còn là đề xuất mở',
-  openRequestFor([req('a', 'APPROVED', 'u1', null), req('b', 'CANCELLED', 'u1', null)], { type: 'USER', id: 'u1' }), null);
+  openRequestFor([req('a', 'APPROVED', 'u1', null), req('b', 'CANCELLED', 'u1', null)] as never, { type: 'USER', id: 'u1' }), null);
 check('đề xuất bị từ chối vẫn mở để sửa và trình lại',
-  openRequestFor([req('a', 'APPROVED', 'u1', null), req('c', 'REJECTED', 'u1', null)], { type: 'USER', id: 'u1' })?.id, 'c');
+  openRequestFor([req('a', 'APPROVED', 'u1', null), req('c', 'REJECTED', 'u1', null)] as never, { type: 'USER', id: 'u1' })?.id, 'c');
 check('đề xuất của đơn vị không lẫn với đề xuất của người trùng id',
-  openRequestFor([req('d', 'SUBMITTED', 'x', null)], { type: 'UNIT', id: 'x' }), null);
-check('BGĐ thấy đúng phần đổi: thêm / bỏ / đổi mức, khoản giữ nguyên không tính',
+  openRequestFor([req('d', 'SUBMITTED', 'x', null)] as never, { type: 'UNIT', id: 'x' }), null);
+check('BGĐ thấy đúng phần đổi: thêm / bỏ / đổi giá trị hay công thức, dòng giữ nguyên không tính',
   diffSchemeItems(
-    [{ component_id: 'a', amount: 1, formula: null }, { component_id: 'b', amount: 2, formula: null }, { component_id: 'c', amount: 3, formula: null }],
-    [{ component_id: 'a', amount: 1, formula: null }, { component_id: 'b', amount: 5, formula: null }, { component_id: 'd', amount: 4, formula: null }],
-  ).map((change) => `${change.componentId}:${change.kind}`).sort().join(','), 'a:SAME,b:CHANGED,c:REMOVED,d:ADDED');
-check('lương cơ bản để đối chiếu lương tối thiểu vùng lấy từ khoản đánh dấu lương gốc',
-  baseAmountOf([{ component_id: 'pc', amount: 500_000, formula: null }, { component_id: 'lcb', amount: 6_000_000, formula: null, is_base: true }], []), 6_000_000);
+    [{ component_id: 'a', amount: 1, formula: null }, { component_id: 'b', amount: 2, formula: null },
+      { component_id: 'c', amount: 3, formula: null }, { component_id: 'e', amount: null, formula: 'X * 2' }],
+    [{ component_id: 'a', amount: 1, formula: null }, { component_id: 'b', amount: 5, formula: null },
+      { component_id: 'd', amount: 4, formula: null }, { component_id: 'e', amount: null, formula: 'X * 3' }],
+  ).map((change) => `${change.componentId}:${change.kind}`).sort().join(','), 'a:SAME,b:CHANGED,c:REMOVED,d:ADDED,e:CHANGED');
+
+// --- Nhãn báo cáo: chỉ để báo cáo, không đổi cách tính ---------------------
+const withTags = (rows: MechanismRow[], tags: Record<string, PayReportTag>) =>
+  rows.map((r) => (tags[r.component.code]
+    ? { ...r, component: { ...r.component, report_tag: tags[r.component.code] } }
+    : r));
+const BH_DN = comp('INS_EMPLOYER', 'INFO', { name: 'BH doanh nghiệp đóng' });
+const ORDER_TAGS: Record<string, PayReportTag> = {
+  INS_EMPLOYEE: 'INSURANCE_EMPLOYEE', PIT: 'INCOME_TAX', THU_NHAP_TINH_THUE: 'TAXABLE_INCOME', INS_EMPLOYER: 'INSURANCE_EMPLOYER',
+};
+const rowsNoTag = () => [...standardRows(), row(BH_DN, 'FORMULA', 'LUONG_CO_BAN * 0.215')];
+const untagged = slip(rowsNoTag());
+const tagged = slip(withTags(rowsNoTag(), ORDER_TAGS));
+
+check('chưa gắn nhãn thì bốn cột báo cáo đều 0',
+  untagged.reportTotals, { insuranceEmployee: 0, insuranceEmployer: 0, incomeTax: 0, taxableIncome: 0 });
+check('gắn nhãn: BH người lao động = dòng bảo hiểm', tagged.reportTotals.insuranceEmployee, 2_100_000);
+check('gắn nhãn: thuế = dòng thuế', tagged.reportTotals.incomeTax, 440_000);
+check('gắn nhãn: thu nhập tính thuế', tagged.reportTotals.taxableIncome, 6_900_000);
+check('gắn nhãn: doanh nghiệp đóng thêm', tagged.reportTotals.insuranceEmployer, 4_300_000);
+check('nhãn không đổi thực lĩnh', tagged.netPay, untagged.netPay);
+check('nhãn không đổi tổng trừ', tagged.totalDeductions, untagged.totalDeductions);
+check('phần doanh nghiệp đóng thêm không trừ của nhân viên', tagged.totalDeductions, 2_540_000);
+check('cộng bảo hiểm + thuế + khấu trừ còn lại = tổng trừ',
+  tagged.reportTotals.insuranceEmployee + tagged.reportTotals.incomeTax
+    + otherDeductionsOf(tagged.totalDeductions, tagged.reportTotals), tagged.totalDeductions);
+
+// Thêm một khoản trừ không nhãn (tạm ứng): vào "khấu trừ còn lại", không vào bảo hiểm / thuế.
+const withAdvance = slip(withTags([
+  ...rowsNoTag(), row(comp('ADVANCE', 'DEDUCTION', { name: 'Tạm ứng' }), 'VALUE', 1_000_000),
+], ORDER_TAGS));
+check('khoản trừ không nhãn rơi vào phần khấu trừ còn lại',
+  otherDeductionsOf(withAdvance.totalDeductions, withAdvance.reportTotals), 1_000_000);
+
+// Nhãn người lao động đóng đặt nhầm lên dòng CỘNG thì bị bỏ qua — không làm lệch tổng trừ.
+const wrongKind = slip(withTags(rowsNoTag(), { ...ORDER_TAGS, BASE_WORK: 'INSURANCE_EMPLOYEE', DAILY_RATE: 'INCOME_TAX' }));
+check('nhãn đặt lên dòng cộng bị bỏ qua', wrongKind.reportTotals.insuranceEmployee, 2_100_000);
+check('nhãn thuế đặt lên dòng chỉ để tính bị bỏ qua', wrongKind.reportTotals.incomeTax, 440_000);
+
+// Nhiều dòng cùng nhãn thì cộng lại.
+check('nhiều dòng cùng nhãn được cộng',
+  sumReportTags([
+    { tag: 'INSURANCE_EMPLOYER', kind: 'INFO', amount: 1_000_000 },
+    { tag: 'INSURANCE_EMPLOYER', kind: 'INFO', amount: 250_000 },
+    { tag: null, kind: 'DEDUCTION', amount: 999 },
+  ]).insuranceEmployer, 1_250_000);
+check('nhãn khớp loại dòng: bảo hiểm NLĐ ↔ dòng trừ', reportTagFitsKind('INSURANCE_EMPLOYEE', 'DEDUCTION'), true);
+check('nhãn khớp loại dòng: bảo hiểm NLĐ ✗ dòng cộng', reportTagFitsKind('INSURANCE_EMPLOYEE', 'EARNING'), false);
+check('nhãn khớp loại dòng: doanh nghiệp đóng ↔ chỉ để tính', reportTagFitsKind('INSURANCE_EMPLOYER', 'INFO'), true);
+check('không nhãn thì hợp mọi loại dòng', reportTagFitsKind(null, 'EARNING'), true);
+check('câu báo lỗi nói đúng loại dòng cần dùng',
+  reportTagKindProblem('INCOME_TAX', 'INFO'), 'Nhãn “Thuế thu nhập cá nhân” chỉ dùng với loại dòng “Trừ khỏi lương”.');
+check('nhãn hợp lệ không báo lỗi', reportTagKindProblem('TAXABLE_INCOME', 'INFO'), null);
+check('đủ bốn nhãn báo cáo', PAY_REPORT_TAGS.map((tag) => tag.code).sort(),
+  ['INCOME_TAX', 'INSURANCE_EMPLOYEE', 'INSURANCE_EMPLOYER', 'TAXABLE_INCOME']);
+
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
