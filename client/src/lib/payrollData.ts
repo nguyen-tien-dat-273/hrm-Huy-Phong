@@ -134,8 +134,18 @@ export async function loadPayrollWorkspace(
     supabase.from('payroll_template_items').select('*').lte('effective_from', monthEndStr),
     supabase.from('unit_payroll_templates').select('*').lte('effective_from', monthEndStr),
     supabase.from('employee_pay_profiles').select('*').lte('effective_from', monthEndStr),
-    supabase.from('employee_pay_items').select('*'),
-    supabase.from('unit_pay_items').select('*'),
+    // Chỉ lấy dòng CÒN HIỆU LỰC trong tháng đang tính.
+    //
+    // Trước đây lấy sạch bảng rồi để trình duyệt lọc — mà `payrollScheme.ts`
+    // lọc đúng bằng điều kiện này. Nghĩa là mọi khoản đã hết hiệu lực của mọi
+    // nhân sự, từ ngày mở hệ thống, đều được tải về rồi vứt đi. Bảng chỉ lớn
+    // dần nên trang Bảng lương chậm dần mà không ai đổi gì.
+    supabase.from('employee_pay_items').select('*')
+      .lte('effective_from', monthEndStr)
+      .or(`effective_to.is.null,effective_to.gte.${monthStartStr}`),
+    supabase.from('unit_pay_items').select('*')
+      .lte('effective_from', monthEndStr)
+      .or(`effective_to.is.null,effective_to.gte.${monthStartStr}`),
     supabase.from('payroll_inputs').select('*').eq('month_start', monthStartStr),
     supabase
       .from('attendance')
