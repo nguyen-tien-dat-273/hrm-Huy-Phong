@@ -1,10 +1,10 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck,
-  ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
+  ClipboardList, Clock, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
-  ArrowLeftRight, Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
-  FileBarChart, Fingerprint, WalletCards,
+  ArrowLeftRight, Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu, KanbanSquare,
+  FileBarChart, Fingerprint, WalletCards, UserMinus,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
 
@@ -37,8 +37,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/users', label: 'Hồ sơ nhân sự', description: 'Thông tin cá nhân, tình trạng làm việc và giấy tờ nhân viên', icon: Users, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ho so nhan su danh ba nhan vien tai khoan' },
 
   { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tuyển dụng', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
-  { to: '/admin/workforce', label: 'Hồ sơ người lao động', description: 'Thông tin và tiến trình tuyển chọn của người lao động', icon: ContactRound, permission: 'users', group: 'Tuyển dụng', keywords: 'ung vien nguoi lao dong xuat khau', functionCode: 'admin.workforce' },
-  { to: '/admin/worker-documents', label: 'Kho hồ sơ giấy tờ', description: 'Hồ sơ ứng viên và hồ sơ nhân viên', icon: FileWarning, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ho so ung vien nhan vien hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true },
+  { to: '/admin/candidate-documents', label: 'Kho hồ sơ ứng viên', description: 'Tra cứu CV và tài liệu ứng viên', icon: FileWarning, permission: 'users', group: 'Tuyển dụng', keywords: 'ho so ung vien cv tai lieu', functionCode: 'admin.worker_documents' },
+  { to: '/admin/worker-documents', label: 'Kho hồ sơ giấy tờ', description: 'Tra cứu hồ sơ và giấy tờ nhân viên', icon: FileWarning, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ho so nhan vien hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true },
 
   { to: '/admin/projects', label: 'Dự án', description: 'Dự án, thành viên, mốc và tác vụ', icon: FolderKanban, permission: 'projects', group: 'Công việc & Dự án', keywords: 'project tac vu' },
   { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Công việc & Dự án', keywords: 'giao viec phan cong xac nhan' },
@@ -46,7 +46,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { to: '/admin/attendance', label: 'Duyệt chấm công', description: 'Kiểm tra check-in, check-out và xác nhận ngày công', icon: ClipboardCheck, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'duyet cham cong check in check out ngay cong' },
   { to: '/admin/attendance-devices', label: 'Máy chấm công', description: 'Kết nối Ronald Jack, ánh xạ nhân viên và theo dõi đồng bộ', icon: Cpu, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'ronald jack zkteco van tay thiet bi', fullAdminOnly: true },
-  { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance', 'users'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
+  { to: '/admin/leave', label: 'Nghỉ phép & đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance', 'users'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
   { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
   { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
 
@@ -63,7 +63,8 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/payroll', label: 'Bảng lương', description: 'Chạy nháp, khoá kỳ 2FA, file ngân hàng, chi trả & phát hành phiếu', icon: Wallet, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong khoa ky ngan hang', functionCode: 'admin.payroll' },
   { to: '/admin/payroll/approvals', label: 'Phê duyệt lương', description: 'Ban Giám đốc ký duyệt cơ chế lương và lệnh chi', icon: ClipboardCheck, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'phe duyet bgd ky duyet co che luong chi luong', functionCode: 'admin.payroll_approve' },
 
-  { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
+  { to: '/admin/employee-lifecycle', label: 'Hội nhập nhân viên · Tham gia', description: 'Tiếp nhận nhân viên mới, checklist và tiến độ thử việc', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding tham gia checklist mentor', functionCode: 'admin.employee_lifecycle' },
+  { to: '/admin/employee-lifecycle/offboarding', label: 'Lưu trữ thông tin nghỉ việc', description: 'Checklist nghỉ việc, bàn giao và thu hồi tài sản', icon: UserMinus, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'offboarding nghi viec ban giao luu tru', functionCode: 'admin.employee_lifecycle' },
   { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'thu vien quy trinh quy che huong dan pdf' },
   { to: '/admin/training', label: 'Đào tạo', description: 'Khóa học, phân công và tiến độ học tập', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'dao tao khoa hoc hoc tap' },
   // Ba muc cu — Bo KPI, Gan KPI cho nhan su, Cham diem theo thang — gio la
@@ -94,8 +95,8 @@ export const STAFF_NAV_ITEMS: StaffNavItem[] = [
   { to: '/staff/dashboard', label: 'Trang chủ', description: 'Tổng quan công việc và lịch cá nhân hôm nay', icon: LayoutDashboard, group: 'Tổng quan', keywords: 'trang chu tong quan hom nay' },
   { to: '/staff/reports', label: 'Báo cáo cá nhân', description: 'Ngày công, thời gian và kết quả của bạn', icon: FileBarChart, group: 'Tổng quan', keywords: 'bao cao ngay cong thoi gian ket qua' },
 
-  { to: '/staff/assignments', label: 'Việc được giao', description: 'Việc quản lý giao theo ngày, gửi lại khi xong', icon: ClipboardList, group: 'Công việc', keywords: 'giao viec phan cong nhiem vu' },
   { to: '/staff/projects', label: 'Dự án của tôi', description: 'Các dự án và thành viên đang cộng tác', icon: Briefcase, group: 'Công việc', keywords: 'du an project cong tac' },
+  { to: '/staff/kanban', label: 'Kanban dự án', description: 'Theo dõi và cập nhật task theo từng dự án', icon: KanbanSquare, group: 'Công việc', keywords: 'kanban bang cong viec task trang thai keo tha' },
   { to: '/staff/worklog', label: 'Nhật ký giờ', description: 'Ghi nhận thời gian thực tế cho từng công việc', icon: NotebookPen, group: 'Công việc', keywords: 'ghi gio worklog timesheet' },
 
   { to: '/staff/attendance', label: 'Chấm công', description: 'Xem giờ vào từ máy và checkout cuối ngày', icon: Fingerprint, group: 'Thời gian & Lịch', keywords: 'gio vao may cham cong checkout van tay khuon mat' },
@@ -106,7 +107,6 @@ export const STAFF_NAV_ITEMS: StaffNavItem[] = [
   { to: '/staff/kpi', label: 'KPI của tôi', description: 'Kết quả chấm điểm và điểm từng tiêu chí', icon: Target, group: 'KPI', keywords: 'kpi danh gia cham diem tieu chi' },
   { to: '/staff/training', label: 'Đào tạo của tôi', description: 'Khóa học được giao và tiến độ hoàn thành', icon: BookOpen, group: 'Phát triển', keywords: 'dao tao khoa hoc hoc tap' },
   { to: '/staff/processes', label: 'Quy trình & biểu mẫu', description: 'Tài liệu đang hiệu lực của công ty', icon: BookOpen, group: 'Phát triển', keywords: 'quy trinh bieu mau tai lieu quy che' },
-  { to: '/staff/growth', label: 'Lộ trình phát triển', description: 'Checklist hội nhập và bàn giao của tôi', icon: Target, group: 'Phát triển', keywords: 'lo trinh phat trien onboarding offboarding checklist' },
 ];
 
 /**

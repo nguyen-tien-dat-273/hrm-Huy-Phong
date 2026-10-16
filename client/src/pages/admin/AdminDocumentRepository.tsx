@@ -19,11 +19,11 @@ type Space = 'candidates' | 'employees';
 
 const STAGE_LABEL: Record<string, string> = { APPLIED: 'Đã ứng tuyển', HR_SCREENING: 'HR sàng lọc', MANAGER_SCREENING: 'Trưởng bộ phận xem', INTERVIEW_1: 'Phỏng vấn vòng 1', INTERVIEW_2: 'Phỏng vấn vòng 2', TEST: 'Làm bài test', OFFER: 'Đã gửi offer', HIRED: 'Đã nhận việc', REJECTED: 'Không đạt', WITHDRAWN: 'Đã rút' };
 
-export function AdminDocumentRepository() {
+export function AdminDocumentRepository({ initialSpace = 'candidates', allowEmployeeSpace = false }: { initialSpace?: Space; allowEmployeeSpace?: boolean }) {
   const { profile } = useAuth();
   const { toast } = useToast();
   const fullAdmin = isFullAdmin(profile);
-  const [space, setSpace] = useState<Space>('employees');
+  const [space, setSpace] = useState<Space>(initialSpace);
   const [query, setQuery] = useState('');
   const [employees, setEmployees] = useState<Pick<Profile, 'id' | 'name' | 'department' | 'employee_code'>[]>([]);
   const [employeeDocs, setEmployeeDocs] = useState<EmployeeDocument[]>([]);
@@ -99,8 +99,8 @@ export function AdminDocumentRepository() {
   };
 
   return <section className="space-y-5">
-    <header><p className="text-xs font-bold uppercase tracking-[.18em] text-indigo-600">Tổ chức & nhân sự</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Kho hồ sơ giấy tờ</h1><p className="mt-1 text-sm text-slate-500">Tra cứu tài liệu ứng viên và hồ sơ nhân viên theo quyền được cấp.</p></header>
-    {fullAdmin && <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+    <header><p className="text-xs font-bold uppercase tracking-[.18em] text-indigo-600">{space === 'candidates' ? 'Tuyển dụng' : 'Tổ chức & nhân sự'}</p><h1 className="mt-1 text-2xl font-bold text-slate-900">{space === 'candidates' ? 'Kho hồ sơ ứng viên' : 'Kho hồ sơ giấy tờ'}</h1><p className="mt-1 text-sm text-slate-500">{space === 'candidates' ? 'Tra cứu CV và tài liệu ứng viên theo quyền được cấp.' : 'Tra cứu hồ sơ và giấy tờ nhân viên theo quyền được cấp.'}</p></header>
+    {fullAdmin && allowEmployeeSpace && <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
       <button onClick={() => { setSpace('employees'); setQuery(''); }} className={`rounded-xl px-4 py-2 text-sm font-semibold ${space === 'employees' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}><FolderOpen className="mr-2 inline h-4 w-4" />Hồ sơ nhân viên</button>
       <button onClick={() => { setSpace('candidates'); setQuery(''); }} className={`rounded-xl px-4 py-2 text-sm font-semibold ${space === 'candidates' ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'}`}><FolderOpen className="mr-2 inline h-4 w-4" />Hồ sơ ứng viên</button>
     </div>}

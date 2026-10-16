@@ -81,7 +81,8 @@ export function AdminUsers() {
   const [issued, setIssued] = useState<IssuedCredential | null>(null);
   const [copied, setCopied] = useState(false);
   const [accessRoles, setAccessRoles] = useState<AccessRole[]>([]);
-  const [organizationUnits, setOrganizationUnits] = useState<{ id: string; code: string; name: string; parent_id: string | null; is_active: boolean }[]>([]);
+  const [organizationUnits, setOrganizationUnits] = useState<{ id: string; code: string; name: string; parent_id: string | null; unit_type: string; is_active: boolean }[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [jobPositions, setJobPositions] = useState<{ id: string; code: string; title: string; unit_id: string; is_active: boolean }[]>([]);
   const [pendingHandoffs, setPendingHandoffs] = useState<{
     id: string;
@@ -118,6 +119,7 @@ export function AdminUsers() {
 
   const openCreateProfile = () => {
     setEditingUser(null);
+    setSelectedCompanyId('');
     setForm({
       name: '', identifier: '', role: 'staff', access_role_code: 'staff', department: '',
       employee_code: '', phone: '', hometown: '', permanent_address: '', current_address: '',
@@ -198,11 +200,11 @@ export function AdminUsers() {
   useEffect(() => {
     let active = true;
     void Promise.all([
-      supabase.from('organization_units').select('id,code,name,parent_id,is_active').order('name'),
+      supabase.from('organization_units').select('id,code,name,parent_id,unit_type,is_active').order('name'),
       supabase.from('job_positions').select('id,code,title,unit_id,is_active').order('title'),
     ]).then(([unitResult, positionResult]) => {
       if (!active) return;
-      setOrganizationUnits((unitResult.data || []) as { id: string; code: string; name: string; parent_id: string | null; is_active: boolean }[]);
+      setOrganizationUnits((unitResult.data || []) as { id: string; code: string; name: string; parent_id: string | null; unit_type: string; is_active: boolean }[]);
       setJobPositions((positionResult.data || []) as { id: string; code: string; title: string; unit_id: string; is_active: boolean }[]);
     });
     return () => { active = false; };
@@ -227,6 +229,30 @@ export function AdminUsers() {
     }
     return path.join(' / ');
   };
+  const companies = organizationUnits.filter((unit) => unit.is_active && unit.unit_type === 'company');
+  const companyForUnit = (unitId: string) => {
+    const visited = new Set<string>();
+    let unit = organizationUnits.find((item) => item.id === unitId);
+    while (unit && !visited.has(unit.id)) {
+      if (unit.unit_type === 'company') return unit;
+      visited.add(unit.id);
+      unit = unit.parent_id ? organizationUnits.find((item) => item.id === unit?.parent_id) : undefined;
+    }
+    return undefined;
+  };
+  const unitBelongsToCompany = (unitId: string, companyId: string) => {
+    const visited = new Set<string>();
+    let unit = organizationUnits.find((item) => item.id === unitId);
+    while (unit && !visited.has(unit.id)) {
+      if (unit.id === companyId) return true;
+      visited.add(unit.id);
+      unit = unit.parent_id ? organizationUnits.find((item) => item.id === unit?.parent_id) : undefined;
+    }
+    return false;
+  };
+  const companyUnits = selectedCompanyId
+    ? organizationUnits.filter((unit) => unit.is_active && unitBelongsToCompany(unit.id, selectedCompanyId))
+    : [];
   const positionName = (positionId: string | null | undefined) => jobPositions.find((position) => position.id === positionId)?.title || 'Chưa gán vị trí';
   const managerName = (managerId: string | null | undefined) => users.find((user) => user.id === managerId)?.name || 'Chưa gán quản lý';
   const managerUnitIds = new Set<string>();
@@ -270,6 +296,7 @@ export function AdminUsers() {
   const openCreateFromHandoff = (handoff: typeof pendingHandoffs[number]) => {
     setEditingUser(null);
     setSelectedHandoffId(handoff.id);
+    setSelectedCompanyId(handoff.unit_id ? companyForUnit(handoff.unit_id)?.id || '' : '');
     const guessedDept = handoff.unit_id ? unitName(handoff.unit_id) : '';
     setForm({
       name: handoff.candidate_name,
@@ -286,6 +313,7 @@ export function AdminUsers() {
       school_name: '',
       major: '',
       graduation_year: '',
+      training_audience: '',
       unit_id: handoff.unit_id || '',
       position_id: handoff.position_id || '',
       manager_id: '',
@@ -913,12 +941,28 @@ export function AdminUsers() {
                 </div>
               </div>
               <Select
-                label="Đơn vị"
+                label="Doanh nghiệp đang có"
+                value={selectedCompanyId}
+                onChange={(event) => {
+                  const companyId = event.target.value;
+                  setSelectedCompanyId(companyId);
+                  setForm((current) => ({ ...current, unit_id: companyId, position_id: '', manager_id: '' }));
+                }}
+              >
+                <option value="">{companies.length ? 'Chọn doanh nghiệp' : 'Chưa có doanh nghiệp trong cơ cấu'}</option>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>{company.name}</option>
+                ))}
+              </Select>
+              {!companies.length && <p className="-mt-2 text-xs text-amber-700">Hãy tạo đơn vị loại Doanh nghiệp trong Cơ cấu tổ chức để phân công theo doanh nghiệp.</p>}
+              <Select
+                label="Đơn vị / phòng ban"
                 value={form.unit_id}
                 onChange={(event) => setForm({ ...form, unit_id: event.target.value, position_id: '', manager_id: '' })}
+                disabled={companies.length > 0 && !selectedCompanyId}
               >
                 <option value="">Chưa phân công</option>
-                {organizationUnits.filter((unit) => unit.is_active).map((unit) => (
+                {(selectedCompanyId ? companyUnits : companies.length ? [] : organizationUnits.filter((unit) => unit.is_active)).map((unit) => (
                   <option key={unit.id} value={unit.id}>{unitPath(unit.id)}</option>
                 ))}
               </Select>
@@ -959,7 +1003,7 @@ export function AdminUsers() {
 
           <Select
             label="Đối tượng đào tạo"
-            value={form.training_audience}
+            value={form.training_audience || ''}
             onChange={(event) => setForm({ ...form, training_audience: event.target.value as Profile['training_audience'] | '' })}
           >
             <option value="">Chưa phân loại</option>

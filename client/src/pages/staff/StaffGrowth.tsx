@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CheckCircle2, Clock3, Rocket } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -17,7 +18,7 @@ interface History { id: string; process_id: string; checklist_item_id: string | 
 
 const statusLabels: Record<ChecklistStatus, string> = { OPEN: 'Chưa thực hiện', IN_PROGRESS: 'Đang thực hiện', COMPLETED: 'Hoàn thành' };
 
-export function StaffGrowth() {
+export function StaffGrowth({ processType }: { processType: Process['process_type'] }) {
   const { profile } = useAuth();
   const profileId = profile?.id;
   const { toast } = useToast();
@@ -32,7 +33,7 @@ export function StaffGrowth() {
     setLoading(true); setError('');
     const { data, error: loadError } = await supabase.from('employee_lifecycle_processes').select('*, employee_checklist_items(*)').order('created_at', { ascending: false });
     if (loadError) {
-      setError(`Không tải được checklist hội nhập/nghỉ việc. ${describeDbError(loadError)}`);
+      setError(`Không tải được checklist. ${describeDbError(loadError)}`);
       setLoading(false);
       return;
     }
@@ -61,12 +62,14 @@ export function StaffGrowth() {
     else await load();
   };
 
-  if (loading) return <Card><CardContent><p className="py-14 text-center text-sm text-slate-400">Đang tải checklist hội nhập/nghỉ việc…</p></CardContent></Card>;
+  if (loading) return <Card><CardContent><p className="py-14 text-center text-sm text-slate-400">Đang tải checklist…</p></CardContent></Card>;
   if (error) return <Card><ErrorState message={error} onRetry={load} /></Card>;
 
+  const visibleProcesses = processes.filter((process) => process.process_type === processType);
+  const sectionTitle = processType === 'ONBOARDING' ? 'Tham gia / Hội nhập' : 'Lưu trữ thông tin nghỉ việc';
   return <div className="space-y-6">
-    <div><h1 className="text-2xl font-bold text-slate-800">Hội nhập & nghỉ việc</h1><p className="mt-1 text-sm text-slate-500">Theo dõi công việc, người phụ trách, hạn hoàn thành và lịch sử cập nhật.</p></div>
-    {!processes.length ? <Card><CardContent><EmptyState title="Chưa có checklist được giao" description="Khi quản lý tạo quy trình hội nhập, nghỉ việc hoặc giao việc cho bạn, nội dung sẽ xuất hiện ở đây." /></CardContent></Card> : processes.map((process) => {
+    <div><h1 className="text-2xl font-bold text-slate-800">Hội nhập nhân viên</h1><p className="mt-1 text-sm text-slate-500">Theo dõi công việc, người phụ trách, hạn hoàn thành và lịch sử cập nhật.</p><nav aria-label="Phân loại quy trình nhân viên" className="mt-4 flex flex-wrap gap-2"><Link to="/staff/growth/onboarding" className={`rounded-xl border px-4 py-2 text-sm font-semibold ${processType === 'ONBOARDING' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>Tham gia / Hội nhập</Link><Link to="/staff/growth/offboarding" className={`rounded-xl border px-4 py-2 text-sm font-semibold ${processType === 'OFFBOARDING' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>Lưu trữ thông tin nghỉ việc</Link></nav><h2 className="mt-4 text-lg font-semibold text-slate-800">{sectionTitle}</h2></div>
+    {!visibleProcesses.length ? <Card><CardContent><EmptyState title={processType === 'ONBOARDING' ? 'Chưa có nội dung hội nhập được giao' : 'Chưa có thông tin nghỉ việc'} description={processType === 'ONBOARDING' ? 'Khi quản lý tạo quy trình tham gia hoặc giao việc cho bạn, nội dung sẽ xuất hiện ở đây.' : 'Khi có quy trình nghỉ việc liên quan đến bạn, thông tin sẽ xuất hiện ở đây.'} /></CardContent></Card> : visibleProcesses.map((process) => {
       const list = items.filter((item) => item.process_id === process.id);
       const completed = list.filter((item) => (item.status || (item.completed ? 'COMPLETED' : 'OPEN')) === 'COMPLETED').length;
       const percent = list.length ? Math.round(completed / list.length * 100) : 0;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Briefcase, Calendar, Users as UsersIcon, FileText, KanbanSquare, ExternalLink } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -154,7 +155,7 @@ const result = projectList.map((project) => {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 pt-3 border-t border-slate-100">
+          <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-100">
             {members.slice(0, 5).map((m) => (
               <Avatar key={m.id} name={m.profile?.name || ''} url={m.profile?.avatar_url} size="sm" />
             ))}
@@ -163,6 +164,13 @@ const result = projectList.map((project) => {
                 +{members.length - 5}
               </div>
             )}
+
+            <Link
+              to={`/staff/kanban?project=${encodeURIComponent(project.id)}`}
+              className="ml-auto inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
+            >
+              <KanbanSquare className="w-4 h-4" /> Kanban
+            </Link>
 
             {/* Nhân viên không có trang chi tiết dự án riêng, nên tài liệu mở
                 trong hộp thoại ngay từ thẻ. */}
@@ -203,6 +211,12 @@ const result = projectList.map((project) => {
                 {(row?.members ?? []).map((member) => <Badge key={member.id} className="bg-white text-slate-600">{member.profile?.name || 'Thành viên'}</Badge>)}
               </div>
             </section>
+            <Link
+              to={`/staff/kanban?project=${encodeURIComponent(detailProject.id)}`}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              <KanbanSquare className="h-4 w-4" /> Mở Kanban dự án
+            </Link>
             <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">Tiến độ: {done}/{projectTasks.length} nhiệm vụ hoàn thành ({projectTasks.length ? Math.round(done * 100 / projectTasks.length) : 0}%)</div>
             <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><KanbanSquare className="h-4 w-4 text-emerald-600" />Kanban công việc của dự án</h3>
             <div className="flex snap-x gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-2 xl:grid-cols-4">
