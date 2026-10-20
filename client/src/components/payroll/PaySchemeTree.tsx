@@ -5,8 +5,10 @@
 //
 //   Nhân sự        danh sách người trong đơn vị — bấm một người là mở thẳng
 //                  form cơ chế lương của người đó (khai riêng ngay trên trang).
+//   Mức riêng      bảng người × dòng "mỗi người một mức", điền / dán từ Excel.
 //   Cơ chế chung   các dòng lương cả đơn vị cùng theo; đơn vị con thừa hưởng
 //                  theo \`unitLineage\`, cùng quy ước với KPI.
+//   Phiếu lương    mẫu phiếu của đơn vị: mã, tiêu đề, đầu mục lên đầu phiếu.
 //
 // Lưu là áp dụng ngay, không qua duyệt. Danh sách cho thấy ai chưa có cơ chế,
 // ai còn thiếu giá trị bắt buộc, để kế toán biết còn việc gì trước khi chạy lương.
@@ -14,13 +16,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Building2, ChevronRight, Search, Users } from 'lucide-react';
+import { Building2, ChevronRight, FlaskConical, Search, Users } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Avatar } from '@/components/ui/Avatar';
 import { UnitTreeList, flattenUnitTree } from '@/components/payroll/UnitTree';
 import { UnitMechanismEditor } from '@/components/payroll/UnitMechanismEditor';
+import { PayslipLayoutEditor } from '@/components/payroll/PayslipLayoutEditor';
 import { PersonSchemeForm } from '@/components/payroll/PersonSchemeForm';
-import { resolveMechanismRows, unitMechanismRows } from '@/lib/payrollScheme';
+import { PersonAmountGrid } from '@/components/payroll/PersonAmountGrid';
+import { Pager, clampPage } from '@/components/payroll/Pager';
+import { resolveMechanismRows } from '@/lib/payrollScheme';
 import { schemeSourceOf } from '@/lib/payrollRun';
 import { stripVietnamese } from '@/lib/tableExport';
 import { fetchBankAccounts, type PayrollWorkspace } from '@/lib/payrollData';
@@ -34,21 +39,27 @@ interface PaySchemeTreeProps {
   canManage: boolean;
   /** Người cần mở thẳng (từ Bảng lương). */
   focusUserId?: string | null;
+  /** Thẻ mở sẵn (từ trang tổng quan Thiết lập lương). */
+  initialTab?: 'amounts';
   onChanged: () => void;
+  /** Mở hộp Chạy thử, có thể kèm người cần thử. */
+  onDryRun: (personId?: string) => void;
 }
 
 const NO_UNIT = '__none__';
+const PEOPLE_PER_PAGE = 15;
 
 const stripTone = (text: string) => stripVietnamese(text).toLowerCase().trim();
 
-export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, canManage, focusUserId, onChanged }: PaySchemeTreeProps) {
+export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, canManage, focusUserId, initialTab, onChanged, onDryRun }: PaySchemeTreeProps) {
   const [unitId, setUnitId] = useState<string | null>(() => (
     focusUserId ? data.profiles.find((row) => row.id === focusUserId)?.unit_id ?? null : null
   ));
   const [personId, setPersonId] = useState<string | null>(focusUserId ?? null);
   const [includeChildren, setIncludeChildren] = useState(false);
-  const [tab, setTab] = useState<'people' | 'mechanism'>('people');
+  const [tab, setTab] = useState<'people' | 'amounts' | 'mechanism' | 'payslip'>(initialTab ?? 'people');
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [accounts, setAccounts] = useState<EmployeeBankAccount[]>([]);
   const navigate = useNavigate();
 
@@ -107,29 +118,37 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
     return data.profiles.filter((person) => person.unit_id && ids.has(person.unit_id));
   }, [activeUnitIds, data.profiles, includeChildren, query, unitId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => { setPage(1); }, [unitId, query, includeChildren]);
+  const currentPage = clampPage(page, people.length, PEOPLE_PER_PAGE);
+  const pagePeople = people.slice((currentPage - 1) * PEOPLE_PER_PAGE, currentPage * PEOPLE_PER_PAGE);
+
   const unassignedCount = data.profiles.filter((person) => !person.unit_id || !activeUnitIds.has(person.unit_id)).length;
   const unit = unitId && unitId !== NO_UNIT ? data.units.find((row) => row.id === unitId) ?? null : null;
   const person = personId ? data.profiles.find((row) => row.id === personId) ?? null : null;
-  const unitRowCount = unit ? unitMechanismRows(unit.id, source, monthStart, monthEnd).size : 0;
-  const unitPeopleCount = unit ? data.profiles.filter((p) => p.unit_id && descendantsOf(unit.id).has(p.unit_id)).length : 0;
+  const unitPeople = useMemo(() => {
+    if (!unit) return [];
+    const ids = descendantsOf(unit.id);
+    return data.profiles.filter((p) => p.unit_id && ids.has(p.unit_id));
+  }, [data.profiles, unit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unitPeopleCount = unitPeople.length;
 
   const openPerson = (id: string) => setPersonId(id);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-      <Card className="overflow-hidden">
-        <div className="border-b border-slate-100 p-3">
+      <div className="lg:self-start">
+        <div className="pb-2">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               value={query}
               onChange={(event) => { setQuery(event.target.value); setPersonId(null); }}
               placeholder="Tìm nhân viên theo tên / mã..."
-              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/60 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
         </div>
-        <div className="max-h-[640px] overflow-y-auto">
+        <div>
           <UnitTreeList
             rows={rows}
             selectedId={query.trim() ? null : unitId}
@@ -140,7 +159,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
             <button
               type="button"
               onClick={() => { setUnitId(NO_UNIT); setPersonId(null); setQuery(''); }}
-              className={`flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm transition ${
+              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition ${
                 unitId === NO_UNIT && !query ? 'bg-indigo-50 font-bold text-indigo-800' : 'font-semibold text-slate-600 hover:bg-indigo-50/50'
               }`}
             >
@@ -150,7 +169,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
             </button>
           )}
         </div>
-      </Card>
+      </div>
 
       <div className="min-w-0 space-y-4">
         {person ? (
@@ -164,12 +183,13 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
             account={accounts.find((row) => row.user_id === person.id) ?? null}
             unitName={person.unit_id ? data.units.find((row) => row.id === person.unit_id)?.name ?? null : null}
             onBack={() => setPersonId(null)}
+            onDryRun={() => onDryRun(person.id)}
             onSaved={onChanged}
             onAccountSaved={reloadAccounts}
-            onOpenInputs={() => navigate(`/admin/payroll/inputs?month=${monthStart.slice(0, 7)}&user=${person.id}`)}
+            onOpenInputs={() => navigate(`/admin/payroll?month=${monthStart.slice(0, 7)}&user=${person.id}`)}
           />
         ) : (
-          <Card>
+          <Card className="!rounded-none">
             <CardHeader className="flex flex-wrap items-center gap-3">
               <div className="min-w-0 flex-1">
                 <CardTitle className="flex items-center gap-2">
@@ -177,19 +197,26 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                   {query.trim() ? `Kết quả tìm "${query.trim()}"` : unit?.name ?? (unitId === NO_UNIT ? 'Chưa gán đơn vị' : 'Chọn đơn vị')}
                 </CardTitle>
               </div>
-              {unit && !query.trim() && tab === 'people' && (
+              {unit && !query.trim() && (tab === 'people' || tab === 'amounts') && (
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
                   <input type="checkbox" className="h-3.5 w-3.5 accent-indigo-600" checked={includeChildren} onChange={(event) => setIncludeChildren(event.target.checked)} />
                   Gồm đơn vị con
                 </label>
               )}
+              {unit && !query.trim() && (
+                <Button size="sm" variant="outline" onClick={() => onDryRun(people[0]?.id)}>
+                  <FlaskConical className="h-3.5 w-3.5" /> Chạy thử
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="space-y-3">
               {unit && !query.trim() && (
-                <div className="inline-flex rounded-xl bg-slate-100 p-1 no-print" role="tablist" aria-label="Đơn vị">
+                <div className="inline-flex rounded-none bg-slate-100 p-1 no-print" role="tablist" aria-label="Đơn vị">
                   {([
-                    ['people', `Nhân sự (${people.length})`],
-                    ['mechanism', `Cơ chế chung (${unitRowCount})`],
+                    ['people', 'Nhân sự'],
+                    ['amounts', 'Mức riêng'],
+                    ['mechanism', 'Cơ chế chung'],
+                    ['payslip', 'Phiếu lương'],
                   ] as const).map(([value, label]) => (
                     <button
                       key={value}
@@ -197,7 +224,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                       role="tab"
                       aria-selected={tab === value}
                       onClick={() => setTab(value)}
-                      className={`rounded-lg px-3.5 py-1.5 text-sm font-semibold transition ${
+                      className={`rounded-none px-3.5 py-1.5 text-sm font-semibold transition ${
                         tab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                       }`}
                     >
@@ -207,7 +234,26 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                 </div>
               )}
 
-              {unit && !query.trim() && tab === 'mechanism' ? (
+              {unit && !query.trim() && tab === 'payslip' ? (
+                <PayslipLayoutEditor
+                  key={unit.id}
+                  data={data}
+                  unit={unit}
+                  monthStart={monthStart}
+                  canManage={canManage}
+                  onChanged={onChanged}
+                />
+              ) : unit && !query.trim() && tab === 'amounts' ? (
+                <PersonAmountGrid
+                  data={data}
+                  people={people}
+                  monthStart={monthStart}
+                  lastClosedMonth={lastClosedMonth}
+                  canManage={canManage}
+                  onOpenPerson={openPerson}
+                  onSaved={onChanged}
+                />
+              ) : unit && !query.trim() && tab === 'mechanism' ? (
                 <UnitMechanismEditor
                   key={unit.id}
                   data={data}
@@ -216,50 +262,49 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                   lastClosedMonth={lastClosedMonth}
                   canManage={canManage}
                   peopleCount={unitPeopleCount}
+                  people={unitPeople}
                   onChanged={onChanged}
                 />
               ) : people.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
                   {query.trim() ? 'Không có nhân viên nào khớp.' : 'Đơn vị này chưa có nhân sự.'}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[520px] text-sm">
+                <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
+                  <table className="w-full min-w-[420px] text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                        <th className="py-2 pr-3">Nhân viên</th>
-                        <th className="py-2 pr-3">Khai riêng</th>
-                        <th className="py-2 pr-3">Tình trạng</th>
-                        <th className="py-2" />
+                      <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                        <th className="py-1.5 px-2.5">Nhân viên</th>
+                        <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] py-1.5 px-2">Khai riêng</th>
+                        <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] py-1.5 px-2">Tình trạng</th>
+                        <th className="py-1.5 px-2 text-right" />
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {people.map((row) => {
+                    <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                      {pagePeople.map((row) => {
                         const status = statusOf(rowsOf(row));
                         const own = personalCount(row);
                         return (
-                          <tr key={row.id} className="cursor-pointer hover:bg-slate-50/70" onClick={() => openPerson(row.id)}>
-                            <td className="py-2 pr-3">
-                              <div className="flex items-center gap-2">
-                                <Avatar name={row.name} url={row.avatar_url} size="sm" />
-                                <div className="min-w-0">
-                                  <p className="truncate font-semibold text-slate-800">{row.name}</p>
-                                  <p className="truncate text-[11px] text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
-                                </div>
+                          <tr key={row.id} className="group cursor-pointer transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60" onClick={() => openPerson(row.id)}>
+                            <td className="py-1.5 px-2.5">
+                              <div className="min-w-0">
+                                <p className="truncate font-bold text-xs text-slate-900 dark:text-slate-100">{row.name}</p>
+                                <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
                               </div>
                             </td>
-                            <td className="py-2 pr-3 text-xs text-slate-600">
-                              {own > 0 ? `${own} dòng` : <span className="text-slate-400">—</span>}
+                            <td className="border-l border-slate-300 dark:border-slate-700 py-1.5 px-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              {own > 0 ? `${own} dòng` : <span className="text-slate-400 dark:text-slate-600">—</span>}
                             </td>
-                            <td className="py-2 pr-3">
-                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${status.tone}`}>{status.label}</span>
+                            <td className="border-l border-slate-300 dark:border-slate-700 py-1.5 px-2">
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status.tone}`}>{status.label}</span>
                             </td>
-                            <td className="py-2 text-right text-slate-300"><ChevronRight className="inline h-4 w-4" /></td>
+                            <td className="py-1.5 px-2 text-right text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                  <Pager page={currentPage} total={people.length} size={PEOPLE_PER_PAGE} noun="người" onPage={setPage} />
                 </div>
               )}
             </CardContent>

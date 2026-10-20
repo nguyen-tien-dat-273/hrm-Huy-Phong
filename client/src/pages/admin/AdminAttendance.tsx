@@ -4,7 +4,6 @@ import { CheckCheck, Clock, LogOut, Table, Trash2 } from 'lucide-react';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
@@ -291,9 +290,9 @@ export function AdminAttendance() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
-        <p className="text-sm font-semibold text-slate-800">Chấm công từ máy chấm công</p>
+    <div className="space-y-5 attendance-module" data-module="attendance">
+      <div className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5">
+        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Chấm công từ máy chấm công</p>
         <p className="mt-0.5 text-xs text-slate-500">
           Chỉ hiển thị ngày công do máy vân tay/khuôn mặt ghi lại. Đơn nghỉ phép, đi muộn,
           về sớm và làm thêm xử lý ở <Link to="/admin/leave" className="font-semibold text-indigo-700 hover:underline">Trung tâm đơn từ</Link>.
@@ -396,81 +395,78 @@ export function AdminAttendance() {
             <EmptyState icon={<Clock className="w-8 h-8" />} title="Không có bản ghi" description="Chưa có dữ liệu chấm công trong mục này." />
           ) : (
             <div className="overflow-x-auto p-3 md:p-0">
-              <table className="w-full table-cards">
+              <table className="w-full table-cards border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-[#FCFAF8]">
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Nhân viên</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ vào</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Giờ ra</th>
-                    <th className="text-left text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Công việc</th>
-                    <th className="text-right text-[10px] font-bold text-slate-400 uppercase tracking-widest px-6 py-4">Thao tác</th>
+                  <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                    <th className="text-left text-xs font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider px-3 py-1.5">Nhân viên</th>
+                    <th className="text-left text-xs font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider px-2.5 py-1.5">Giờ vào</th>
+                    <th className="text-left text-xs font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider px-2.5 py-1.5">Giờ ra</th>
+                    <th className="text-left text-xs font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider px-2.5 py-1.5">Công việc</th>
+                    <th className="text-right text-xs font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider px-3 py-1.5">Thao tác</th>
                   </tr>
                 </thead>
                 {groupedByDay.map(([date, rows]) => {
                   const thieuGioRa = rows.filter((item) => !item.check_out_time).length;
                   return (
-                    <tbody key={date} className="divide-y divide-slate-50">
-                      <tr className="bg-slate-50/80">
-                        <td colSpan={5} className="px-6 py-2.5">
-                          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                            <span className="text-sm font-bold text-slate-800">{dayLabel(date)}</span>
-                            <span className="text-xs text-slate-500">{rows.length} người</span>
+                    <tbody key={date} className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                      <tr className="border-y-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800">
+                        <td colSpan={5} className="px-3 py-1">
+                          <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
+                            <span className="text-xs font-black text-slate-900 dark:text-slate-100">{dayLabel(date)}</span>
+                            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{rows.length} người</span>
                             {thieuGioRa > 0 && (
-                              <span className="text-xs font-semibold text-amber-700">{thieuGioRa} chưa có giờ ra</span>
+                              <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">{thieuGioRa} chưa có giờ ra</span>
                             )}
                           </div>
                         </td>
                       </tr>
                       {rows.map((r) => (
-                        <tr key={r.id} className="hover:bg-[#FCFAF8] transition-colors group">
-                          <td data-label="" className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <Avatar name={r.profile?.name || ''} url={r.profile?.avatar_url} size="sm" />
-                              <div className="flex flex-col">
-                                <span className="text-sm font-bold text-slate-800">{r.profile?.name || 'Chưa rõ nhân viên'}</span>
-                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-tighter">{r.profile?.department || '—'}</span>
-                              </div>
+                        <tr key={r.id} className="hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-colors group">
+                          <td data-label="" className="px-3 py-1.5">
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{r.profile?.name || 'Chưa rõ nhân viên'}</span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{r.profile?.department || '—'}</span>
                             </div>
                           </td>
-                          <td data-label="Giờ vào" className="px-6 py-4">
-                            <span className="text-sm font-semibold text-slate-800">{formatTime(r.check_in_time)}</span>
+                          <td data-label="Giờ vào" className="px-2.5 py-1.5">
+                            <span className="text-xs font-black tabular-nums text-slate-900 dark:text-slate-100">{formatTime(r.check_in_time)}</span>
                           </td>
-                          <td data-label="Giờ ra" className="px-6 py-4">
+                          <td data-label="Giờ ra" className="px-2.5 py-1.5">
                             {r.check_out_time ? (
-                              <span className="text-sm font-semibold text-slate-800">{formatTime(r.check_out_time)}</span>
+                              <span className="text-xs font-black tabular-nums text-slate-900 dark:text-slate-100">{formatTime(r.check_out_time)}</span>
                             ) : (
                               <button
                                 onClick={() => setCheckoutTarget(r)}
-                                className="text-sm font-semibold text-indigo-700 hover:underline"
+                                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
                                 title="Nhập giờ ra cho ngày công này"
                               >
                                 Ghi giờ ra
                               </button>
                             )}
                           </td>
-                          <td data-label="Công việc" className="px-6 py-4">
+                          <td data-label="Công việc" className="px-2.5 py-1.5">
                             {(() => {
                               const p = asgProgress[r.user_id + '|' + r.date];
                               if (!p) return <span className="text-xs text-slate-400">—</span>;
                               const done = p.approved === p.total;
                               return (
-                                <div className="flex items-center gap-2">
-                                  <span className={done ? 'text-[10px] font-bold uppercase tracking-widest text-emerald-600' : 'text-[10px] font-bold uppercase tracking-widest text-amber-600'}>
-                                    {p.approved}/{p.total} hoàn thành
+                                <div className="flex items-center gap-1.5">
+                                  <span className={done ? 'text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400' : 'text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400'}>
+                                    {p.approved}/{p.total}
                                   </span>
-                                  <div className="w-12 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                                     <div className={done ? 'h-full bg-emerald-500' : 'h-full bg-amber-500'} style={{ width: ((p.approved / p.total) * 100) + '%' }} />
                                   </div>
                                 </div>
                               );
                             })()}
                           </td>
-                          <td data-label="" className="px-5 py-3.5">
-                            <div className="flex items-center justify-end gap-2">
+                          <td data-label="" className="px-3 py-1.5">
+                            <div className="flex items-center justify-end gap-1.5">
                               {r.check_out_time && !r.approved_by_lead && (
                                 <button
                                   onClick={() => handleApprove(r)}
-                                  className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-colors"
+                                  className="px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-200 transition-colors"
                                   title="Check-in từ HRM cần quản lý xác nhận mới vào bảng lương"
                                 >
                                   Xác nhận
@@ -479,9 +475,9 @@ export function AdminAttendance() {
                               <button
                                 onClick={() => handleDelete(r)}
                                 title="Xóa bản ghi"
-                                className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </td>

@@ -367,8 +367,9 @@ export type PayCalcType = 'FIXED' | 'PER_DAY' | 'PER_HOUR' | 'PER_UNIT' | 'PERCE
 
 /**
  * Loại dòng của một đầu mục: EARNING cộng vào lương, DEDUCTION trừ khỏi
- * lương, INFO chỉ để tính / hiển thị (không cộng trừ). EMPLOYER_COST chỉ còn
- * trên phiếu lương cũ (phần doanh nghiệp đóng, không trừ của nhân viên).
+ * lương, INFO dòng TRUNG GIAN — con số để dòng khác tính hoặc hiện trên phiếu,
+ * không cộng trừ vào thực lĩnh. EMPLOYER_COST chỉ còn trên phiếu lương cũ
+ * (phần doanh nghiệp đóng, không trừ của nhân viên).
  */
 export type PayComponentKind = 'EARNING' | 'DEDUCTION' | 'INFO' | 'EMPLOYER_COST';
 
@@ -391,21 +392,17 @@ export type TaxMode = 'PROGRESSIVE' | 'FLAT' | 'NONE';
  */
 export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'LOCKED' | 'APPROVED' | 'PAID';
 
-/** Nhóm hiển thị của đầu mục trong danh mục. */
+/** Năm nhóm của danh mục khoản lương. Dòng trung gian không thuộc nhóm nào. */
 export type PayComponentCategoryCode =
-  | 'THU_NHAP_CO_DINH' | 'THU_NHAP_BIEN_DOI' | 'LAM_THEM_GIO' | 'THUONG_PHAT_SINH' | 'KHAU_TRU_PHAT' | 'SO_LIEU';
+  | 'THU_NHAP_CO_DINH' | 'THU_NHAP_BIEN_DOI' | 'LAM_THEM_GIO' | 'THUONG_PHAT_SINH' | 'KHAU_TRU_PHAT';
 
 export interface PayComponentCategory {
   code: PayComponentCategoryCode;
   name: string;
   description: string | null;
   allowed_kinds: PayComponentKind[];
-  default_nature: PayComponentNature;
   sort_order: number;
 }
-
-/** Cố định / Biến đổi theo hiệu suất, thời gian / cả hai. */
-export type PayComponentNature = 'FIXED' | 'VARIABLE' | 'BOTH';
 
 /** Còn để đọc dữ liệu cũ — mọi đầu mục nay đều là ASSIGNED (không còn khoản hệ thống tự tính). */
 export type PayComponentSource = 'ASSIGNED' | 'ENGINE';
@@ -417,8 +414,6 @@ export interface PayComponent {
   code: string;
   name: string;
   kind: PayComponentKind;
-  /** Giá trị dùng khi dòng "Giá trị" để trống. */
-  default_amount: number;
   // Cách tính, cờ thuế / bảo hiểm và trần kiểu cũ của danh mục: engine không
   // còn đọc — mọi cách tính nằm ở công thức của dòng cơ chế. Giữ để đọc lịch sử.
   calc_type: PayCalcType;
@@ -441,11 +436,12 @@ export interface PayComponent {
    * một khoản lương nên không có số tiền nào thuộc về nó.
    */
   group_name: string | null;
-  /** Nhóm hiển thị trong danh mục — không ảnh hưởng cách tính. */
-  category_code: PayComponentCategoryCode;
+  /** Nhóm trong danh mục — không ảnh hưởng cách tính. Dòng trung gian có thể không thuộc nhóm nào. */
+  category_code: PayComponentCategoryCode | null;
+  /** Dòng trung gian có hiện trên phiếu lương của nhân viên không. */
+  show_on_payslip?: boolean;
   /** Nhãn báo cáo — khi chốt kỳ, số của đầu mục cộng vào cột báo cáo tương ứng. Không ảnh hưởng cách tính. */
   report_tag?: PayReportTag | null;
-  nature: PayComponentNature;
   calc_source: PayComponentSource;
   is_active: boolean;
   is_system: boolean;
@@ -634,6 +630,26 @@ export interface UnitPayItem {
   updated_at: string;
 }
 
+/** Cách in con số của một dòng ở đầu phiếu lương: `percent` là số đã tính theo %, `ratio` là tỷ lệ 0–1. */
+export type PayslipHeaderFormat = 'number' | 'money' | 'percent' | 'ratio';
+
+/**
+ * Mẫu phiếu lương của một đơn vị — chỉ để trình bày, không đổi cách tính.
+ * Đơn vị con không có mẫu riêng thì dùng mẫu của cấp trên gần nhất.
+ */
+export interface PayslipLayout {
+  unit_id: string;
+  /** Mã mẫu in ở góc đầu phiếu (BL 01, BL 02…). */
+  form_code: string | null;
+  /** Dòng tiêu đề dưới "Bảng thanh toán lương tháng" — trống thì lấy tên đơn vị. */
+  title: string | null;
+  /** Dòng trung gian hiện ở đầu phiếu, theo thứ tự. Dòng trung gian khác nhân viên không thấy. */
+  header: Array<{ code: string; format: PayslipHeaderFormat }>;
+  /** Khoản trừ đứng trước dòng Tổng cộng (nhóm phạt) — các khoản trừ khác đứng sau. */
+  before_total: string[];
+  updated_at?: string;
+}
+
 /** Số liệu biến động của một người trong một tháng (giờ OT, sản lượng...). */
 export interface PayrollInput {
   id: string;
@@ -716,6 +732,9 @@ export interface PayslipLine {
   insurable: boolean;
   /** Câu giải thích con số, ví dụ "12.000.000 ÷ 26 × 24 ngày". */
   detail: string | null;
+  /** Nhóm danh mục của dòng — chỉ phiếu nhân viên tự xem trả kèm (để chia mục trên phiếu dạng mẫu). */
+  category_name?: string | null;
+  category_sort?: number | null;
 }
 
 /** Ngày nghỉ lễ công ty — dùng để tách L03 (Lương nghỉ lễ) khỏi L01/L02 khi tính lương. */

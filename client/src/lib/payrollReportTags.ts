@@ -11,7 +11,7 @@
 //
 // Nhãn đi cùng Loại dòng: khoản người lao động đóng / thuế phải là dòng TRỪ
 // (nếu không, tổng khấu trừ trên phiếu bị cộng hai lần); phần doanh nghiệp đóng
-// và thu nhập tính thuế là dòng CHỈ ĐỂ TÍNH.
+// và thu nhập tính thuế là dòng TRUNG GIAN.
 // ============================================================================
 
 import type { PayComponentKind, PayReportTag } from '@/types';
@@ -53,7 +53,7 @@ export const PAY_REPORT_TAGS: ReportTagInfo[] = [
     label: 'Doanh nghiệp đóng thêm (BH, KPCĐ…)',
     column: 'insuranceEmployer',
     kinds: ['INFO', 'EMPLOYER_COST'],
-    hint: 'Chi phí công ty chịu, không trừ của nhân viên; cộng vào cột “BH công ty đóng”. Dùng với loại dòng Chỉ để tính.',
+    hint: 'Chi phí công ty chịu, không trừ của nhân viên; cộng vào cột “BH công ty đóng”. Dùng với dòng trung gian.',
   },
   {
     code: 'INCOME_TAX',
@@ -67,7 +67,7 @@ export const PAY_REPORT_TAGS: ReportTagInfo[] = [
     label: 'Thu nhập tính thuế',
     column: 'taxableIncome',
     kinds: ['INFO'],
-    hint: 'Số thu nhập dùng để tính thuế; cộng vào cột “Thu nhập tính thuế” của báo cáo. Dùng với loại dòng Chỉ để tính.',
+    hint: 'Số thu nhập dùng để tính thuế; cộng vào cột “Thu nhập tính thuế” của báo cáo. Dùng với dòng trung gian.',
   },
 ];
 
@@ -89,8 +89,9 @@ export function reportTagFitsKind(tag: PayReportTag | null | undefined, kind: Pa
 export function reportTagKindProblem(tag: PayReportTag | null | undefined, kind: PayComponentKind): string | null {
   const info = reportTagInfo(tag);
   if (!info || info.kinds.includes(kind)) return null;
-  const wanted = info.kinds.includes('DEDUCTION') ? 'Trừ khỏi lương' : 'Chỉ để tính';
-  return `Nhãn “${info.label}” chỉ dùng với loại dòng “${wanted}”.`;
+  return info.kinds.includes('DEDUCTION')
+    ? `Nhãn “${info.label}” chỉ dùng với loại dòng “Trừ khỏi lương”.`
+    : `Nhãn “${info.label}” chỉ dùng với dòng trung gian.`;
 }
 
 /**

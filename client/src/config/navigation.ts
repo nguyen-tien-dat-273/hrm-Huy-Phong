@@ -2,9 +2,9 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
-  LayoutGrid, Network, NotebookPen, Rocket, Settings, SlidersHorizontal, Table,
-  Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
-  FileBarChart, Fingerprint, WalletCards,
+  LayoutGrid, Network, NotebookPen, Rocket, Settings, Table,
+  Target, UserSearch, Users, Wallet, Cpu,
+  FileBarChart, Fingerprint, WalletCards, TrendingUp, SlidersHorizontal,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
 
@@ -32,43 +32,43 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/overview', label: 'Tổng quan điều hành', description: 'Toàn cảnh nhân sự và các cảnh báo cần xử lý', icon: LayoutGrid, permission: 'reports', group: 'Tổng quan', keywords: 'dieu hanh canh bao', functionCode: 'admin.overview' },
   { to: '/admin/reports', label: 'Báo cáo & phân tích', description: 'Theo dõi xu hướng và xuất dữ liệu tổng hợp', icon: BarChart3, permission: 'reports', group: 'Tổng quan', keywords: 'thong ke bieu do xuat du lieu' },
 
-  { to: '/admin/organization', label: 'Cơ cấu tổ chức', description: 'Đơn vị, vị trí và tuyến quản lý', icon: Network, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'co cau don vi phong ban chi nhanh vi tri tuyen quan ly' },
-  { to: '/admin/users', label: 'Hồ sơ nhân sự', description: 'Thông tin cá nhân, tình trạng làm việc và giấy tờ nhân viên', icon: Users, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ho so nhan su danh ba nhan vien tai khoan' },
+  { to: '/admin/organization', label: 'Cơ cấu tổ chức', description: 'Đơn vị, vị trí và tuyến quản lý', icon: Network, permission: 'users', group: 'Nhân sự', keywords: 'co cau don vi phong ban chi nhanh vi tri tuyen quan ly' },
+  { to: '/admin/users', label: 'Hồ sơ nhân sự', description: 'Thông tin cá nhân, tình trạng làm việc và giấy tờ nhân viên', icon: Users, permission: 'users', group: 'Nhân sự', keywords: 'ho so nhan su danh ba nhan vien tai khoan' },
 
   { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tuyển dụng', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
   { to: '/admin/workforce', label: 'Hồ sơ người lao động', description: 'Thông tin và tiến trình tuyển chọn của người lao động', icon: ContactRound, permission: 'users', group: 'Tuyển dụng', keywords: 'ung vien nguoi lao dong xuat khau', functionCode: 'admin.workforce' },
   { to: '/admin/worker-documents', label: 'Hồ sơ giấy tờ', description: 'Theo dõi hợp đồng, visa và tài liệu lao động', icon: FileWarning, permission: 'users', group: 'Tuyển dụng', keywords: 'hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents' },
 
-  { to: '/admin/projects', label: 'Dự án', description: 'Dự án, thành viên, mốc và tác vụ', icon: FolderKanban, permission: 'projects', group: 'Công việc & Dự án', keywords: 'project tac vu' },
-  { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Công việc & Dự án', keywords: 'giao viec phan cong xac nhan' },
-  { to: '/admin/worklog', label: 'Nhật ký giờ', description: 'Đối chiếu thời gian thực tế theo người và tác vụ', icon: NotebookPen, permission: 'reports', group: 'Công việc & Dự án', keywords: 'gio cong worklog timesheet' },
+  { to: '/admin/projects', label: 'Dự án', description: 'Dự án, thành viên, mốc và tác vụ', icon: FolderKanban, permission: 'projects', group: 'Dự án', keywords: 'project tac vu' },
+  { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Dự án', keywords: 'giao viec phan cong xac nhan' },
+  { to: '/admin/worklog', label: 'Nhật ký giờ', description: 'Đối chiếu thời gian thực tế theo người và tác vụ', icon: NotebookPen, permission: 'reports', group: 'Dự án', keywords: 'gio cong worklog timesheet' },
 
-  { to: '/admin/attendance', label: 'Duyệt chấm công', description: 'Kiểm tra check-in, check-out và xác nhận ngày công', icon: ClipboardCheck, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'duyet cham cong check in check out ngay cong' },
-  { to: '/admin/attendance-devices', label: 'Máy chấm công', description: 'Kết nối Ronald Jack, ánh xạ nhân viên và theo dõi đồng bộ', icon: Cpu, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'ronald jack zkteco van tay thiet bi', fullAdminOnly: true },
-  { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance', 'users'], group: 'Thời gian & Đơn từ', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
-  { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
-  { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Thời gian & Đơn từ', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
+  { to: '/admin/attendance/reports', label: 'Báo cáo công', description: 'Tổng hợp chuyên cần, đi muộn, làm thêm và nghỉ phép theo tháng', icon: BarChart3, permission: 'attendance', anyPermissions: ['attendance', 'reports'], group: 'Công', keywords: 'bao cao cong cham cong chuyen can di muon lam them ot nghi phep' },
+  { to: '/admin/attendance', label: 'Duyệt chấm công', description: 'Kiểm tra check-in, check-out và xác nhận ngày công', icon: ClipboardCheck, permission: 'attendance', group: 'Công', keywords: 'duyet cham cong check in check out ngay cong' },
+  { to: '/admin/attendance-devices', label: 'Máy chấm công', description: 'Kết nối Ronald Jack, ánh xạ nhân viên và theo dõi đồng bộ', icon: Cpu, permission: 'attendance', group: 'Công', keywords: 'ronald jack zkteco van tay thiet bi', fullAdminOnly: true },
+  { to: '/admin/leave', label: 'Trung tâm đơn từ', description: 'Duyệt nghỉ phép, đi muộn, về sớm, làm thêm và hủy phép', icon: ClipboardCheck, permission: 'leave', anyPermissions: ['leave', 'attendance', 'users'], group: 'Công', keywords: 'don tu xin nghi huy phep di muon ve som lam them tang ca' },
+  { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Công', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
+  { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Công', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
 
-  // Module lương tách thành các mục con để đặt dấu trang được, tìm nhanh thấy
-  // được, và cấp quyền riêng từng phần. Thứ tự theo luồng làm lương: danh mục
-  // → tham số → cơ chế (công thức + áp cho nhân sự) → số liệu, điều chỉnh,
-  // bảng lương → BGĐ phê duyệt.
-  { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: 'Danh sách đầu mục: cộng vào lương, trừ khỏi lương hoặc chỉ để tính', icon: Receipt, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'khoan luong dau muc phu cap thuong phat tam ung nhom danh muc', functionCode: 'admin.payroll_components' },
-  { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Bảng tham số tự tạo: tỷ lệ, đơn giá, thời gian theo ngày hiệu lực', icon: Scale, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tham so ty le don gia thoi gian bang bac thang hieu luc bao hiem', functionCode: 'admin.payroll_settings' },
-  { to: '/admin/payroll/schemes', label: 'Cơ chế lương', description: 'Cơ chế chung của đơn vị và khai riêng từng nhân sự', icon: Calculator, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'co che luong cong thuc dau muc ap dung nhan su so do to chuc trinh duyet chay thu', functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] },
-  { to: '/admin/payroll/inputs', label: 'Số liệu lương tháng', description: 'Nhập hệ số thay đổi mỗi tháng (doanh số, số chuyến…) và xem lương tạm tính', icon: SlidersHorizontal, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'so lieu thang doanh so so chuyen nhap hang thang', functionCode: 'admin.payroll_inputs' },
-  { to: '/admin/payroll', label: 'Bảng lương', description: 'Chạy nháp, khoá kỳ 2FA, file ngân hàng, chi trả & phát hành phiếu', icon: Wallet, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong khoa ky ngan hang', functionCode: 'admin.payroll' },
-  { to: '/admin/payroll/approvals', label: 'Phê duyệt lương', description: 'Ký duyệt cơ chế lương và lệnh chi lương', icon: ClipboardCheck, permission: 'attendance', group: 'Lương & Đãi ngộ', keywords: 'phe duyet bgd ky duyet co che luong chi luong', functionCode: 'admin.payroll_approve' },
+  // Module lương: Báo cáo lương lên đầu để vào module là xem được ngay; việc hằng
+  // tháng ở giữa; mọi màn thiết lập (tham số, cơ chế, mức riêng, danh mục) gom
+  // vào một mục "Thiết lập lương" ở cuối, có thanh bước bên trong.
+  { to: '/admin/payroll/reports', label: 'Báo cáo lương', description: 'Biến động quỹ lương, chi phí BHXH và thuế TNCN theo tháng', icon: BarChart3, permission: 'attendance', group: 'Lương', keywords: 'bao cao luong quy luong bhxh thue tncn chi phi nhan su bien dong', functionCode: 'admin.payroll' },
+  { to: '/admin/payroll', label: 'Bảng lương', description: 'Chạy nháp, khoá kỳ 2FA, file ngân hàng, chi trả & phát hành phiếu', icon: Wallet, permission: 'attendance', group: 'Lương', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong khoa ky ngan hang', functionCode: 'admin.payroll' },
+  { to: '/admin/payroll/approvals', label: 'Phê duyệt lương', description: 'Ký duyệt cơ chế lương và lệnh chi lương', icon: ClipboardCheck, permission: 'attendance', group: 'Lương', keywords: 'phe duyet bgd ky duyet co che luong chi luong', functionCode: 'admin.payroll_approve' },
 
-  { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo & Quy trình', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
-  { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'thu vien quy trinh quy che huong dan pdf' },
-  { to: '/admin/training', label: 'Đào tạo', description: 'Khóa học, phân công và tiến độ học tập', icon: BookOpen, permission: 'training', group: 'Đào tạo & Quy trình', keywords: 'dao tao khoa hoc hoc tap' },
-  // Ba muc cu — Bo KPI, Gan KPI cho nhan su, Cham diem theo thang — gio la
-  // ba BUOC trong mot man. Tach ra lam ba muc menu bat nguoi dung tu biet thu
-  // tu va tu nho minh dang do o dau, trong khi he thong biet thua.
-  { to: '/admin/performance', label: 'Bộ KPI nhân sự', description: 'Khai bộ KPI chung cho cả phòng, hoặc bộ riêng cho từng người', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi bo tieu chi cach tinh diem phong ban nhan su rieng', functionCode: 'admin.performance_manage' },
-  { to: '/admin/performance/review', label: 'Chấm điểm theo tháng', description: 'Bảng tổng hợp đánh giá KPI của kỳ, nhập điểm và khoá kỳ', icon: ClipboardCheck, permission: 'reports', group: 'KPI', keywords: 'cham diem ky thang bang tong hop danh gia kpi khoa phieu', functionCode: 'admin.performance_manage' },
-  { to: '/admin/performance/report', label: 'Báo cáo KPI tháng', description: 'Nhiều kỳ cạnh nhau: xu hướng từng người và xuất Excel', icon: BarChart3, permission: 'reports', group: 'KPI', keywords: 'bao cao kpi thang thong ke xu huong xuat excel', functionCode: 'admin.performance_manage' },
+  { to: '/admin/payroll/setup/params', label: 'Thiết lập lương', description: 'Thông số chung, cơ chế đơn vị, mức riêng từng người và danh mục đầu mục', icon: Calculator, permission: 'attendance', group: 'Lương', keywords: 'thiet lap luong co che luong cong thuc dau muc muc rieng bac luong tham so ty le don gia bao hiem thue danh muc khoan luong phu cap chay thu', functionCode: ['admin.payroll_settings', 'admin.payroll_schemes', 'admin.payroll_components'] },
+
+  { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
+  { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo', keywords: 'thu vien quy trinh quy che huong dan pdf' },
+  { to: '/admin/training', label: 'Đào tạo', description: 'Khóa học, phân công và tiến độ học tập', icon: BookOpen, permission: 'training', group: 'Đào tạo', keywords: 'dao tao khoa hoc hoc tap' },
+
+  // Module KPI: Báo cáo KPI lên đầu để vào module là xem được ngay.
+  { to: '/admin/performance/report', label: 'Báo cáo KPI', description: 'Tiến độ kỳ, kết quả tháng, quý, năm và xét thưởng', icon: BarChart3, permission: 'reports', group: 'KPI', keywords: 'bao cao kpi xep loai quy nam thuong tang luong', functionCode: ['admin.performance_manage', 'admin.kpi_approve', 'admin.kpi_close'] },
+  { to: '/admin/performance/review', label: 'Phiếu KPI tháng', description: 'Chấm, duyệt, khoá sổ và đối soát sang lương', icon: ClipboardCheck, permission: 'reports', group: 'KPI', keywords: 'phieu kpi cham diem duyet khoa so thang', functionCode: ['admin.performance_manage', 'admin.kpi_approve', 'admin.kpi_close'] },
+  { to: '/admin/performance/sales', label: 'Chỉ tiêu kinh doanh', description: 'Doanh số khoán, thu tiền, khách hàng và số thực hiện', icon: TrendingUp, permission: 'reports', group: 'KPI', keywords: 'chi tieu kinh doanh doanh so khoan thu tien amis', functionCode: ['admin.performance_manage', 'admin.kpi_approve', 'admin.kpi_close'] },
+  { to: '/admin/performance', label: 'Bộ KPI', description: 'Bộ tiêu chí theo phòng ban, vị trí hoặc từng người', icon: Target, permission: 'reports', group: 'KPI', keywords: 'kpi bo tieu chi hang muc ty trong vi tri phong ban ca nhan', functionCode: 'admin.performance_manage' },
+  { to: '/admin/performance/settings', label: 'Tham số KPI', description: 'Xếp loại, trần, lịch kỳ và liên kết sang lương', icon: SlidersHorizontal, permission: 'reports', group: 'KPI', keywords: 'tham so kpi xep loai tran lich ky lien ket luong', functionCode: 'admin.performance_manage' },
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },
@@ -98,9 +98,9 @@ export const STAFF_NAV_ITEMS: StaffNavItem[] = [
   { to: '/staff/attendance', label: 'Chấm công', description: 'Xem giờ vào từ máy và checkout cuối ngày', icon: Fingerprint, group: 'Thời gian & Lịch', keywords: 'gio vao may cham cong checkout van tay khuon mat' },
   { to: '/staff/leave', label: 'Đơn từ của tôi', description: 'Nghỉ phép, đi muộn, về sớm và làm thêm giờ', icon: ClipboardList, group: 'Thời gian & Lịch', keywords: 'don tu xin nghi quy phep di muon ve som lam them tang ca' },
 
-  { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương & Đãi ngộ', keywords: 'luong phieu luong thu nhap payslip khau tru' },
+  { to: '/staff/payroll', label: 'Lương của tôi', description: 'Xem phiếu lương và các khoản khấu trừ cá nhân', icon: WalletCards, group: 'Lương', keywords: 'luong phieu luong thu nhap payslip khau tru' },
 
-  { to: '/staff/kpi', label: 'KPI của tôi', description: 'Kết quả chấm điểm và điểm từng tiêu chí', icon: Target, group: 'KPI', keywords: 'kpi danh gia cham diem tieu chi' },
+  { to: '/staff/kpi', label: 'KPI của tôi', description: 'Tự chấm, kết quả và phiếu cần chấm của nhóm', icon: Target, group: 'KPI', keywords: 'kpi danh gia cham diem tieu chi tu cham' },
   { to: '/staff/training', label: 'Đào tạo của tôi', description: 'Khóa học được giao và tiến độ hoàn thành', icon: BookOpen, group: 'Phát triển', keywords: 'dao tao khoa hoc hoc tap' },
   { to: '/staff/processes', label: 'Quy trình & biểu mẫu', description: 'Tài liệu đang hiệu lực của công ty', icon: BookOpen, group: 'Phát triển', keywords: 'quy trinh bieu mau tai lieu quy che' },
   { to: '/staff/growth', label: 'Lộ trình phát triển', description: 'Checklist hội nhập và bàn giao của tôi', icon: Target, group: 'Phát triển', keywords: 'lo trinh phat trien onboarding offboarding checklist' },
@@ -182,45 +182,45 @@ export const MODULES_BY_PERMISSION: Partial<Record<AdminPermission, string[]>> =
 export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     name: 'Tổng quan', icon: LayoutDashboard, hint: 'Dashboard và báo cáo toàn công ty',
-    iconIdle: 'bg-indigo-50 text-indigo-600', iconOn: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30',
-    tileOn: 'bg-indigo-50', textOn: 'text-indigo-700',
+    iconIdle: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400', iconOn: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30',
+    tileOn: 'bg-indigo-50 dark:bg-indigo-500/15', textOn: 'text-indigo-700 dark:text-indigo-300',
     chip: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-700',
   },
   {
-    name: 'Tổ chức & Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ và tài khoản nhân sự',
+    name: 'Nhân sự', icon: Network, hint: 'Sơ đồ tổ chức, hồ sơ và tài khoản nhân sự',
     // Cyan chu khong phai sky: mau chinh cua he thong da la blue, ma o
     // "Tong quan" nam ngay ben trai o nay trong bang luoi - hai sac xanh
     // duong canh nhau thi phai doc ten moi phan biet.
-    iconIdle: 'bg-cyan-50 text-cyan-600', iconOn: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30',
-    tileOn: 'bg-cyan-50', textOn: 'text-cyan-700',
+    iconIdle: 'bg-cyan-50 text-cyan-600 dark:bg-cyan-500/15 dark:text-cyan-400', iconOn: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30',
+    tileOn: 'bg-cyan-50 dark:bg-cyan-500/15', textOn: 'text-cyan-700 dark:text-cyan-300',
     chip: 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30 hover:bg-cyan-700',
   },
   {
     name: 'Tuyển dụng', icon: UserSearch, hint: 'Đề xuất tuyển, ứng viên, hồ sơ và giấy tờ',
-    iconIdle: 'bg-violet-50 text-violet-600', iconOn: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30',
-    tileOn: 'bg-violet-50', textOn: 'text-violet-700',
+    iconIdle: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400', iconOn: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30',
+    tileOn: 'bg-violet-50 dark:bg-violet-500/15', textOn: 'text-violet-700 dark:text-violet-300',
     chip: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30 hover:bg-violet-700',
   },
   {
-    name: 'Công việc & Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ',
+    name: 'Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ',
     // Cam chu khong phai tim: tim nam ngay canh indigo cua "Tong quan" nen
     // hai o dau bang luoi nhin gan nhu cung mot mau. Cam la mau am duy nhat
     // o khu vuc do, va trong luoi no o goc doi dien voi amber cua "Thoi gian"
     // nen hai mau am khong ke nhau.
-    iconIdle: 'bg-orange-50 text-orange-600', iconOn: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30',
-    tileOn: 'bg-orange-50', textOn: 'text-orange-700',
+    iconIdle: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400', iconOn: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30',
+    tileOn: 'bg-orange-50 dark:bg-orange-500/15', textOn: 'text-orange-700 dark:text-orange-300',
     chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
   },
   {
-    name: 'Thời gian & Đơn từ', icon: Clock, hint: 'Chấm công, bảng công và mọi loại đơn',
-    iconIdle: 'bg-amber-50 text-amber-600', iconOn: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
-    tileOn: 'bg-amber-50', textOn: 'text-amber-700',
+    name: 'Công', icon: Clock, hint: 'Chấm công, bảng công và mọi loại đơn',
+    iconIdle: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400', iconOn: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
+    tileOn: 'bg-amber-50 dark:bg-amber-500/15', textOn: 'text-amber-700 dark:text-amber-300',
     chip: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 hover:bg-amber-600',
   },
   {
-    name: 'Lương & Đãi ngộ', icon: Wallet, hint: 'Bảng lương, cơ chế và tham số',
-    iconIdle: 'bg-emerald-50 text-emerald-600', iconOn: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30',
-    tileOn: 'bg-emerald-50', textOn: 'text-emerald-700',
+    name: 'Lương', icon: Wallet, hint: 'Bảng lương, cơ chế và tham số',
+    iconIdle: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400', iconOn: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30',
+    tileOn: 'bg-emerald-50 dark:bg-emerald-500/15', textOn: 'text-emerald-700 dark:text-emerald-300',
     chip: 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30 hover:bg-emerald-700',
   },
   {
@@ -228,20 +228,20 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     // hieu Huy Phong, ma rose chinh la do nhat - o KPI se trong y het o
     // "Tong quan" va nguoi dung phai doc ten moi phan biet duoc.
     name: 'KPI', icon: Target, hint: 'Chấm điểm, bộ tiêu chí và cách quy ra lương',
-    iconIdle: 'bg-fuchsia-50 text-fuchsia-600', iconOn: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30',
-    tileOn: 'bg-fuchsia-50', textOn: 'text-fuchsia-700',
+    iconIdle: 'bg-fuchsia-50 text-fuchsia-600 dark:bg-fuchsia-500/15 dark:text-fuchsia-400', iconOn: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30',
+    tileOn: 'bg-fuchsia-50 dark:bg-fuchsia-500/15', textOn: 'text-fuchsia-700 dark:text-fuchsia-300',
     chip: 'bg-fuchsia-600 text-white shadow-sm shadow-fuchsia-600/30 hover:bg-fuchsia-700',
   },
   {
-    name: 'Đào tạo & Quy trình', icon: BookOpen, hint: 'Khóa học và thư viện quy trình',
-    iconIdle: 'bg-teal-50 text-teal-600', iconOn: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30',
-    tileOn: 'bg-teal-50', textOn: 'text-teal-700',
+    name: 'Đào tạo', icon: BookOpen, hint: 'Khóa học và thư viện quy trình',
+    iconIdle: 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400', iconOn: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30',
+    tileOn: 'bg-teal-50 dark:bg-teal-500/15', textOn: 'text-teal-700 dark:text-teal-300',
     chip: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30 hover:bg-teal-700',
   },
   {
     name: 'Hệ thống', icon: Settings, hint: 'Cấu hình, nhật ký và tính năng',
-    iconIdle: 'bg-slate-100 text-slate-600', iconOn: 'bg-slate-700 text-white shadow-sm shadow-slate-700/30',
-    tileOn: 'bg-slate-100', textOn: 'text-slate-800',
+    iconIdle: 'bg-slate-100 text-slate-600 dark:bg-slate-700/40 dark:text-slate-300', iconOn: 'bg-slate-700 text-white shadow-sm shadow-slate-700/30',
+    tileOn: 'bg-slate-100 dark:bg-slate-700/40', textOn: 'text-slate-800 dark:text-slate-200',
     chip: 'bg-slate-700 text-white shadow-sm shadow-slate-700/30 hover:bg-slate-800',
   },
 ];

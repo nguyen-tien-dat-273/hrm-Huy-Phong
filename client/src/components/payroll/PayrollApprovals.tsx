@@ -167,13 +167,13 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-xl bg-slate-100 p-1">
+        <div className="inline-flex rounded-none bg-slate-100 p-1">
           {([['pending', `Chờ duyệt`, ClipboardCheck], ['history', 'Lịch sử', History]] as const).map(([key, label, Icon]) => (
             <button
               key={key}
               type="button"
               onClick={() => setView(key)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+              className={`inline-flex items-center gap-1.5 rounded-none px-3 py-1.5 text-sm font-semibold transition ${
                 view === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -203,7 +203,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
       </div>
 
       {!canApprove && view === 'pending' && pendingTotal > 0 && (
-        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+        <p className="rounded-none border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           Bạn đang xem với quyền đọc. Chỉ người có chức năng <strong>Phê duyệt lương</strong> được ký.
         </p>
       )}
@@ -211,7 +211,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
       {loading ? (
         <ApprovalListSkeleton />
       ) : shownSchemes.length === 0 && shownRuns.length === 0 ? (
-        <Card>
+        <Card className="!rounded-none">
           <CardContent>
             <p className="py-10 text-center text-sm text-slate-500">
               {view === 'pending' ? 'Không có hồ sơ nào chờ duyệt.' : 'Chưa có lịch sử phê duyệt.'}
@@ -225,7 +225,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
             const total = totals.get(run.id);
             const open = expanded === key;
             return (
-              <Card key={key}>
+              <Card className="!rounded-none" key={key}>
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <button type="button" onClick={() => void toggle(key, 'RUN', run.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
@@ -243,7 +243,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                     </span>
                   </div>
                   {total && (
-                    <div className="grid gap-2 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-4">
+                    <div className="grid gap-2 rounded-none bg-slate-50 p-3 text-xs sm:grid-cols-4">
                       <Stat label="Số phiếu" text={String(total.count)} />
                       <Stat label="Tổng các khoản cộng" text={formatVND(total.gross)} />
                       <Stat label="Tổng các khoản trừ" text={formatVND(total.deductions)} />
@@ -276,7 +276,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
             // Database miễn quy tắc "người trình không tự duyệt" cho Admin/CEO — giao diện khớp theo.
             const ownRequest = request.submitted_by === profile?.id && !isFullAdmin(profile);
             return (
-              <Card key={key}>
+              <Card className="!rounded-none" key={key}>
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <button type="button" onClick={() => void toggle(key, 'SCHEME', request.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
@@ -368,7 +368,7 @@ function PayloadList({ items, componentById, nameOf }: {
 }) {
   if (items.length === 0) return <p className="text-xs text-slate-500">Không có giá trị khai riêng.</p>;
   return (
-    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-xs">
+    <ul className="divide-y divide-slate-100 rounded-none border border-slate-200 text-xs">
       {items.map((item) => (
         <li key={item.component_id} className="flex items-center gap-2 px-3 py-1.5">
           <span className="font-semibold text-slate-700">{componentById.get(item.component_id)?.name ?? '?'}</span>
@@ -404,30 +404,30 @@ function SchemeChanges({ request, data, componentById }: {
       {changes.length === 0 ? (
         <p className="text-xs text-slate-500">Không đổi gì so với cơ chế hiện hành.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[480px] text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="px-3 py-1.5">Nội dung</th>
-                <th className="px-3 py-1.5">Hiện hành</th>
-                <th className="px-3 py-1.5">Đề xuất</th>
+        <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
+          <table className="w-full min-w-[480px] text-xs border-collapse">
+            <thead className="bg-[#fdf2f4] dark:bg-[#201114] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+              <tr className="text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                <th className="px-3.5 py-2.5">Nội dung</th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3.5 py-2.5">Hiện hành</th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3.5 py-2.5">Đề xuất</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
               {changes.map((change) => {
                 const component = componentById.get(change.componentId);
                 return (
-                  <tr key={change.componentId}>
-                    <td className="px-3 py-1.5 font-semibold text-slate-700">
+                  <tr key={change.componentId} className="group hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-colors">
+                    <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">
                       {component?.name ?? '?'}
-                      <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold ${
-                        change.kind === 'ADDED' ? 'bg-emerald-50 text-emerald-700' : change.kind === 'REMOVED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                      <span className={`ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                        change.kind === 'ADDED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : change.kind === 'REMOVED' ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                       }`}>
                         {change.kind === 'ADDED' ? 'MỚI' : change.kind === 'REMOVED' ? 'BỎ' : 'ĐỔI'}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 text-slate-500">{itemText(change.before, nameOf)}</td>
-                    <td className="px-3 py-1.5 font-semibold text-slate-800">{itemText(change.after, nameOf)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-medium text-slate-500 dark:text-slate-400">{itemText(change.before, nameOf)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">{itemText(change.after, nameOf)}</td>
                   </tr>
                 );
               })}

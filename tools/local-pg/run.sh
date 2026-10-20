@@ -21,7 +21,7 @@ for f in 20260921090000_payroll_engine 20260921130000_payroll_settings 202609281
  20261013120000_m06_f0603_payroll_scheme_approval 20261013130000_m06_f0604_payroll_lock_publish \
  20261017100000_m06_f0601_catalog_dmkl 20261017110000_m06_formula_mechanism \
  20261018100000_m06_scheme_apply_direct 20261019100000_m06_unit_mechanism \
- 20261020100000_m06_adjustment_component; do
+ 20261020100000_m06_adjustment_component 20261021100000_m06_intermediate_rows 20261021110000_m06_default_params 20261021120000_m06_fix_default_percent 20261021130000_m06_align_with_payroll_sheets 20261021140000_m06_overtime_per_sheet 20261021150000_m06_late_deduction_input 20261022100000_m06_payslip_layout 20261023100000_m05_kpi_rebuild 20261023110000_m05_kpi_seed_hp 20261024100000_m06_catalog_drop_nature_default 20261025100000_m05_kpi_link_sales_target 20261026100000_m05_kpi_sales_self_confirm; do
   "$BIN/psql.exe" -q -v ON_ERROR_STOP=1 -1 -d $DB -f "$M/$f.sql" >/dev/null 2>"$ROOT/.local-pg/err.txt" || { echo "LỖI ở $f"; grep -v NOTICE "$ROOT/.local-pg/err.txt" | tail -5; exit 1; }
 done
 echo "OK: psql -h localhost -p $PORT -U postgres -d $DB"

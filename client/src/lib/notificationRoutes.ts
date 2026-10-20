@@ -21,7 +21,7 @@ export function notificationRoute(type: string): string {
     case 'payroll_run_submitted':
       return '/admin/payroll/approvals';
     case 'payroll_scheme_reviewed':
-      return '/admin/payroll/schemes';
+      return '/admin/payroll/setup/schemes';
     case 'payroll_run_reviewed':
       return '/admin/payroll';
     case 'payslip_published':
@@ -50,6 +50,11 @@ export function notificationRoute(type: string): string {
     case 'lifecycle_mentor':
     case 'lifecycle_task':
       return '/staff/growth';
+    case 'kpi_reminder':
+    case 'kpi_submitted':
+    case 'kpi_returned':
+    case 'kpi_approved':
+      return '/staff/kpi';
     case 'push_test':
       return '/profile';
     default:

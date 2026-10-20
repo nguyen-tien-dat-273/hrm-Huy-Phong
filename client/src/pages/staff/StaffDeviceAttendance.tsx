@@ -133,7 +133,7 @@ export function StaffDeviceAttendance() {
   if (loadError) return <Card><ErrorState message={loadError} onRetry={() => loadData()} /></Card>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 attendance-module" data-module="attendance">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-extrabold text-slate-900">Chấm công của tôi</h1>
@@ -214,13 +214,25 @@ export function StaffDeviceAttendance() {
         <SummaryCard label="Đã xác nhận" value={summary.approved} hint="Ngày công đã được chốt" />
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4 sm:px-6"><History className="h-5 w-5 text-slate-500" /><div><h2 className="font-display text-lg font-bold text-slate-900">Lịch sử gần đây</h2><p className="text-xs text-slate-500">Dữ liệu 31 ngày gần nhất, mới nhất ở trên.</p></div></div>
-        {records.length === 0 ? <div className="px-5 py-12 text-center text-sm text-slate-500">Chưa có dữ liệu chấm công.</div> : (
-          <div className="divide-y divide-slate-100">{records.map((record) => (
-            <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6">
-              <div className="flex min-w-0 items-center gap-3"><div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500"><Clock className="h-4.5 w-4.5" /></div><div><p className="font-semibold text-slate-800">{formatDate(record.date)}</p><p className="mt-0.5 text-xs text-slate-500">Vào {formatTime(record.check_in_time)}{record.check_out_time ? ` · Ra ${formatTime(record.check_out_time)}` : ' · Thiếu checkout'}</p></div></div>
-              <div className="flex flex-wrap items-center gap-2"><Badge className="bg-slate-100 text-slate-600">{sourceLabel(record)}</Badge><Badge className={record.approved_by_lead ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>{record.approved_by_lead ? 'Đã xác nhận' : 'Chờ đối soát'}</Badge></div>
+      <Card className="overflow-hidden border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+        <div className="flex items-center gap-2 border-b-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-5 py-4 sm:px-6">
+          <History className="h-5 w-5 text-slate-500" />
+          <div>
+            <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Lịch sử gần đây</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Dữ liệu 31 ngày gần nhất, mới nhất ở trên.</p>
+          </div>
+        </div>
+        {records.length === 0 ? <div className="px-5 py-12 text-center text-sm font-semibold text-slate-500">Chưa có dữ liệu chấm công.</div> : (
+          <div className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">{records.map((record) => (
+            <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"><Clock className="h-4.5 w-4.5" /></div>
+                <div>
+                  <p className="font-black text-sm text-slate-900 dark:text-slate-100">{formatDate(record.date)}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400">Vào {formatTime(record.check_in_time)}{record.check_out_time ? ` · Ra ${formatTime(record.check_out_time)}` : ' · Thiếu checkout'}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2"><Badge className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold">{sourceLabel(record)}</Badge><Badge className={record.approved_by_lead ? 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 font-bold' : 'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold'}>{record.approved_by_lead ? 'Đã xác nhận' : 'Chờ đối soát'}</Badge></div>
             </div>
           ))}</div>
         )}
@@ -230,9 +242,9 @@ export function StaffDeviceAttendance() {
 }
 
 function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3"><span className="text-slate-400">{icon}</span><div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="truncate text-sm font-semibold text-slate-700">{value}</p></div></div>;
+  return <div className="flex items-center gap-3 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-3"><span className="text-slate-400">{icon}</span><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p><p className="truncate text-sm font-black text-slate-900 dark:text-slate-100">{value}</p></div></div>;
 }
 
 function SummaryCard({ label, value, hint }: { label: string; value: number; hint: string }) {
-  return <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm"><p className="text-xs font-semibold text-slate-500">{label}</p><p className="mt-1 font-display text-2xl font-extrabold text-slate-900">{value}</p><p className="mt-0.5 text-xs text-slate-400">{hint}</p></div>;
+  return <div className="rounded-2xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p><p className="mt-1 font-display text-2xl font-black text-slate-900 dark:text-slate-100">{value}</p><p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hint}</p></div>;
 }

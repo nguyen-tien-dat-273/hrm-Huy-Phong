@@ -322,18 +322,18 @@ export function StaffLeave() {
         <button
           type="button"
           onClick={() => setSection('attendance')}
-          className={`rounded-2xl border p-4 text-left transition-all ${section === 'attendance' ? 'border-blue-300 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+          className={`rounded-2xl border-2 p-4 text-left transition-all ${section === 'attendance' ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-200 dark:border-blue-500 dark:bg-blue-950/40' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600'}`}
         >
-          <span className="text-sm font-bold text-slate-900">Đi muộn · Về sớm · Làm thêm</span>
-          <span className="mt-1 block text-xs text-slate-500">Báo thời gian phát sinh và theo dõi kết quả duyệt.</span>
+          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Đi muộn · Về sớm · Làm thêm</span>
+          <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Báo thời gian phát sinh và theo dõi kết quả duyệt.</span>
         </button>
         <button
           type="button"
           onClick={() => setSection('leave')}
-          className={`rounded-2xl border p-4 text-left transition-all ${section === 'leave' ? 'border-emerald-300 bg-emerald-50 ring-2 ring-emerald-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+          className={`rounded-2xl border-2 p-4 text-left transition-all ${section === 'leave' ? 'border-emerald-400 bg-emerald-50/80 ring-2 ring-emerald-200 dark:border-emerald-500 dark:bg-emerald-950/40' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600'}`}
         >
-          <span className="text-sm font-bold text-slate-900">Nghỉ phép · Hủy phép</span>
-          <span className="mt-1 block text-xs text-slate-500">Xem quỹ phép, gửi đơn nghỉ hoặc xin hủy lịch đã duyệt.</span>
+          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Nghỉ phép · Hủy phép</span>
+          <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Xem quỹ phép, gửi đơn nghỉ hoặc xin hủy lịch đã duyệt.</span>
         </button>
       </div>
 
@@ -343,13 +343,13 @@ export function StaffLeave() {
       <>
 
       {/* ---- Quỹ phép năm ------------------------------------------------- */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden border-2 border-slate-300 dark:border-slate-700 shadow-sm">
         <div className="h-1 bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500" />
         <CardContent>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-600"><Sparkles className="h-4 w-4 text-emerald-500" />Quỹ phép năm</p>
-              <p className="font-display text-4xl font-extrabold text-slate-800 mt-1">
+              <p className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300"><Sparkles className="h-4 w-4 text-emerald-500" />Quỹ phép năm</p>
+              <p className="font-display text-4xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">
                 {balance.remaining}
                 <span className="text-lg font-semibold text-slate-400"> / {balance.quota} ngày</span>
               </p>
@@ -379,11 +379,11 @@ export function StaffLeave() {
             <span className="rounded-xl bg-slate-100 px-3 py-2 font-medium text-slate-600"><span className="mb-1 block h-2 w-2 rounded-full bg-slate-300" />Còn lại <strong className="block text-base">{balance.remaining}</strong></span>
           </div>
           {ledger.length > 0 && (
-            <div className="mt-4 border-t border-slate-100 pt-3">
-              <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-600"><History className="h-3.5 w-3.5" />Phát sinh gần nhất</p>
+            <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-3">
+              <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300"><History className="h-3.5 w-3.5" />Phát sinh gần nhất</p>
               <div className="flex flex-wrap gap-2">
                 {ledger.slice(0, 4).map((entry) => (
-                  <span key={entry.id} className="rounded-lg bg-slate-50 px-2.5 py-1 text-xs text-slate-600">
+                  <span key={entry.id} className="rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
                     {entry.note || entry.entry_type}: <strong className={Number(entry.days) > 0 ? 'text-emerald-700' : 'text-red-600'}>{Number(entry.days) > 0 ? '+' : ''}{Number(entry.days)}</strong>
                   </span>
                 ))}
@@ -394,14 +394,14 @@ export function StaffLeave() {
       </Card>
 
       {/* ---- Danh sách đơn ------------------------------------------------- */}
-      <Card>
+      <Card className="border-2 border-slate-300 dark:border-slate-700 shadow-sm">
         <CardContent className="p-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-300 dark:border-slate-700 px-5 py-4 sm:px-6">
             <div>
-              <h2 className="font-display text-lg font-bold text-slate-900">Đơn nghỉ phép</h2>
+              <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Đơn nghỉ phép</h2>
               <p className="mt-0.5 text-xs text-slate-500">Theo dõi trạng thái duyệt và xử lý yêu cầu.</p>
             </div>
-            {!loading && requests.length > 0 && <Badge className="bg-slate-100 text-slate-600">{requests.length} đơn</Badge>}
+            {!loading && requests.length > 0 && <Badge className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold border border-slate-300 dark:border-slate-700">{requests.length} đơn</Badge>}
           </div>
           {loading ? (
             <div className="p-5 space-y-3">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
@@ -415,35 +415,35 @@ export function StaffLeave() {
               action={<Button onClick={openCreate}><Plus className="w-4 h-4" />Xin nghỉ phép</Button>}
             />
           ) : (
-            <div className="divide-y divide-slate-50">
+            <div className="divide-y divide-slate-300 dark:divide-slate-700">
               {requests.map((request) => {
                 const type = LEAVE_TYPE_CONFIG[request.leave_type];
                 const status = leaveStatusLabel(request);
                 const cancellation = cancellations.find((item) => item.leave_request_id === request.id);
                 return (
-                  <div key={request.id} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50/70 transition-colors">
+                  <div key={request.id} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${type.dot}`} />
 
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <Badge className={type.color}>{type.label}</Badge>
-                        <Badge className={request.is_cancelled ? 'bg-slate-100 text-slate-600' : status.color}>{request.is_cancelled ? 'Đã hủy' : status.label}</Badge>
-                        {cancellation?.status === 'pending' && <Badge className="bg-amber-100 text-amber-700">Chờ duyệt hủy</Badge>}
-                        {cancellation?.status === 'rejected' && <Badge className="bg-red-100 text-red-700">Không duyệt hủy</Badge>}
-                        <span className="text-xs font-medium text-slate-500">{Number(request.days)} ngày</span>
+                        <Badge className={`${type.color} font-bold`}>{type.label}</Badge>
+                        <Badge className={request.is_cancelled ? 'bg-slate-100 text-slate-600 font-bold' : `${status.color} font-bold`}>{request.is_cancelled ? 'Đã hủy' : status.label}</Badge>
+                        {cancellation?.status === 'pending' && <Badge className="bg-amber-100 text-amber-700 font-bold">Chờ duyệt hủy</Badge>}
+                        {cancellation?.status === 'rejected' && <Badge className="bg-red-100 text-red-700 font-bold">Không duyệt hủy</Badge>}
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-400">{Number(request.days)} ngày</span>
                       </div>
-                      <p className="text-sm text-slate-700">
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100">
                         {formatDate(request.start_date)} → {formatDate(request.end_date)}
                       </p>
-                      {request.reason && <p className="text-xs text-slate-500 mt-0.5">{request.reason}</p>}
+                      {request.reason && <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{request.reason}</p>}
                       {request.status === 'pending' && request.approval_stage === 'HR' && (
-                        <p className="text-xs text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg mt-1.5 flex items-center gap-1.5 font-medium w-fit">
+                        <p className="text-xs text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1 rounded-lg mt-1.5 flex items-center gap-1.5 font-bold w-fit">
                           <Sparkles className="w-3.5 h-3.5 flex-shrink-0 text-indigo-600" />
                           Đã qua duyệt của quản lý trực tiếp · Đang chờ Nhân sự/HR chốt
                         </p>
                       )}
                       {request.status === 'rejected' && request.reason_reject && (
-                        <p className="text-xs text-red-600 mt-1 flex items-start gap-1.5">
+                        <p className="text-xs text-red-600 font-semibold mt-1 flex items-start gap-1.5">
                           <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
                           Lý do từ chối: {request.reason_reject}
                         </p>

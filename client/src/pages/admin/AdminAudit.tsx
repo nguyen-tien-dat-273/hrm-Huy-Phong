@@ -14,7 +14,6 @@ import {
   ClipboardList, Coins, Search, ShieldAlert, ShieldCheck, SlidersHorizontal, UserCog, UserX,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
-import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -217,23 +216,22 @@ export function AdminAudit() {
                   icon: <ClipboardList className="w-3.5 h-3.5" />,
                 };
                 return (
-                  <div key={log.id} className="flex flex-wrap items-start gap-3 px-5 py-4 hover:bg-slate-50/70 transition-colors">
-                    <Avatar name={log.actor_name || '?'} size="sm" />
+                  <div key={log.id} className="flex flex-wrap items-start gap-2.5 px-3 py-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors text-xs">
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <Badge className={cfg.color}>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                        <Badge className={`${cfg.color} text-[10px] px-1.5 py-0`}>
                           <span className="inline-flex items-center gap-1">{cfg.icon}{cfg.label}</span>
                         </Badge>
-                        <span className="text-sm font-medium text-slate-800">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                           {log.actor_name || 'Không rõ'}
                         </span>
                         {log.target_name && log.target_user_id !== log.actor_id && (
-                          <span className="text-xs text-slate-400">→ {log.target_name}</span>
+                          <span className="text-[11px] text-slate-400">→ {log.target_name}</span>
                         )}
                       </div>
-                      <p className="text-sm text-slate-600 break-words">{log.summary}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 break-words">{log.summary}</p>
                     </div>
-                    <span className="text-xs text-slate-400 whitespace-nowrap">
+                    <span className="text-[11px] text-slate-400 whitespace-nowrap">
                       {formatDateTime(log.created_at)}
                     </span>
                   </div>

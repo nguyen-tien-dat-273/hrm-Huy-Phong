@@ -13,10 +13,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Check, CheckCircle2, Copy, FlaskConical, Layers, Lock, Pencil, Plus, Save, Search, Settings2,
-  Table2, Trash2, TriangleAlert,
+  ArrowLeft, Check, Copy, Layers, Lock, LockOpen, Pencil, Plus, Save, Search,
+  Table2, Trash2, TriangleAlert, X,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
@@ -28,7 +28,7 @@ import { formatVND, getTodayString } from '@/lib/utils';
 import { stripLeadingZeros } from '@/lib/numericFocus';
 import { referencedCodes, referencedFunctions } from '@/lib/formulaTokens';
 import {
-  codeFromName, copyVersion, deleteParamVersion, firstEditableMonth, newTableId, paramsOf, saveParamVersion,
+  codeFromName, copyVersion, deleteParamVersion, duplicateTable, firstEditableMonth, newTableId, paramsOf, saveParamVersion,
   validateParamVersion,
   type ListParamTable, type NetRoundingMode, type NetRoundingUnit, type ParamDef, type ParamTable,
   type PayrollParamVersion, type TierParamTable,
@@ -39,6 +39,51 @@ import {
 } from '@/lib/payrollVariables';
 import type { PayrollWorkspace } from '@/lib/payrollData';
 
+/**
+ * Bảng mẫu để khỏi gõ lại từ đầu — chỉ là điểm xuất phát: thêm vào bộ đang mở,
+ * kế toán xem lại con số theo quy định hiện hành rồi mới lưu.
+ */
+type TableTemplate =
+  | { name: string; note: string; kind: 'LIST'; params: Array<Pick<ParamDef, 'name' | 'type' | 'unit' | 'value'>> }
+  | { name: string; note: string; kind: 'TIER'; mode: 'LOOKUP' | 'PROGRESSIVE'; inputLabel: string; unit: ParamUnit; rows: Array<{ from: number; value: number }> };
+
+const TABLE_TEMPLATES: readonly TableTemplate[] = [
+  {
+    name: 'Bảo hiểm', note: 'Tỷ lệ đóng trên lương đóng bảo hiểm', kind: 'LIST',
+    params: [
+      { name: 'Tỷ lệ BHXH người lao động', type: 'RATE', unit: '%', value: 8 },
+      { name: 'Tỷ lệ BHYT người lao động', type: 'RATE', unit: '%', value: 1.5 },
+      { name: 'Tỷ lệ BHTN người lao động', type: 'RATE', unit: '%', value: 1 },
+      { name: 'Tỷ lệ BHXH doanh nghiệp', type: 'RATE', unit: '%', value: 17.5 },
+      { name: 'Tỷ lệ BHYT doanh nghiệp', type: 'RATE', unit: '%', value: 3 },
+      { name: 'Tỷ lệ BHTN doanh nghiệp', type: 'RATE', unit: '%', value: 1 },
+    ],
+  },
+  {
+    name: 'Giảm trừ gia cảnh', note: 'Trừ trước khi tính thuế TNCN', kind: 'LIST',
+    params: [
+      { name: 'Giảm trừ bản thân', type: 'MONEY', unit: 'VND_THANG', value: 15_500_000 },
+      { name: 'Giảm trừ người phụ thuộc', type: 'MONEY', unit: 'VND_THANG', value: 6_200_000 },
+    ],
+  },
+  {
+    name: 'Biểu thuế TNCN', note: 'Lũy tiến từng phần trên thu nhập tính thuế', kind: 'TIER',
+    mode: 'PROGRESSIVE', inputLabel: 'Thu nhập tính thuế', unit: '%',
+    rows: [
+      { from: 0, value: 5 }, { from: 10_000_000, value: 10 }, { from: 30_000_000, value: 20 },
+      { from: 60_000_000, value: 30 }, { from: 100_000_000, value: 35 },
+    ],
+  },
+  {
+    name: 'Làm thêm giờ', note: 'Hệ số trả lương làm thêm', kind: 'LIST',
+    params: [
+      { name: 'Hệ số làm thêm ngày thường', type: 'RATE', unit: '%', value: 150 },
+      { name: 'Hệ số làm thêm ngày nghỉ tuần', type: 'RATE', unit: '%', value: 200 },
+      { name: 'Hệ số làm thêm ngày lễ', type: 'RATE', unit: '%', value: 300 },
+    ],
+  },
+];
+
 interface PayrollParamsTabProps {
   data: PayrollWorkspace;
   /** Tháng lớn nhất đã khoá lương — bộ hiệu lực từ đó trở về trước bị khoá. */
@@ -47,8 +92,6 @@ interface PayrollParamsTabProps {
   currentMonth: string;
   canManage: boolean;
   onSaved: () => void;
-  /** Mở Chạy thử với bộ đang soạn (chưa cần lưu). */
-  onDryRun: (version: PayrollParamVersion) => void;
 }
 
 const monthLabel = (iso: string) => (iso.startsWith('2000-01') ? 'Bộ gốc' : `${iso.slice(5, 7)}/${iso.slice(0, 4)}`);
@@ -85,7 +128,7 @@ const cloneEditable = (version: PayrollParamVersion): PayrollParamVersion => ({
 });
 
 export function PayrollParamsTab({
-  data, lastClosedMonth, currentMonth, canManage, onSaved, onDryRun,
+  data, lastClosedMonth, currentMonth, canManage, onSaved,
 }: PayrollParamsTabProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -99,8 +142,15 @@ export function PayrollParamsTab({
     () => sorted.find((version) => version.effectiveFrom <= currentMonth)?.id ?? null,
     [sorted, currentMonth],
   );
+  const minMonth = firstEditableMonth(lastClosedMonth, getTodayString());
+  const reserved = useMemo(
+    () => new Set([...RESERVED_FORMULA_NAMES, ...data.components.map((component) => component.code)]),
+    [data.components],
+  );
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // openId: bộ đang mở để sửa bảng tham số; null = màn chọn bộ.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [newVersion, setNewVersion] = useState<PayrollParamVersion | null>(null);
   const [draft, setDraft] = useState<PayrollParamVersion | null>(null);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,28 +160,20 @@ export function PayrollParamsTab({
   const [createError, setCreateError] = useState<string | null>(null);
   const [tableQuery, setTableQuery] = useState('');
 
-  // Mở bộ đang áp dụng khi vào màn / khi dữ liệu mới về và người dùng chưa sửa dở.
+  // Nạp bản nháp của bộ đang mở; dữ liệu mới về thì làm mới khi người dùng chưa sửa dở.
   useEffect(() => {
-    if (touched) return;
-    const pick = sorted.find((version) => version.id === selectedId) ?? sorted.find((version) => version.id === activeId) ?? sorted[0];
-    if (pick) {
-      setSelectedId(pick.id);
-      setDraft(cloneEditable(pick));
-    }
-  }, [sorted, activeId, selectedId, touched]);
+    if (!openId || touched) return;
+    const pick = sorted.find((version) => version.id === openId);
+    if (pick) setDraft(cloneEditable(pick));
+    else setOpenId(null);
+  }, [sorted, openId, touched]);
 
-  // Form tạo bảng thuộc về bộ đang soạn — đổi sang bộ khác thì đóng.
-  useEffect(() => { setCreating(null); }, [selectedId]);
+  useEffect(() => { setCreating(null); setTableQuery(''); }, [openId]);
 
-  const reserved = useMemo(
-    () => new Set([...RESERVED_FORMULA_NAMES, ...data.components.map((component) => component.code)]),
-    [data.components],
-  );
   const issues = draft ? validateParamVersion(draft, reserved) : {};
   const issueCount = Object.keys(issues).length;
   const locked = !!draft?.id && !!lastClosedMonth && draft.effectiveFrom <= lastClosedMonth;
   const readOnly = !canManage || locked;
-  const minMonth = firstEditableMonth(lastClosedMonth, getTodayString());
 
   /** Tham số / bảng đang được dùng ở công thức nào — để không xoá nhầm. */
   const usage = useMemo(() => {
@@ -162,17 +204,24 @@ export function PayrollParamsTab({
       : current));
   };
 
-  const select = (version: PayrollParamVersion) => {
-    setTouched(false);
-    setSelectedId(version.id);
-    setDraft(cloneEditable(version));
+  const startNew = () => {
+    const base = sorted[0];
+    setNewVersion(base ? copyVersion(base, minMonth) : blankVersion(minMonth));
   };
 
-  const startNew = () => {
-    const base = draft ?? sorted[0];
-    setTouched(true);
-    setSelectedId(null);
-    setDraft(base ? copyVersion(base, minMonth) : blankVersion(minMonth));
+  const back = async () => {
+    if (touched) {
+      const ok = await confirm({
+        title: 'Bỏ thay đổi chưa lưu?',
+        message: 'Các sửa đổi ở bảng tham số của bộ này chưa được lưu.',
+        confirmLabel: 'Bỏ thay đổi',
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setTouched(false);
+    setDraft(null);
+    setOpenId(null);
   };
 
   const takenCodes = (exclude?: string) => new Set([
@@ -213,98 +262,123 @@ export function PayrollParamsTab({
     setCreating(null);
   };
 
-  const removeTable = async (table: ParamTable) => {
+  /** Thêm một bảng mẫu vào bộ đang mở (chưa lưu). */
+  const addTemplate = (template: TableTemplate) => {
     if (!draft) return;
-    const codes = table.kind === 'LIST' ? table.params.map((param) => param.code) : [table.code];
-    const used = codes.flatMap((code) => [...(usage.get(code) ?? [])]);
-    const ok = await confirm({
-      title: `Xoá bảng “${table.name}”?`,
-      message: used.length > 0
-        ? `Bảng có tham số đang dùng ở: ${[...new Set(used)].slice(0, 6).join('; ')}. Xoá thì các công thức đó báo lỗi cho tới khi sửa.`
-        : 'Bảng và các tham số trong bảng sẽ bị bỏ khỏi bộ tham số này.',
-      confirmLabel: 'Xoá bảng',
-      danger: true,
-    });
-    if (!ok) return;
-    update({ tables: draft.tables.filter((item) => item.id !== table.id) });
+    if (draft.tables.some((table) => table.name.trim().toLowerCase() === template.name.toLowerCase())) {
+      toast(`Bộ này đã có bảng “${template.name}”.`, 'warning');
+      return;
+    }
+    const taken = takenCodes();
+    const id = newTableId();
+    let table: ParamTable;
+    if (template.kind === 'LIST') {
+      const params: ParamDef[] = template.params.map((param) => {
+        const code = codeFromName(param.name, taken, 'THAM_SO');
+        taken.add(code);
+        return { ...param, code, note: null };
+      });
+      table = { id, kind: 'LIST', name: template.name, note: template.note, params };
+    } else {
+      table = {
+        id, kind: 'TIER', name: template.name, note: template.note, code: codeFromName(template.name, taken, 'BANG'),
+        mode: template.mode, inputLabel: template.inputLabel, unit: template.unit, rows: template.rows.map((row) => ({ ...row })),
+      };
+    }
+    update({ tables: [...draft.tables, table] });
+    setTableQuery('');
+    toast(`Đã thêm bảng mẫu “${template.name}” — kiểm tra lại con số theo quy định hiện hành rồi lưu.`, 'success');
   };
 
-  const save = async () => {
+  // Bảng và tham số không xoá, chỉ khoá: công thức cũ vẫn chạy, nhưng không còn gợi ý khi khai công thức mới.
+  const toggleTableLock = (table: ParamTable) => updateTable(table.id, { locked: !table.locked });
+
+  /** Sao chép một bảng trong cùng bộ — dùng lại cấu trúc thay vì gõ lại từ đầu. */
+  const duplicateTableInDraft = (table: ParamTable) => {
+    if (!draft) return;
+    const takenNamesLower = new Set(draft.tables.map((item) => item.name.trim().toLowerCase()));
+    const copy = duplicateTable(table, takenNamesLower, takenCodes());
+    setTouched(true);
+    setDraft({ ...draft, tables: [...draft.tables, copy] });
+    toast('Đã sao chép bảng — kiểm tra lại tên và mã rồi lưu.', 'success');
+  };
+
+  const saveTables = async () => {
     if (!draft) return;
     if (issueCount > 0) {
       toast('Còn ô chưa hợp lệ — sửa các ô đánh dấu đỏ.', 'warning');
       return;
     }
-    const clash = versions.find((version) => version.effectiveFrom === draft.effectiveFrom && version.id !== draft.id);
-    if (clash) {
-      toast(`Đã có bộ tham số hiệu lực từ ${monthLabel(draft.effectiveFrom)} — mở bộ đó để sửa.`, 'warning');
-      return;
-    }
-    const ok = await confirm({
-      title: draft.id ? 'Lưu thay đổi bộ tham số?' : `Lưu bộ tham số mới hiệu lực từ ${monthLabel(draft.effectiveFrom)}?`,
-      message: `Áp dụng cho kỳ lương từ ${monthLabel(draft.effectiveFrom)} cho tới bộ kế tiếp. Kỳ chưa khoá trong khoảng đó tính theo số mới khi chạy lại bảng lương; kỳ đã khoá giữ nguyên.`,
-      confirmLabel: 'Lưu bộ tham số',
-    });
-    if (!ok) return;
     setSaving(true);
-    const { error, id } = await saveParamVersion(draft);
+    const { error } = await saveParamVersion(draft);
     setSaving(false);
     if (error) {
       toast('Lưu thất bại: ' + error, 'error');
       return;
     }
-    toast('Đã lưu bộ tham số lương.', 'success');
+    toast('Đã lưu bảng tham số.', 'success');
     setTouched(false);
-    setSelectedId(id);
     onSaved();
   };
 
-  const remove = async () => {
-    if (!draft?.id) return;
-    const ok = await confirm({
-      title: `Xoá bộ tham số hiệu lực từ ${monthLabel(draft.effectiveFrom)}?`,
-      message: 'Các tháng đang theo bộ này sẽ quay về bộ liền trước. Chỉ xoá được bộ chưa dùng cho kỳ lương đã khoá.',
-      confirmLabel: 'Xoá bộ tham số',
-      danger: true,
-    });
-    if (!ok) return;
-    const error = await deleteParamVersion(draft.id);
-    if (error) {
-      toast('Xoá thất bại: ' + error, 'error');
-      return;
-    }
-    toast('Đã xoá bộ tham số.', 'success');
-    setTouched(false);
-    setSelectedId(null);
-    onSaved();
-  };
-
-  if (sorted.length === 0 && !draft) {
+  // ------------------------------------------------------------------ Chọn bộ
+  if (!openId) {
     return (
-      <Card>
-        <CardContent className="space-y-3 py-10 text-center">
-          <Table2 className="mx-auto h-10 w-10 text-slate-300" />
-          <p className="text-sm text-slate-500">Chưa có bộ tham số lương nào.</p>
-          {canManage && (
-            <Button onClick={startNew}><Plus className="h-4 w-4" /> Tạo bộ tham số đầu tiên</Button>
-          )}
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {newVersion && (
+          <VersionCard
+            key="new"
+            version={newVersion}
+            isNew
+            isActive={false}
+            locked={false}
+            canManage={canManage}
+            minMonth={minMonth}
+            reserved={reserved}
+            data={data}
+            versions={versions}
+            canDelete={false}
+            onOpen={() => undefined}
+            onDiscard={() => setNewVersion(null)}
+            onSaved={() => { setNewVersion(null); onSaved(); }}
+          />
+        )}
+        {sorted.length === 0 && !newVersion && (
+          <Card className="!rounded-none">
+            <CardContent className="space-y-3 py-10 text-center">
+              <Table2 className="mx-auto h-10 w-10 text-slate-300" />
+              <p className="text-sm text-slate-500">Chưa có bộ tham số lương nào.</p>
+            </CardContent>
+          </Card>
+        )}
+        {sorted.map((version) => (
+          <VersionCard
+            key={`${version.id}:${version.updatedAt}`}
+            version={version}
+            isActive={version.id === activeId}
+            locked={!!lastClosedMonth && version.effectiveFrom <= lastClosedMonth}
+            canManage={canManage}
+            minMonth={minMonth}
+            reserved={reserved}
+            data={data}
+            versions={versions}
+            canDelete={sorted.length > 1}
+            onOpen={() => { setTouched(false); setOpenId(version.id); }}
+            onSaved={onSaved}
+          />
+        ))}
+        {canManage && !newVersion && (
+          <button type="button" onClick={startNew}
+            className="flex w-full flex-col items-center justify-center gap-1 rounded-none border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/40 py-8 text-sm font-semibold text-slate-500 dark:text-slate-400 transition hover:border-indigo-400 hover:text-indigo-600">
+            <Plus className="h-6 w-6" /> Thêm bộ
+          </button>
+        )}
+      </div>
     );
   }
-  if (!draft) return null;
 
-  const versionOptionLabel = (version: PayrollParamVersion) => {
-    const isLocked = !!lastClosedMonth && version.effectiveFrom <= lastClosedMonth;
-    return [
-      `Từ ${monthLabel(version.effectiveFrom)}`,
-      version.label,
-      version.id === activeId ? 'đang áp dụng' : null,
-      isLocked ? 'đã dùng cho kỳ chốt' : null,
-    ].filter(Boolean).join(' · ');
-  };
-  const unsavedNew = touched && !draft.id;
-  const activeVersion = sorted.find((version) => version.id === activeId) ?? null;
+  // ------------------------------------------------- Trong một bộ: các bảng
+  if (!draft) return null;
 
   // Lọc theo tên bảng, ghi chú hoặc tên tham số; bảng chưa đặt tên luôn hiện để còn nhập.
   const needle = tableQuery.trim().toLowerCase();
@@ -321,150 +395,20 @@ export function PayrollParamsTab({
 
   return (
     <div className={`space-y-4 ${touched ? 'pb-24' : ''}`}>
-      {/* --- 1. Bộ tham số đang áp dụng + chọn bộ, hiệu lực, thao tác --- */}
-      <section className="overflow-hidden rounded-2xl border border-indigo-200 bg-white shadow-sm">
-        <div className="flex flex-wrap items-center gap-4 bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-500 px-5 py-4 text-white">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25">
-            <Table2 className="h-6 w-6" />
+      <div className="flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="outline" onClick={() => void back()}>
+          <ArrowLeft className="h-3.5 w-3.5" /> Danh sách bộ
+        </Button>
+        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          Từ {monthLabel(draft.effectiveFrom)}{draft.label ? ` · ${draft.label}` : ''}
+        </p>
+        {locked && (
+          <span className="inline-flex items-center gap-1.5 rounded-none bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+            <Lock className="h-3.5 w-3.5" /> Đã dùng cho kỳ chốt — chỉ xem
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-100">
-              Bộ tham số đang áp dụng · kỳ lương {monthLabel(currentMonth)}
-            </p>
-            <p className="mt-0.5 truncate text-xl font-extrabold">
-              {activeVersion
-                ? `Từ ${monthLabel(activeVersion.effectiveFrom)}${activeVersion.label ? ` · ${activeVersion.label}` : ''}`
-                : 'Chưa có bộ nào hiệu lực'}
-            </p>
-          </div>
-          {unsavedNew ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400 px-3 py-1.5 text-xs font-bold text-amber-950">
-              Bộ mới chưa lưu · từ {monthLabel(draft.effectiveFrom)}
-            </span>
-          ) : draft.id === activeId ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold ring-1 ring-white/30">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Đang xem bộ này
-            </span>
-          ) : activeVersion ? (
-            <button
-              type="button"
-              onClick={() => select(activeVersion)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-50"
-            >
-              Về bộ đang áp dụng
-            </button>
-          ) : null}
-        </div>
+        )}
+      </div>
 
-        <div className="space-y-4 p-5">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="w-full sm:w-72">
-              <Dropdown
-                label="Bộ đang xem"
-                value={unsavedNew ? '__new' : (selectedId ?? '')}
-                options={[
-                  ...(unsavedNew ? [{ value: '__new', label: `Bộ mới (chưa lưu) · từ ${monthLabel(draft.effectiveFrom)}` }] : []),
-                  ...sorted.map((version) => ({ value: version.id ?? '', label: versionOptionLabel(version) })),
-                ]}
-                onChange={(value) => {
-                  const picked = sorted.find((version) => version.id === value);
-                  if (picked) select(picked);
-                }}
-              />
-            </div>
-            <div className="w-full sm:w-44">
-              <Input
-                label="Áp dụng từ tháng"
-                required
-                type="month"
-                value={draft.effectiveFrom.slice(0, 7)}
-                min={draft.id ? undefined : minMonth.slice(0, 7)}
-                disabled={readOnly || (!!draft.id && draft.effectiveFrom.startsWith('2000-01'))}
-                onChange={(event) => update({ effectiveFrom: event.target.value ? `${event.target.value}-01` : '' })}
-                error={issues['general.effectiveFrom']}
-              />
-            </div>
-            <div className="min-w-[10rem] flex-1">
-              <Input label="Tên bộ" value={draft.label ?? ''} disabled={!canManage}
-                onChange={(event) => update({ label: event.target.value })} placeholder="VD: Chính sách 2026" />
-            </div>
-            <div className="min-w-[12rem] flex-[1.4]">
-              <Input label="Căn cứ" value={draft.note ?? ''} disabled={!canManage}
-                onChange={(event) => update({ note: event.target.value })} placeholder="VD: Quyết định số 05/QĐ" />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
-            <div className="flex min-w-0 items-center gap-2 text-xs">
-              {locked && (
-                <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 font-semibold text-slate-600">
-                  <Lock className="h-3.5 w-3.5" /> Đã dùng cho kỳ chốt — chỉ xem
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {canManage && (
-                <Button size="sm" variant="outline" onClick={startNew}>
-                  <Copy className="h-3.5 w-3.5" /> Thêm bộ mới
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={() => onDryRun(draft)} disabled={issueCount > 0}>
-                <FlaskConical className="h-3.5 w-3.5" /> Chạy thử
-              </Button>
-              {canManage && draft.id && !locked && sorted.length > 1 && (
-                <Button size="sm" variant="ghost" onClick={() => void remove()} className="text-red-600 hover:bg-red-50">
-                  <Trash2 className="h-3.5 w-3.5" /> Xoá bộ
-                </Button>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* --- 2. Thiết lập chung --- */}
-      <Card>
-        <CardHeader><CardTitle className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-slate-500" /> Thiết lập chung</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <NumberField label="Công chuẩn mặc định (ngày)" required value={draft.standardWorkDays} step={0.5}
-              disabled={readOnly} error={issues['general.standardWorkDays']} onChange={(v) => update({ standardWorkDays: v })} />
-            <Dropdown label="Làm tròn thực lĩnh tới" value={String(draft.netRoundingUnit)} disabled={readOnly}
-              options={ROUNDING_UNITS.map((unit) => ({ value: String(unit), label: unit === 1 ? 'Không làm tròn' : formatVND(unit) }))}
-              onChange={(value) => update({ netRoundingUnit: Number(value) as NetRoundingUnit })} />
-            <Dropdown label="Cách làm tròn" value={draft.netRoundingMode} disabled={readOnly || draft.netRoundingUnit === 1}
-              options={[
-                { value: 'NEAREST', label: 'Gần nhất' },
-                { value: 'DOWN', label: 'Luôn xuống' },
-                { value: 'UP', label: 'Luôn lên' },
-              ]}
-              onChange={(value) => update({ netRoundingMode: value as NetRoundingMode })} />
-          </div>
-          <div>
-            <p className="mb-1.5 text-sm font-semibold text-slate-700">Mức sàn khi trình cơ chế</p>
-            <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
-              <Dropdown aria-label="Đầu mục cần kiểm tra" searchable value={draft.floorComponentCode ?? ''} disabled={readOnly}
-                options={[
-                  { value: '', label: 'Không kiểm tra' },
-                  ...data.components.filter((component) => component.is_active)
-                    .map((component) => ({ value: component.code, label: component.name })),
-                ]}
-                onChange={(value) => update({ floorComponentCode: value || null })} />
-              <span className="text-center text-sm font-bold text-slate-400">≥</span>
-              <Dropdown aria-label="Tham số làm mức sàn" searchable value={draft.floorParamCode ?? ''} disabled={readOnly}
-                options={[
-                  { value: '', label: 'Chọn tham số…' },
-                  ...paramsOf(draft).map((param) => ({
-                    value: param.code, label: param.name, detail: formatWithUnit(param.value, param.unit),
-                  })),
-                ]}
-                onChange={(value) => update({ floorParamCode: value || null })} />
-            </div>
-            {issues['general.floor'] && <p className="mt-1.5 text-xs font-medium text-red-600">{issues['general.floor']}</p>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* --- 3. Các bảng tham số --- */}
       {(!readOnly || draft.tables.length > 0) && (
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[14rem] flex-1 sm:max-w-sm">
@@ -475,11 +419,23 @@ export function PayrollParamsTab({
               onChange={(event) => setTableQuery(event.target.value)}
               placeholder="Tìm bảng hoặc tham số…"
               aria-label="Tìm bảng tham số"
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+              className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 pl-9 pr-3 text-sm outline-none transition hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
             />
           </div>
           {!readOnly && (
             <div className="ml-auto flex flex-wrap justify-end gap-2">
+              <select
+                value=""
+                onChange={(event) => {
+                  const template = TABLE_TEMPLATES.find((item) => item.name === event.target.value);
+                  if (template) addTemplate(template);
+                }}
+                aria-label="Thêm bảng từ mẫu"
+                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
+              >
+                <option value="">Tạo từ mẫu…</option>
+                {TABLE_TEMPLATES.map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}
+              </select>
               <Button size="sm" variant="outline" onClick={() => openCreate('LIST')}>
                 <Plus className="h-3.5 w-3.5" /> Bảng tham số
               </Button>
@@ -492,73 +448,66 @@ export function PayrollParamsTab({
       )}
 
       {draft.tables.length === 0 && (
-        <Card><CardContent className="py-10 text-center text-sm text-slate-500">Bộ này chưa có bảng nào.</CardContent></Card>
+        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-500">Bộ này chưa có bảng nào.</CardContent></Card>
       )}
       {draft.tables.length > 0 && visibleTables.length === 0 && (
-        <Card><CardContent className="py-10 text-center text-sm text-slate-500">Không có bảng nào khớp “{tableQuery.trim()}”.</CardContent></Card>
+        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-500">Không có bảng nào khớp “{tableQuery.trim()}”.</CardContent></Card>
       )}
-      {visibleTables.map((table) => (table.kind === 'LIST' ? (
-        <ListTableEditor
-          key={table.id}
-          table={table}
-          readOnly={readOnly}
-          issues={issues}
-          usage={usage}
-          taken={(exclude) => takenCodes(exclude)}
-          onChange={(patch) => updateTable(table.id, patch)}
-          onRemove={() => void removeTable(table)}
-          confirmRemoveParam={async (param) => {
-            const used = [...(usage.get(param.code) ?? [])];
-            if (used.length === 0) return true;
-            return confirm({
-              title: `Xoá tham số “${param.name}”?`,
-              message: `Đang dùng ở: ${used.slice(0, 6).join('; ')}. Xoá thì các công thức đó báo lỗi cho tới khi sửa.`,
-              confirmLabel: 'Vẫn xoá',
-              danger: true,
-            });
-          }}
-        />
-      ) : (
-        <TierTableEditor
-          key={table.id}
-          table={table}
-          readOnly={readOnly}
-          issue={issues[`table.${table.id}`]}
-          usage={[...(usage.get(table.code) ?? [])]}
-          taken={takenCodes(table.code)}
-          onChange={(patch) => updateTable(table.id, patch)}
-          onRemove={() => void removeTable(table)}
-        />
-      )))}
+      <div className="space-y-4">
+        {visibleTables.map((table) => (table.kind === 'LIST' ? (
+          <ListTableEditor
+            key={table.id}
+            table={table}
+            readOnly={readOnly}
+            issues={issues}
+            usage={usage}
+            taken={(exclude) => takenCodes(exclude)}
+            onChange={(patch) => updateTable(table.id, patch)}
+            onToggleLock={() => toggleTableLock(table)}
+            onDuplicate={() => duplicateTableInDraft(table)}
+          />
+        ) : (
+          <TierTableEditor
+            key={table.id}
+            table={table}
+            readOnly={readOnly}
+            issue={issues[`table.${table.id}`]}
+            usage={[...(usage.get(table.code) ?? [])]}
+            taken={takenCodes(table.code)}
+            onChange={(patch) => updateTable(table.id, patch)}
+            onToggleLock={() => toggleTableLock(table)}
+            onDuplicate={() => duplicateTableInDraft(table)}
+          />
+        )))}
+      </div>
 
-      {/* --- 4. Tạo bảng --- */}
-      <Modal
+      <Modal square
         open={!!creating && !readOnly}
         onClose={() => setCreating(null)}
         title={creating === 'TIER' ? 'Tạo bảng bậc thang' : 'Tạo bảng tham số'}
         size="md"
       >
         <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); createTable(); }} noValidate>
-          <Input label="Tên bảng" required autoFocus value={createForm.name}
+          <Input className="!rounded-none" label="Tên bảng" required autoFocus value={createForm.name}
             placeholder={creating === 'TIER' ? 'VD: Biểu thuế lũy tiến' : 'VD: Bảo hiểm'}
             error={createError ?? undefined}
             onChange={(event) => { setCreateError(null); setCreateForm({ ...createForm, name: event.target.value }); }} />
-          <Input label="Ghi chú" value={createForm.note} placeholder="Không bắt buộc"
+          <Input className="!rounded-none" label="Ghi chú" value={createForm.note} placeholder="Không bắt buộc"
             onChange={(event) => setCreateForm({ ...createForm, note: event.target.value })} />
           {creating === 'TIER' && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Dropdown label="Cách tính" value={createForm.mode} options={TIER_MODE_OPTIONS}
+              <Dropdown square label="Cách tính" value={createForm.mode} options={TIER_MODE_OPTIONS}
                 onChange={(value) => setCreateForm({
                   ...createForm,
                   mode: value as TierParamTable['mode'],
                   ...(value === 'PROGRESSIVE' ? { unit: '%' as ParamUnit } : {}),
                 })} />
               {createForm.mode === 'LOOKUP' && (
-                <Dropdown label="Đơn vị của mức" value={createForm.unit} options={TIER_UNIT_OPTIONS}
+                <Dropdown square label="Đơn vị của mức" value={createForm.unit} options={TIER_UNIT_OPTIONS}
                   onChange={(value) => setCreateForm({ ...createForm, unit: value as ParamUnit })} />
               )}
               <div className="sm:col-span-2">
-                <Input label="Giá trị đưa vào tra" value={createForm.inputLabel}
+                <Input className="!rounded-none" label="Giá trị đưa vào tra" value={createForm.inputLabel}
                   placeholder={createForm.mode === 'PROGRESSIVE' ? 'VD: Thu nhập tính thuế' : 'VD: Tỷ lệ đạt doanh số (%)'}
                   onChange={(event) => setCreateForm({ ...createForm, inputLabel: event.target.value })} />
               </div>
@@ -573,20 +522,20 @@ export function PayrollParamsTab({
 
       {/* --- Thanh lưu: chỉ hiện khi có thay đổi --- */}
       {touched && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur-md print:hidden">
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-4 py-3 shadow-lg backdrop-blur-md print:hidden">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 lg:pl-64">
-            <p className={`flex items-center gap-1.5 text-sm ${issueCount > 0 ? 'text-red-600' : 'text-slate-600'}`}>
+            <p className={`flex items-center gap-1.5 text-sm ${issueCount > 0 ? 'text-red-600 dark:text-red-400' : 'text-slate-600 dark:text-slate-300'}`}>
               {issueCount > 0
                 ? <><TriangleAlert className="h-4 w-4" /> {issueCount} ô chưa hợp lệ</>
-                : <><Save className="h-4 w-4" /> Có thay đổi chưa lưu — bộ hiệu lực từ {monthLabel(draft.effectiveFrom)}</>}
+                : <><Save className="h-4 w-4" /> Có thay đổi chưa lưu</>}
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => { setTouched(false); setSelectedId(selectedId ?? activeId); }} disabled={saving}>
+              <Button variant="secondary" onClick={() => setTouched(false)} disabled={saving}>
                 Huỷ thay đổi
               </Button>
               {canManage && !locked && (
-                <Button onClick={() => void save()} disabled={saving || issueCount > 0}>
-                  <Save className="h-4 w-4" /> {saving ? 'Đang lưu…' : 'Lưu bộ tham số'}
+                <Button onClick={() => void saveTables()} disabled={saving || issueCount > 0}>
+                  <Save className="h-4 w-4" /> {saving ? 'Đang lưu…' : 'Lưu bảng tham số'}
                 </Button>
               )}
             </div>
@@ -597,8 +546,253 @@ export function PayrollParamsTab({
   );
 }
 
+type GeneralForm = Pick<PayrollParamVersion,
+  'effectiveFrom' | 'label' | 'note' | 'standardWorkDays' | 'netRoundingUnit' | 'netRoundingMode' | 'floorComponentCode' | 'floorParamCode'>;
+
+const pickGeneral = (version: PayrollParamVersion): GeneralForm => ({
+  effectiveFrom: version.effectiveFrom, label: version.label, note: version.note,
+  standardWorkDays: version.standardWorkDays, netRoundingUnit: version.netRoundingUnit,
+  netRoundingMode: version.netRoundingMode, floorComponentCode: version.floorComponentCode,
+  floorParamCode: version.floorParamCode,
+});
+
+/** Một bộ ở màn chọn bộ: tên, ngày áp dụng, thiết lập chung sửa ngay tại đây. */
+function VersionCard({
+  version, isNew = false, isActive, locked, canManage, minMonth, reserved, data, versions, canDelete,
+  onOpen, onDiscard, onSaved,
+}: {
+  version: PayrollParamVersion;
+  isNew?: boolean;
+  isActive: boolean;
+  locked: boolean;
+  canManage: boolean;
+  minMonth: string;
+  reserved: Set<string>;
+  data: PayrollWorkspace;
+  versions: PayrollParamVersion[];
+  canDelete: boolean;
+  onOpen: () => void;
+  onDiscard?: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const [form, setForm] = useState<GeneralForm>(() => pickGeneral(version));
+  const [saving, setSaving] = useState(false);
+  const readOnly = !canManage || locked;
+  const dirty = isNew || JSON.stringify(form) !== JSON.stringify(pickGeneral(version));
+  const merged: PayrollParamVersion = { ...version, ...form };
+  const issues = validateParamVersion(merged, reserved);
+  const set = (patch: Partial<GeneralForm>) => setForm((current) => ({ ...current, ...patch }));
+
+  const save = async () => {
+    if (Object.keys(issues).length > 0) {
+      toast('Còn ô chưa hợp lệ — sửa các ô đánh dấu đỏ.', 'warning');
+      return;
+    }
+    const clash = versions.find((item) => item.effectiveFrom === merged.effectiveFrom && item.id !== merged.id);
+    if (clash) {
+      toast(`Đã có bộ tham số hiệu lực từ ${monthLabel(merged.effectiveFrom)}.`, 'warning');
+      return;
+    }
+    const ok = await confirm({
+      title: isNew ? `Lưu bộ tham số mới hiệu lực từ ${monthLabel(merged.effectiveFrom)}?` : 'Lưu thay đổi bộ tham số?',
+      message: `Áp dụng cho kỳ lương từ ${monthLabel(merged.effectiveFrom)} cho tới bộ kế tiếp. Kỳ chưa khoá trong khoảng đó tính theo số mới khi chạy lại bảng lương; kỳ đã khoá giữ nguyên.`,
+      confirmLabel: 'Lưu bộ tham số',
+    });
+    if (!ok) return;
+    setSaving(true);
+    const { error } = await saveParamVersion(merged);
+    setSaving(false);
+    if (error) {
+      toast('Lưu thất bại: ' + error, 'error');
+      return;
+    }
+    toast('Đã lưu bộ tham số lương.', 'success');
+    onSaved();
+  };
+
+  const remove = async () => {
+    if (!version.id) return;
+    const ok = await confirm({
+      title: `Xoá bộ tham số hiệu lực từ ${monthLabel(version.effectiveFrom)}?`,
+      message: 'Các tháng đang theo bộ này sẽ quay về bộ liền trước. Chỉ xoá được bộ chưa dùng cho kỳ lương đã khoá.',
+      confirmLabel: 'Xoá bộ tham số',
+      danger: true,
+    });
+    if (!ok) return;
+    const error = await deleteParamVersion(version.id);
+    if (error) {
+      toast('Xoá thất bại: ' + error, 'error');
+      return;
+    }
+    toast('Đã xoá bộ tham số.', 'success');
+    onSaved();
+  };
+
+  const [editHead, setEditHead] = useState(isNew);
+  const [editGeneral, setEditGeneral] = useState(isNew);
+  const editing = editHead || editGeneral;
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  const pencil = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400';
+  const floorComponent = data.components.find((component) => component.code === form.floorComponentCode)?.name;
+  const floorParam = paramsOf(version).find((param) => param.code === form.floorParamCode)?.name;
+  const summary = [
+    `Công chuẩn ${form.standardWorkDays} ngày`,
+    form.netRoundingUnit === 1
+      ? 'Không làm tròn thực lĩnh'
+      : `Làm tròn thực lĩnh tới ${formatVND(form.netRoundingUnit)} (${{ NEAREST: 'gần nhất', DOWN: 'luôn xuống', UP: 'luôn lên' }[form.netRoundingMode]})`,
+    floorComponent && floorParam ? `Mức sàn: ${floorComponent} ≥ ${floorParam}` : null,
+  ].filter(Boolean);
+
+  return (
+    <section
+      role={editing ? undefined : 'button'}
+      tabIndex={editing ? undefined : 0}
+      onClick={editing || isNew ? undefined : onOpen}
+      onKeyDown={editing || isNew ? undefined : (event) => { if (event.key === 'Enter') onOpen(); }}
+      className={`space-y-3 rounded-none border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm ${editing || isNew ? '' : 'cursor-pointer transition hover:border-indigo-300 dark:hover:border-slate-700 hover:shadow-md'}`}
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2" onClick={editHead ? stop : undefined}>
+        {editHead ? (
+          <>
+            <div className="w-56">
+              <Input className="!rounded-none" aria-label="Tên bộ" autoFocus value={form.label ?? ''} disabled={!canManage}
+                onChange={(event) => set({ label: event.target.value })} placeholder="Tên bộ, VD: Chính sách 2026" />
+            </div>
+            <div className="w-44">
+              <Input className="!rounded-none"
+                aria-label="Áp dụng từ tháng"
+                type="month"
+                value={form.effectiveFrom.slice(0, 7)}
+                min={version.id ? undefined : minMonth.slice(0, 7)}
+                disabled={readOnly || (!!version.id && version.effectiveFrom.startsWith('2000-01'))}
+                onChange={(event) => set({ effectiveFrom: event.target.value ? `${event.target.value}-01` : '' })}
+                error={issues['general.effectiveFrom']}
+              />
+            </div>
+            {!isNew && (
+              <button type="button" className={pencil} aria-label="Xong" title="Xong" onClick={() => setEditHead(false)}>
+                <Check className="h-4 w-4" />
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{form.label?.trim() || 'Bộ chưa đặt tên'}</h3>
+            {canManage && !locked && (
+              <button type="button" className={`${pencil} -ml-2`} aria-label="Sửa tên và ngày áp dụng" title="Sửa tên, ngày áp dụng"
+                onClick={(event) => { stop(event); setEditHead(true); }}>
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+            <span className="text-sm text-slate-500 dark:text-slate-400">Áp dụng từ {monthLabel(form.effectiveFrom)}</span>
+          </>
+        )}
+        {isNew && <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-300">Chưa lưu</span>}
+        {isActive && <span className="rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">Đang áp dụng</span>}
+        {locked && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:text-slate-300">
+            <Lock className="h-3 w-3" /> Đã dùng cho kỳ chốt
+          </span>
+        )}
+        {canManage && !isNew && canDelete && !locked && (
+          <button type="button" aria-label="Xoá bộ" title="Xoá bộ"
+            onClick={(event) => { stop(event); void remove(); }}
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:text-red-600 dark:text-slate-600 dark:hover:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950/40">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="rounded-none border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 px-3 py-2.5" onClick={editGeneral ? stop : undefined}>
+        {editGeneral ? (
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
+            <div className="w-32">
+              <NumberField label="Công chuẩn (ngày)" required value={form.standardWorkDays} step={0.5}
+                disabled={readOnly} error={issues['general.standardWorkDays']} onChange={(v) => set({ standardWorkDays: v })} />
+            </div>
+            <div className="w-40">
+              <Dropdown square label="Làm tròn thực lĩnh tới" value={String(form.netRoundingUnit)} disabled={readOnly}
+                options={ROUNDING_UNITS.map((unit) => ({ value: String(unit), label: unit === 1 ? 'Không làm tròn' : formatVND(unit) }))}
+                onChange={(value) => set({ netRoundingUnit: Number(value) as NetRoundingUnit })} />
+            </div>
+            <div className="w-36">
+              <Dropdown square label="Cách làm tròn" value={form.netRoundingMode} disabled={readOnly || form.netRoundingUnit === 1}
+                options={[
+                  { value: 'NEAREST', label: 'Gần nhất' },
+                  { value: 'DOWN', label: 'Luôn xuống' },
+                  { value: 'UP', label: 'Luôn lên' },
+                ]}
+                onChange={(value) => set({ netRoundingMode: value as NetRoundingMode })} />
+            </div>
+            <div>
+              <p className="mb-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">Mức sàn khi trình cơ chế</p>
+              <div className="flex items-center gap-2">
+                <div className="w-48">
+                  <Dropdown square aria-label="Đầu mục cần kiểm tra" searchable value={form.floorComponentCode ?? ''} disabled={readOnly}
+                    options={[
+                      { value: '', label: 'Không kiểm tra' },
+                      ...data.components.filter((component) => component.is_active)
+                        .map((component) => ({ value: component.code, label: component.name })),
+                    ]}
+                    onChange={(value) => set({ floorComponentCode: value || null })} />
+                </div>
+                <span className="text-sm font-bold text-slate-400">≥</span>
+                <div className="w-48">
+                  <Dropdown square aria-label="Tham số làm mức sàn" searchable value={form.floorParamCode ?? ''} disabled={readOnly}
+                    options={[
+                      { value: '', label: 'Chọn tham số…' },
+                      ...paramsOf(version).filter((param) => !param.locked || param.code === form.floorParamCode).map((param) => ({
+                        value: param.code, label: param.name, detail: formatWithUnit(param.value, param.unit),
+                      })),
+                    ]}
+                    onChange={(value) => set({ floorParamCode: value || null })} />
+                </div>
+              </div>
+            </div>
+            {!isNew && (
+              <button type="button" className={pencil} aria-label="Xong" title="Xong" onClick={() => setEditGeneral(false)}>
+                <Check className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-sm text-slate-700 dark:text-slate-300">{summary.join(' · ')}</p>
+            {canManage && !locked && (
+              <button type="button" className={pencil} aria-label="Sửa thiết lập chung" title="Sửa thiết lập chung"
+                onClick={(event) => { stop(event); setEditGeneral(true); }}>
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+        {editGeneral && issues['general.floor'] && <p className="mt-1.5 text-xs font-medium text-red-600">{issues['general.floor']}</p>}
+      </div>
+
+      {dirty && canManage && !locked && (
+        <div className="flex justify-end gap-2" onClick={stop}>
+          <Button size="sm" variant="secondary" disabled={saving}
+            onClick={() => {
+              if (isNew) { onDiscard?.(); return; }
+              setForm(pickGeneral(version));
+              setEditHead(false);
+              setEditGeneral(false);
+            }}>
+            {isNew ? 'Bỏ bộ mới' : 'Huỷ thay đổi'}
+          </Button>
+          <Button size="sm" onClick={() => void save()} disabled={saving}>
+            <Save className="h-3.5 w-3.5" /> {saving ? 'Đang lưu…' : 'Lưu bộ tham số'}
+          </Button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ListTableEditor({
-  table, readOnly, issues, usage, taken, onChange, onRemove, confirmRemoveParam,
+  table, readOnly: viewOnly, issues, usage, taken, onChange, onToggleLock, onDuplicate,
 }: {
   table: ListParamTable;
   readOnly: boolean;
@@ -606,9 +800,11 @@ function ListTableEditor({
   usage: Map<string, Set<string>>;
   taken: (exclude?: string) => Set<string>;
   onChange: (patch: Partial<ListParamTable>) => void;
-  onRemove: () => void;
-  confirmRemoveParam: (param: ParamDef) => Promise<boolean>;
+  onToggleLock: () => void;
+  onDuplicate: () => void;
 }) {
+  // Bảng khoá: đứng yên cả bảng, chỉ còn nút mở khoá.
+  const readOnly = viewOnly || !!table.locked;
   const setParam = (index: number, patch: Partial<ParamDef>) =>
     onChange({ params: table.params.map((param, i) => (i === index ? { ...param, ...patch } : param)) });
 
@@ -630,54 +826,53 @@ function ListTableEditor({
     params: [...table.params, { code: '', name: '', type: 'MONEY', unit: 'VND', value: 0, note: null }],
   });
 
-  const cell = 'h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none transition hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 disabled:text-slate-500';
+  const cell = 'h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-2.5 text-sm outline-none transition hover:border-slate-400 dark:hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 dark:disabled:bg-slate-900/50 disabled:text-slate-500 dark:disabled:text-slate-400';
 
   return (
-    <Card>
+    <Card className="!rounded-none border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
       <CardContent className="space-y-4 py-4">
         <TableHeading
           name={table.name}
           note={table.note}
-          countText={`${table.params.length} tham số`}
+          countText=""
           readOnly={readOnly}
+          locked={!!table.locked}
+          canLock={!viewOnly}
           error={issues[`table.${table.id}`]}
           placeholder="VD: Bảo hiểm"
           onName={(name) => onChange({ name })}
           onNote={(note) => onChange({ note })}
-          onRemove={onRemove}
+          onToggleLock={onToggleLock}
+          onDuplicate={!viewOnly ? onDuplicate : undefined}
         />
 
         {table.params.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  <th className="py-2 pr-3">Tên tham số</th>
-                  <th className="w-32 py-2 pr-3">Loại</th>
-                  <th className="w-40 py-2 pr-3">Đơn vị</th>
-                  <th className="w-44 py-2 pr-3 text-right">Giá trị</th>
-                  <th className="w-10 py-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
+            <table className="w-full min-w-[440px] text-sm border-collapse">
+              <tbody className="divide-y divide-slate-300 dark:divide-slate-800">
                 {table.params.map((param, index) => {
                   const issue = issues[`param.${table.id}.${index}`];
                   const used = [...(usage.get(param.code) ?? [])];
+                  const rowLocked = !!param.locked;
+                  const rowReadOnly = readOnly || rowLocked;
                   return (
-                    <tr key={index} className="align-top">
+                    <tr key={index} className={`align-top group transition-colors hover:bg-slate-100/60 dark:hover:bg-slate-800/40 ${rowLocked ? 'bg-slate-100/40 dark:bg-slate-850' : ''}`}>
                       <td className="py-2 pr-3">
-                        <input value={param.name} disabled={readOnly} placeholder="VD: Tỷ lệ BHYT"
+                        <input value={param.name} disabled={rowReadOnly} placeholder="VD: Tỷ lệ BHYT"
                           title={used.length > 0 ? `Đang dùng ở:\n${used.join('\n')}` : undefined}
                           onChange={(event) => rename(index, event.target.value)}
-                          className={`${cell} font-semibold ${issue ? 'border-red-300' : ''}`} />
-                        {issue && <p className="mt-1 text-[11px] font-medium text-red-600">{issue}</p>}
+                          className={`${cell} font-semibold ${issue ? 'border-red-300 dark:border-red-500/60' : ''}`} />
+                        {issue && <p className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">{issue}</p>}
+                        <p className="mt-0.5 text-[11px] text-slate-400" title={used.length > 0 ? used.join('\n') : undefined}>
+                          {used.length > 0 ? `Đang dùng ở ${used.length} công thức` : 'Chưa dùng ở công thức nào'}
+                        </p>
                       </td>
                       <td className="py-2 pr-3">
-                        <Dropdown compact value={param.type} disabled={readOnly} options={PARAM_TYPE_OPTIONS}
+                        <Dropdown square compact value={param.type} disabled={rowReadOnly} options={PARAM_TYPE_OPTIONS}
                           aria-label="Loại tham số" onChange={(value) => changeType(index, value as ParamType)} />
                       </td>
                       <td className="py-2 pr-3">
-                        <Dropdown compact value={param.unit} disabled={readOnly} aria-label="Đơn vị"
+                        <Dropdown square compact value={param.unit} disabled={rowReadOnly} aria-label="Đơn vị"
                           options={PARAM_TYPE_UNITS[param.type].map((unit) => ({ value: unit, label: PARAM_UNIT_LABEL[unit] }))}
                           onChange={(value) => setParam(index, { unit: value as ParamUnit })} />
                       </td>
@@ -685,17 +880,26 @@ function ListTableEditor({
                         <MoneyInput
                           value={param.value}
                           money={isMoneyUnit(param.unit)}
-                          disabled={readOnly}
+                          disabled={rowReadOnly}
                           aria-label={`Giá trị ${param.name || 'tham số'}`}
                           onChange={(value) => setParam(index, { value })}
                         />
                       </td>
                       <td className="py-2 text-right">
-                        {!readOnly && (
-                          <button type="button" aria-label={`Xoá ${param.name || 'tham số'}`}
-                            onClick={async () => { if (await confirmRemoveParam(param)) onChange({ params: table.params.filter((_, i) => i !== index) }); }}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-red-50 hover:text-red-600">
-                            <Trash2 className="h-4 w-4" />
+                        {/* Tham số không xoá được, chỉ khoá. Dòng mới thêm còn trống thì bỏ được (chưa có gì để giữ). */}
+                        {!readOnly && !param.name.trim() && !param.code && !rowLocked ? (
+                          <button type="button" aria-label="Bỏ dòng trống" title="Bỏ dòng trống"
+                            onClick={() => onChange({ params: table.params.filter((_, i) => i !== index) })}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-300 transition hover:bg-slate-100 dark:hover:bg-slate-800">
+                            <X className="h-4 w-4" />
+                          </button>
+                        ) : !readOnly && (
+                          <button type="button"
+                            aria-label={`${rowLocked ? 'Mở khoá' : 'Khoá'} ${param.name || 'tham số'}`}
+                            title={rowLocked ? 'Mở khoá tham số' : 'Khoá tham số — giữ nguyên số, không gợi ý ở công thức mới'}
+                            onClick={() => setParam(index, { locked: !rowLocked })}
+                            className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${rowLocked ? 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40' : 'text-slate-300 hover:text-slate-700 dark:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                            {rowLocked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
                           </button>
                         )}
                       </td>
@@ -716,7 +920,7 @@ function ListTableEditor({
 }
 
 function TierTableEditor({
-  table, readOnly, issue, usage, taken, onChange, onRemove,
+  table, readOnly: viewOnly, issue, usage, taken, onChange, onToggleLock, onDuplicate,
 }: {
   table: TierParamTable;
   readOnly: boolean;
@@ -724,8 +928,10 @@ function TierTableEditor({
   usage: string[];
   taken: Set<string>;
   onChange: (patch: Partial<TierParamTable>) => void;
-  onRemove: () => void;
+  onToggleLock: () => void;
+  onDuplicate: () => void;
 }) {
+  const readOnly = viewOnly || !!table.locked;
   const progressive = table.mode === 'PROGRESSIVE';
   const rename = (name: string) => {
     const auto = table.code === codeFromName(table.name, taken, 'BANG');
@@ -736,45 +942,48 @@ function TierTableEditor({
   const moneyLevel = !progressive && isMoneyUnit(table.unit);
 
   return (
-    <Card>
+    <Card className="!rounded-none">
       <CardContent className="space-y-4 py-4">
         <TableHeading
           name={table.name}
           note={table.note}
-          countText={`${table.rows.length} bậc`}
+          countText=""
           readOnly={readOnly}
+          locked={!!table.locked}
+          canLock={!viewOnly}
           error={issue}
           placeholder="VD: Biểu thuế lũy tiến"
           onName={rename}
           onNote={(note) => onChange({ note })}
-          onRemove={onRemove}
+          onToggleLock={onToggleLock}
+          onDuplicate={!viewOnly ? onDuplicate : undefined}
         />
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full sm:w-52">
-            <Dropdown label="Cách tính" value={table.mode} disabled={readOnly} options={TIER_MODE_OPTIONS}
+            <Dropdown square label="Cách tính" value={table.mode} disabled={readOnly} options={TIER_MODE_OPTIONS}
               onChange={(value) => onChange({ mode: value as TierParamTable['mode'], ...(value === 'PROGRESSIVE' ? { unit: '%' as ParamUnit } : {}) })} />
           </div>
           <div className="min-w-[12rem] flex-1">
-            <Input label="Giá trị đưa vào tra" value={table.inputLabel ?? ''} disabled={readOnly}
+            <Input className="!rounded-none" label="Giá trị đưa vào tra" value={table.inputLabel ?? ''} disabled={readOnly}
               onChange={(event) => onChange({ inputLabel: event.target.value || null })}
               placeholder={progressive ? 'VD: Thu nhập tính thuế' : 'VD: Tỷ lệ đạt doanh số (%)'} />
           </div>
           {!progressive && (
             <div className="w-full sm:w-52">
-              <Dropdown label="Đơn vị của mức" value={table.unit} disabled={readOnly} options={TIER_UNIT_OPTIONS}
+              <Dropdown square label="Đơn vị của mức" value={table.unit} disabled={readOnly} options={TIER_UNIT_OPTIONS}
                 onChange={(value) => onChange({ unit: value as ParamUnit })} />
             </div>
           )}
         </div>
-        <table className="w-full max-w-xl text-sm">
+        <table className="w-full max-w-xl text-sm border-collapse">
           <thead>
-            <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              <th className="pb-1.5 pr-3">{progressive ? 'Từ (≥)' : 'Từ ngưỡng (≥)'}</th>
-              <th className="pb-1.5 pr-3 text-right">{progressive ? 'Tỷ lệ (%)' : `Mức (${PARAM_UNIT_LABEL[table.unit]})`}</th>
+            <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+              <th className="pb-2 pr-3">{progressive ? 'Từ (≥)' : 'Từ ngưỡng (≥)'}</th>
+              <th className="pb-2 pr-3 text-right">{progressive ? 'Tỷ lệ (%)' : `Mức (${PARAM_UNIT_LABEL[table.unit]})`}</th>
               <th className="w-10" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
             {table.rows.map((row, index) => (
               <tr key={index}>
                 <td className="py-1 pr-3">
@@ -788,7 +997,7 @@ function TierTableEditor({
                 <td className="py-1 text-right">
                   {!readOnly && table.rows.length > 1 && (
                     <button type="button" aria-label={`Bỏ bậc ${index + 1}`} onClick={() => onChange({ rows: table.rows.filter((_, i) => i !== index) })}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 transition hover:bg-red-50 hover:text-red-600">
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:text-red-600 dark:text-slate-600 dark:hover:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950/40">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
@@ -812,17 +1021,23 @@ function TierTableEditor({
  * (chưa có tên) hoặc đang báo lỗi tên thì mở sẵn ô sửa.
  */
 function TableHeading({
-  name, note, countText, readOnly, error, placeholder, onName, onNote, onRemove,
+  name, note, countText, readOnly, locked, canLock, error, placeholder, onName, onNote, onToggleLock, onDuplicate,
 }: {
   name: string;
   note: string | null;
   countText: string;
+  /** Không sửa được tên/ghi chú (chỉ xem, hoặc bảng đã khoá). */
   readOnly: boolean;
+  locked: boolean;
+  /** Được phép khoá / mở khoá bảng. */
+  canLock: boolean;
   error?: string;
   placeholder: string;
   onName: (name: string) => void;
   onNote: (note: string | null) => void;
-  onRemove: () => void;
+  onToggleLock: () => void;
+  /** Sao chép bảng này thành một bảng mới trong cùng bộ. Không truyền = không cho sao chép. */
+  onDuplicate?: () => void;
 }) {
   const [editing, setEditing] = useState(() => !name.trim());
   const showEditor = !readOnly && (editing || !!error);
@@ -831,38 +1046,53 @@ function TableHeading({
     <div className="flex items-start gap-3">
       {showEditor ? (
         <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-          <Input label="Tên bảng" autoFocus value={name} error={error} placeholder={placeholder}
+          <Input className="!rounded-none" label="Tên bảng" autoFocus value={name} error={error} placeholder={placeholder}
             onChange={(event) => onName(event.target.value)}
             onKeyDown={(event) => { if (event.key === 'Enter' && name.trim()) setEditing(false); }} />
-          <Input label="Ghi chú" value={note ?? ''} placeholder="Không bắt buộc"
+          <Input className="!rounded-none" label="Ghi chú" value={note ?? ''} placeholder="Không bắt buộc"
             onChange={(event) => onNote(event.target.value || null)}
             onKeyDown={(event) => { if (event.key === 'Enter' && name.trim()) setEditing(false); }} />
         </div>
       ) : (
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1">
-            <h3 className="truncate text-base font-bold text-slate-900">{name.trim() || 'Bảng chưa đặt tên'}</h3>
+            <h3 className="truncate text-base font-bold text-slate-900 dark:text-slate-100">{name.trim() || 'Bảng chưa đặt tên'}</h3>
+            {locked && (
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/40 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-300">
+                <Lock className="h-3 w-3" /> Đã khoá
+              </span>
+            )}
             {!readOnly && (
               <button type="button" onClick={() => setEditing(true)} aria-label={`Sửa tên bảng ${name}`} title="Sửa tên bảng"
-                className={`${iconButton} text-slate-400 hover:bg-indigo-50 hover:text-indigo-600`}>
+                className={`${iconButton} text-slate-400 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400`}>
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-          <p className="truncate text-xs text-slate-500">{[note, countText].filter(Boolean).join(' · ')}</p>
+          <p className="truncate text-xs text-slate-500 dark:text-slate-400">{[note, countText].filter(Boolean).join(' · ')}</p>
         </div>
       )}
       <div className={`flex shrink-0 items-center gap-1 ${showEditor ? 'pt-7' : ''}`}>
         {showEditor && !error && name.trim() && (
           <button type="button" onClick={() => setEditing(false)} aria-label="Xong" title="Xong"
-            className={`${iconButton} text-emerald-600 hover:bg-emerald-50`}>
+            className={`${iconButton} text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800`}>
             <Check className="h-4 w-4" />
           </button>
         )}
-        {!readOnly && (
-          <button type="button" onClick={onRemove} aria-label={`Xoá bảng ${name}`} title="Xoá bảng"
-            className={`${iconButton} text-slate-400 hover:bg-red-50 hover:text-red-600`}>
-            <Trash2 className="h-4 w-4" />
+        {onDuplicate && (
+          <button type="button" onClick={onDuplicate}
+            aria-label={`Sao chép bảng ${name}`}
+            title="Sao chép bảng — tạo bảng mới cùng cấu trúc trong bộ này"
+            className={`${iconButton} text-slate-400 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400`}>
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {canLock && (
+          <button type="button" onClick={onToggleLock}
+            aria-label={`${locked ? 'Mở khoá' : 'Khoá'} bảng ${name}`}
+            title={locked ? 'Mở khoá bảng' : 'Khoá bảng — giữ nguyên số, không gợi ý ở công thức mới'}
+            className={`${iconButton} ${locked ? 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'}`}>
+            {locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
           </button>
         )}
       </div>
@@ -881,7 +1111,7 @@ function NumberField({
     setText((current) => (Number(current) === value && current.trim() !== '' ? current : Number.isFinite(value) ? String(value) : ''));
   }, [value]);
   return (
-    <Input
+    <Input className="!rounded-none"
       label={label}
       required={required}
       type="number"

@@ -6,23 +6,24 @@
 // phép và Bảng lương dùng chung một nguồn sự thật.
 // ============================================================================
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Clock, Loader2 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Loader2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSettings } from '@/contexts/SettingsContext';
 import { saveSettings, type AppSettings } from '@/lib/settings';
+import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from '@/lib/workSchedule';
 import { WorkScheduleCard } from '@/components/attendance/WorkScheduleCard';
+import { MonthStandardCard } from '@/components/attendance/MonthStandardCard';
 
 /** Giữ bản nháp là chuỗi khi đang gõ để xoá ô không bị nhảy về 0. */
 function NumberField({
-  label, hint, value, min, max, step = 1, onChange,
+  label, unit, value, min, max, step = 1, onChange,
 }: {
   label: string;
-  hint: ReactNode;
+  unit: string;
   value: number;
   min: number;
   max: number;
@@ -36,26 +37,33 @@ function NumberField({
     draft.trim() === '' || Number.isNaN(Number(draft)) || Number(draft) < min || Number(draft) > max;
 
   return (
-    <div>
-      <Input
-        label={label}
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={draft}
-        onChange={(event) => {
-          setDraft(event.target.value);
-          const next = Number(event.target.value);
-          if (event.target.value.trim() !== '' && Number.isFinite(next) && next >= min && next <= max) {
-            onChange(next);
-          }
-        }}
-      />
-      <p className={`mt-1 text-xs leading-relaxed ${invalid ? 'text-red-600' : 'text-slate-500'}`}>
-        {invalid ? `Nhập số trong khoảng ${min}–${max}.` : hint}
-      </p>
-    </div>
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-black text-slate-900 dark:text-slate-100">{label}</span>
+      <span className="flex items-center gap-2">
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={draft}
+          aria-invalid={invalid}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            const next = Number(event.target.value);
+            if (event.target.value.trim() !== '' && Number.isFinite(next) && next >= min && next <= max) {
+              onChange(next);
+            }
+          }}
+          className={`h-9 w-24 rounded-none border-2 bg-white dark:bg-slate-800 px-2.5 text-sm font-black tabular-nums focus:outline-none focus:ring-2 ${
+            invalid
+              ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+              : 'border-slate-400 dark:border-slate-600 focus:border-indigo-500 focus:ring-indigo-500/20'
+          }`}
+        />
+        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{unit}</span>
+        {invalid && <span className="text-xs font-bold text-red-600">{min}–{max}</span>}
+      </span>
+    </label>
   );
 }
 
@@ -66,6 +74,21 @@ export function AdminAttendanceSettings() {
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [schedules, setSchedules] = useState<ScheduleSet>(EMPTY_SCHEDULES);
+  const [schedulesLoading, setSchedulesLoading] = useState(true);
+
+  const loadSchedules = useCallback(async () => {
+    setSchedules(await fetchWorkSchedules(true));
+    setSchedulesLoading(false);
+  }, []);
+
+  useEffect(() => { void loadSchedules(); }, [loadSchedules]);
+
+  // Cấu hình đã khóa không tham gia tính công chuẩn.
+  const activeSchedules = useMemo<ScheduleSet>(
+    () => ({ ...schedules, schedules: schedules.schedules.filter((item) => item.is_active) }),
+    [schedules],
+  );
 
   useEffect(() => {
     if (!touched) setDraft(settings);
@@ -105,70 +128,46 @@ export function AdminAttendanceSettings() {
     );
   }
 
-  return (
-    <div className="max-w-3xl space-y-5 pb-28">
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <Clock className="h-4 w-4 text-indigo-600" />
-        <span>Thiết lập tại đây được dùng trực tiếp bởi Chấm công, Bảng công và Bảng lương.</span>
-      </div>
+  const invalid = draft.standardHoursPerDay < 1 || draft.standardHoursPerDay > 24
+    || draft.defaultAnnualLeave < 0 || draft.defaultAnnualLeave > 365;
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Định mức công</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5">
+  return (
+    <div className="space-y-4">
+      {/* Hai ô số chung nằm cùng một hàng với nút Lưu; giờ làm và công chuẩn
+          bên dưới tự lưu riêng vì là danh mục nhiều dòng. */}
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+        <CardContent className="flex flex-wrap items-end gap-x-8 gap-y-3 !py-3">
           <NumberField
-            label="Số giờ làm chuẩn mỗi ngày"
-            hint={
-              <>
-                Dùng để xác định đủ giờ công ở Bảng công và quy đổi <strong>đơn giá một giờ</strong>{' '}
-                khi tính tăng ca, phụ cấp ca đêm.
-              </>
-            }
+            label="Giờ làm chuẩn / ngày"
+            unit="giờ"
             value={draft.standardHoursPerDay}
             min={1}
             max={24}
             step={0.5}
             onChange={(value) => update({ standardHoursPerDay: value })}
           />
-        </CardContent>
-      </Card>
-
-      {/* Giờ làm chuẩn tự lưu riêng (bảng `work_schedules`), không đi qua thanh
-          "Lưu thiết lập" bên dưới — nó là danh mục nhiều dòng, không phải vài
-          ô số như hai thẻ kia. */}
-      <WorkScheduleCard />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Nghỉ phép mặc định</CardTitle>
-        </CardHeader>
-        <CardContent>
           <NumberField
-            label="Phép năm mặc định (ngày)"
-            hint="Hạn mức gợi ý khi tạo người dùng mới. Hạn mức từng người được quản lý ở module Nghỉ phép."
+            label="Phép năm mặc định"
+            unit="ngày"
             value={draft.defaultAnnualLeave}
             min={0}
             max={365}
             step={0.5}
             onChange={(value) => update({ defaultAnnualLeave: value })}
           />
+          <div className="ml-auto flex gap-2">
+            <Button variant="secondary" size="sm" onClick={revert} disabled={!dirty || saving}>Hoàn tác</Button>
+            <Button theme="admin" size="sm" onClick={save} disabled={!dirty || saving || invalid}>
+              {saving ? 'Đang lưu…' : 'Lưu'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
-      {dirty && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/90 px-4 py-3 shadow-lg backdrop-blur-md print:hidden">
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 lg:pl-64">
-            <p className="text-sm text-slate-600">Có thay đổi chưa lưu</p>
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={revert} disabled={saving}>Hoàn tác</Button>
-              <Button theme="admin" onClick={save} disabled={saving}>
-                {saving ? 'Đang lưu…' : 'Lưu thiết lập'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
+        <WorkScheduleCard set={schedules} loading={schedulesLoading} onChanged={loadSchedules} />
+        <MonthStandardCard set={activeSchedules} />
+      </div>
     </div>
   );
 }

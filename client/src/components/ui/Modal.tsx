@@ -7,9 +7,11 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  /** Vuông góc (module Lương); mặc định bo góc. */
+  square?: boolean;
 }
 
-export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md', square = false }: ModalProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -66,21 +68,20 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`modal-in relative bg-white shadow-2xl ring-1 ring-slate-900/5 w-full flex flex-col overflow-hidden
-          rounded-t-3xl max-h-[92vh]
-          sm:rounded-3xl sm:max-h-[90vh] ${sizes[size]}`}
+        className={`modal-in relative bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-white/10 w-full flex flex-col overflow-hidden
+          ${square ? 'max-h-[92vh] sm:max-h-[90vh]' : 'rounded-t-3xl max-h-[92vh] sm:rounded-3xl sm:max-h-[90vh]'} ${sizes[size]}`}
       >
         {/* Thanh kéo — tín hiệu quen thuộc cho biết tấm này đóng được. */}
         <div className="sm:hidden flex justify-center pt-2.5 pb-1" aria-hidden="true">
-          <span className="w-10 h-1 rounded-full bg-slate-300" />
+          <span className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
         </div>
 
-        <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4.5 border-b border-slate-200 bg-white">
-          <h2 id={titleId} className="font-display text-lg font-bold tracking-tight text-slate-900">{title}</h2>
+        <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4.5 border-b border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
+          <h2 id={titleId} className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">{title}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            className={`flex h-11 w-11 items-center justify-center ${square ? '' : 'rounded-xl'} text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
             aria-label="Đóng"
           >
             <X className="w-5 h-5" />

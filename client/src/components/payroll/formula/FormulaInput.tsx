@@ -45,6 +45,8 @@ interface FormulaInputProps {
   formatResult?: (value: number) => string;
   disabled?: boolean;
   autoFocus?: boolean;
+  /** Chỉ ghi kết quả cuối một lần (không viết lại từng số thế vào); công thức chỉ là một con số thì không ghi gì thêm. */
+  resultOnly?: boolean;
 }
 
 const OPERAND_END = new Set<FormulaToken['kind']>(['ref', 'num', 'rparen', 'unknown']);
@@ -82,7 +84,7 @@ function matchParens(tokens: readonly FormulaToken[]): Map<number, number> {
 
 export function FormulaInput({
   value, onChange, entries, scope, functions = {}, leftLabel, ariaLabel, onAddEntry, softCodes,
-  formatResult = formatFormulaNumber, disabled = false, autoFocus = false,
+  formatResult = formatFormulaNumber, disabled = false, autoFocus = false, resultOnly = false,
 }: FormulaInputProps) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -479,8 +481,8 @@ export function FormulaInput({
     <div className="space-y-1.5">
       <div className="flex items-start gap-2">
         {leftLabel && (
-          <span className="mt-2.5 shrink-0 text-sm font-bold text-slate-700">
-            {leftLabel} <span className="text-slate-400">=</span>
+          <span className="mt-2.5 shrink-0 text-sm font-black text-slate-900 dark:text-slate-100">
+            {leftLabel} <span className="text-slate-400 font-black">=</span>
           </span>
         )}
         <div ref={boxRef} className="relative min-w-0 flex-1" onBlurCapture={onBlurCapture}>
@@ -492,26 +494,26 @@ export function FormulaInput({
                 rows={2}
                 autoFocus
                 aria-label={ariaLabel ?? 'Công thức dạng chữ'}
-                className="w-full rounded-xl border border-indigo-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full rounded-xl border-2 border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <button type="button" onClick={applyText}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white hover:bg-indigo-700">
+                  className="rounded-lg bg-indigo-600 px-3 py-1.5 font-bold text-white hover:bg-indigo-700">
                   Dùng công thức này
                 </button>
                 <button type="button" onClick={() => setTextMode(false)}
-                  className="rounded-lg px-3 py-1.5 font-semibold text-slate-500 hover:bg-slate-100">
+                  className="rounded-lg px-3 py-1.5 font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
                   Huỷ
                 </button>
-                <span className="text-slate-400">Gõ tên đầu mục / tham số, dấu + − × ÷ và ngoặc; ngăn đối số của hàm bằng “;”.</span>
+                <span className="text-slate-500 dark:text-slate-400">Gõ tên đầu mục / tham số, dấu + − × ÷ và ngoặc; ngăn đối số của hàm bằng “;”.</span>
               </div>
             </div>
           ) : (
             <div
               onMouseDown={focusInput}
-              className={`flex min-h-11 flex-wrap items-center gap-x-1 gap-y-1.5 rounded-xl border bg-white px-2.5 py-2 transition ${
-                disabled ? 'cursor-not-allowed bg-slate-50' : 'cursor-text'
-              } ${issue && tokens.length > 0 ? 'border-red-300' : focused ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-200 hover:border-slate-300'}`}
+              className={`flex min-h-11 flex-wrap items-center gap-x-1 gap-y-1.5 rounded-xl border-2 bg-white dark:bg-slate-800 px-2.5 py-2 transition ${
+                disabled ? 'cursor-not-allowed bg-slate-50 dark:bg-slate-900/50' : 'cursor-text'
+              } ${issue && tokens.length > 0 ? 'border-red-400 dark:border-red-500' : focused ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'}`}
             >
               {tokens.slice(0, caret).map((token, i) => renderToken(token, i))}
               <input
@@ -603,6 +605,13 @@ export function FormulaInput({
             <p role="alert" className="flex items-start gap-1.5 text-xs font-medium text-red-600">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {issue.message}
             </p>
+          ) : result != null && resultOnly ? (
+            tokens.length === 1 && tokens[0].kind === 'num' ? null : (
+              <p className="flex min-w-0 items-center gap-1.5 text-sm text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                = <strong className="tabular-nums">{formatResult(result)}</strong>
+              </p>
+            )
           ) : result != null ? (
             <p className="flex min-w-0 items-start gap-1.5 text-xs text-emerald-700">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />

@@ -14,7 +14,7 @@ import { resolveMechanismRows, type SchemeSourceData } from './payrollScheme';
 import { toPayrollParams, versionForMonth, type PayrollParamVersion, type PayrollParams } from './payrollSettings';
 import { BUILTIN_FUNCTIONS, OWN_AMOUNT_CODE, OWN_AMOUNT_NAME, SYSTEM_VARIABLE_BY_CODE } from './payrollVariables';
 import { monthStandardDays } from './workSchedule';
-import type { ResolvableUnit } from './kpiSchemeFor';
+import type { ResolvableUnit } from './orgUnits';
 import type { PayrollWorkspace } from './payrollData';
 import type { AppSettings } from './settings';
 import type { Profile } from '@/types';

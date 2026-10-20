@@ -1,52 +1,48 @@
 // ============================================================================
 // Danh mục khoản lương — danh sách ĐẦU MỤC dùng trong cơ chế lương.
 // ----------------------------------------------------------------------------
-// Danh mục chỉ khai đầu mục LÀ GÌ: tên, mã, nhóm hiển thị, loại dòng (cộng vào
-// lương / trừ khỏi lương / chỉ để tính), tính chất và giá trị mặc định nếu có.
-// Cách tính của từng đầu mục đặt ở Cơ chế lương — mỗi cơ chế một công thức.
+// Danh mục chỉ khai đầu mục LÀ GÌ: tên, mã, nhóm (1 trong 5 nhóm), loại dòng
+// (cộng vào lương / trừ khỏi lương) và nhãn báo cáo.
+// Cách tính và con số của từng đầu mục đặt ở Cơ chế lương — mỗi cơ chế một công thức.
 //
-// Xoá: đầu mục đã phát sinh trong kỳ lương đã chốt thì database tự chuyển
-// "Khóa" thay vì xoá, và ghi vết.
+// Dòng TRUNG GIAN (đơn giá ngày, tổng cộng, thu nhập tính thuế…) không phải
+// khoản lương: không thuộc nhóm nào, thường tạo thẳng ở Cơ chế lương. Ở đây
+// chúng nằm riêng một thẻ để xem hoặc đổi tên.
+//
+// Không xoá đầu mục, chỉ Khóa / Mở khóa: đầu mục khóa vẫn giữ số liệu cũ nhưng
+// không được chọn thêm vào cơ chế mới.
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Eye, PackagePlus, Pencil, Plus, Search, Trash2, TriangleAlert } from 'lucide-react';
+import { Eye, Lock, LockOpen, PackagePlus, Pencil, Plus, Search, TriangleAlert } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input, Textarea } from '@/components/ui/Input';
 import { Dropdown } from '@/components/ui/Dropdown';
-import { MoneyInput } from '@/components/payroll/MoneyInput';
 import { ExportButtons } from '@/components/payroll/ExportButtons';
+import { KindChip } from '@/components/payroll/KindChip';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import {
-  fetchStandardCatalog, removeComponent, saveComponent, seedStandardCatalog, type PayrollWorkspace, type StandardCatalogItem,
+  fetchStandardCatalog, saveComponent, seedStandardCatalog, type PayrollWorkspace, type StandardCatalogItem,
 } from '@/lib/payrollData';
-import { KIND_LABEL, KIND_SIGN } from '@/lib/formulaEntries';
-import { formatFormulaNumber } from '@/lib/formulaTokens';
+import { KIND_LABEL, KIND_SHORT } from '@/lib/formulaEntries';
 import { codeFromName } from '@/lib/payrollSettings';
 import { PAY_REPORT_TAGS, reportTagKindProblem, reportTagLabel } from '@/lib/payrollReportTags';
 import type {
-  PayComponent, PayComponentCategoryCode, PayComponentKind, PayComponentNature, PayReportTag,
+  PayComponent, PayComponentCategoryCode, PayComponentKind, PayReportTag,
 } from '@/types';
-
-const NATURE_LABEL: Record<PayComponentNature, string> = {
-  FIXED: 'Cố định',
-  VARIABLE: 'Biến đổi',
-  BOTH: 'Biến đổi / Cố định',
-};
 
 /** Ba loại dòng chọn được; EMPLOYER_COST chỉ còn trên dữ liệu cũ. */
 const KINDS: Array<Exclude<PayComponentKind, 'EMPLOYER_COST'>> = ['EARNING', 'DEDUCTION', 'INFO'];
 
-const KIND_TONE: Record<PayComponentKind, string> = {
-  EARNING: 'bg-emerald-50 text-emerald-700',
-  DEDUCTION: 'bg-red-50 text-red-600',
-  INFO: 'bg-slate-100 text-slate-500',
-  EMPLOYER_COST: 'bg-slate-100 text-slate-500',
-};
+/** Thẻ lọc: tất cả, một trong năm nhóm, hoặc dòng trung gian không thuộc nhóm nào. */
+type CatalogTab = 'ALL' | PayComponentCategoryCode | 'MID';
+
+/** Dòng trung gian đứng ngoài năm nhóm. */
+const isLooseIntermediate = (component: PayComponent) => component.kind === 'INFO' && !component.category_code;
 
 /** Bỏ dấu để gõ "phu cap" tìm ra "Phụ cấp". */
 const stripTone = (text: string) => text
@@ -61,10 +57,10 @@ interface Draft {
   name: string;
   category_code: PayComponentCategoryCode | '';
   kind: PayComponentKind;
-  nature: PayComponentNature;
   /** Nhãn báo cáo — rỗng là không gắn. Chỉ để báo cáo, không vào công thức. */
   report_tag: PayReportTag | '';
-  default_amount: string;
+  /** Dòng trung gian: hiện trên phiếu lương của nhân viên. */
+  show_on_payslip: boolean;
   is_active: boolean;
   note: string;
 }
@@ -83,7 +79,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   const { components, categories } = data;
 
   const [query, setQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'ALL' | PayComponentCategoryCode>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<CatalogTab>('ALL');
 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [errors, setErrors] = useState<DraftErrors>({});
@@ -115,10 +111,12 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   }, [components, query]);
 
   const filtered = useMemo(() => {
-    const rows = searched.filter((component) => categoryFilter === 'ALL' || component.category_code === categoryFilter);
-    return [...rows].sort((a, b) => (
-      (categoryOrder.get(a.category_code) ?? 99) - (categoryOrder.get(b.category_code) ?? 99) || a.sort_order - b.sort_order
+    const rows = searched.filter((component) => (
+      categoryFilter === 'ALL'
+      || (categoryFilter === 'MID' ? isLooseIntermediate(component) : component.category_code === categoryFilter)
     ));
+    const orderOf = (component: PayComponent) => (component.category_code ? categoryOrder.get(component.category_code) ?? 98 : 99);
+    return [...rows].sort((a, b) => orderOf(a) - orderOf(b) || a.sort_order - b.sort_order);
   }, [searched, categoryFilter, categoryOrder]);
 
   const usageOf = (component: PayComponent) => {
@@ -133,15 +131,15 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   // ------------------------------------------------------------------------
   // Biểu mẫu thêm / sửa
   // ------------------------------------------------------------------------
-  const openCreate = (categoryCode?: PayComponentCategoryCode) => {
-    const category = categoryCode ? categoryByCode.get(categoryCode) : undefined;
+  const openCreate = (tab: CatalogTab = 'ALL') => {
+    const categoryCode = tab === 'ALL' || tab === 'MID' ? '' : tab;
     setErrors({});
     setDraft({
-      code: '', codeTouched: false, name: '', category_code: categoryCode ?? '',
-      kind: categoryCode === 'KHAU_TRU_PHAT' ? 'DEDUCTION' : categoryCode === 'SO_LIEU' ? 'INFO' : 'EARNING',
-      nature: category?.default_nature ?? 'VARIABLE',
+      code: '', codeTouched: false, name: '', category_code: categoryCode,
+      kind: tab === 'MID' ? 'INFO' : categoryCode === 'KHAU_TRU_PHAT' ? 'DEDUCTION' : 'EARNING',
       report_tag: '',
-      default_amount: '', is_active: true, note: '',
+      show_on_payslip: false,
+      is_active: true, note: '',
     });
   };
 
@@ -152,11 +150,10 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
       code: component.code,
       codeTouched: true,
       name: component.name,
-      category_code: component.category_code,
+      category_code: component.category_code ?? '',
       kind: component.kind,
-      nature: component.nature,
       report_tag: component.report_tag ?? '',
-      default_amount: Number(component.default_amount) ? String(Number(component.default_amount)) : '',
+      show_on_payslip: !!component.show_on_payslip,
       is_active: component.is_active,
       note: component.note ?? '',
     });
@@ -169,10 +166,6 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
       // Mã gợi ý theo tên cho tới khi người dùng tự gõ mã.
       if (patch.name !== undefined && !current.codeTouched && !current.id) {
         next.code = patch.name.trim() ? codeFromName(patch.name, components.map((item) => item.code), 'DAU_MUC') : '';
-      }
-      if (patch.category_code && patch.category_code !== current.category_code && !current.id) {
-        const category = categoryByCode.get(patch.category_code);
-        if (category) next.nature = category.default_nature;
       }
       return next;
     });
@@ -193,11 +186,9 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
     else if (components.some((item) => item.name.trim().toLowerCase() === value.name.trim().toLowerCase() && item.id !== value.id)) {
       found.name = 'Tên khoản lương đã tồn tại trên hệ thống.';
     }
-    if (!value.category_code) found.category_code = 'Chọn nhóm hiển thị.';
+    if (!value.category_code && value.kind !== 'INFO') found.category_code = 'Khoản cộng / trừ phải thuộc một trong năm nhóm.';
     const tagProblem = reportTagKindProblem(value.report_tag || null, value.kind);
     if (tagProblem) found.report_tag = tagProblem;
-    const amount = value.default_amount.trim() === '' ? 0 : Number(value.default_amount);
-    if (!Number.isFinite(amount) || amount < 0) found.default_amount = 'Giá trị mặc định phải là số không âm.';
     return found;
   };
 
@@ -218,11 +209,10 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
       }),
       code: draft.code.trim().toUpperCase(),
       name: draft.name.trim(),
-      category_code: draft.category_code as PayComponentCategoryCode,
+      category_code: draft.category_code || null,
       kind: draft.kind,
-      nature: draft.nature,
       report_tag: draft.report_tag || null,
-      default_amount: draft.default_amount.trim() === '' ? 0 : Number(draft.default_amount),
+      show_on_payslip: draft.kind === 'INFO' && draft.show_on_payslip,
       is_active: draft.is_active,
       note: draft.note.trim() || null,
     });
@@ -238,30 +228,30 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
     onChanged();
   };
 
-  const handleDelete = async (component: PayComponent) => {
-    const usage = usageOf(component);
-    const used = usage.mechanisms.length + usage.people;
-    const ok = await confirm({
-      title: `Xoá “${component.name}”?`,
-      message:
-        (used > 0
-          ? `Đầu mục đang có trong cơ chế chung của ${usage.mechanisms.length} đơn vị${usage.mechanisms.length ? ` (${usage.mechanisms.join(', ')})` : ''} `
-            + `và khai riêng của ${usage.people} nhân sự — các dòng đó mất theo ở kỳ chưa chốt. `
-          : '')
-        + 'Nếu đầu mục đã phát sinh trong kỳ lương đã chốt, hệ thống KHÔNG xoá mà tự chuyển sang “Khóa” để giữ số liệu cũ.',
-      confirmLabel: 'Xoá đầu mục',
-      danger: true,
-    });
-    if (!ok) return;
+  const handleToggleLock = async (component: PayComponent) => {
+    const locking = component.is_active;
+    if (locking) {
+      const usage = usageOf(component);
+      const used = usage.mechanisms.length + usage.people;
+      const ok = await confirm({
+        title: `Khóa “${component.name}”?`,
+        message:
+          (used > 0
+            ? `Đầu mục đang có trong cơ chế chung của ${usage.mechanisms.length} đơn vị${usage.mechanisms.length ? ` (${usage.mechanisms.join(', ')})` : ''} `
+              + `và khai riêng của ${usage.people} nhân sự. `
+            : '')
+          + 'Khóa không xóa số liệu; đầu mục chỉ không được chọn thêm vào cơ chế mới. Mở khóa lại bất cứ lúc nào.',
+        confirmLabel: 'Khóa đầu mục',
+      });
+      if (!ok) return;
+    }
 
-    const { result, error } = await removeComponent(component.id);
+    const error = await saveComponent({ id: component.id, code: component.code, name: component.name, is_active: !locking });
     if (error) {
-      toast('Xoá thất bại: ' + error, 'error');
+      toast(`${locking ? 'Khóa' : 'Mở khóa'} thất bại: ${error}`, 'error');
       return;
     }
-    toast(result === 'DEACTIVATED'
-      ? `“${component.name}” đã phát sinh trong kỳ lương đã chốt — không xoá, đã chuyển Khóa.`
-      : `Đã xoá “${component.name}”.`, result === 'DEACTIVATED' ? 'warning' : 'success');
+    toast(locking ? `Đã khóa “${component.name}”.` : `Đã mở khóa “${component.name}”.`, 'success');
     setDetail(null);
     onChanged();
   };
@@ -292,11 +282,9 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
     columns: [
       { header: 'Mã', value: (c: PayComponent) => c.code, width: 22 },
       { header: 'Tên đầu mục', value: (c: PayComponent) => c.name, width: 36 },
-      { header: 'Nhóm', value: (c: PayComponent) => categoryByCode.get(c.category_code)?.name ?? c.category_code, width: 24 },
+      { header: 'Nhóm', value: (c: PayComponent) => groupName(c), width: 24 },
       { header: 'Loại dòng', value: (c: PayComponent) => KIND_LABEL[c.kind], width: 18 },
-      { header: 'Tính chất', value: (c: PayComponent) => NATURE_LABEL[c.nature], width: 22 },
       { header: 'Nhãn báo cáo', value: (c: PayComponent) => reportTagLabel(c.report_tag) ?? '', width: 30 },
-      { header: 'Giá trị mặc định', value: (c: PayComponent) => Number(c.default_amount) || '', width: 16 },
       { header: 'Trạng thái', value: (c: PayComponent) => (c.is_active ? 'Kích hoạt' : 'Khóa'), width: 14 },
       { header: 'Mô tả', value: (c: PayComponent) => c.note ?? '', width: 50 },
     ],
@@ -306,7 +294,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   // ------------------------------------------------------------------------
   if (components.length === 0) {
     return (
-      <Card>
+      <Card className="!rounded-none">
         <EmptyState
           icon={<PackagePlus className="h-8 w-8" />}
           title="Chưa có danh mục khoản lương"
@@ -325,35 +313,35 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
     );
   }
 
+  function groupName(component: PayComponent): string {
+    if (!component.category_code) return 'Dòng trung gian';
+    return categoryByCode.get(component.category_code)?.name ?? component.category_code;
+  }
+
   function renderRow(component: PayComponent) {
-    const category = categoryByCode.get(component.category_code);
     return (
-      <tr key={component.id} className={`transition-colors hover:bg-slate-50/70 ${component.is_active ? '' : 'opacity-60'}`}>
-        <td className="px-4 py-3">
-          <button type="button" onClick={() => setDetail(component)} className="text-left text-sm font-semibold text-slate-800 hover:text-indigo-700">
+      <tr key={component.id} className={`group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60 ${component.is_active ? '' : 'opacity-60'}`}>
+        <td className="px-4 py-2.5">
+          <button type="button" onClick={() => setDetail(component)} className="text-left text-sm font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400">
             {component.name}
           </button>
-          {categoryFilter === 'ALL' && category && (
-            <p className="mt-0.5 text-[11px] text-slate-400">{category.name}</p>
+          {categoryFilter === 'ALL' && (
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{groupName(component)}</p>
           )}
         </td>
-        <td className="px-3 py-3">
-          <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold ${KIND_TONE[component.kind]}`}>
-            {KIND_SIGN[component.kind]} {KIND_LABEL[component.kind]}
+        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center">
+          <span className="flex flex-wrap items-center justify-center gap-1.5">
+            <KindChip kind={component.kind} />
           </span>
         </td>
-        <td className="px-3 py-3 text-xs text-slate-600">{NATURE_LABEL[component.nature]}</td>
-        <td className="px-3 py-3 text-right text-xs tabular-nums text-slate-700">
-          {Number(component.default_amount) ? formatFormulaNumber(Number(component.default_amount)) : '—'}
-        </td>
-        <td className="px-3 py-3">
-          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${component.is_active ? 'text-emerald-700' : 'text-slate-400'}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${component.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center">
+          <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${component.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+            <span className={`h-2 w-2 rounded-full ${component.is_active ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-600'}`} />
             {component.is_active ? 'Kích hoạt' : 'Khóa'}
           </span>
         </td>
-        <td className="px-3 py-1.5 no-print">
-          <div className="flex justify-end gap-0.5">
+        <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 text-center no-print">
+          <div className="flex justify-center gap-0.5">
             {!canManage && (
               <IconButton label={`Xem ${component.name}`} onClick={() => setDetail(component)}><Eye className="h-3.5 w-3.5" /></IconButton>
             )}
@@ -361,7 +349,9 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
               <IconButton label={`Sửa ${component.name}`} onClick={() => openEdit(component)}><Pencil className="h-3.5 w-3.5" /></IconButton>
             )}
             {canManage && (
-              <IconButton label={`Xoá ${component.name}`} danger onClick={() => void handleDelete(component)}><Trash2 className="h-3.5 w-3.5" /></IconButton>
+              <IconButton label={`${component.is_active ? 'Khóa' : 'Mở khóa'} ${component.name}`} onClick={() => void handleToggleLock(component)}>
+                {component.is_active ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />}
+              </IconButton>
             )}
           </div>
         </td>
@@ -372,18 +362,16 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   function renderTable(rows: PayComponent[]) {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px]">
+        <table className="w-full min-w-[680px] whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
           <thead>
-            <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              <th className="px-4 py-2.5">Tên đầu mục</th>
-              <th className="px-3 py-2.5">Loại dòng</th>
-              <th className="px-3 py-2.5">Tính chất</th>
-              <th className="px-3 py-2.5 text-right">Mặc định</th>
-              <th className="px-3 py-2.5">Trạng thái</th>
-              <th className="px-3 py-2.5 no-print" />
+            <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+              <th className="px-4 py-3.5 text-left">Tên đầu mục</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3.5 text-center">Loại dòng</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3.5 text-center">Trạng thái</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] w-12 px-2 py-3.5 no-print" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">{rows.map(renderRow)}</tbody>
+          <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">{rows.map(renderRow)}</tbody>
         </table>
       </div>
     );
@@ -391,10 +379,10 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
 
   function renderForm() {
     return (
-      <Modal open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? 'Sửa đầu mục' : 'Thêm đầu mục'} size="lg">
+      <Modal square open={!!draft} onClose={() => setDraft(null)} title={draft?.id ? 'Sửa đầu mục' : 'Thêm đầu mục'} size="lg">
         {draft && (
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void handleSave(); }} noValidate>
-            <Input
+            <Input className="!rounded-none"
               label="Tên đầu mục"
               required
               value={draft.name}
@@ -405,8 +393,8 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
             />
 
             <div>
-              <span className="mb-1.5 block text-sm font-semibold text-slate-700">Loại dòng<span className="ml-1 text-red-500" aria-hidden="true">*</span></span>
-              <div className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1" role="radiogroup" aria-label="Loại dòng">
+              <span className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">Loại dòng<span className="ml-1 text-red-500" aria-hidden="true">*</span></span>
+              <div className="grid grid-cols-3 gap-1 rounded-none bg-slate-100 dark:bg-slate-800 p-1" role="radiogroup" aria-label="Loại dòng">
                 {KINDS.map((kind) => (
                   <button
                     key={kind}
@@ -414,80 +402,70 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
                     role="radio"
                     aria-checked={draft.kind === kind}
                     onClick={() => updateDraft({ kind })}
-                    className={`rounded-lg px-3 py-2 text-sm font-bold transition ${draft.kind === kind ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                    className={`rounded-none px-3 py-2 text-sm font-bold transition ${draft.kind === kind ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                   >
-                    {KIND_SIGN[kind]} {KIND_LABEL[kind]}
+                    {kind === 'INFO' ? KIND_LABEL[kind] : KIND_SHORT[kind]}
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Dropdown
-                  label="Nhóm hiển thị"
-                  required
-                  placeholder="Chọn nhóm…"
-                  value={draft.category_code}
-                  options={categories.map((item) => ({ value: item.code, label: item.name }))}
-                  onChange={(value) => updateDraft({ category_code: value as PayComponentCategoryCode })}
-                  error={errors.category_code}
-                />
-              </div>
-              <Dropdown
-                label="Tính chất"
-                required
-                value={draft.nature}
-                options={Object.entries(NATURE_LABEL).map(([value, label]) => ({ value, label }))}
-                onChange={(value) => updateDraft({ nature: value as PayComponentNature })}
+              <Dropdown square
+                label="Nhóm"
+                required={draft.kind !== 'INFO'}
+                placeholder="Chọn nhóm…"
+                value={draft.category_code}
+                options={[
+                  ...(draft.kind === 'INFO' ? [{ value: '', label: 'Không thuộc nhóm nào' }] : []),
+                  ...categories.map((item) => ({ value: item.code, label: item.name })),
+                ]}
+                onChange={(value) => updateDraft({ category_code: value as PayComponentCategoryCode | '' })}
+                error={errors.category_code}
+              />
+              <Dropdown square
+                label="Nhãn báo cáo"
+                value={draft.report_tag}
+                options={[
+                  { value: '', label: 'Không gắn nhãn' },
+                  ...PAY_REPORT_TAGS.map((tag) => ({ value: tag.code, label: tag.label })),
+                ]}
+                onChange={(value) => updateDraft({ report_tag: value as PayReportTag | '' })}
+                error={errors.report_tag}
               />
             </div>
 
-            <Dropdown
-              label="Nhãn báo cáo"
-              value={draft.report_tag}
-              options={[
-                { value: '', label: 'Không gắn nhãn' },
-                ...PAY_REPORT_TAGS.map((tag) => ({ value: tag.code, label: tag.label })),
-              ]}
-              onChange={(value) => updateDraft({ report_tag: value as PayReportTag | '' })}
-              error={errors.report_tag}
-            />
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <span className="mb-1.5 block text-sm font-semibold text-slate-700">Giá trị mặc định</span>
-                <MoneyInput
-                  large
-                  money
-                  value={draft.default_amount.trim() === '' ? Number.NaN : Number(draft.default_amount)}
-                  aria-label="Giá trị mặc định"
-                  placeholder="Để trống nếu không có"
-                  invalid={!!errors.default_amount}
-                  onChange={(value) => updateDraft({ default_amount: Number.isFinite(value) ? String(value) : '' })}
+            {draft.kind === 'INFO' && (
+              <label className="flex cursor-pointer items-start gap-2.5 rounded-none border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 accent-indigo-600"
+                  checked={draft.show_on_payslip}
+                  onChange={(event) => updateDraft({ show_on_payslip: event.target.checked })}
                 />
-                {errors.default_amount && <p className="mt-1.5 text-xs font-medium text-red-600">{errors.default_amount}</p>}
-              </div>
-              <div>
-                <span className="mb-1.5 block text-sm font-semibold text-slate-700">Trạng thái hoạt động</span>
-                <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="radiogroup" aria-label="Trạng thái hoạt động">
-                  {([[true, 'Kích hoạt', 'bg-emerald-600 text-white'], [false, 'Khóa', 'bg-slate-600 text-white']] as const).map(([value, label, on]) => (
-                    <button
-                      key={label}
-                      type="button"
-                      role="radio"
-                      aria-checked={draft.is_active === value}
-                      onClick={() => updateDraft({ is_active: value })}
-                      className={`rounded-lg px-3 py-2 text-sm font-bold transition ${draft.is_active === value ? on : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Hiện trên phiếu lương</span>
+              </label>
+            )}
+
+            <div>
+              <span className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">Trạng thái hoạt động</span>
+              <div className="grid grid-cols-2 gap-1 rounded-none bg-slate-100 dark:bg-slate-800 p-1" role="radiogroup" aria-label="Trạng thái hoạt động">
+                {([[true, 'Kích hoạt', 'bg-emerald-600 text-white'], [false, 'Khóa', 'bg-slate-600 dark:bg-slate-700 text-white']] as const).map(([value, label, on]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="radio"
+                    aria-checked={draft.is_active === value}
+                    onClick={() => updateDraft({ is_active: value })}
+                    className={`rounded-none px-3 py-2 text-sm font-bold transition ${draft.is_active === value ? on : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            <Textarea label="Mô tả" rows={2} value={draft.note}
+            <Textarea className="!rounded-none" label="Mô tả" rows={2} value={draft.note}
               onChange={(event) => updateDraft({ note: event.target.value })} placeholder="VD: Hỗ trợ đi lại cho nhân viên thị trường." />
 
             <div className="flex justify-end gap-2 pt-1">
@@ -500,13 +478,14 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
     );
   }
 
-  const tabs: Array<{ code: 'ALL' | PayComponentCategoryCode; label: string; count: number }> = [
+  const tabs: Array<{ code: CatalogTab; label: string; count: number }> = [
     { code: 'ALL', label: 'Tất cả', count: searched.length },
     ...categories.map((category) => ({
       code: category.code as PayComponentCategoryCode,
       label: category.name,
       count: searched.filter((component) => component.category_code === category.code).length,
     })),
+    { code: 'MID', label: 'Dòng trung gian', count: searched.filter(isLooseIntermediate).length },
   ];
 
   return (
@@ -519,7 +498,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Tìm đầu mục theo tên…"
             aria-label="Tìm đầu mục theo tên"
-            className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+            className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
           />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2 no-print">
@@ -531,14 +510,14 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
             </Button>
           )}
           {canManage && (
-            <Button size="sm" onClick={() => openCreate(categoryFilter === 'ALL' ? undefined : categoryFilter)}>
-              <Plus className="h-3.5 w-3.5" /> Thêm đầu mục
+            <Button size="sm" onClick={() => openCreate(categoryFilter)}>
+              <Plus className="h-3.5 w-3.5" /> {categoryFilter === 'MID' ? 'Thêm dòng trung gian' : 'Thêm khoản lương'}
             </Button>
           )}
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-200 no-print" role="tablist" aria-label="Lọc theo nhóm">
+      <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800 no-print" role="tablist" aria-label="Lọc theo nhóm">
         {tabs.map((tab) => {
           const active = categoryFilter === tab.code;
           return (
@@ -549,11 +528,11 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
               aria-selected={active}
               onClick={() => setCategoryFilter(tab.code)}
               className={`-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${
-                active ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'
+                active ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
               {tab.label}
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${active ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${active ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
                 {tab.count}
               </span>
             </button>
@@ -562,9 +541,9 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
       </div>
 
       {filtered.length === 0 ? (
-        <Card><CardContent className="py-10 text-center text-sm text-slate-500">Không có đầu mục nào khớp.</CardContent></Card>
+        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-500">Không có đầu mục nào khớp.</CardContent></Card>
       ) : (
-        <Card>
+        <Card className="!rounded-none">
           <CardContent className="p-0">{renderTable(filtered)}</CardContent>
         </Card>
       )}
@@ -572,19 +551,19 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
       {renderForm()}
 
       {/* --- Chi tiết đầu mục --- */}
-      <Modal open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ''} size="lg">
+      <Modal square open={!!detail} onClose={() => setDetail(null)} title={detail?.name ?? ''} size="lg">
         {detail && (() => {
           const usage = usageOf(detail);
-          const category = categoryByCode.get(detail.category_code);
           return (
             <div className="space-y-4">
               <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                <Field label="Nhóm" value={category?.name ?? detail.category_code} />
-                <Field label="Loại dòng" value={`${KIND_SIGN[detail.kind]} ${KIND_LABEL[detail.kind]}`} />
-                <Field label="Tính chất" value={NATURE_LABEL[detail.nature]} />
+                <Field label="Nhóm" value={groupName(detail)} />
+                <Field label="Loại dòng" value={<KindChip kind={detail.kind} />} />
+                {detail.kind === 'INFO' && (
+                  <Field label="Trên phiếu lương" value={detail.show_on_payslip ? 'Hiện cho nhân viên' : 'Không hiện'} />
+                )}
                 <Field label="Nhãn báo cáo" value={reportTagLabel(detail.report_tag) ?? 'Không gắn'} />
                 <Field label="Trạng thái" value={detail.is_active ? 'Kích hoạt' : 'Khóa'} />
-                <Field label="Giá trị mặc định" value={Number(detail.default_amount) ? formatFormulaNumber(Number(detail.default_amount)) : '—'} />
                 <Field label="Có trong cơ chế chung của" value={usage.mechanisms.length ? usage.mechanisms.join(', ') : 'Chưa có đơn vị nào'} />
                 <Field label="Khai riêng" value={`${usage.people} nhân sự`} />
               </dl>
@@ -600,7 +579,9 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
               )}
               {canManage && (
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => void handleDelete(detail)}><Trash2 className="h-4 w-4" /> Xoá</Button>
+                  <Button variant="outline" onClick={() => void handleToggleLock(detail)}>
+                    {detail.is_active ? <><Lock className="h-4 w-4" /> Khóa</> : <><LockOpen className="h-4 w-4" /> Mở khóa</>}
+                  </Button>
                   <Button onClick={() => { const target = detail; setDetail(null); openEdit(target); }}>
                     <Pencil className="h-4 w-4" /> Sửa
                   </Button>

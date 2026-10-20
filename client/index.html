@@ -36,6 +36,22 @@
 
     <meta property="og:title" content="HRM Huy Phong" />
     <meta property="og:description" content="Quản lý dự án, giao việc, chấm công, bảng công và tính lương." />
+
+    <!--
+      Đặt class `dark` TRƯỚC khi React mount — nếu để ThemeProvider làm việc
+      này trong useEffect thì có một khung hình trắng chớp qua trước khi
+      chuyển sang tối, rất khó chịu với người đã chọn dark mode.
+    -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('hrm:theme');
+          var dark = saved === 'dark' || (saved !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
