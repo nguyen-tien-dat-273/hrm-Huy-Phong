@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useMemo, useState } from 'react';
-import { ArrowRight, Check, History, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowRight, Check, History, Trash2 } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
@@ -188,7 +188,6 @@ export function RowAdjustmentConfirmModal({
             {items.map((item) => {
               const isEarning = item.kind === 'EARNING';
               const isDeduction = item.kind === 'DEDUCTION';
-              const isInfo = item.kind === 'INFO';
 
               // Màu cho chênh lệch
               const isPositiveImpact = isEarning ? item.delta > 0 : isDeduction ? item.delta < 0 : item.delta > 0;

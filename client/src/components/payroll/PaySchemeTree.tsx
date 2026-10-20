@@ -25,7 +25,7 @@ import { PayslipLayoutEditor } from '@/components/payroll/PayslipLayoutEditor';
 import { PersonSchemeForm } from '@/components/payroll/PersonSchemeForm';
 import { PersonAmountGrid } from '@/components/payroll/PersonAmountGrid';
 import { Pager, clampPage } from '@/components/payroll/Pager';
-import { resolveMechanismRows, unitMechanismRows } from '@/lib/payrollScheme';
+import { resolveMechanismRows } from '@/lib/payrollScheme';
 import { schemeSourceOf } from '@/lib/payrollRun';
 import { stripVietnamese } from '@/lib/tableExport';
 import { fetchBankAccounts, type PayrollWorkspace } from '@/lib/payrollData';
@@ -125,7 +125,6 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
   const unassignedCount = data.profiles.filter((person) => !person.unit_id || !activeUnitIds.has(person.unit_id)).length;
   const unit = unitId && unitId !== NO_UNIT ? data.units.find((row) => row.id === unitId) ?? null : null;
   const person = personId ? data.profiles.find((row) => row.id === personId) ?? null : null;
-  const unitRowCount = unit ? unitMechanismRows(unit.id, source, monthStart, monthEnd).size : 0;
   const unitPeople = useMemo(() => {
     if (!unit) return [];
     const ids = descendantsOf(unit.id);

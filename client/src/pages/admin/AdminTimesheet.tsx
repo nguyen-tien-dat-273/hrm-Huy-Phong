@@ -2,7 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { FileSpreadsheet, Table as TableIcon, Lock, Unlock, ScanSearch, Search, TriangleAlert, CalendarDays } from 'lucide-react';
 import { startOfMonth, endOfMonth, format, getDaysInMonth } from 'date-fns';
-import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';

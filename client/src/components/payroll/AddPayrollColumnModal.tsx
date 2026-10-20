@@ -9,7 +9,7 @@
 // ============================================================================
 
 import { useMemo, useState } from 'react';
-import { Columns3, Plus, Search, Sparkles } from 'lucide-react';
+import { Columns3, Search } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Dropdown } from '@/components/ui/Dropdown';
@@ -23,7 +23,7 @@ import { createComponent, saveScheme, type PayrollWorkspace } from '@/lib/payrol
 import { normalizeText } from '@/lib/formulaTokens';
 import { useToast } from '@/contexts/ToastContext';
 import type { PayrollParams } from '@/lib/payrollSettings';
-import type { PayComponent, PayComponentCategoryCode, PayComponentKind, SchemePayloadItem, UnitRowMode } from '@/types';
+import type { PayComponentCategoryCode, PayComponentKind, SchemePayloadItem, UnitRowMode } from '@/types';
 
 interface AddPayrollColumnModalProps {
   open: boolean;

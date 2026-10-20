@@ -17,16 +17,13 @@ import {
   CheckCircle2,
   CircleAlert,
   CircleCheck,
-  FileSpreadsheet,
   History,
   Landmark,
   ListChecks,
   LockKeyhole,
-  SlidersHorizontal,
   TriangleAlert,
   Undo2,
   Wallet,
-  X,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -34,7 +31,7 @@ import { ExportButtons } from '@/components/payroll/ExportButtons';
 import { Timeline } from '@/components/payroll/PayrollApprovals';
 import { RUN_STATUS_LABEL } from '@/components/payroll/PayrollRegister';
 import { formatDateTime } from '@/lib/utils';
-import type { PayrollApprovalEvent, PayrollRun, PayrollRunStatus, Profile } from '@/types';
+import type { PayrollApprovalEvent, PayrollRun, PayrollRunStatus } from '@/types';
 import type { PayrollRow } from '@/components/payroll/PayrollRegister';
 
 const RUN_ORDER: PayrollRunStatus[] = ['DRAFT', 'CALCULATED', 'LOCKED', 'APPROVED', 'PAID'];

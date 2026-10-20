@@ -21,7 +21,7 @@ import { fetchManagerIds, notifyUser, notifyUsers } from '@/lib/assignments';
 import { LeaveQuotaPanel } from '@/components/LeaveQuotaPanel';
 import { formatDate } from '@/lib/utils';
 import { hasPermission } from '@/lib/permissions';
-import type { LeaveCancellationRequest, LeaveRequest, LeaveStatus, Profile } from '@/types';
+import type { LeaveCancellationRequest, LeaveRequest, Profile } from '@/types';
 
 /** Nhãn trạng thái / loại đơn — cùng kiểu viên thuốc với các màn Lương & Đãi ngộ. */
 function Pill({ className, children }: { className: string; children: ReactNode }) {

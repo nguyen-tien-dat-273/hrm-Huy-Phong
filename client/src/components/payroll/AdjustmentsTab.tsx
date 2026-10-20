@@ -55,8 +55,6 @@ const KIND_LABEL: Record<Draft['kind'], string> = {
 };
 const KIND_SHORT: Record<Draft['kind'], string> = { RECOVERY: 'Tăng (+)', CLAWBACK: 'Giảm (−)' };
 
-/** '2026-07-01' ↔ '2026-07' cho ô input type=month. */
-const toMonthInput = (iso: string | null) => (iso ? iso.slice(0, 7) : '');
 const fromMonthInput = (value: string) => (value ? `${value}-01` : null);
 
 export function AdjustmentsTab({

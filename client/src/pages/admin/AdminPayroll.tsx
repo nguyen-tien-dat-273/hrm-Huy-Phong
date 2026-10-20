@@ -38,7 +38,6 @@ import { hasAdminFunction, type AdminFunctionCode } from '@/lib/permissions';
 import { toDateString } from '@/lib/utils';
 import { loadPayrollWorkspace, type PayrollWorkspace } from '@/lib/payrollData';
 import { paramsForMonth } from '@/lib/payrollRun';
-import type { PayrollParamVersion } from '@/lib/payrollSettings';
 
 type Tab = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'approvals' | 'reports';
 

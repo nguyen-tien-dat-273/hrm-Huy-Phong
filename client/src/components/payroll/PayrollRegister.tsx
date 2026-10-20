@@ -15,14 +15,12 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'r
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
-  BookOpenCheck, Calculator, Check, CheckCircle2, CircleAlert, CircleCheck, FileSpreadsheet, Filter, History, Landmark,
-  ListChecks, Lock, LockKeyhole, Pencil, Plus, Save, Search, Settings, SlidersHorizontal, TriangleAlert, Undo2, Unlock, Wallet, X,
+  BookOpenCheck, Calculator, Check, CheckCircle2, CircleAlert, CircleCheck, FileSpreadsheet, History,
+  Lock, Pencil, Plus, Save, Search, Settings, SlidersHorizontal, TriangleAlert, Unlock, X,
 } from 'lucide-react';
-import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
-import { Dropdown } from '@/components/ui/Dropdown';
 import { MonthNav } from '@/components/ui/MonthNav';
 import { PayslipBreakdown } from '@/components/payroll/PayslipBreakdown';
 import { documentLinesFromCatalog } from '@/components/payroll/PayslipDocument';
@@ -45,7 +43,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { hasAdminFunction } from '@/lib/permissions';
-import { formatDateTime, formatVND } from '@/lib/utils';
+import { formatVND } from '@/lib/utils';
 import type { ComputedPayslip, MechanismRow } from '@/lib/payroll';
 import type { PayrollParams } from '@/lib/payrollSettings';
 import { computeForPerson, nameResolver, schemeSourceOf } from '@/lib/payrollRun';
@@ -88,7 +86,6 @@ export const RUN_STATUS_LABEL: Record<PayrollRunStatus, string> = {
   APPROVED: 'Đã duyệt chi',
   PAID: 'Đã chi trả & phát hành',
 };
-const RUN_ORDER: PayrollRunStatus[] = ['DRAFT', 'CALCULATED', 'LOCKED', 'APPROVED', 'PAID'];
 const PAGE_SIZE = 50;
 /** Số KPI do module KPI tự đẩy sang khi khoá phiếu — không nhập tay. */
 /** "10.500.000" (chấm ngăn nghìn) và "1,5" / "1.5" (số lẻ) đều đọc đúng. */
@@ -1715,26 +1712,6 @@ export function PayrollRegister({
         sortedCount={sorted.length}
         filteredCount={filtered.length}
       />
-    </div>
-  );
-}
-
-
-/** Vòng đời kỳ lương thành năm chặng — người làm lương thấy cả đường đi, không chỉ một nhãn. */
-function RunLifecycle({ status }: { status: PayrollRunStatus }) {
-  const current = RUN_ORDER.indexOf(status);
-  return (
-    <div className="flex flex-wrap items-center gap-1" role="status" aria-label={`Trạng thái kỳ: ${RUN_STATUS_LABEL[status]}`}>
-      {RUN_ORDER.map((step, index) => (
-        <span key={step} className="flex items-center gap-1">
-          {index > 0 && <span className={`h-px w-3 ${index <= current ? 'bg-indigo-300' : 'bg-slate-200'}`} />}
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${index === current
-            ? 'bg-indigo-600 text-white'
-            : index < current ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}>
-            {RUN_STATUS_LABEL[step]}
-          </span>
-        </span>
-      ))}
     </div>
   );
 }

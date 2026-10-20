@@ -10,7 +10,7 @@
 
 import { useMemo, useState } from 'react';
 import {
-  Building2, Check, CheckSquare, CircleAlert, Filter, ListChecks, RotateCcw, Search, SlidersHorizontal, Square, X,
+  Building2, CircleAlert, Filter, ListChecks, RotateCcw, Search, X,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
