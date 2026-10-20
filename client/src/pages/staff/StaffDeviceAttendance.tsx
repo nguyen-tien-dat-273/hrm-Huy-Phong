@@ -27,6 +27,9 @@ const sourceLabel = (record: Attendance) => {
 const statusLabel = (record: Attendance): string => {
   const fromDevice = String(record.check_in_method || '').toUpperCase() === 'DEVICE';
   if (record.approved_by_lead) return 'Đã tính công';
+  if (!record.check_in_time && record.check_out_time) {
+    return 'Đã checkout · chưa check-in (chờ máy chấm công)';
+  }
   if (!record.check_out_time) {
     return fromDevice
       ? 'Máy đã ghi giờ vào · chờ bạn checkout'
@@ -85,7 +88,25 @@ export function StaffDeviceAttendance() {
   // dưới database chặn — giao diện ẩn nút chỉ là lớp ngoài, người dùng gọi
   // thẳng API vẫn không tạo được dòng thứ hai cùng ngày.
   const handleCheckIn = async () => {
-    if (!profile || todayRecord) return;
+    if (!profile) return;
+    if (todayRecord) {
+      if (!todayRecord.check_in_time) {
+        setCheckingIn(true);
+        const { error } = await supabase
+          .from('attendance')
+          .update({ check_in_time: new Date().toISOString() })
+          .eq('id', todayRecord.id)
+          .eq('user_id', profile.id);
+        setCheckingIn(false);
+        if (error) {
+          toast(`Check-in thất bại: ${describeDbError(error)}`, 'error');
+          return;
+        }
+        toast('Đã bổ sung giờ check-in.', 'success');
+        await loadData(true);
+      }
+      return;
+    }
     setCheckingIn(true);
     const { error } = await supabase.from('attendance').insert({
       user_id: profile.id,
@@ -105,27 +126,77 @@ export function StaffDeviceAttendance() {
     await loadData(true);
   };
 
-  const handleCheckOut = async () => {
-    if (!profile || !checkoutRecord) return;
+  const handleCheckOut = async (targetId?: string) => {
+    if (!profile) return;
+    const target = (targetId ? records.find((r) => r.id === targetId) : null)
+      || (todayRecord && !todayRecord.check_out_time ? todayRecord : null)
+      || checkoutRecord;
+
     setCheckingOut(true);
-    const { data, error } = await supabase
+    const nowIso = new Date().toISOString();
+
+    if (target && !target.check_out_time) {
+      const { data, error } = await supabase
+        .from('attendance')
+        .update({ check_out_time: nowIso, status: 'completed' })
+        .eq('id', target.id)
+        .eq('user_id', profile.id)
+        .is('check_out_time', null)
+        .select('id')
+        .maybeSingle();
+      setCheckingOut(false);
+      if (error) {
+        toast(`Checkout thất bại: ${describeDbError(error)}`, 'error');
+        return;
+      }
+      if (!data) {
+        toast('Bản ghi vừa được cập nhật ở nơi khác. Đang tải lại dữ liệu.', 'warning');
+      } else {
+        toast('Checkout thành công. Giờ ra đã được ghi nhận.', 'success');
+      }
+      await loadData(true);
+      return;
+    }
+
+    // Chưa có bản ghi hôm nay: cho phép check out khi chưa check in
+    let { error } = await supabase
       .from('attendance')
-      .update({ check_out_time: new Date().toISOString(), status: 'completed' })
-      .eq('id', checkoutRecord.id)
-      .eq('user_id', profile.id)
-      .is('check_out_time', null)
+      .insert({
+        user_id: profile.id,
+        date: today,
+        check_in_time: null,
+        check_out_time: nowIso,
+        status: 'completed',
+        check_in_method: 'DEVICE',
+        approved_by_lead: false,
+      })
       .select('id')
       .maybeSingle();
+
+    if (error) {
+      const res = await supabase
+        .from('attendance')
+        .insert({
+          user_id: profile.id,
+          date: today,
+          check_in_time: null,
+          check_out_time: nowIso,
+          status: 'completed',
+          check_in_method: 'MANUAL',
+          approved_by_lead: false,
+        })
+        .select('id')
+        .maybeSingle();
+      error = res.error;
+    }
+
     setCheckingOut(false);
     if (error) {
       toast(`Checkout thất bại: ${describeDbError(error)}`, 'error');
+      await loadData(true);
       return;
     }
-    if (!data) {
-      toast('Bản ghi vừa được cập nhật ở nơi khác. Đang tải lại dữ liệu.', 'warning');
-    } else {
-      toast('Checkout thành công. Giờ ra đã được ghi nhận.', 'success');
-    }
+    toast('Checkout thành công. Giờ vào sẽ được bổ sung sau.', 'success');
     await loadData(true);
   };
 
@@ -159,10 +230,16 @@ export function StaffDeviceAttendance() {
           <p className="text-sm text-slate-600">
             Hôm nay chưa có giờ vào — ca đang hiển thị bên dưới là ca cũ chưa checkout.
           </p>
-          <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn}>
-            <LogIn className="h-4 w-4" />
-            {checkingIn ? 'Đang check-in…' : 'Check-in hôm nay'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn || checkingOut}>
+              <LogIn className="h-4 w-4" />
+              {checkingIn ? 'Đang check-in…' : 'Check-in hôm nay'}
+            </Button>
+            <Button variant="outline" onClick={() => handleCheckOut()} disabled={checkingOut || checkingIn}>
+              <LogOut className="h-4 w-4" />
+              {checkingOut ? 'Đang checkout…' : 'Check-out hôm nay'}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -179,23 +256,50 @@ export function StaffDeviceAttendance() {
                 Quét tại máy chấm công là cách thông thường; trang sẽ tự cập nhật sau lần đồng bộ
                 kế tiếp. Nếu hôm nay bạn không quét được máy thì check-in ở đây.
               </p>
-              <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn} className="mt-5">
-                <LogIn className="h-4 w-4" />
-                {checkingIn ? 'Đang check-in…' : 'Check-in trên HRM'}
-              </Button>
+              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+                <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn || checkingOut}>
+                  <LogIn className="h-4 w-4" />
+                  {checkingIn ? 'Đang check-in…' : 'Check-in trên HRM'}
+                </Button>
+                <Button variant="outline" onClick={() => handleCheckOut()} disabled={checkingOut || checkingIn}>
+                  <LogOut className="h-4 w-4" />
+                  {checkingOut ? 'Đang checkout…' : 'Check-out (chưa check-in)'}
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
+              <div className={`rounded-2xl border p-5 ${!focusRecord.check_in_time && focusRecord.check_out_time ? 'border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/70' : 'border-emerald-200 bg-emerald-50/60'}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div><p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Giờ vào đã ghi nhận</p><p className="mt-2 font-display text-4xl font-extrabold tabular-nums text-slate-900">{formatTime(focusRecord.check_in_time)}</p></div>
-                  <Badge className="bg-white text-emerald-700 ring-1 ring-emerald-200"><Fingerprint className="mr-1 h-3.5 w-3.5" />{sourceLabel(focusRecord)}</Badge>
+                  <div>
+                    <p className={`text-xs font-bold uppercase tracking-widest ${!focusRecord.check_in_time && focusRecord.check_out_time ? 'text-slate-600 dark:text-slate-400' : 'text-emerald-700'}`}>
+                      {focusRecord.check_in_time ? 'Giờ vào đã ghi nhận' : 'Giờ ra đã ghi nhận'}
+                    </p>
+                    <p className="mt-2 font-display text-4xl font-extrabold tabular-nums text-slate-900 dark:text-slate-100">
+                      {focusRecord.check_in_time ? formatTime(focusRecord.check_in_time) : formatTime(focusRecord.check_out_time)}
+                    </p>
+                  </div>
+                  <Badge className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 ring-1 ring-slate-300 dark:ring-slate-700">
+                    <Fingerprint className="mr-1 h-3.5 w-3.5" />{sourceLabel(focusRecord)}
+                  </Badge>
                 </div>
-                <p className="mt-4 text-sm leading-relaxed text-slate-600">{focusRecord.check_out_time ? `Checkout lúc ${formatTime(focusRecord.check_out_time)}` : 'Máy đã ghi giờ vào; bạn chưa checkout ca này.'}</p>
-                {checkoutRecord?.id === focusRecord.id && (
-                  <Button theme="staff" onClick={handleCheckOut} disabled={checkingOut} className="mt-5 w-full sm:w-auto">
+                <p className="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                  {!focusRecord.check_in_time && focusRecord.check_out_time
+                    ? `Checkout lúc ${formatTime(focusRecord.check_out_time)} · Chưa có giờ vào (sẽ bổ sung qua máy chấm công).`
+                    : focusRecord.check_out_time
+                    ? `Checkout lúc ${formatTime(focusRecord.check_out_time)}`
+                    : 'Máy đã ghi giờ vào; bạn chưa checkout ca này.'}
+                </p>
+                {!focusRecord.check_out_time && (
+                  <Button theme="staff" onClick={() => handleCheckOut(focusRecord.id)} disabled={checkingOut} className="mt-5 w-full sm:w-auto">
                     <LogOut className="h-4 w-4" />
                     {checkingOut ? 'Đang checkout…' : 'Checkout cuối ngày'}
+                  </Button>
+                )}
+                {!focusRecord.check_in_time && focusRecord.check_out_time && (
+                  <Button variant="outline" size="sm" onClick={handleCheckIn} disabled={checkingIn} className="mt-4">
+                    <LogIn className="h-4 w-4" />
+                    {checkingIn ? 'Đang check-in…' : 'Check-in bổ sung'}
                   </Button>
                 )}
               </div>
@@ -229,10 +333,25 @@ export function StaffDeviceAttendance() {
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"><Clock className="h-4.5 w-4.5" /></div>
                 <div>
                   <p className="font-black text-sm text-slate-900 dark:text-slate-100">{formatDate(record.date)}</p>
-                  <p className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400">Vào {formatTime(record.check_in_time)}{record.check_out_time ? ` · Ra ${formatTime(record.check_out_time)}` : ' · Thiếu checkout'}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                    {!record.check_in_time && record.check_out_time
+                      ? `Chưa vào · Ra ${formatTime(record.check_out_time)}`
+                      : `Vào ${formatTime(record.check_in_time)}${record.check_out_time ? ` · Ra ${formatTime(record.check_out_time)}` : ' · Thiếu checkout'}`}
+                  </p>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2"><Badge className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold">{sourceLabel(record)}</Badge><Badge className={record.approved_by_lead ? 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 font-bold' : 'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold'}>{record.approved_by_lead ? 'Đã xác nhận' : 'Chờ đối soát'}</Badge></div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold">{sourceLabel(record)}</Badge>
+                <Badge className={
+                  !record.check_in_time && record.check_out_time
+                    ? 'bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold'
+                    : record.approved_by_lead
+                    ? 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 font-bold'
+                    : 'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold'
+                }>
+                  {!record.check_in_time && record.check_out_time ? 'Chờ máy chấm công' : record.approved_by_lead ? 'Đã xác nhận' : 'Chờ đối soát'}
+                </Badge>
+              </div>
             </div>
           ))}</div>
         )}

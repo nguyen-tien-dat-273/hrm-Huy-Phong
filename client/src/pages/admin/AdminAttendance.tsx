@@ -407,6 +407,7 @@ export function AdminAttendance() {
                 </thead>
                 {groupedByDay.map(([date, rows]) => {
                   const thieuGioRa = rows.filter((item) => !item.check_out_time).length;
+                  const thieuGioVao = rows.filter((item) => !item.check_in_time).length;
                   return (
                     <tbody key={date} className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
                       <tr className="border-y-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800">
@@ -416,6 +417,9 @@ export function AdminAttendance() {
                             <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{rows.length} người</span>
                             {thieuGioRa > 0 && (
                               <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">{thieuGioRa} chưa có giờ ra</span>
+                            )}
+                            {thieuGioVao > 0 && (
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">{thieuGioVao} chưa có giờ vào</span>
                             )}
                           </div>
                         </td>
@@ -429,7 +433,13 @@ export function AdminAttendance() {
                             </div>
                           </td>
                           <td data-label="Giờ vào" className="px-2.5 py-1.5">
-                            <span className="text-xs font-black tabular-nums text-slate-900 dark:text-slate-100">{formatTime(r.check_in_time)}</span>
+                            {r.check_in_time ? (
+                              <span className="text-xs font-black tabular-nums text-slate-900 dark:text-slate-100">{formatTime(r.check_in_time)}</span>
+                            ) : (
+                              <span className="inline-flex items-center rounded bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                                Chưa check-in
+                              </span>
+                            )}
                           </td>
                           <td data-label="Giờ ra" className="px-2.5 py-1.5">
                             {r.check_out_time ? (
@@ -463,7 +473,7 @@ export function AdminAttendance() {
                           </td>
                           <td data-label="" className="px-3 py-1.5">
                             <div className="flex items-center justify-end gap-1.5">
-                              {r.check_out_time && !r.approved_by_lead && (
+                              {r.check_in_time && r.check_out_time && !r.approved_by_lead && (
                                 <button
                                   onClick={() => handleApprove(r)}
                                   className="px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-200 transition-colors"
@@ -471,6 +481,11 @@ export function AdminAttendance() {
                                 >
                                   Xác nhận
                                 </button>
+                              )}
+                              {!r.check_in_time && r.check_out_time && (
+                                <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500" title="Chờ bổ sung giờ vào từ máy chấm công">
+                                  Chờ máy chấm công
+                                </span>
                               )}
                               <button
                                 onClick={() => handleDelete(r)}
