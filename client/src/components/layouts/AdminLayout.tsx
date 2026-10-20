@@ -10,7 +10,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { Avatar } from '@/components/ui/Avatar';
 import { supabase } from '@/lib/supabase';
-import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead, type AdminPermission } from '@/lib/permissions';
+import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead } from '@/lib/permissions';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import type { Notification } from '@/types';
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
@@ -191,9 +191,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     setOpenGroup(name);
     setSidebarOpen(false);
     setLauncherOpen(false);
-    if (name === groupOfCurrentPath) return;
     const first = groupsWithItems.find((group) => group.name === name)?.items[0];
-    if (first) navigate(first.to);
+    if (first && location.pathname !== first.to) navigate(first.to);
   };
 
   const handleSwitchToStaff = () => {
