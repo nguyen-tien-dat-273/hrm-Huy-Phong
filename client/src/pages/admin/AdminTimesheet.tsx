@@ -36,6 +36,8 @@ interface DayCell {
   checkInTime: string | null;
   /** Có check-in nhưng chưa/không check-out — vẫn tính ngày công, giờ = 0. */
   missingCheckout: boolean;
+  /** Có check-out nhưng chưa có check-in (chờ máy chấm công) — hiển thị màu xám. */
+  missingCheckIn: boolean;
   /** Nằm trong đơn nghỉ phép đã duyệt (chỉ tính ngày thường, trừ T7/CN). */
   onLeave: boolean;
   /** Đơn nghỉ nửa ngày — vẫn là ngày có phép nhưng chỉ tính 0.5 công. */
@@ -145,26 +147,30 @@ const TimesheetRow = memo(function TimesheetRow({
       {visibleDays.map((i) => {
         const d = r.days[i];
         const enough = (d.hours ?? 0) >= standardHours;
-        const tone = d.missingCheckout ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+        const tone = d.missingCheckIn ? 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
+          : d.missingCheckout ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
           : d.checkoutTime ? (enough ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300')
-            : d.onLeave ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300'
-              : weekendFlags[i] ? 'bg-slate-100/80 dark:bg-slate-800/50' : '';
+          : d.onLeave ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300'
+          : weekendFlags[i] ? 'bg-slate-100/80 dark:bg-slate-800/50' : '';
         return (
           <td
             key={i}
             title={[
-              d.missingCheckout ? `Vào ${formatTime(d.checkInTime)} · thiếu check-out`
+              d.missingCheckIn ? `Ra ${formatTime(d.checkoutTime)} · Chưa check-in (chờ máy chấm công)`
+                : d.missingCheckout ? `Vào ${formatTime(d.checkInTime)} · thiếu check-out`
                 : d.checkoutTime ? `Vào ${formatTime(d.checkInTime)} · Ra ${formatTime(d.checkoutTime)} · ${d.hours ?? 0} giờ công`
-                  : d.onLeave ? (d.halfLeave ? 'Nghỉ phép nửa ngày (đã duyệt)' : 'Nghỉ phép đã duyệt') : '',
+                : d.onLeave ? (d.halfLeave ? 'Nghỉ phép nửa ngày (đã duyệt)' : 'Nghỉ phép đã duyệt') : '',
               canEdit ? 'Bấm để sửa giờ vào / ra' : canManage ? 'Bấm để xem chi tiết giờ vào / ra (chỉ xem)' : '',
             ].filter(Boolean).join('\n') || undefined}
             onClick={canManage ? () => onEditCell(r.profile, i, d) : undefined}
             className={`border-l border-slate-300 dark:border-slate-700 px-0 py-1 text-center text-[11px] font-black ${tone} ${i === todayIdx ? 'shadow-[inset_2px_0_0_#4f46e5,inset_-2px_0_0_#4f46e5]' : ''} ${canManage ? 'cursor-pointer hover:ring-2 hover:ring-inset hover:ring-indigo-400' : ''}`}
           >
-            {d.missingCheckout ? '!'
+            {d.missingCheckIn ? (
+              d.checkoutTime ? formatTime(d.checkoutTime) : '—'
+            ) : d.missingCheckout ? '!'
               : d.checkoutTime ? formatTime(d.checkoutTime)
-                : d.onLeave ? (d.halfLeave ? '½' : 'P')
-                  : <span className="text-[11px] font-normal text-slate-300 dark:text-slate-600">·</span>}
+              : d.onLeave ? (d.halfLeave ? '½' : 'P')
+              : <span className="text-[11px] font-normal text-slate-300 dark:text-slate-600">·</span>}
           </td>
         );
       })}
@@ -331,6 +337,14 @@ export function AdminTimesheet() {
       const list = attByUserId.get(a.user_id);
       if (list) list.push(a); else attByUserId.set(a.user_id, [a]);
     }
+    // Ghép thêm bản ghi chờ/thiếu (đang làm, thiếu checkout, thiếu checkin) vào bảng công
+    for (const p of pending) {
+      if (!attendance.some((a) => a.id === p.id)) {
+        const list = attByUserId.get(p.user_id);
+        const item = p as Attendance;
+        if (list) list.push(item); else attByUserId.set(p.user_id, [item]);
+      }
+    }
     const leavesByUserId = new Map<string, LeaveRequest[]>();
     for (const lv of leaves) {
       const list = leavesByUserId.get(lv.user_id);
@@ -351,6 +365,7 @@ export function AdminTimesheet() {
         recordId: null,
         checkInTime: null,
         missingCheckout: false,
+        missingCheckIn: false,
         onLeave: false,
         halfLeave: false,
       }));
@@ -382,10 +397,19 @@ export function AdminTimesheet() {
               days[idx].recordId = a.id;
               days[idx].checkInTime = a.check_in_time;
             }
+            days[idx].missingCheckIn = false;
+            days[idx].missingCheckout = false;
           } else if (a.check_in_time) {
             days[idx].hours ??= 0;
             days[idx].missingCheckout = true;
             if (!days[idx].recordId) { days[idx].recordId = a.id; days[idx].checkInTime = a.check_in_time; }
+          } else if (a.check_out_time) {
+            // Check-out khi chưa check-in: hiển thị ô màu xám
+            days[idx].missingCheckIn = true;
+            if (!days[idx].checkoutTime || a.check_out_time > days[idx].checkoutTime!) {
+              days[idx].checkoutTime = a.check_out_time;
+              days[idx].recordId = a.id;
+            }
           }
         }
       }
@@ -407,7 +431,7 @@ export function AdminTimesheet() {
         asgDone: myAsg.done,
       };
     });
-  }, [profiles, attendance, sessionsByAttendance, leaves, assignments, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profiles, attendance, pending, sessionsByAttendance, leaves, assignments, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const departments = useMemo(
     () => [...new Set(profiles.map((person) => person.department?.trim()).filter((name): name is string => !!name))]
@@ -457,7 +481,9 @@ export function AdminTimesheet() {
     const list = [...pending]
       .sort((a, b) => a.date.localeCompare(b.date) || (nameById.get(a.user_id) ?? '').localeCompare(nameById.get(b.user_id) ?? '', 'vi'))
       .map((record) => {
-        const reason = record.status === 'active' && !record.check_out_time
+        const reason = !record.check_in_time && record.check_out_time
+          ? 'có giờ ra, chưa check-in (chờ máy chấm công)'
+          : record.status === 'active' && !record.check_out_time
           ? 'đang làm, chưa check-out'
           : !record.check_out_time ? 'thiếu check-out' : 'quản lý chưa duyệt';
         return `${nameById.get(record.user_id) ?? 'Người dùng đã nghỉ'} — ${record.date.slice(8, 10)}/${record.date.slice(5, 7)}: ${reason}`;
@@ -578,7 +604,7 @@ export function AdminTimesheet() {
       const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
       const sheet1: (string | number)[][] = [
         [`BẢNG CÔNG THÁNG ${monthLabel}`],
-        [`Ký hiệu: HH:mm = giờ checkout cuối ngày · P = nghỉ phép · P/2 = nghỉ nửa ngày · ! = thiếu checkout · trống = vắng`],
+        [`Ký hiệu: HH:mm = giờ checkout cuối ngày (ô xám: chưa check-in) · P = nghỉ phép · P/2 = nghỉ nửa ngày · ! = thiếu checkout · trống = vắng`],
         [],
         ['STT', 'Phòng ban', 'Mã nhân viên', 'Tên nhân viên', ...dayHeaders, 'Ngày công', 'Giờ công', 'Nghỉ phép', 'Việc xong/giao'],
         ...rows.map((r, i) => [
@@ -587,7 +613,7 @@ export function AdminTimesheet() {
           r.profile.employee_code ?? '',
           r.profile.name,
           ...r.days.map((d) =>
-            d.missingCheckout ? '!' : d.checkoutTime ? formatTime(d.checkoutTime) : d.onLeave ? (d.halfLeave ? 'P/2' : 'P') : '',
+            d.missingCheckIn ? (d.checkoutTime ? formatTime(d.checkoutTime) : '—') : d.missingCheckout ? '!' : d.checkoutTime ? formatTime(d.checkoutTime) : d.onLeave ? (d.halfLeave ? 'P/2' : 'P') : '',
           ),
           r.workDays,
           r.totalHours,
@@ -618,7 +644,11 @@ export function AdminTimesheet() {
 
       // ---- Sheet 2: Chi tiết chấm công --------------------------------------
       const nameById = new Map(profiles.map((p) => [p.id, p.name]));
-      const detail = [...attendance].sort((a, b) => a.date.localeCompare(b.date) || (nameById.get(a.user_id) ?? '').localeCompare(nameById.get(b.user_id) ?? ''));
+      const allAtt = [...attendance];
+      for (const p of pending) {
+        if (!allAtt.some((a) => a.id === p.id)) allAtt.push(p as Attendance);
+      }
+      const detail = allAtt.sort((a, b) => a.date.localeCompare(b.date) || (nameById.get(a.user_id) ?? '').localeCompare(nameById.get(b.user_id) ?? ''));
       const sheet2: (string | number)[][] = [
         [`CHI TIẾT CHẤM CÔNG THÁNG ${monthLabel}`],
         [],
@@ -627,7 +657,7 @@ export function AdminTimesheet() {
           i + 1,
           nameById.get(a.user_id) ?? '—',
           a.date,
-          formatTime(a.check_in_time),
+          a.check_in_time ? formatTime(a.check_in_time) : 'THIẾU',
           a.check_out_time ? formatTime(a.check_out_time) : 'THIẾU',
           hoursBetween(a, sessionsByAttendance),
           a.status === 'completed' ? 'Hoàn thành' : 'Đang làm',
