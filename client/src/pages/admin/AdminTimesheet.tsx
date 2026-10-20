@@ -891,6 +891,7 @@ export function AdminTimesheet() {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 no-print">
             <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-emerald-100 px-1 text-[11px] font-black text-emerald-800">17:30</span> checkout, đủ giờ công</span>
             <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-orange-100 px-1 text-[11px] font-black text-orange-800">15:00</span> checkout, chưa đủ giờ công</span>
+            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-slate-300 dark:bg-slate-700 px-1 text-[11px] font-black text-slate-800 dark:text-slate-200">17:30</span> checkout nhưng chưa check-in</span>
             <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-amber-100 text-[11px] font-black text-amber-800">!</span> thiếu checkout</span>
             <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-violet-100 text-[11px] font-black text-violet-800">P</span> nghỉ phép</span>
             <span className="flex items-center gap-1.5"><span className="h-4 w-4 border border-slate-300 bg-slate-100 dark:bg-slate-800" /> cuối tuần</span>
