@@ -404,30 +404,30 @@ function SchemeChanges({ request, data, componentById }: {
       {changes.length === 0 ? (
         <p className="text-xs text-slate-500">Không đổi gì so với cơ chế hiện hành.</p>
       ) : (
-        <div className="overflow-x-auto rounded-none border border-slate-200">
-          <table className="w-full min-w-[480px] text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-left text-[10px] font-bold uppercase tracking-wider text-black">
-                <th className="px-3 py-1.5">Nội dung</th>
-                <th className="px-3 py-1.5">Hiện hành</th>
-                <th className="px-3 py-1.5">Đề xuất</th>
+        <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
+          <table className="w-full min-w-[480px] text-xs border-collapse">
+            <thead className="bg-[#fdf2f4] dark:bg-[#201114] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+              <tr className="text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                <th className="px-3.5 py-2.5">Nội dung</th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3.5 py-2.5">Hiện hành</th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3.5 py-2.5">Đề xuất</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
               {changes.map((change) => {
                 const component = componentById.get(change.componentId);
                 return (
-                  <tr key={change.componentId}>
-                    <td className="px-3 py-1.5 font-semibold text-slate-700">
+                  <tr key={change.componentId} className="group hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-colors">
+                    <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">
                       {component?.name ?? '?'}
-                      <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold ${
-                        change.kind === 'ADDED' ? 'bg-emerald-50 text-emerald-700' : change.kind === 'REMOVED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                      <span className={`ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                        change.kind === 'ADDED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : change.kind === 'REMOVED' ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                       }`}>
                         {change.kind === 'ADDED' ? 'MỚI' : change.kind === 'REMOVED' ? 'BỎ' : 'ĐỔI'}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 text-slate-500">{itemText(change.before, nameOf)}</td>
-                    <td className="px-3 py-1.5 font-semibold text-slate-800">{itemText(change.after, nameOf)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-medium text-slate-500 dark:text-slate-400">{itemText(change.before, nameOf)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">{itemText(change.after, nameOf)}</td>
                   </tr>
                 );
               })}

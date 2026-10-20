@@ -76,7 +76,7 @@ export function Modal({ open, onClose, title, children, size = 'md', square = fa
           <span className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
         </div>
 
-        <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+        <div className="flex items-center justify-between px-5 sm:px-6 py-3.5 sm:py-4.5 border-b border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
           <h2 id={titleId} className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">{title}</h2>
           <button
             type="button"

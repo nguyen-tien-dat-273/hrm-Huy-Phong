@@ -171,6 +171,12 @@ function AdminHomeRedirect() {
   return <Navigate to={target ? target.to : '/staff/dashboard'} replace />;
 }
 
+/** Đường dẫn cũ → đường dẫn mới, giữ nguyên ?month=…&user=… */
+function RedirectKeepQuery({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}`} replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -209,12 +215,16 @@ function AppRoutes() {
           (lead có quyền chấm công vẫn không vào được). RLS và RPC phía
           database mới là hàng rào thật. */}
       <Route path="/admin/payroll" element={admin('attendance', <AdminPayroll section="register" />, { functionCode: 'admin.payroll' })} />
-      <Route path="/admin/payroll/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] })} />
+      <Route path="/admin/payroll/setup" element={<RedirectKeepQuery to="/admin/payroll/setup/params" />} />
+      <Route path="/admin/payroll/setup/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] })} />
+      <Route path="/admin/payroll/setup/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
+      <Route path="/admin/payroll/setup/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
+      <Route path="/admin/payroll/schemes" element={<RedirectKeepQuery to="/admin/payroll/setup/schemes" />} />
       <Route path="/admin/payroll/adjustments" element={admin('attendance', <AdminPayroll section="adjustments" />, { functionCode: 'admin.payroll_adjustments' })} />
-      <Route path="/admin/payroll/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
-      <Route path="/admin/payroll/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
+      <Route path="/admin/payroll/components" element={<RedirectKeepQuery to="/admin/payroll/setup/components" />} />
+      <Route path="/admin/payroll/params" element={<RedirectKeepQuery to="/admin/payroll/setup/params" />} />
       {/* Trang cũ "Công thức theo khối" đã gộp vào Cơ chế lương. */}
-      <Route path="/admin/payroll/formulas" element={<Navigate to="/admin/payroll/schemes" replace />} />
+      <Route path="/admin/payroll/formulas" element={<Navigate to="/admin/payroll/setup/schemes" replace />} />
       <Route path="/admin/payroll/reports" element={admin('attendance', <AdminPayroll section="reports" />, { functionCode: 'admin.payroll' })} />
       <Route path="/admin/payroll/approvals" element={admin('attendance', <AdminPayroll section="approvals" />, { functionCode: 'admin.payroll_approve' })} />
       <Route path="/admin/leave" element={adminAny(['leave', 'attendance', 'users'], <AdminLeave />)} />

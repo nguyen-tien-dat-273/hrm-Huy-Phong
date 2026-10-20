@@ -39,6 +39,51 @@ import {
 } from '@/lib/payrollVariables';
 import type { PayrollWorkspace } from '@/lib/payrollData';
 
+/**
+ * Bảng mẫu để khỏi gõ lại từ đầu — chỉ là điểm xuất phát: thêm vào bộ đang mở,
+ * kế toán xem lại con số theo quy định hiện hành rồi mới lưu.
+ */
+type TableTemplate =
+  | { name: string; note: string; kind: 'LIST'; params: Array<Pick<ParamDef, 'name' | 'type' | 'unit' | 'value'>> }
+  | { name: string; note: string; kind: 'TIER'; mode: 'LOOKUP' | 'PROGRESSIVE'; inputLabel: string; unit: ParamUnit; rows: Array<{ from: number; value: number }> };
+
+const TABLE_TEMPLATES: readonly TableTemplate[] = [
+  {
+    name: 'Bảo hiểm', note: 'Tỷ lệ đóng trên lương đóng bảo hiểm', kind: 'LIST',
+    params: [
+      { name: 'Tỷ lệ BHXH người lao động', type: 'RATE', unit: '%', value: 8 },
+      { name: 'Tỷ lệ BHYT người lao động', type: 'RATE', unit: '%', value: 1.5 },
+      { name: 'Tỷ lệ BHTN người lao động', type: 'RATE', unit: '%', value: 1 },
+      { name: 'Tỷ lệ BHXH doanh nghiệp', type: 'RATE', unit: '%', value: 17.5 },
+      { name: 'Tỷ lệ BHYT doanh nghiệp', type: 'RATE', unit: '%', value: 3 },
+      { name: 'Tỷ lệ BHTN doanh nghiệp', type: 'RATE', unit: '%', value: 1 },
+    ],
+  },
+  {
+    name: 'Giảm trừ gia cảnh', note: 'Trừ trước khi tính thuế TNCN', kind: 'LIST',
+    params: [
+      { name: 'Giảm trừ bản thân', type: 'MONEY', unit: 'VND_THANG', value: 15_500_000 },
+      { name: 'Giảm trừ người phụ thuộc', type: 'MONEY', unit: 'VND_THANG', value: 6_200_000 },
+    ],
+  },
+  {
+    name: 'Biểu thuế TNCN', note: 'Lũy tiến từng phần trên thu nhập tính thuế', kind: 'TIER',
+    mode: 'PROGRESSIVE', inputLabel: 'Thu nhập tính thuế', unit: '%',
+    rows: [
+      { from: 0, value: 5 }, { from: 10_000_000, value: 10 }, { from: 30_000_000, value: 20 },
+      { from: 60_000_000, value: 30 }, { from: 100_000_000, value: 35 },
+    ],
+  },
+  {
+    name: 'Làm thêm giờ', note: 'Hệ số trả lương làm thêm', kind: 'LIST',
+    params: [
+      { name: 'Hệ số làm thêm ngày thường', type: 'RATE', unit: '%', value: 150 },
+      { name: 'Hệ số làm thêm ngày nghỉ tuần', type: 'RATE', unit: '%', value: 200 },
+      { name: 'Hệ số làm thêm ngày lễ', type: 'RATE', unit: '%', value: 300 },
+    ],
+  },
+];
+
 interface PayrollParamsTabProps {
   data: PayrollWorkspace;
   /** Tháng lớn nhất đã khoá lương — bộ hiệu lực từ đó trở về trước bị khoá. */
@@ -217,6 +262,34 @@ export function PayrollParamsTab({
     setCreating(null);
   };
 
+  /** Thêm một bảng mẫu vào bộ đang mở (chưa lưu). */
+  const addTemplate = (template: TableTemplate) => {
+    if (!draft) return;
+    if (draft.tables.some((table) => table.name.trim().toLowerCase() === template.name.toLowerCase())) {
+      toast(`Bộ này đã có bảng “${template.name}”.`, 'warning');
+      return;
+    }
+    const taken = takenCodes();
+    const id = newTableId();
+    let table: ParamTable;
+    if (template.kind === 'LIST') {
+      const params: ParamDef[] = template.params.map((param) => {
+        const code = codeFromName(param.name, taken, 'THAM_SO');
+        taken.add(code);
+        return { ...param, code, note: null };
+      });
+      table = { id, kind: 'LIST', name: template.name, note: template.note, params };
+    } else {
+      table = {
+        id, kind: 'TIER', name: template.name, note: template.note, code: codeFromName(template.name, taken, 'BANG'),
+        mode: template.mode, inputLabel: template.inputLabel, unit: template.unit, rows: template.rows.map((row) => ({ ...row })),
+      };
+    }
+    update({ tables: [...draft.tables, table] });
+    setTableQuery('');
+    toast(`Đã thêm bảng mẫu “${template.name}” — kiểm tra lại con số theo quy định hiện hành rồi lưu.`, 'success');
+  };
+
   // Bảng và tham số không xoá, chỉ khoá: công thức cũ vẫn chạy, nhưng không còn gợi ý khi khai công thức mới.
   const toggleTableLock = (table: ParamTable) => updateTable(table.id, { locked: !table.locked });
 
@@ -351,6 +424,18 @@ export function PayrollParamsTab({
           </div>
           {!readOnly && (
             <div className="ml-auto flex flex-wrap justify-end gap-2">
+              <select
+                value=""
+                onChange={(event) => {
+                  const template = TABLE_TEMPLATES.find((item) => item.name === event.target.value);
+                  if (template) addTemplate(template);
+                }}
+                aria-label="Thêm bảng từ mẫu"
+                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
+              >
+                <option value="">Tạo từ mẫu…</option>
+                {TABLE_TEMPLATES.map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}
+              </select>
               <Button size="sm" variant="outline" onClick={() => openCreate('LIST')}>
                 <Plus className="h-3.5 w-3.5" /> Bảng tham số
               </Button>
@@ -741,10 +826,10 @@ function ListTableEditor({
     params: [...table.params, { code: '', name: '', type: 'MONEY', unit: 'VND', value: 0, note: null }],
   });
 
-  const cell = 'h-9 w-full rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-2.5 text-sm outline-none transition hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 dark:disabled:bg-slate-900/50 disabled:text-slate-500 dark:disabled:text-slate-400';
+  const cell = 'h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-2.5 text-sm outline-none transition hover:border-slate-400 dark:hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 dark:disabled:bg-slate-900/50 disabled:text-slate-500 dark:disabled:text-slate-400';
 
   return (
-    <Card className="!rounded-none">
+    <Card className="!rounded-none border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
       <CardContent className="space-y-4 py-4">
         <TableHeading
           name={table.name}
@@ -763,21 +848,24 @@ function ListTableEditor({
 
         {table.params.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[440px] text-sm">
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            <table className="w-full min-w-[440px] text-sm border-collapse">
+              <tbody className="divide-y divide-slate-300 dark:divide-slate-800">
                 {table.params.map((param, index) => {
                   const issue = issues[`param.${table.id}.${index}`];
                   const used = [...(usage.get(param.code) ?? [])];
                   const rowLocked = !!param.locked;
                   const rowReadOnly = readOnly || rowLocked;
                   return (
-                    <tr key={index} className={`align-top ${rowLocked ? 'bg-slate-50/70 dark:bg-slate-800/50' : ''}`}>
+                    <tr key={index} className={`align-top group transition-colors hover:bg-slate-100/60 dark:hover:bg-slate-800/40 ${rowLocked ? 'bg-slate-100/40 dark:bg-slate-850' : ''}`}>
                       <td className="py-2 pr-3">
                         <input value={param.name} disabled={rowReadOnly} placeholder="VD: Tỷ lệ BHYT"
                           title={used.length > 0 ? `Đang dùng ở:\n${used.join('\n')}` : undefined}
                           onChange={(event) => rename(index, event.target.value)}
                           className={`${cell} font-semibold ${issue ? 'border-red-300 dark:border-red-500/60' : ''}`} />
                         {issue && <p className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">{issue}</p>}
+                        <p className="mt-0.5 text-[11px] text-slate-400" title={used.length > 0 ? used.join('\n') : undefined}>
+                          {used.length > 0 ? `Đang dùng ở ${used.length} công thức` : 'Chưa dùng ở công thức nào'}
+                        </p>
                       </td>
                       <td className="py-2 pr-3">
                         <Dropdown square compact value={param.type} disabled={rowReadOnly} options={PARAM_TYPE_OPTIONS}
@@ -887,15 +975,15 @@ function TierTableEditor({
             </div>
           )}
         </div>
-        <table className="w-full max-w-xl text-sm">
+        <table className="w-full max-w-xl text-sm border-collapse">
           <thead>
-            <tr className="text-left text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-              <th className="pb-1.5 pr-3">{progressive ? 'Từ (≥)' : 'Từ ngưỡng (≥)'}</th>
-              <th className="pb-1.5 pr-3 text-right">{progressive ? 'Tỷ lệ (%)' : `Mức (${PARAM_UNIT_LABEL[table.unit]})`}</th>
+            <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+              <th className="pb-2 pr-3">{progressive ? 'Từ (≥)' : 'Từ ngưỡng (≥)'}</th>
+              <th className="pb-2 pr-3 text-right">{progressive ? 'Tỷ lệ (%)' : `Mức (${PARAM_UNIT_LABEL[table.unit]})`}</th>
               <th className="w-10" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
             {table.rows.map((row, index) => (
               <tr key={index}>
                 <td className="py-1 pr-3">

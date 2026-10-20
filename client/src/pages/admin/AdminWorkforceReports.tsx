@@ -89,8 +89,9 @@ const currentYear = () => new Date().getFullYear();
 const monthKey = (date: string) => date.slice(0, 7);
 const amount = (value: number | string | null | undefined) => Number(value ?? 0);
 
-function reportMonthLabel(month: string) {
-  return `${month.slice(5, 7)}/${month.slice(0, 4)}`;
+function reportMonthLabel(month: any) {
+  const str = String(month ?? '');
+  return `${str.slice(5, 7)}/${str.slice(0, 4)}`;
 }
 
 function shortMonthLabel(month: string) {
@@ -1218,7 +1219,7 @@ function ReportTable({ title, subtitle, children }: { title: string; subtitle?: 
 function Th({ children, align = 'left', className = '' }: { children: ReactNode; align?: 'left' | 'center' | 'right'; className?: string }) {
   const alignClass = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
   return (
-    <th className={`whitespace-nowrap border-b border-r border-slate-200 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/90 px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 ${alignClass} ${className}`}>
+    <th className={`whitespace-normal break-words leading-snug border-b border-r border-slate-200 dark:border-slate-700 bg-slate-50/90 dark:bg-slate-800/90 px-3 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200 ${alignClass} ${className}`}>
       {children}
     </th>
   );

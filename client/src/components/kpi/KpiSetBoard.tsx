@@ -323,43 +323,40 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
               {query.trim() ? 'Không có nhân viên nào khớp.' : 'Đơn vị này chưa có nhân sự.'}
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
+            <div className="overflow-x-auto rounded-xl border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
+              <table className="w-full min-w-[460px] text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-black">
-                    <th className="py-2 pr-3">Nhân viên</th>
-                    <th className="py-2 pr-3">KPI đang theo</th>
-                    <th className="py-2 pr-3">Tình trạng</th>
-                    <th className="py-2" />
+                  <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                    <th className="py-1.5 px-2.5 min-w-[130px]"><div className="min-w-[130px] line-clamp-1">Nhân viên</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] py-1.5 px-2 min-w-[140px]"><div className="min-w-[140px] line-clamp-1">KPI đang theo</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] py-1.5 px-2 min-w-[95px]"><div className="min-w-[95px] line-clamp-1">Tình trạng</div></th>
+                    <th className="py-1.5 px-2 text-right w-8" />
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                   {pagePeople.map((row) => {
                     const resolved = exempt.has(row.id) ? null : resolve(row);
                     const status = statusOf(row, resolved);
                     return (
-                      <tr key={row.id} className="cursor-pointer hover:bg-slate-50/70" onClick={() => setPersonId(row.id)}>
-                        <td className="py-2 pr-3">
-                          <div className="flex items-center gap-2">
-                            <Avatar name={row.name} url={row.avatar_url} size="sm" />
-                            <div className="min-w-0">
-                              <p className="truncate font-semibold text-slate-800">{row.name}</p>
-                              <p className="truncate text-[11px] text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
-                            </div>
+                      <tr key={row.id} className="group cursor-pointer transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60" onClick={() => setPersonId(row.id)}>
+                        <td className="py-1 px-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate font-black text-xs text-slate-900 dark:text-slate-100">{row.name}</p>
+                            <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
                           </div>
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="border-l border-slate-300 dark:border-slate-700 py-1 px-2">
                           {resolved ? (
                             <div className="min-w-0">
-                              <p className="max-w-[260px] truncate text-xs font-medium text-slate-700">{resolved.set.name}</p>
+                              <p className="max-w-[220px] truncate text-xs font-bold text-slate-900 dark:text-slate-100">{resolved.set.name}</p>
                               <SourceChip resolved={resolved} text={sourceText(resolved)} />
                             </div>
-                          ) : <span className="text-xs text-slate-400">—</span>}
+                          ) : <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">—</span>}
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="border-l border-slate-300 dark:border-slate-700 py-1 px-2">
                           <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${status.tone}`}>{status.label}</span>
                         </td>
-                        <td className="py-2 text-right text-slate-300"><ChevronRight className="inline h-4 w-4" /></td>
+                        <td className="py-1 px-2 text-right text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
                       </tr>
                     );
                   })}
@@ -499,23 +496,23 @@ function SetList({ title, sets, itemsBySet, appliedId, subtitle, action, onEdit,
           {action}
         </div>
       )}
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-300 dark:divide-slate-700">
         {sets.map((set) => {
           const count = itemsBySet.get(set.id)?.length ?? 0;
           return (
-            <div key={set.id} className={`flex flex-wrap items-center gap-3 px-3 py-2 ${set.is_active ? '' : 'opacity-70'}`}>
+            <div key={set.id} className={`flex flex-wrap items-center gap-3 px-3 py-2.5 ${set.is_active ? '' : 'opacity-70'}`}>
               <div className="min-w-0 flex-1">
-                <button type="button" onClick={() => onEdit(set)} className="text-left text-sm font-semibold text-slate-800 hover:text-indigo-700">
+                <button type="button" onClick={() => onEdit(set)} className="text-left text-sm font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-700 dark:hover:text-indigo-400">
                   {set.name}
                 </button>
-                {set.id === appliedId && <span className="ml-2 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Đang theo</span>}
-                <p className="text-[11px] text-slate-400">
+                {set.id === appliedId && <span className="ml-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 text-xs font-bold text-emerald-800 dark:text-emerald-300 rounded">Đang theo</span>}
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
                   {subtitle ? `${subtitle(set)} · ` : ''}{set.code} · {BLOCK_LABEL[set.block]} · {count} tiêu chí · từ {monthText(set.effective_from)}
                   {set.board_review ? ' · BGĐ duyệt cuối' : ''}
                 </p>
               </div>
-              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${set.is_active ? 'text-emerald-700' : 'text-slate-400'}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${set.is_active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+              <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${set.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500'}`}>
+                <span className={`h-2 w-2 rounded-full ${set.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                 {set.is_active ? 'Đang áp dụng' : 'Đã khoá'}
               </span>
               <div className="flex gap-0.5 no-print">

@@ -54,6 +54,7 @@ interface PersonAdjustmentModalProps {
   monthStart: string;
   monthLabel: string;
   actorId: string | null;
+  readOnly?: boolean;
   onClose: () => void;
   onChanged: () => void;
 }
@@ -74,7 +75,7 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
 }
 
 export function PersonAdjustmentModal({
-  person, initialTarget, initialNewValue, lines, mechanismRows, nameOf, components, adjustments, monthStart, monthLabel, actorId, onClose, onChanged,
+  person, initialTarget, initialNewValue, lines, mechanismRows, nameOf, components, adjustments, monthStart, monthLabel, actorId, readOnly = false, onClose, onChanged,
 }: PersonAdjustmentModalProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -235,6 +236,12 @@ export function PersonAdjustmentModal({
             </div>
           </div>
 
+          {readOnly && (
+            <p className="rounded-none border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
+              Kỳ lương đã khoá / phát hành — chỉ xem các khoản điều chỉnh, không thể tạo mới hay xoá.
+            </p>
+          )}
+
           {own.length > 0 && (
             <section>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">Đã điều chỉnh trong tháng</p>
@@ -253,14 +260,16 @@ export function PersonAdjustmentModal({
                       <span className={`text-sm font-bold tabular-nums ${effect.up ? 'text-emerald-700' : 'text-red-700'}`}>
                         {effect.up ? '+' : '−'}{formatFormulaNumber(Number(item.amount))}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => void remove(item)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-                        aria-label="Xoá điều chỉnh"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => void remove(item)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                          aria-label="Xoá điều chỉnh"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </li>
                   );
                 })}
@@ -268,8 +277,20 @@ export function PersonAdjustmentModal({
             </section>
           )}
 
-          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Thêm điều chỉnh</p>
+          {readOnly ? (
+            <div className="space-y-4">
+              {own.length === 0 && (
+                <p className="rounded-none border border-dashed border-slate-200 py-6 text-center text-xs text-slate-500">
+                  Không có khoản điều chỉnh nào trong tháng {monthLabel} cho nhân sự này.
+                </p>
+              )}
+              <div className="flex justify-end pt-2">
+                <Button type="button" onClick={close}>Đóng</Button>
+              </div>
+            </div>
+          ) : (
+            <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Thêm điều chỉnh</p>
 
             <Field label="Đầu mục cần điều chỉnh">
               <Dropdown square
@@ -403,6 +424,7 @@ export function PersonAdjustmentModal({
               <Button type="submit" disabled={saving}>{saving ? 'Đang lưu…' : 'Lưu điều chỉnh'}</Button>
             </div>
           </form>
+          )}
         </div>
       )}
     </Modal>

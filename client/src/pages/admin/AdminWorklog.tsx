@@ -4,7 +4,6 @@ import { ChevronLeft, ChevronRight, CalendarDays, TriangleAlert, NotebookPen } f
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -126,36 +125,33 @@ export function AdminWorklog() {
             <EmptyState icon={<NotebookPen className="w-8 h-8" />} title="Chưa có nhân sự" />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[820px]">
+              <table className="w-full border-collapse min-w-[650px] text-xs">
                 <thead>
-                  <tr className="bg-slate-50/70">
-                    <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-4 py-3 sticky left-0 bg-slate-50/70 z-10 min-w-[180px]">
+                  <tr className="bg-slate-50/70 dark:bg-slate-800/70">
+                    <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-2.5 py-1.5 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 min-w-[130px]">
                       Nhân viên
                     </th>
                     {days.map((d) => (
-                      <th key={d.key} className="text-center text-xs font-semibold px-2 py-3 min-w-[86px]">
-                        <span className="block text-slate-600">{d.weekdayLabel}</span>
-                        <span className="block text-[11px] font-normal text-slate-400">{d.label}</span>
+                      <th key={d.key} className="text-center text-xs font-semibold px-1 py-1.5 min-w-[65px]">
+                        <span className="block text-slate-600 dark:text-slate-300">{d.weekdayLabel}</span>
+                        <span className="block text-[10px] font-normal text-slate-400">{d.label}</span>
                       </th>
                     ))}
-                    <th className="text-center text-xs font-semibold text-slate-500 uppercase tracking-wider px-3 py-3 min-w-[86px]">
+                    <th className="text-center text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 py-1.5 min-w-[65px]">
                       Tổng
                     </th>
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {staff.map((person) => {
                     const weekTotal = days.reduce((sum, d) => sum + loggedOn(person.id, d.key), 0);
                     return (
-                      <tr key={person.id} className="hover:bg-slate-50/40 transition-colors">
-                        <td className="px-4 py-2.5 sticky left-0 bg-white z-10">
-                          <div className="flex items-center gap-2.5">
-                            <Avatar name={person.name} url={person.avatar_url} size="sm" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-medium text-slate-800 truncate">{person.name}</p>
-                              {person.department && <p className="text-xs text-slate-400 truncate">{person.department}</p>}
-                            </div>
+                      <tr key={person.id} className="hover:bg-slate-50/40 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="px-2.5 py-1 sticky left-0 bg-white dark:bg-slate-900 z-10">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{person.name}</p>
+                            {person.department && <p className="text-[10px] text-slate-400 truncate">{person.department}</p>}
                           </div>
                         </td>
 

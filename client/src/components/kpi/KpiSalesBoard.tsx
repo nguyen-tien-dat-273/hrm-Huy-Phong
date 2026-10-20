@@ -203,7 +203,7 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
   const allSelected = rows.length > 0 && rows.filter((row) => selectable(row.target)).every((row) => selected.has(row.id));
   const disputes = data.sales.filter((row) => row.confirm_status === 'DISPUTED');
 
-  const cell = 'h-8 w-full min-w-[6.5rem] border bg-transparent px-2 text-center text-xs tabular-nums focus:bg-white focus:outline-none focus:border-indigo-500';
+  const cell = 'h-8 w-full min-w-[6.5rem] border border-slate-300 dark:border-slate-600 rounded px-2 text-center text-sm tabular-nums font-bold text-slate-900 dark:text-slate-100 hover:border-slate-400 dark:hover:border-slate-500 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none';
 
   return (
     <div className="space-y-4">
@@ -213,12 +213,12 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
           {disputes.map((row) => `${personById.get(row.user_id)?.name ?? '—'} (${row.dispute_note ?? ''})`).join('; ')}
         </Banner>
       )}
-      <Card className="!rounded-none">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 no-print">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b-2 border-slate-300 dark:border-slate-700 px-4 py-3 no-print">
           <div className="relative w-full sm:w-64">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Lọc theo tên nhân viên…" aria-label="Lọc theo tên"
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
           </div>
           {canConfirm && (
             <div className="w-full sm:w-56">
@@ -231,7 +231,7 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => void downloadTemplate()}><Download className="h-3.5 w-3.5" /> Tải mẫu</Button>
             {canConfirm && (
-              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">
                 <FileUp className="h-3.5 w-3.5" /> Nhập Excel
                 <input type="file" accept=".xlsx,.xls" className="hidden"
                   onChange={(event) => { const file = event.target.files?.[0]; if (file) void importFile(file); event.target.value = ''; }} />
@@ -244,14 +244,14 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
         </div>
 
         {importErrors.length > 0 && (
-          <ul className="list-disc space-y-0.5 border-b border-slate-100 py-2 pl-9 pr-4 text-xs text-red-600">
+          <ul className="list-disc space-y-0.5 border-b border-slate-200 py-2 pl-9 pr-4 text-xs font-semibold text-red-600">
             {importErrors.map((error) => <li key={error}>{error}</li>)}
           </ul>
         )}
 
         {selected.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-indigo-100 bg-indigo-50 px-4 py-2 text-sm">
-            <span className="font-semibold text-indigo-900">Đã chọn {selected.size}</span>
+          <div className="flex flex-wrap items-center gap-2 border-b border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-bold">
+            <span className="font-black text-indigo-900">Đã chọn {selected.size}</span>
             {canConfirm && (
               <>
                 <Button size="sm" variant="success" onClick={() => void act('APPROVE')} disabled={!!busy}><CheckCircle2 className="h-3.5 w-3.5" /> Xác nhận</Button>
@@ -262,37 +262,37 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
         )}
 
         {rows.length === 0 ? (
-          <p className="px-6 py-12 text-center text-sm text-slate-500">
+          <p className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
             Chưa có nhân viên kinh doanh tháng {label}.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1080px] whitespace-nowrap text-xs tabular-nums text-slate-700">
+            <table className="w-full min-w-[1080px] whitespace-nowrap text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
+                <tr className="border-b-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">
                   <th className="w-10 px-3 py-3 text-center">
                     <input type="checkbox" aria-label="Chọn tất cả" checked={allSelected} className="h-4 w-4 accent-indigo-600"
                       onChange={(event) => setSelected(event.target.checked ? new Set(rows.filter((row) => row.target).map((row) => row.id)) : new Set())} />
                   </th>
                   <th className="px-3 py-3 text-left">Nhân viên</th>
-                  <th className="border-l border-slate-100 px-2 py-3 text-center">Doanh số khoán</th>
-                  <th className="border-l border-slate-100 px-2 py-3 text-center">Chỉ tiêu thu</th>
-                  <th className="border-l border-slate-100 px-2 py-3 text-center">KH phụ trách</th>
-                  <th className="border-l border-slate-200 px-2 py-3 text-center">Cắt mã</th>
-                  <th className="border-l border-slate-100 px-2 py-3 text-center">Thu tiền</th>
-                  <th className="border-l border-slate-100 px-2 py-3 text-center">KH có đơn</th>
-                  <th className="border-l border-slate-200 px-2 py-3 text-center">% đạt bán / thu / KH</th>
-                  <th className="border-l border-slate-100 px-2 py-3 text-center">Trạng thái</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">Doanh số khoán</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">Chỉ tiêu thu</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">KH phụ trách</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">Cắt mã</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">Thu tiền</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">KH có đơn</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">% đạt bán / thu / KH</th>
+                  <th className="border-l border-slate-400 dark:border-slate-600 px-2 py-3 text-center">Trạng thái</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                 {rows.map(({ id, person, target }) => {
                   const tEdit = targetEditable(target);
                   const sales = num(id, 'sales_actual');
                   const collect = num(id, 'collect_actual');
                   const customers = num(id, 'customers_actual');
                   return (
-                    <tr key={id} className="hover:bg-[#FCFAF8]">
+                    <tr key={id} className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
                       <td className="px-3 py-1.5 text-center">
                         <input type="checkbox" disabled={!target} aria-label={`Chọn ${person?.name ?? ''}`} className="h-4 w-4 accent-indigo-600"
                           checked={selected.has(id)}
@@ -303,42 +303,42 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
                           })} />
                       </td>
                       <td className="px-3 py-1.5">
-                        <p className="font-semibold text-slate-800">{person?.name ?? '—'}</p>
-                        {target?.review_reason && <p className="text-[11px] text-red-600">{target.review_reason}</p>}
+                        <p className="font-bold text-slate-900 dark:text-slate-100">{person?.name ?? '—'}</p>
+                        {target?.review_reason && <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">{target.review_reason}</p>}
                       </td>
                       {(['sales_target', 'collect_target', 'customers_target'] as const).map((field) => (
-                        <td key={field} className={`border-l border-slate-100 px-1.5 py-1.5 text-center ${tEdit ? 'bg-amber-50/40' : ''}`}>
+                        <td key={field} className={`border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center font-semibold ${tEdit ? 'bg-amber-100/50 dark:bg-amber-950/30' : ''}`}>
                           {tEdit ? (
                             <input value={valueOf(id, field, target)} inputMode="decimal" aria-label={field}
                               onChange={(event) => setValue(id, field, event.target.value)}
-                              className={`${cell} border-transparent hover:border-slate-200`} />
+                              className={cell} />
                           ) : fmtNum(target?.[field])}
                         </td>
                       ))}
-                      {(['sales_actual', 'collect_actual', 'customers_actual'] as const).map((field, index) => (
-                        <td key={field} className={`${index === 0 ? 'border-l border-slate-200' : 'border-l border-slate-100'} px-1.5 py-1.5 text-center`}>
+                      {(['sales_actual', 'collect_actual', 'customers_actual'] as const).map((field) => (
+                        <td key={field} className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center font-semibold">
                           {actualEditable && target ? (
                             <input value={valueOf(id, field, target)} inputMode="decimal" aria-label={field} placeholder="—"
                               onChange={(event) => setValue(id, field, event.target.value)}
-                              className={`${cell} border-transparent hover:border-slate-200`} />
+                              className={cell} />
                           ) : fmtNum(target?.[field])}
                         </td>
                       ))}
-                      <td className="border-l border-slate-200 px-2 py-1.5 text-center">
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 text-center font-semibold">
                         {target ? (
                           <span>
                             {fmtPct(pct(sales, target.sales_target))} / {fmtPct(pct(collect, target.collect_target))} / {fmtPct(pct(customers, target.customers_target))}
                           </span>
                         ) : '—'}
                       </td>
-                      <td className="border-l border-slate-100 px-2 py-1.5 text-center">
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 text-center">
                         {target ? (
                           <>
                             <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${SALES_STATUS_TONE[target.status]}`}>
                               {SALES_STATUS_LABEL[target.status]}
                             </span>
                             {target.confirm_status && (
-                              <p className={`mt-0.5 text-[10px] font-semibold ${target.confirm_status === 'CONFIRMED' ? 'text-emerald-700' : 'text-red-600'}`}>
+                              <p className={`mt-0.5 text-[10px] font-semibold ${target.confirm_status === 'CONFIRMED' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                                 {target.confirm_status === 'CONFIRMED' ? 'NV đã xác nhận' : 'NV khiếu nại'}
                               </p>
                             )}

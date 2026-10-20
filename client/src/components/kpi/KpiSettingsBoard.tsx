@@ -117,35 +117,35 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
     return null;
   };
 
-  const numInput = 'h-9 w-full rounded-none border border-slate-200 px-2 text-center text-sm tabular-nums outline-none focus:border-indigo-500';
+  const numInput = 'h-9 w-full rounded-none border-2 border-slate-300 dark:border-slate-600 px-2 text-center text-sm font-black tabular-nums outline-none focus:border-indigo-500';
   const versions = [...data.settings].sort((a, b) => b.effective_from.localeCompare(a.effective_from));
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       {/* Liên kết lương */}
-      <Card className="!rounded-none xl:order-2">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm xl:order-2">
         <CardContent className="space-y-3 py-4">
-          <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><Link2 className="h-4 w-4 text-indigo-600" /> Điền kết quả KPI vào lương</p>
-          <div className="border border-slate-200">
-            <div className="grid grid-cols-[1fr_1.2fr] border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-              <div className="px-3 py-2">Kết quả KPI</div>
-              <div className="border-l border-slate-100 px-3 py-2">Đầu mục lương nhận số</div>
+          <p className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-slate-100"><Link2 className="h-4 w-4 text-indigo-600" /> Điền kết quả KPI vào lương</p>
+          <div className="border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+            <div className="grid grid-cols-[1fr_1.2fr] border-b-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">
+              <div className="px-3 py-2.5">Kết quả KPI</div>
+              <div className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5">Đầu mục lương nhận số</div>
             </div>
             {LINK_SOURCES.map(({ source, label, unit, hint }) => {
               const warning = linkWarning(links[source] ?? '');
               return (
-                <div key={source} className="grid grid-cols-[1fr_1.2fr] border-b border-slate-100 last:border-b-0">
-                  <div className="px-3 py-2" title={hint}>
-                    <p className="text-sm font-semibold text-slate-800">{label}</p>
-                    <p className="text-[11px] text-slate-400">{unit}</p>
+                <div key={source} className="grid grid-cols-[1fr_1.2fr] border-b border-slate-300 dark:border-slate-700 last:border-b-0">
+                  <div className="px-3 py-2.5" title={hint}>
+                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">{label}</p>
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{unit}</p>
                   </div>
-                  <div className="border-l border-slate-100 px-2 py-1.5">
+                  <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5">
                     <Dropdown compact square searchable aria-label={`Đầu mục nhận ${label}`} value={links[source] ?? ''}
                       options={componentOptions}
                       onChange={(value) => setLinks((current) => ({ ...current, [source as KpiLinkSource]: value }))} />
                     {warning && (
-                      <p className="mt-1 flex items-start gap-1 text-[11px] text-amber-700">
-                        <TriangleAlert className="mt-0.5 h-3 w-3 flex-shrink-0" /> {warning}
+                      <p className="mt-1 flex items-start gap-1 text-xs font-bold text-amber-700 dark:text-amber-400">
+                        <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {warning}
                       </p>
                     )}
                   </div>
@@ -153,7 +153,7 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
               );
             })}
           </div>
-          <p className="text-[11px] text-slate-500">Tỷ lệ KPI chốt luôn có sẵn trong công thức lương với tên “Tỷ lệ KPI”.</p>
+          <p className="text-xs font-medium text-slate-500">Tỷ lệ KPI chốt luôn có sẵn trong công thức lương với tên “Tỷ lệ KPI”.</p>
           <div className="flex justify-end">
             <Button size="sm" onClick={() => void handleSaveLinks()} disabled={saving}><Save className="h-3.5 w-3.5" /> Lưu liên kết</Button>
           </div>
@@ -161,50 +161,50 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
       </Card>
 
       {/* Tham số */}
-      <Card className="!rounded-none xl:order-1">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm xl:order-1">
         <CardContent className="space-y-4 py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="flex items-center gap-2 text-sm font-bold text-slate-800"><SlidersHorizontal className="h-4 w-4 text-indigo-600" /> Tham số KPI</p>
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+            <p className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-slate-100"><SlidersHorizontal className="h-4 w-4 text-indigo-600" /> Tham số KPI</p>
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
               Áp dụng từ tháng
               <input type="month" value={form.effective_from} onChange={(event) => set({ effective_from: event.target.value })}
-                className="h-9 rounded-none border border-slate-200 px-2 text-sm outline-none focus:border-indigo-500" />
+                className="h-9 rounded-none border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-sm font-black outline-none focus:border-indigo-500" />
             </label>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold text-slate-600">Trần KPI (%)</span>
+              <span className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Trần KPI (%)</span>
               <input value={form.cap_pct} inputMode="decimal" onChange={(event) => set({ cap_pct: event.target.value })} className={numInput} />
             </label>
             <label className="block">
-              <span className="mb-1 block text-xs font-semibold text-slate-600">Thưởng trọng điểm tối đa (%)</span>
+              <span className="mb-1 block text-xs font-bold text-slate-700 dark:text-slate-300">Thưởng trọng điểm tối đa (%)</span>
               <input value={form.bonus_max_pct} inputMode="decimal" onChange={(event) => set({ bonus_max_pct: event.target.value })} className={numInput} />
             </label>
           </div>
 
           <div>
-            <p className="mb-1 text-xs font-semibold text-slate-600">Xếp loại <span className="font-normal text-slate-400">(KPI% từ mức này trở lên)</span></p>
-            <div className="border border-slate-200">
+            <p className="mb-1 text-xs font-bold text-slate-700 dark:text-slate-300">Xếp loại <span className="font-normal text-slate-400">(KPI% từ mức này trở lên)</span></p>
+            <div className="border-2 border-slate-400 dark:border-slate-600 shadow-sm">
               {form.grades.map((grade, index) => (
-                <div key={index} className="grid grid-cols-[64px_1fr_96px_36px] border-b border-slate-100 last:border-b-0">
+                <div key={index} className="grid grid-cols-[64px_1fr_96px_36px] border-b border-slate-300 dark:border-slate-700 last:border-b-0">
                   <input value={grade.code} aria-label="Ký hiệu"
                     onChange={(event) => set({ grades: form.grades.map((row, i) => (i === index ? { ...row, code: event.target.value } : row)) })}
-                    className="h-9 border-0 border-r border-slate-100 px-2 text-center text-sm font-bold outline-none focus:bg-indigo-50/40" />
+                    className="h-9 border-0 border-r border-slate-300 dark:border-slate-700 px-2 text-center text-sm font-black text-slate-900 dark:text-slate-100 outline-none focus:bg-indigo-50/40" />
                   <input value={grade.label} aria-label="Tên loại"
                     onChange={(event) => set({ grades: form.grades.map((row, i) => (i === index ? { ...row, label: event.target.value } : row)) })}
-                    className="h-9 border-0 border-r border-slate-100 px-2 text-sm outline-none focus:bg-indigo-50/40" />
+                    className="h-9 border-0 border-r border-slate-300 dark:border-slate-700 px-2 text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:bg-indigo-50/40" />
                   <input value={grade.min} inputMode="decimal" aria-label="Từ %"
                     onChange={(event) => set({ grades: form.grades.map((row, i) => (i === index ? { ...row, min: event.target.value } : row)) })}
-                    className="h-9 border-0 border-r border-slate-100 px-2 text-center text-sm tabular-nums outline-none focus:bg-indigo-50/40" />
-                  <button type="button" aria-label="Bỏ loại" className="flex items-center justify-center text-slate-400 hover:text-red-600"
+                    className="h-9 border-0 border-r border-slate-300 dark:border-slate-700 px-2 text-center text-sm font-black tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:bg-indigo-50/40" />
+                  <button type="button" aria-label="Bỏ loại" className="flex items-center justify-center text-slate-400 hover:text-red-600 transition-colors"
                     onClick={() => set({ grades: form.grades.filter((_, i) => i !== index) })}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               ))}
             </div>
-            <button type="button" className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:underline"
+            <button type="button" className="mt-1 inline-flex items-center gap-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
               onClick={() => set({ grades: [...form.grades, { code: '', label: '', min: '' }] })}><Plus className="h-3 w-3" /> Thêm loại</button>
           </div>
 

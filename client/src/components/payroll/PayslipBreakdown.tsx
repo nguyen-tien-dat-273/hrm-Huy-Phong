@@ -81,16 +81,16 @@ export function PayslipBreakdown({
       )}
 
       {info.length > 0 && (
-        <div className="overflow-hidden rounded-none border border-slate-200">
-          <p className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">Số liệu — không cộng trừ vào thực nhận</p>
-          <dl className="grid gap-x-6 sm:grid-cols-2">
+        <div className="overflow-hidden rounded-none border-2 border-slate-400 dark:border-slate-600">
+          <p className="border-b-2 border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">Số liệu — không cộng trừ vào thực nhận</p>
+          <dl className="grid gap-x-6 sm:grid-cols-2 bg-white dark:bg-slate-900">
             {info.map((line) => (
-              <div key={`${line.code}-${line.name}`} className="flex items-baseline justify-between gap-3 border-b border-slate-50 px-4 py-2.5 last:border-0">
-                <dt className="min-w-0 text-sm text-slate-600">
+              <div key={`${line.code}-${line.name}`} className="flex items-baseline justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 last:border-0">
+                <dt className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-300">
                   {line.name}
-                  {line.detail && <span className="mt-0.5 block text-xs text-slate-400 break-words">{line.detail}</span>}
+                  {line.detail && <span className="mt-0.5 block text-xs font-medium text-slate-500 dark:text-slate-400 break-words">{line.detail}</span>}
                 </dt>
-                <dd className="shrink-0 text-[15px] font-semibold tabular-nums text-slate-800">{formatFormulaNumber(line.amount)}</dd>
+                <dd className="shrink-0 text-base font-black tabular-nums text-slate-900 dark:text-slate-100">{formatFormulaNumber(line.amount)}</dd>
               </div>
             ))}
           </dl>
@@ -104,15 +104,15 @@ export function PayslipBreakdown({
       )}
 
       {roundingAdjustment !== 0 && (
-        <p className="flex items-center justify-between gap-4 px-4 text-xs text-slate-500">
+        <p className="flex items-center justify-between gap-4 px-4 text-xs font-bold text-slate-500 dark:text-slate-400">
           <span>Làm tròn thực lĩnh</span>
-          <span className="tabular-nums">{roundingAdjustment > 0 ? '+' : '−'}{formatVND(Math.abs(roundingAdjustment))}</span>
+          <span className="tabular-nums font-black">{roundingAdjustment > 0 ? '+' : '−'}{formatVND(Math.abs(roundingAdjustment))}</span>
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-4 rounded-none border border-slate-200 bg-slate-50 px-4 py-4">
-        <span className="text-sm font-extrabold uppercase tracking-wide text-slate-900">Thực nhận</span>
-        <span className={`text-xl font-extrabold tabular-nums ${netPay < 0 ? 'text-red-600' : accent}`}>
+      <div className="flex items-center justify-between gap-4 rounded-none border-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800/80 px-4 py-4">
+        <span className="text-base font-black uppercase tracking-wide text-slate-900 dark:text-slate-100">Thực nhận</span>
+        <span className={`text-2xl font-black tabular-nums ${netPay < 0 ? 'text-red-600 dark:text-red-400' : accent}`}>
           {formatVND(netPay)}
         </span>
       </div>
@@ -136,28 +136,28 @@ function Section({
   tone: 'positive' | 'negative' | 'neutral';
 }) {
   const amountColor =
-    tone === 'negative' ? 'text-red-600' : tone === 'neutral' ? 'text-slate-500' : 'text-slate-900';
+    tone === 'negative' ? 'text-red-700 dark:text-red-400' : tone === 'neutral' ? 'text-slate-600 dark:text-slate-400' : 'text-slate-900 dark:text-slate-100';
   const sign = tone === 'negative' ? '− ' : '';
 
   return (
-    <div className="overflow-hidden rounded-none border border-slate-200">
-      <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-        <span className="text-xs font-bold uppercase tracking-wider text-slate-500">{title}</span>
-        <span className={`text-[15px] font-bold tabular-nums ${amountColor}`}>{sign}{formatVND(total)}</span>
+    <div className="overflow-hidden rounded-none border-2 border-slate-400 dark:border-slate-600">
+      <div className="flex items-center justify-between border-b-2 border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-4 py-2.5">
+        <span className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">{title}</span>
+        <span className={`text-base font-black tabular-nums ${amountColor}`}>{sign}{formatVND(total)}</span>
       </div>
       {lines.length === 0 ? (
-        <p className="px-4 py-3 text-xs text-slate-400">Không có dòng nào.</p>
+        <p className="px-4 py-3 text-xs font-semibold text-slate-400">Không có dòng nào.</p>
       ) : (
-        <ul className="divide-y divide-slate-50">
+        <ul className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900">
           {lines.map((line) => (
-            <li key={`${line.code}-${line.name}`} className="flex items-start justify-between gap-4 px-4 py-3.5">
+            <li key={`${line.code}-${line.name}`} className="flex items-start justify-between gap-4 px-4 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
               <div className="min-w-0">
-                <p className="text-[15px] font-medium text-slate-800">{line.name}</p>
+                <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{line.name}</p>
                 {line.detail && (
-                  <p className="mt-1 text-[13px] leading-relaxed text-slate-500 break-words">{line.detail}</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400 break-words">{line.detail}</p>
                 )}
               </div>
-              <span className={`flex-shrink-0 text-[15px] font-bold tabular-nums ${amountColor}`}>
+              <span className={`flex-shrink-0 text-base font-black tabular-nums ${amountColor}`}>
                 {sign}{formatVND(line.amount)}
               </span>
             </li>

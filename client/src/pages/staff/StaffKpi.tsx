@@ -103,13 +103,13 @@ export function StaffKpi() {
   ];
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 kpi-module" data-module="kpi">
       <div className="flex justify-center"><MonthNav value={monthStart} onChange={setMonthStart} theme="staff" bare /></div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-200" role="tablist">
+      <div className="flex gap-1 overflow-x-auto border-b-2 border-slate-300 dark:border-slate-700" role="tablist">
         {tabs.map(([key, text, count]) => (
           <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
-            className={`-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${tab === key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
+            className={`-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition ${tab === key ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-black' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'}`}>
             {text}
             {count != null && count > 0 && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{count}</span>}
           </button>
@@ -117,33 +117,33 @@ export function StaffKpi() {
       </div>
 
       {loading ? (
-        <div className="space-y-2 border border-slate-200 bg-white p-4">
+        <div className="space-y-2 border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
           {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-10 w-full !rounded-none" />)}
         </div>
       ) : tab === 'mine' ? (
         <div className="space-y-4">
           {sales && (
-            <Card className="!rounded-none">
+            <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
               <CardContent className="space-y-3 py-3">
-                <div className="grid grid-cols-1 gap-px bg-slate-100 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-px bg-slate-300 dark:bg-slate-700 sm:grid-cols-3">
                   {([
                     ['Doanh số cắt mã', sales.sales_actual, sales.sales_target],
                     ['Doanh số thu', sales.collect_actual, sales.collect_target],
                     ['Khách hàng có đơn', sales.customers_actual, sales.customers_target],
                   ] as Array<[string, number | null, number]>).map(([text, actual, target]) => (
-                    <div key={text} className="bg-white px-3 py-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{text}</p>
-                      <p className="text-sm tabular-nums text-slate-700">
-                        <span className="text-lg font-bold text-slate-900">{fmtNum(actual)}</span> / {fmtNum(target)}
-                        <span className="ml-2 font-semibold text-indigo-700">{actual != null && target ? fmtPct(Math.round((actual * 10000) / target) / 100) : ''}</span>
+                    <div key={text} className="bg-white dark:bg-slate-900 px-4 py-3">
+                      <p className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{text}</p>
+                      <p className="mt-1 text-sm tabular-nums text-slate-700 dark:text-slate-300 font-bold">
+                        <span className="text-xl font-black text-slate-900 dark:text-slate-100">{fmtNum(actual)}</span> / {fmtNum(target)}
+                        <span className="ml-2 font-black text-base text-indigo-700 dark:text-indigo-400">{actual != null && target ? fmtPct(Math.round((actual * 10000) / target) / 100) : ''}</span>
                       </p>
                     </div>
                   ))}
                 </div>
                 {sales.sales_actual != null && !locked && (
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    {sales.confirm_status === 'CONFIRMED' && <span className="text-xs font-semibold text-emerald-700">Bạn đã xác nhận số liệu</span>}
-                    {sales.confirm_status === 'DISPUTED' && <span className="text-xs font-semibold text-red-600">Đã khiếu nại: {sales.dispute_note}</span>}
+                    {sales.confirm_status === 'CONFIRMED' && <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400">Bạn đã xác nhận số liệu</span>}
+                    {sales.confirm_status === 'DISPUTED' && <span className="text-xs font-bold text-red-600 dark:text-red-400">Đã khiếu nại: {sales.dispute_note}</span>}
                     {sales.confirm_status !== 'CONFIRMED' && (
                       <Button size="sm" variant="success" theme="staff" onClick={() => void handleConfirm(true)}><CheckCircle2 className="h-3.5 w-3.5" /> Xác nhận</Button>
                     )}
@@ -154,14 +154,14 @@ export function StaffKpi() {
             </Card>
           )}
           {mySheet ? (
-            <Card className="!rounded-none">
+            <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
               <CardContent className="py-4">
                 <KpiSheetView sheetId={mySheet.id} viewer={viewer} settings={monthSettings} locked={locked}
                   personName={profile?.name ?? ''} nameOf={nameOf} onChanged={() => void load(true)} />
               </CardContent>
             </Card>
           ) : (
-            <Card className="!rounded-none">
+            <Card className="!rounded-none border-2 border-slate-300 dark:border-slate-700">
               <EmptyState icon={<Target className="h-8 w-8" />} title={`Chưa có phiếu KPI tháng ${monthLabelOf(month)}`}
                 description={period ? 'Bạn chưa được gán bộ KPI hoặc không thuộc diện đánh giá.' : 'Kỳ đánh giá tháng này chưa mở.'} />
             </Card>
@@ -201,32 +201,32 @@ function SheetList({ sheets, nameOf, onOpen, empty, highlight, showMonth = false
   sheets: KpiSheet[]; nameOf: (id: string | null) => string; onOpen: (sheet: KpiSheet) => void; empty: string;
   highlight?: Set<string>; showMonth?: boolean;
 }) {
-  if (sheets.length === 0) return <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-500">{empty}</CardContent></Card>;
+  if (sheets.length === 0) return <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm font-semibold text-slate-500">{empty}</CardContent></Card>;
   const sorted = [...sheets].sort((a, b) => (showMonth
     ? b.period_month.localeCompare(a.period_month)
     : Number(highlight?.has(b.id)) - Number(highlight?.has(a.id)) || nameOf(a.user_id).localeCompare(nameOf(b.user_id), 'vi')));
   return (
-    <Card className="!rounded-none">
+    <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] whitespace-nowrap text-xs tabular-nums text-slate-700">
+        <table className="w-full min-w-[420px] whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-              <th className="px-4 py-3 text-left">{showMonth ? 'Tháng' : 'Nhân viên'}</th>
-              <th className="border-l border-slate-100 px-3 py-3 text-center">Trạng thái</th>
-              <th className="border-l border-slate-100 px-3 py-3 text-center">Tự chấm</th>
-              <th className="border-l border-slate-100 px-3 py-3 text-center">KPI chốt</th>
+            <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+              <th className="px-3 py-1.5 text-left">{showMonth ? 'Tháng' : 'Nhân viên'}</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 text-center">Trạng thái</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 text-center">Tự chấm</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 text-center">KPI chốt</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-300 dark:divide-slate-700 font-semibold bg-white dark:bg-slate-900">
             {sorted.map((sheet) => (
-              <tr key={sheet.id} onClick={() => onOpen(sheet)} className={`cursor-pointer hover:bg-[#FCFAF8] ${highlight?.has(sheet.id) ? 'bg-amber-50/40' : ''}`}>
-                <td className="px-4 py-2.5 font-semibold text-slate-800">{showMonth ? monthLabelOf(sheet.period_month) : nameOf(sheet.user_id)}</td>
-                <td className="border-l border-slate-100 px-3 py-2.5 text-center">
-                  <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>{SHEET_STATUS_LABEL[sheet.status]}</span>
+              <tr key={sheet.id} onClick={() => onOpen(sheet)} className={`cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60 ${highlight?.has(sheet.id) ? 'bg-rose-50/60 dark:bg-rose-950/30' : ''}`}>
+                <td className="px-3 py-1.5 font-black text-xs text-slate-900 dark:text-slate-100">{showMonth ? monthLabelOf(sheet.period_month) : nameOf(sheet.user_id)}</td>
+                <td className="border-l border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-center">
+                  <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>{SHEET_STATUS_LABEL[sheet.status]}</span>
                 </td>
-                <td className="border-l border-slate-100 px-3 py-2.5 text-center">{fmtPct(sheet.self_pct)}</td>
-                <td className="border-l border-slate-100 px-3 py-2.5 text-center font-semibold">
-                  {fmtPct(sheet.final_pct)}{sheet.grade && <span className={`ml-1.5 font-bold ${GRADE_TONE[sheet.grade] ?? ''}`}>{sheet.grade}</span>}
+                <td className="border-l border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-center font-bold text-xs">{fmtPct(sheet.self_pct)}</td>
+                <td className="border-l border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-center font-black text-xs text-indigo-700 dark:text-indigo-400">
+                  {fmtPct(sheet.final_pct)}{sheet.grade && <span className={`ml-1.5 font-black ${GRADE_TONE[sheet.grade] ?? ''}`}>{sheet.grade}</span>}
                 </td>
               </tr>
             ))}

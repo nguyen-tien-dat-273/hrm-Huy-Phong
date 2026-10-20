@@ -428,7 +428,11 @@ export async function loadAttendanceReportWorkspace(
       // Đi làm
       const withCheckIn = pAttendance.filter((a) => a.check_in_time);
       const workedDates = new Set(withCheckIn.map((a) => a.date));
-      const workDays = workedDates.size;
+      let workDays = 0;
+      for (const d of workedDates) {
+        workDays += schedules.supported ? dayWeight(schedules, d, holidayDates) : 1;
+      }
+      workDays = Math.round(workDays * 10) / 10;
 
       let totalHours = 0;
       let missingCheckoutCount = 0;

@@ -110,7 +110,7 @@ export function AdminAttendanceReports() {
   // Lọc và sắp xếp bảng tổng hợp
   const filteredRollups = useMemo(() => {
     if (!data) return [];
-    let list = data.rollups.filter((r) => {
+    const list = data.rollups.filter((r) => {
       // Tìm kiếm theo tên hoặc mã nhân viên
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -245,7 +245,7 @@ export function AdminAttendanceReports() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 attendance-module" data-module="attendance">
       {/* Header & Điều hướng tháng - Style vuông vắn clean */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3 dark:border-slate-800 no-print">
         <div>
@@ -478,16 +478,13 @@ export function AdminAttendanceReports() {
                   <p className="py-6 text-center text-xs text-slate-400">Không có nhân sự nào làm thêm trong tháng.</p>
                 ) : (
                   topOtEmployees.map((r) => (
-                    <div key={r.profile.id} className="flex items-center justify-between py-2">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={r.profile.name} url={r.profile.avatar_url} size="sm" />
-                        <div>
-                          <p className="font-bold text-xs text-slate-800 dark:text-slate-100">{r.profile.name}</p>
-                          <p className="text-[10px] text-slate-400">{r.profile.department || '—'}</p>
-                        </div>
+                    <div key={r.profile.id} className="flex items-center justify-between py-1.5">
+                      <div className="min-w-0 pr-2">
+                        <p className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{r.profile.name}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{r.profile.department || '—'}</p>
                       </div>
 
-                      <div className="text-right">
+                      <div className="text-right flex-shrink-0">
                         <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
                           +{r.otHoursTotal}h
                         </span>
@@ -512,16 +509,13 @@ export function AdminAttendanceReports() {
                   <p className="py-6 text-center text-xs text-emerald-600">Tuyệt vời! Không có ai đi muộn trong tháng.</p>
                 ) : (
                   topLateEmployees.map((r) => (
-                    <div key={r.profile.id} className="flex items-center justify-between py-2">
-                      <div className="flex items-center gap-2.5">
-                        <Avatar name={r.profile.name} url={r.profile.avatar_url} size="sm" />
-                        <div>
-                          <p className="font-bold text-xs text-slate-800 dark:text-slate-100">{r.profile.name}</p>
-                          <p className="text-[10px] text-slate-400">{r.profile.department || '—'}</p>
-                        </div>
+                    <div key={r.profile.id} className="flex items-center justify-between py-1.5">
+                      <div className="min-w-0 pr-2">
+                        <p className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{r.profile.name}</p>
+                        <p className="text-[10px] text-slate-400 truncate">{r.profile.department || '—'}</p>
                       </div>
 
-                      <div className="text-right">
+                      <div className="text-right flex-shrink-0">
                         <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
                           {r.lateCount} lần ({r.lateMinutes}p)
                         </span>
@@ -597,13 +591,13 @@ export function AdminAttendanceReports() {
               description="Hãy thử đổi từ khóa tìm kiếm hoặc bỏ bớt các tiêu chí lọc."
             />
           ) : (
-            <div className="border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 rounded-none">
+            <div className="border-2 border-slate-400 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-850 dark:text-slate-300">
+                  <thead className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
                     <tr>
                       <th
-                        className="cursor-pointer px-3.5 py-2.5 hover:text-indigo-600"
+                        className="cursor-pointer px-2.5 py-1.5 hover:text-indigo-600 transition-colors"
                         onClick={() => handleSort('profile')}
                       >
                         <div className="flex items-center gap-1">
@@ -612,7 +606,7 @@ export function AdminAttendanceReports() {
                         </div>
                       </th>
                       <th
-                        className="cursor-pointer px-3 py-2.5 text-center hover:text-indigo-600"
+                        className="cursor-pointer px-2 py-1.5 text-center hover:text-indigo-600 transition-colors"
                         onClick={() => handleSort('workDays')}
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -621,7 +615,7 @@ export function AdminAttendanceReports() {
                         </div>
                       </th>
                       <th
-                        className="cursor-pointer px-3 py-2.5 text-right hover:text-indigo-600"
+                        className="cursor-pointer px-2 py-1.5 text-right hover:text-indigo-600 transition-colors"
                         onClick={() => handleSort('totalHours')}
                       >
                         <div className="flex items-center justify-end gap-1">
@@ -630,7 +624,7 @@ export function AdminAttendanceReports() {
                         </div>
                       </th>
                       <th
-                        className="cursor-pointer px-3 py-2.5 text-center hover:text-indigo-600"
+                        className="cursor-pointer px-2 py-1.5 text-center hover:text-indigo-600 transition-colors"
                         onClick={() => handleSort('lateCount')}
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -639,7 +633,7 @@ export function AdminAttendanceReports() {
                         </div>
                       </th>
                       <th
-                        className="cursor-pointer px-3 py-2.5 text-center hover:text-indigo-600"
+                        className="cursor-pointer px-2 py-1.5 text-center hover:text-indigo-600 transition-colors"
                         onClick={() => handleSort('otHoursTotal')}
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -648,7 +642,7 @@ export function AdminAttendanceReports() {
                         </div>
                       </th>
                       <th
-                        className="cursor-pointer px-3 py-2.5 text-center hover:text-indigo-600"
+                        className="cursor-pointer px-2 py-1.5 text-center hover:text-indigo-600 transition-colors"
                         onClick={() => handleSort('leaveDaysTotal')}
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -656,9 +650,9 @@ export function AdminAttendanceReports() {
                           <ArrowUpDown className="h-3 w-3 text-slate-400" />
                         </div>
                       </th>
-                      <th className="px-3 py-2.5 text-center">Quên checkout</th>
+                      <th className="px-2 py-1.5 text-center">Quên checkout</th>
                       <th
-                        className="cursor-pointer px-3 py-2.5 text-center hover:text-indigo-600"
+                        className="cursor-pointer px-2 py-1.5 text-center hover:text-indigo-600 transition-colors"
                         onClick={() => handleSort('punctualityRate')}
                       >
                         <div className="flex items-center justify-center gap-1">
@@ -666,48 +660,45 @@ export function AdminAttendanceReports() {
                           <ArrowUpDown className="h-3 w-3 text-slate-400" />
                         </div>
                       </th>
-                      <th className="px-3 py-2.5 text-center">Kỷ luật</th>
-                      <th className="px-3.5 py-2.5 text-right">Chi tiết</th>
+                      <th className="px-2 py-1.5 text-center">Kỷ luật</th>
+                      <th className="px-2.5 py-1.5 text-right">Chi tiết</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                     {pagedRollups.map((r) => {
                       const grade = GRADE_PILL[r.disciplineGrade];
                       return (
                         <tr
                           key={r.profile.id}
-                          className="transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                          className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60"
                         >
                           {/* Cột 1: Thông tin nhân sự */}
-                          <td className="px-3.5 py-2.5">
-                            <div className="flex items-center gap-2.5">
-                              <Avatar name={r.profile.name} url={r.profile.avatar_url} size="sm" />
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <p className="truncate font-bold text-slate-800 dark:text-slate-100">
-                                    {r.profile.name}
-                                  </p>
-                                  {r.profile.employee_code && (
-                                    <span className="border border-slate-200 bg-slate-50 px-1.5 py-0.2 font-mono text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 rounded-md">
-                                      {r.profile.employee_code}
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="truncate text-[11px] text-slate-400 dark:text-slate-500">
-                                  {r.profile.department || '—'}
+                          <td className="px-2.5 py-1.5">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <p className="truncate font-black text-xs text-slate-900 dark:text-slate-100">
+                                  {r.profile.name}
                                 </p>
+                                {r.profile.employee_code && (
+                                  <span className="border border-slate-300 bg-slate-100 px-1 py-0 font-mono text-[10px] font-bold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 rounded">
+                                    {r.profile.employee_code}
+                                  </span>
+                                )}
                               </div>
+                              <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                {r.profile.department || '—'}
+                              </p>
                             </div>
                           </td>
 
                           {/* Cột 2: Ngày công thực tế */}
-                          <td className="px-3 py-2.5 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             <div className="inline-flex flex-col items-center">
-                              <div className="flex items-baseline gap-1 font-mono font-bold text-slate-800 dark:text-slate-100">
+                              <div className="flex items-baseline gap-1 font-mono font-black text-xs text-slate-900 dark:text-slate-100">
                                 <span>{r.workDays}</span>
                                 <span className="text-[10px] text-slate-400">/ {r.standardDays}</span>
                               </div>
-                              <div className="h-1.5 w-14 overflow-hidden bg-slate-100 dark:bg-slate-800 rounded-full">
+                              <div className="h-1.5 w-12 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full mt-0.5">
                                 <div
                                   className={`h-full ${
                                     r.completionRate >= 100
@@ -723,77 +714,77 @@ export function AdminAttendanceReports() {
                           </td>
 
                           {/* Cột 3: Tổng giờ làm */}
-                          <td className="px-3 py-2.5 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                          <td className="px-2 py-1.5 text-right font-mono font-black text-xs text-slate-900 dark:text-slate-100">
                             {r.totalHours}h
                           </td>
 
                           {/* Cột 4: Đi muộn */}
-                          <td className="px-3 py-2.5 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             {r.lateCount > 0 ? (
                               <div className="inline-flex flex-col items-center">
-                                <span className="border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300 rounded-full">
+                                <span className="border border-amber-300 bg-amber-50 px-1.5 py-0.2 text-[11px] font-black text-amber-800 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200 rounded-full">
                                   {r.lateCount} lần ({r.lateMinutes}p)
                                 </span>
                                 {r.lateAfterCutoffCount > 0 && (
-                                  <span className="mt-0.5 text-[10px] font-bold text-red-600 dark:text-red-400">
-                                    {r.lateAfterCutoffCount} lần sau 9h
+                                  <span className="mt-0.5 text-[10px] font-black text-red-600 dark:text-red-400">
+                                    {r.lateAfterCutoffCount} sau 9h
                                   </span>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                              <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
                             )}
                           </td>
 
                           {/* Cột 5: Làm thêm OT */}
-                          <td className="px-3 py-2.5 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             {r.otHoursTotal > 0 ? (
-                              <span className="border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-bold text-orange-700 dark:border-orange-800 dark:bg-orange-950/60 dark:text-orange-300 rounded-full">
+                              <span className="border border-orange-300 bg-orange-50 px-1.5 py-0.2 text-[11px] font-black text-orange-800 dark:border-orange-700 dark:bg-orange-950/60 dark:text-orange-200 rounded-full">
                                 +{r.otHoursTotal}h
                               </span>
                             ) : (
-                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                              <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
                             )}
                           </td>
 
                           {/* Cột 6: Nghỉ phép */}
-                          <td className="px-3 py-2.5 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             {r.leaveDaysTotal > 0 ? (
                               <div className="inline-flex flex-col items-center">
-                                <span className="border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-bold text-violet-700 dark:border-violet-800 dark:bg-violet-950/60 dark:text-violet-300 rounded-full">
+                                <span className="border border-violet-300 bg-violet-50 px-1.5 py-0.2 text-[11px] font-black text-violet-800 dark:border-violet-700 dark:bg-violet-950/60 dark:text-violet-200 rounded-full">
                                   {r.leaveDaysTotal}d
                                 </span>
                                 {r.leaveDaysUnpaid > 0 && (
-                                  <span className="mt-0.5 text-[10px] text-slate-500">
+                                  <span className="mt-0.5 text-[10px] font-bold text-slate-500">
                                     ({r.leaveDaysUnpaid}d ko lương)
                                   </span>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                              <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
                             )}
                           </td>
 
                           {/* Cột 7: Quên checkout */}
-                          <td className="px-3 py-2.5 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             {r.missingCheckoutCount > 0 ? (
-                              <span className="border border-red-200 bg-red-50 px-2 py-0.5 font-bold text-red-600 dark:border-red-800 dark:bg-red-950/60 dark:text-red-400 rounded-full">
+                              <span className="border border-red-300 bg-red-50 px-1.5 py-0.2 font-black text-[11px] text-red-700 dark:border-red-700 dark:bg-red-950/60 dark:text-red-300 rounded-full">
                                 {r.missingCheckoutCount}
                               </span>
                             ) : (
-                              <span className="text-slate-300 dark:text-slate-600">0</span>
+                              <span className="text-slate-400 dark:text-slate-500 font-bold">0</span>
                             )}
                           </td>
 
                           {/* Cột 8: Tỷ lệ đúng giờ */}
-                          <td className="px-3 py-2.5 text-center">
+                          <td className="px-2 py-1.5 text-center">
                             <span
-                              className={`font-mono font-bold ${
+                              className={`font-mono font-black text-xs ${
                                 r.punctualityRate >= 95
-                                  ? 'text-emerald-600 dark:text-emerald-400'
+                                  ? 'text-emerald-700 dark:text-emerald-400'
                                   : r.punctualityRate >= 80
-                                  ? 'text-indigo-600 dark:text-indigo-400'
-                                  : 'text-amber-600 dark:text-amber-400'
+                                  ? 'text-indigo-700 dark:text-indigo-400'
+                                  : 'text-amber-700 dark:text-amber-400'
                               }`}
                             >
                               {r.punctualityRate}%
@@ -801,18 +792,18 @@ export function AdminAttendanceReports() {
                           </td>
 
                           {/* Cột 9: Xếp loại kỷ luật */}
-                          <td className="px-3 py-2.5 text-center">
-                            <span className={`inline-block px-2.5 py-0.5 text-[10px] font-bold rounded-full ${grade.class}`}>
+                          <td className="px-2 py-1.5 text-center">
+                            <span className={`inline-block px-2 py-0.2 text-[11px] font-black rounded-full ${grade.class}`}>
                               {grade.label}
                             </span>
                           </td>
 
                           {/* Cột 10: Thao tác xem chi tiết */}
-                          <td className="px-3.5 py-2.5 text-right">
+                          <td className="px-2.5 py-1.5 text-right">
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-6.5 text-[11px] rounded-lg px-2.5 shadow-2xs"
+                              className="h-6 text-[10px] rounded-lg px-2 shadow-2xs"
                               onClick={() => setSelectedRollup(r)}
                             >
                               <Eye className="h-3 w-3" /> Chi tiết
@@ -829,9 +820,9 @@ export function AdminAttendanceReports() {
               <div className="border-t border-slate-200 p-2.5 dark:border-slate-800 no-print">
                 <Pager
                   page={page}
-                  totalItems={filteredRollups.length}
-                  itemsPerPage={ITEMS_PER_PAGE}
-                  onPageChange={setPage}
+                  total={filteredRollups.length}
+                  size={ITEMS_PER_PAGE}
+                  onPage={setPage}
                 />
               </div>
             </div>

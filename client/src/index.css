@@ -98,14 +98,324 @@ body {
    duyệt. `:where` giữ specificity 0 nên class của từng ô vẫn thắng. */
 .dark { color-scheme: dark; }
 @layer base {
+  /* Đường kẻ đậm hơn và rõ nét cho tất cả các bảng */
+  table {
+    border-collapse: collapse;
+    border-color: #cbd5e1;
+  }
+  table th,
+  table td {
+    border-color: #cbd5e1;
+  }
+  table thead th,
+  table th {
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+  table thead th,
+  table thead tr {
+    border-bottom-color: #94a3b8;
+  }
+  table tfoot th,
+  table tfoot td,
+  table tfoot tr {
+    border-top-color: #94a3b8;
+  }
+
+  /* Đường kẻ rõ ràng hơn cho tất cả form điền */
+  :where(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='color']) {
+    border-color: #cbd5e1;
+  }
+  :where(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='color']):hover {
+    border-color: #94a3b8;
+  }
+
+  /* Đường kẻ phân cách cho tất cả các danh sách (lists / divide-y) */
+  :where(ul, ol).divide-y > *,
+  :where(.divide-y) > * {
+    border-color: #cbd5e1;
+  }
+
+  /* Dark mode */
+  :where(.dark) table {
+    border-color: #334155;
+  }
+  :where(.dark) table th,
+  :where(.dark) table td {
+    border-color: #334155;
+  }
+  :where(.dark) table thead th,
+  :where(.dark) table thead tr {
+    border-bottom-color: #475569;
+  }
+  :where(.dark) table tfoot th,
+  :where(.dark) table tfoot td,
+  :where(.dark) table tfoot tr {
+    border-top-color: #475569;
+  }
   :where(.dark) :where(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='color']) {
     background-color: #0f172a;
     color: #e2e8f0;
-    border-color: #334155;
+    border-color: #475569;
+  }
+  :where(.dark) :where(input, select, textarea):not([type='checkbox'], [type='radio'], [type='range'], [type='color']):hover {
+    border-color: #64748b;
   }
   :where(.dark) :where(input, textarea)::placeholder { color: #64748b; }
   :where(.dark) option { background-color: #0f172a; color: #e2e8f0; }
-  :where(.dark) :where(th) { color: #94a3b8; }
+  :where(.dark) :where(th) { color: #cbd5e1; }
+  :where(.dark) :where(ul, ol).divide-y > *,
+  :where(.dark) :where(.divide-y) > * {
+    border-color: #334155;
+  }
+}
+
+/* ===========================================================================
+   TĂNG CƯỜNG ĐỘ ĐẬM ĐƯỜNG KẺ CHO BẢNG, FORM VÀ DANH SÁCH (TOÀN HỆ THỐNG)
+   =========================================================================== */
+table .border-slate-100,
+table .border-slate-200,
+table .border-slate-300,
+table .border-gray-100,
+table .border-gray-200,
+ul.divide-slate-50 > :not(:last-child),
+ul.divide-slate-100 > :not(:last-child),
+ul.divide-slate-200 > :not(:last-child),
+.divide-slate-50 > :not(:last-child),
+.divide-slate-100 > :not(:last-child),
+.divide-slate-200 > :not(:last-child) {
+  border-color: #cbd5e1;
+}
+
+.dark table .border-slate-100,
+.dark table .border-slate-200,
+.dark table .border-slate-300,
+.dark table .border-slate-700,
+.dark ul.divide-slate-50 > :not(:last-child),
+.dark ul.divide-slate-100 > :not(:last-child),
+.dark ul.divide-slate-200 > :not(:last-child),
+.dark ul.divide-slate-800 > :not(:last-child),
+.dark .divide-slate-50 > :not(:last-child),
+.dark .divide-slate-100 > :not(:last-child),
+.dark .divide-slate-200 > :not(:last-child),
+.dark .divide-slate-800 > :not(:last-child) {
+  border-color: #3b4a61;
+}
+
+/* ===========================================================================
+   ĐỘ ĐẬM ĐƯỜNG KẺ VÀ HIỂN THỊ NÉN GỌN (CAO MẬT ĐỘ) CHO BẢNG & DANH SÁCH
+   =========================================================================== */
+.payroll-module,
+.kpi-module,
+.timesheet-module,
+.attendance-module,
+[data-module='payroll'],
+[data-module='kpi'],
+[data-module='timesheet'],
+[data-module='attendance'] {
+  font-size: 0.8125rem; /* 13px gọn gàng */
+}
+
+/* Bảng trong Lương, KPI, Công: cỡ chữ gọn, chiều dài ngắn lại để hiển thị nhiều thông tin */
+.payroll-module table,
+.kpi-module table,
+.timesheet-module table,
+.attendance-module table,
+[data-module='payroll'] table,
+[data-module='kpi'] table,
+[data-module='timesheet'] table,
+[data-module='attendance'] table {
+  font-size: 0.75rem !important; /* 12px mật độ cao */
+}
+
+/* ===========================================================================
+   TIÊU ĐỀ BẢNG (TH, THEAD TH): XUỐNG TỐI ĐA 3 DÒNG, CHIỀU DÀI GỌN GÀNG
+   =========================================================================== */
+table th,
+table thead th,
+th {
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
+  line-height: 1.25 !important;
+  vertical-align: middle;
+}
+
+table th *,
+table thead th * {
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+table th .flex,
+table thead th .flex,
+table th .inline-flex,
+table thead th .inline-flex {
+  flex-wrap: wrap;
+}
+
+/* Khống chế tiêu đề văn bản tối đa 3 dòng (max ping 3 dòng) */
+table thead th span:not([class*='rounded']):not([class*='badge']):not([class*='tag']):not(.shrink-0),
+table thead th p,
+table thead th .line-clamp-3,
+.payroll-module table thead th span:not([class*='rounded']):not([class*='badge']):not([class*='tag']):not(.shrink-0),
+.kpi-module table thead th span:not([class*='rounded']):not([class*='badge']):not([class*='tag']):not(.shrink-0),
+.timesheet-module table thead th span:not([class*='rounded']):not([class*='badge']):not([class*='tag']):not(.shrink-0) {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Độ rộng tối thiểu gọn gàng cho các cột để hiển thị được nhiều cột hơn trên 1 trang */
+table thead th:not([class*='w-']):not([class*='min-w-']):not(.col-narrow),
+.payroll-module table thead th:not([class*='w-']):not([class*='min-w-']),
+.kpi-module table thead th:not([class*='w-']):not([class*='min-w-']),
+.timesheet-module table thead th:not([class*='w-']):not([class*='min-w-']) {
+  min-width: 55px;
+}
+
+/* ===========================================================================
+   ĐẦU MỤC CÁC BẢNG THEO TÔNG ĐỎ THƯƠNG HIỆU HUY PHONG (#BF1F2B) - NÉN GỌN
+   =========================================================================== */
+table thead tr,
+table thead th,
+.payroll-module table thead th,
+.kpi-module table thead th,
+.timesheet-module table thead th,
+.attendance-module table thead th,
+[data-module='payroll'] table thead th,
+[data-module='kpi'] table thead th,
+[data-module='timesheet'] table thead th,
+[data-module='attendance'] table thead th {
+  background-color: #fdf2f4 !important; /* Tông kem hồng ngọc thanh lịch */
+  color: #5c0f16 !important;            /* Chữ đỏ thẫm / mận chín sắc nét */
+  border-bottom: 2px solid #bf1f2b !important; /* Gạch đỏ thương hiệu #BF1F2B */
+  border-color: #eed5d8;
+  box-shadow: inset 0 -2px 0 #bf1f2b !important;
+  font-size: 0.75rem !important; /* 12px gọn gàng */
+  font-weight: 800 !important;
+  letter-spacing: 0.02em;
+  padding: 0.375rem 0.45rem !important; /* Padding gọn hơn nhiều */
+  white-space: normal !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
+  line-height: 1.25 !important;
+  vertical-align: middle;
+}
+
+/* Các nhãn text bên trong thead th tự động ăn khớp màu chữ */
+table thead th span:not([class*='bg-']):not([class*='badge']):not([class*='tag']),
+table thead th div:not([class*='bg-']) {
+  color: inherit;
+}
+
+/* Chế độ Dark mode theo tông đỏ rượu vang / burgundy cao cấp */
+.dark table thead tr,
+.dark table thead th,
+.dark .payroll-module table thead th,
+.dark .kpi-module table thead th,
+.dark .timesheet-module table thead th,
+.dark .attendance-module table thead th,
+.dark [data-module='payroll'] table thead th,
+.dark [data-module='kpi'] table thead th,
+.dark [data-module='timesheet'] table thead th,
+.dark [data-module='attendance'] table thead th {
+  background-color: #201114 !important; /* Đỏ than thẫm sang trọng */
+  color: #fde8ea !important;            /* Chữ trắng ánh hồng ngọc */
+  border-bottom: 2.5px solid #e66a76 !important; /* Gạch đỏ ruby */
+  border-color: #4a1c22 !important;
+  box-shadow: inset 0 -2px 0 #e66a76 !important;
+}
+
+/* Cột dính cố định (sticky column như Nhân sự / Nhân viên) ăn khớp nền */
+table thead th.sticky,
+table thead th[class*='sticky'] {
+  background-color: #fdf2f4 !important;
+}
+.dark table thead th.sticky,
+.dark table thead th[class*='sticky'] {
+  background-color: #201114 !important;
+}
+
+/* Các ô dữ liệu trong bảng Lương, KPI, Công: chữ gọn gàng, chiều cao ngắn để hiển thị nhiều dòng */
+.payroll-module table tbody td,
+.kpi-module table tbody td,
+.timesheet-module table tbody td,
+.attendance-module table tbody td,
+[data-module='payroll'] table tbody td,
+[data-module='kpi'] table tbody td,
+[data-module='timesheet'] table tbody td,
+[data-module='attendance'] table tbody td {
+  font-size: 0.8125rem !important; /* 13px sắc nét, gọn gàng */
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+  font-weight: 600;
+  border-color: #cbd5e1;
+}
+
+.dark .payroll-module table tbody td,
+.dark .kpi-module table tbody td,
+.dark .timesheet-module table tbody td,
+.dark .attendance-module table tbody td,
+.dark [data-module='payroll'] table tbody td,
+.dark [data-module='kpi'] table tbody td,
+.dark [data-module='timesheet'] table tbody td,
+.dark [data-module='attendance'] table tbody td {
+  border-color: #3b4a61;
+}
+
+/* Dòng tổng cộng tfoot trong Lương, KPI, Công */
+.payroll-module table tfoot td,
+.timesheet-module table tfoot td,
+.attendance-module table tfoot td,
+[data-module='payroll'] table tfoot td,
+[data-module='timesheet'] table tfoot td,
+[data-module='attendance'] table tfoot td {
+  font-size: 0.875rem !important; /* 14px */
+  font-weight: 800 !important;
+  border-top: 2px solid #94a3b8 !important;
+  border-color: #94a3b8;
+}
+
+.dark .payroll-module table tfoot td,
+.dark .timesheet-module table tfoot td,
+.dark .attendance-module table tfoot td,
+.dark [data-module='payroll'] table tfoot td,
+.dark [data-module='timesheet'] table tfoot td,
+.dark [data-module='attendance'] table tfoot td {
+  border-top: 2px solid #64748b !important;
+  border-color: #475569;
+}
+
+/* Ô nhập liệu trong Lương, KPI, Công: viền đậm hơn, chữ to đậm */
+.payroll-module :where(input, select, textarea),
+.kpi-module :where(input, select, textarea),
+.timesheet-module :where(input, select, textarea),
+.attendance-module :where(input, select, textarea),
+[data-module='payroll'] :where(input, select, textarea),
+[data-module='kpi'] :where(input, select, textarea),
+[data-module='timesheet'] :where(input, select, textarea),
+[data-module='attendance'] :where(input, select, textarea) {
+  font-size: 0.875rem; /* 14px */
+  font-weight: 600;
+  border-color: #94a3b8;
+}
+
+.dark .payroll-module :where(input, select, textarea),
+.dark .kpi-module :where(input, select, textarea),
+.dark .timesheet-module :where(input, select, textarea),
+.dark .attendance-module :where(input, select, textarea),
+.dark [data-module='payroll'] :where(input, select, textarea),
+.dark [data-module='kpi'] :where(input, select, textarea),
+.dark [data-module='timesheet'] :where(input, select, textarea),
+.dark [data-module='attendance'] :where(input, select, textarea) {
+  border-color: #475569;
 }
 
 /* ===== Application shell ===== */

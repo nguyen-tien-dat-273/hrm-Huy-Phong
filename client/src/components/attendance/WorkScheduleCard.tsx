@@ -50,8 +50,8 @@ const toInputTime = (value: string) => value.slice(0, 5);
 /** '2026-04-01' → '01/04/2026'. */
 const toViDate = (iso: string) => iso.split('-').reverse().join('/');
 
-const TH = 'px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 whitespace-nowrap';
-const TD = 'px-3 py-2.5 text-sm text-slate-700 whitespace-nowrap';
+const TH = 'border-l border-[#eed5d8] dark:border-[#4a1c22] first:border-l-0 px-3.5 py-2.5 text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] whitespace-normal break-words';
+const TD = 'border-l border-slate-300 dark:border-slate-700 first:border-l-0 px-3.5 py-2.5 text-sm font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap';
 
 interface Props {
   set: ScheduleSet;
@@ -151,7 +151,7 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
   // Migration chưa chạy — nói thẳng thay vì hiện một thẻ rỗng khó hiểu.
   if (!loading && !set.supported) {
     return (
-      <Card className="!rounded-none">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
         <CardHeader><CardTitle>Giờ làm cố định</CardTitle></CardHeader>
         <CardContent>
           <p className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-500">
@@ -169,8 +169,8 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
   }
 
   return (
-    <Card className="!rounded-none">
-      <CardHeader className="!py-3">
+    <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+      <CardHeader className="!py-3 border-b-2 border-slate-300 dark:border-slate-700">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle>Giờ làm cố định</CardTitle>
           <Button variant="outline" size="sm" onClick={() => setDraft({ ...BLANK })}>
@@ -180,15 +180,15 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
       </CardHeader>
 
       {loading ? (
-        <p className="py-6 text-center text-sm text-slate-400">Đang tải…</p>
+        <p className="py-6 text-center text-sm font-bold text-slate-400">Đang tải…</p>
       ) : set.schedules.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm text-slate-500">
+        <p className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
           Chưa khai giờ làm — công chuẩn lấy theo Tham số lương, chưa đo được đi muộn.
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left">
-            <thead className="border-b border-slate-100 bg-slate-50/60">
+          <table className="w-full min-w-[640px] text-left border-collapse">
+            <thead className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
               <tr>
                 <th className={TH}>Tên</th>
                 <th className={TH}>Áp dụng</th>
@@ -196,18 +196,18 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
                 <th className={`${TH} text-right`}>Giờ/ngày</th>
                 <th className={TH}>Thứ Bảy</th>
                 <th className={`${TH} text-right`}>Ân hạn</th>
-                <th className="w-20" />
+                <th className="w-20 border-l border-slate-300 dark:border-slate-700" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
               {set.schedules.map((schedule) => {
                 const perDay = hoursPerDay(schedule);
                 return (
                   <tr
                     key={schedule.id}
-                    className={schedule.is_active ? 'hover:bg-slate-50/50' : 'bg-slate-50/70 text-slate-400'}
+                    className={schedule.is_active ? 'hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors' : 'bg-slate-100/60 dark:bg-slate-800/40 text-slate-400'}
                   >
-                    <td className={`${TD} font-semibold ${schedule.is_active ? 'text-slate-800' : 'text-slate-400'}`} title={schedule.note ?? undefined}>
+                    <td className={`${TD} font-black ${schedule.is_active ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400'}`} title={schedule.note ?? undefined}>
                       {schedule.name}
                       {!schedule.is_active && (
                         <span className="ml-2 inline-flex items-center gap-1 bg-slate-200 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">

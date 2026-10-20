@@ -3,7 +3,7 @@ import {
   BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, Network, NotebookPen, Rocket, Settings, Table,
-  Receipt, Scale, Target, UserSearch, Users, Wallet, Cpu,
+  Target, UserSearch, Users, Wallet, Cpu,
   FileBarChart, Fingerprint, WalletCards, TrendingUp, SlidersHorizontal,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
@@ -50,13 +50,14 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Công', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
   { to: '/admin/attendance-settings', label: 'Thiết lập giờ làm', description: 'Giờ làm cố định, công chuẩn và định mức phép', icon: Clock, permission: 'attendance', group: 'Công', keywords: 'gio lam co dinh gio vao ra cong chuan di muon', hideForTeamlead: true },
 
-  // Module lương: Báo cáo lương lên đầu để vào module là xem được ngay.
+  // Module lương: Báo cáo lương lên đầu để vào module là xem được ngay; việc hằng
+  // tháng ở giữa; mọi màn thiết lập (tham số, cơ chế, mức riêng, danh mục) gom
+  // vào một mục "Thiết lập lương" ở cuối, có thanh bước bên trong.
   { to: '/admin/payroll/reports', label: 'Báo cáo lương', description: 'Biến động quỹ lương, chi phí BHXH và thuế TNCN theo tháng', icon: BarChart3, permission: 'attendance', group: 'Lương', keywords: 'bao cao luong quy luong bhxh thue tncn chi phi nhan su bien dong', functionCode: 'admin.payroll' },
   { to: '/admin/payroll', label: 'Bảng lương', description: 'Chạy nháp, khoá kỳ 2FA, file ngân hàng, chi trả & phát hành phiếu', icon: Wallet, permission: 'attendance', group: 'Lương', keywords: 'tinh luong payroll thuc nhan phieu luong bang luong khoa ky ngan hang', functionCode: 'admin.payroll' },
-  { to: '/admin/payroll/schemes', label: 'Cơ chế lương', description: 'Cơ chế chung của đơn vị và khai riêng từng nhân sự', icon: Calculator, permission: 'attendance', group: 'Lương', keywords: 'co che luong cong thuc dau muc ap dung nhan su so do to chuc trinh duyet chay thu', functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] },
-  { to: '/admin/payroll/params', label: 'Tham số lương', description: 'Bảng tham số tự tạo: tỷ lệ, đơn giá, thời gian theo ngày hiệu lực', icon: Scale, permission: 'attendance', group: 'Lương', keywords: 'tham so ty le don gia thoi gian bang bac thang hieu luc bao hiem', functionCode: 'admin.payroll_settings' },
-  { to: '/admin/payroll/components', label: 'Danh mục khoản lương', description: 'Khoản cộng vào lương và khoản trừ khỏi lương, chia 5 nhóm', icon: Receipt, permission: 'attendance', group: 'Lương', keywords: 'khoan luong dau muc phu cap thuong phat tam ung nhom danh muc', functionCode: 'admin.payroll_components' },
   { to: '/admin/payroll/approvals', label: 'Phê duyệt lương', description: 'Ký duyệt cơ chế lương và lệnh chi lương', icon: ClipboardCheck, permission: 'attendance', group: 'Lương', keywords: 'phe duyet bgd ky duyet co che luong chi luong', functionCode: 'admin.payroll_approve' },
+
+  { to: '/admin/payroll/setup/params', label: 'Thiết lập lương', description: 'Thông số chung, cơ chế đơn vị, mức riêng từng người và danh mục đầu mục', icon: Calculator, permission: 'attendance', group: 'Lương', keywords: 'thiet lap luong co che luong cong thuc dau muc muc rieng bac luong tham so ty le don gia bao hiem thue danh muc khoan luong phu cap chay thu', functionCode: ['admin.payroll_settings', 'admin.payroll_schemes', 'admin.payroll_components'] },
 
   { to: '/admin/employee-lifecycle', label: 'Hội nhập & nghỉ việc', description: 'Checklist onboarding, offboarding và người hướng dẫn', icon: Rocket, permission: 'users', group: 'Đào tạo', keywords: 'onboarding offboarding checklist mentor', functionCode: 'admin.employee_lifecycle' },
   { to: '/admin/process-library', label: 'Thư viện quy trình', description: 'Quy trình, quy chế và hướng dẫn vận hành', icon: BookOpen, permission: 'training', group: 'Đào tạo', keywords: 'thu vien quy trinh quy che huong dan pdf' },

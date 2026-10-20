@@ -21,6 +21,8 @@ import {
 import { loadSheetsRange, loadYearReviews, saveYearReviews, type KpiWorkspace } from '@/lib/kpiData';
 import { supabase } from '@/lib/supabase';
 
+type Tab = 'year' | 'progress' | 'month' | 'reward';
+
 const TABS: Array<[Tab, string]> = [
   ['year', 'Tổng hợp quý / năm'],
   ['progress', 'Tiến độ kỳ'],
@@ -312,21 +314,21 @@ function Progress({ data, month, label, settings, filters, matches, nameOf, unit
         </Button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-xs tabular-nums text-slate-700">
+        <table className="w-full min-w-[640px] text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
           <thead>
-            <tr className="border-y border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-              <th className="px-4 py-2.5 text-left">Phòng ban</th>
+            <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-bold text-[#5c0f16] dark:text-[#fde8ea]">
+              <th className="px-4 py-3 text-left whitespace-normal break-words">Phòng ban</th>
               {(['DRAFT', 'REJECTED', 'PENDING', 'BOARD', 'APPROVED'] as KpiSheetStatus[]).map((status) => (
-                <th key={status} className="border-l border-slate-100 px-3 py-2.5 text-center">{SHEET_STATUS_LABEL[status]}</th>
+                <th key={status} className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center whitespace-normal break-words">{SHEET_STATUS_LABEL[status]}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
             {[...byUnit.entries()].sort((a, b) => (unitName.get(a[0]) ?? '').localeCompare(unitName.get(b[0]) ?? '', 'vi')).map(([unit, row]) => (
-              <tr key={unit}>
-                <td className="px-4 py-2">{unitName.get(unit) ?? 'Chưa gán phòng'}</td>
+              <tr key={unit} className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
+                <td className="px-4 py-2.5 font-bold text-slate-900 dark:text-slate-100">{unitName.get(unit) ?? 'Chưa gán phòng'}</td>
                 {(['DRAFT', 'REJECTED', 'PENDING', 'BOARD', 'APPROVED'] as KpiSheetStatus[]).map((status) => (
-                  <td key={status} className="border-l border-slate-100 px-3 py-2 text-center">{row[status] || '—'}</td>
+                  <td key={status} className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center font-semibold">{row[status] || '—'}</td>
                 ))}
               </tr>
             ))}
@@ -456,25 +458,25 @@ function MonthResult({ data, label, month, grades, gradeFilter, filters, matches
 
       <div className="flex justify-end px-4 py-2"><ExportButtons options={exportOptions} disabled={rows.length === 0} /></div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[620px] whitespace-nowrap text-xs tabular-nums text-slate-700">
+        <table className="w-full min-w-[620px] whitespace-nowrap text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
           <thead>
-            <tr className="border-y border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-              <th className="px-4 py-2.5 text-left">Nhân sự</th>
-              <th className="border-l border-slate-100 px-3 py-2.5 text-left">Phòng ban</th>
-              <th className="border-l border-slate-100 px-3 py-2.5 text-center">Khối</th>
-              <th className="border-l border-slate-100 px-3 py-2.5 text-center">KPI</th>
-              <th className="border-l border-slate-100 px-3 py-2.5 text-center">Xếp loại</th>
+            <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+              <th className="px-4 py-3 text-left min-w-[180px]"><div className="min-w-[180px] line-clamp-3">Nhân sự</div></th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-left min-w-[140px]"><div className="min-w-[140px] line-clamp-3">Phòng ban</div></th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[90px]"><div className="min-w-[90px] line-clamp-3">Khối</div></th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[90px]"><div className="min-w-[90px] line-clamp-3">KPI</div></th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[100px]"><div className="min-w-[100px] line-clamp-3">Xếp loại</div></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
             {rows.map((sheet) => (
-              <tr key={sheet.id} className="hover:bg-[#FCFAF8]">
-                <td className="px-4 py-2 font-semibold text-slate-800">{nameOf(sheet.user_id)}</td>
-                <td className="border-l border-slate-100 px-3 py-2">{unitName.get(sheet.unit_id ?? '') ?? '—'}</td>
-                <td className="border-l border-slate-100 px-3 py-2 text-center">{BLOCK_LABEL[sheet.block]}</td>
-                <td className="border-l border-slate-100 px-3 py-2 text-center font-semibold">{fmtPct(sheet.final_pct)}</td>
-                <td className="border-l border-slate-100 px-3 py-2 text-center">
-                  <span className={`inline-block px-2.5 py-0.5 text-[11px] font-bold rounded-full ${GRADE_BADGE_STYLE[sheet.grade ?? ''] ?? 'border border-slate-200 bg-slate-50 text-slate-700'}`}>
+              <tr key={sheet.id} className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
+                <td className="px-4 py-2.5 font-black text-sm text-slate-900 dark:text-slate-100">{nameOf(sheet.user_id)}</td>
+                <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 font-medium text-xs">{unitName.get(sheet.unit_id ?? '') ?? '—'}</td>
+                <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center font-medium text-xs">{BLOCK_LABEL[sheet.block]}</td>
+                <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center font-black text-sm text-indigo-700 dark:text-indigo-400">{fmtPct(sheet.final_pct)}</td>
+                <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center">
+                  <span className={`inline-block px-2.5 py-0.5 text-xs font-bold rounded-full ${GRADE_BADGE_STYLE[sheet.grade ?? ''] ?? 'border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'}`}>
                     {sheet.grade ?? '—'}
                   </span>
                 </td>
@@ -649,34 +651,34 @@ function YearSummary({ year, sheets, lockedMonths, grades, filters, matches, nam
         <p className="px-6 py-12 text-center text-sm text-slate-500">Chưa có dữ liệu kỳ đã khoá trong năm {year}.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] whitespace-nowrap text-xs tabular-nums text-slate-700">
+          <table className="w-full min-w-[1100px] whitespace-nowrap text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
             <thead>
-              <tr className="border-y border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-                <th className="sticky left-0 z-10 bg-[#FCFAF8] px-4 py-2.5 text-left">Nhân sự</th>
-                {Array.from({ length: 12 }, (_, i) => <th key={i} className="border-l border-slate-100 px-2 py-2.5 text-center">T{i + 1}</th>)}
-                {[1, 2, 3, 4].map((q) => <th key={q} className="border-l border-slate-200 px-2 py-2.5 text-center">Q{q}</th>)}
-                <th className="border-l border-slate-200 px-3 py-2.5 text-center">Năm</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">Loại</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-left">Cảnh báo</th>
+              <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                <th className="sticky left-0 top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] border-r-2 border-[#eed5d8] dark:border-[#4a1c22] px-4 py-3 text-left font-black text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[190px]"><div className="min-w-[190px] line-clamp-3">Nhân sự</div></th>
+                {Array.from({ length: 12 }, (_, i) => <th key={i} className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2 py-3 text-center min-w-[50px]"><div className="min-w-[45px] text-center line-clamp-1">T{i + 1}</div></th>)}
+                {[1, 2, 3, 4].map((q) => <th key={q} className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2 py-3 text-center min-w-[50px]"><div className="min-w-[45px] text-center line-clamp-1">Q{q}</div></th>)}
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[85px]"><div className="min-w-[85px] text-center line-clamp-3">Năm</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[80px]"><div className="min-w-[80px] text-center line-clamp-3">Loại</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-left min-w-[120px]"><div className="min-w-[120px] line-clamp-3">Cảnh báo</div></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
               {rows.map((row) => {
                 const grade = gradeOf(row.year, grades);
                 return (
-                  <tr key={row.userId} className="hover:bg-[#FCFAF8]">
-                    <td className="sticky left-0 z-10 bg-white px-4 py-2 font-semibold text-slate-800">{nameOf(row.userId)}</td>
+                  <tr key={row.userId} className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
+                    <td className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100/80 dark:group-hover:bg-slate-800/80 border-r-2 border-slate-400 dark:border-slate-600 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] dark:shadow-[2px_0_4px_-1px_rgba(0,0,0,0.4)] px-4 py-2.5 font-black text-sm text-slate-900 dark:text-slate-100">{nameOf(row.userId)}</td>
                     {row.months.map((value, i) => (
-                      <td key={i} className={`border-l border-slate-100 px-2 py-2 text-center ${GRADE_TONE[row.grades[i] ?? ''] ?? ''}`}>{value == null ? '' : fmtNum(value)}</td>
+                      <td key={i} className={`border-l border-slate-300 dark:border-slate-700 px-2 py-2 text-center font-medium ${GRADE_TONE[row.grades[i] ?? ''] ?? ''}`}>{value == null ? '' : fmtNum(value)}</td>
                     ))}
-                    {row.quarters.map((value, q) => <td key={q} className="border-l border-slate-200 px-2 py-2 text-center">{value == null ? '' : fmtNum(value)}</td>)}
-                    <td className="border-l border-slate-200 px-3 py-2 text-center font-semibold">{fmtPct(row.year)}</td>
-                    <td className="border-l border-slate-100 px-3 py-2 text-center">
-                      <span className={`inline-block px-2.5 py-0.5 text-[11px] font-bold rounded-full ${GRADE_BADGE_STYLE[grade?.code ?? ''] ?? 'border border-slate-200 bg-slate-50 text-slate-700'}`}>
+                    {row.quarters.map((value, q) => <td key={q} className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 text-center font-medium">{value == null ? '' : fmtNum(value)}</td>)}
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold">{fmtPct(row.year)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center">
+                      <span className={`inline-block px-2.5 py-0.5 text-[11px] font-bold rounded-full ${GRADE_BADGE_STYLE[grade?.code ?? ''] ?? 'border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100'}`}>
                         {grade?.code ?? '—'}
                       </span>
                     </td>
-                    <td className="border-l border-slate-100 px-3 py-2 text-red-600">
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-red-600 dark:text-red-400 font-semibold">
                       {row.alert && <span className="inline-flex items-center gap-1"><TriangleAlert className="h-3 w-3" /> {row.alert}</span>}
                     </td>
                   </tr>
@@ -758,24 +760,24 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
     void load();
   };
 
-  const cell = 'h-8 w-full rounded-none border border-slate-200 px-2 text-center text-xs tabular-nums outline-none focus:border-indigo-500';
+  const cell = 'h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-center text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20';
 
   return (
-    <Card className="!rounded-none">
+    <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
       {filters}
       {canApprove && (
-        <CardContent className="space-y-2 border-b border-slate-100 py-3">
-          <p className="text-xs font-semibold text-slate-600">Khung theo xếp loại</p>
+        <CardContent className="space-y-2 border-b-2 border-slate-300 dark:border-slate-700 py-3">
+          <p className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">Khung theo xếp loại</p>
           <div className="flex flex-wrap items-end gap-2">
             {grades.map((grade) => (
-              <div key={grade.code} className="flex items-center gap-1 border border-slate-200 px-2 py-1">
+              <div key={grade.code} className="flex items-center gap-1 border border-slate-300 dark:border-slate-700 rounded-md px-2 py-1 bg-white dark:bg-slate-800">
                 <span className={`w-7 text-xs font-bold ${GRADE_TONE[grade.code] ?? ''}`}>{grade.code}</span>
                 <input placeholder="Thưởng" aria-label={`Thưởng loại ${grade.code}`} value={frame[grade.code]?.bonus ?? ''}
                   onChange={(event) => setFrame((current) => ({ ...current, [grade.code]: { raise: current[grade.code]?.raise ?? '', bonus: event.target.value.replace(/[^\d.,]/g, '') } }))}
-                  className="h-8 w-28 rounded-none border border-slate-200 px-2 text-xs tabular-nums outline-none focus:border-indigo-500" />
+                  className="h-8 w-28 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500" />
                 <input placeholder="% tăng" aria-label={`Tăng lương loại ${grade.code}`} value={frame[grade.code]?.raise ?? ''}
                   onChange={(event) => setFrame((current) => ({ ...current, [grade.code]: { bonus: current[grade.code]?.bonus ?? '', raise: event.target.value.replace(/[^\d.,]/g, '') } }))}
-                  className="h-8 w-16 rounded-none border border-slate-200 px-2 text-xs tabular-nums outline-none focus:border-indigo-500" />
+                  className="h-8 w-16 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500" />
               </div>
             ))}
             <Button size="sm" variant="outline" onClick={applyFrame}>Áp khung</Button>
@@ -783,24 +785,24 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
         </CardContent>
       )}
       {people.length === 0 ? (
-        <p className="px-6 py-12 text-center text-sm text-slate-500">Chưa có dữ liệu kỳ đã khoá trong năm {year}.</p>
+        <p className="px-6 py-12 text-center text-sm font-semibold text-slate-500">Chưa có dữ liệu kỳ đã khoá trong năm {year}.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] whitespace-nowrap text-xs tabular-nums text-slate-700">
+          <table className="w-full min-w-[1000px] whitespace-nowrap text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
             <thead>
-              <tr className="border-y border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-                <th className="px-4 py-2.5 text-left">Nhân sự</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">KPI năm</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">Loại</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">Đi muộn / về sớm</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">Kỷ luật</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">Thưởng (đồng)</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">Tăng lương %</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-left">Ghi chú quyết định</th>
-                <th className="border-l border-slate-100 px-3 py-2.5 text-center">Trạng thái</th>
+              <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                <th className="px-4 py-3 text-left min-w-[170px]"><div className="min-w-[170px] line-clamp-3">Nhân sự</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[90px]"><div className="min-w-[90px] text-center line-clamp-3">KPI năm</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[75px]"><div className="min-w-[75px] text-center line-clamp-3">Loại</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[130px]"><div className="min-w-[130px] text-center line-clamp-3 leading-snug">Đi muộn / về sớm</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[85px]"><div className="min-w-[85px] text-center line-clamp-3 leading-snug">Kỷ luật</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[125px]"><div className="min-w-[125px] text-center line-clamp-3 leading-snug">Thưởng (đồng)</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[115px]"><div className="min-w-[115px] text-center line-clamp-3 leading-snug">Tăng lương %</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-left min-w-[170px]"><div className="min-w-[170px] line-clamp-3 leading-snug">Ghi chú quyết định</div></th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[100px]"><div className="min-w-[100px] text-center line-clamp-3 leading-snug">Trạng thái</div></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
               {people.map((person) => {
                 const record = savedBy.get(person.userId);
                 const done = record?.status === 'APPROVED';
@@ -808,20 +810,20 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
                 const grade = gradeOf(person.year, grades);
                 const editable = canApprove && !done;
                 return (
-                  <tr key={person.userId} className="hover:bg-[#FCFAF8]">
-                    <td className="px-4 py-1.5 font-semibold text-slate-800">{nameOf(person.userId)}<span className="ml-1 text-[11px] font-normal text-slate-400">{person.counted} tháng</span></td>
-                    <td className="border-l border-slate-100 px-3 py-1.5 text-center font-semibold">{fmtPct(person.year)}</td>
-                    <td className={`border-l border-slate-100 px-3 py-1.5 text-center font-bold ${GRADE_TONE[grade?.code ?? ''] ?? ''}`}>{grade?.code ?? '—'}</td>
-                    <td className="border-l border-slate-100 px-2 py-1.5">{editable ? <input value={draft.late} onChange={(e) => patch(person.userId, { late: e.target.value.replace(/\D/g, '') })} className={cell} aria-label="Số lần đi muộn về sớm" /> : <span className="block text-center">{record?.late_count ?? '—'}</span>}</td>
-                    <td className="border-l border-slate-100 px-2 py-1.5 text-center">
+                  <tr key={person.userId} className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
+                    <td className="px-4 py-2 font-black text-sm text-slate-900 dark:text-slate-100 min-w-[170px]">{nameOf(person.userId)}<span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">{person.counted} tháng</span></td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold min-w-[90px]">{fmtPct(person.year)}</td>
+                    <td className={`border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold min-w-[75px] ${GRADE_TONE[grade?.code ?? ''] ?? ''}`}>{grade?.code ?? '—'}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 min-w-[130px]">{editable ? <input value={draft.late} onChange={(e) => patch(person.userId, { late: e.target.value.replace(/\D/g, '') })} className={cell} aria-label="Số lần đi muộn về sớm" /> : <span className="block text-center font-bold">{record?.late_count ?? '—'}</span>}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 text-center min-w-[85px]">
                       <input type="checkbox" disabled={!editable} checked={draft.discipline} aria-label="Bị kỷ luật trong năm"
                         onChange={(e) => patch(person.userId, { discipline: e.target.checked, ...(e.target.checked ? { raise: '0' } : {}) })} className="h-4 w-4 accent-red-600" />
                     </td>
-                    <td className="border-l border-slate-100 px-2 py-1.5">{editable ? <input value={draft.bonus} inputMode="decimal" onChange={(e) => patch(person.userId, { bonus: e.target.value.replace(/[^\d.,]/g, '') })} className={cell} aria-label="Thưởng" /> : <span className="block text-center">{fmtNum(record?.bonus_amount)}</span>}</td>
-                    <td className="border-l border-slate-100 px-2 py-1.5">{editable ? <input value={draft.raise} inputMode="decimal" disabled={draft.discipline} onChange={(e) => patch(person.userId, { raise: e.target.value.replace(/[^\d.,]/g, '') })} className={`${cell} disabled:bg-slate-100`} aria-label="Tăng lương %" /> : <span className="block text-center">{record?.raise_pct == null ? '—' : fmtPct(record.raise_pct)}</span>}</td>
-                    <td className="border-l border-slate-100 px-2 py-1.5">{editable ? <input value={draft.reason} onChange={(e) => patch(person.userId, { reason: e.target.value })} className={`${cell} !text-left`} aria-label="Ghi chú quyết định" /> : <span>{record?.decision_reason ?? ''}</span>}</td>
-                    <td className="border-l border-slate-100 px-3 py-1.5 text-center">
-                      {done ? <span className="font-semibold text-emerald-700">Đã duyệt</span> : record ? <span className="text-slate-500">Đề xuất</span> : <span className="text-slate-300">—</span>}
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 min-w-[125px]">{editable ? <input value={draft.bonus} inputMode="decimal" onChange={(e) => patch(person.userId, { bonus: e.target.value.replace(/[^\d.,]/g, '') })} className={cell} aria-label="Thưởng" /> : <span className="block text-center font-bold">{fmtNum(record?.bonus_amount)}</span>}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 min-w-[115px]">{editable ? <input value={draft.raise} inputMode="decimal" disabled={draft.discipline} onChange={(e) => patch(person.userId, { raise: e.target.value.replace(/[^\d.,]/g, '') })} className={`${cell} disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:opacity-50`} aria-label="Tăng lương %" /> : <span className="block text-center font-bold">{record?.raise_pct == null ? '—' : fmtPct(record.raise_pct)}</span>}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 min-w-[170px]">{editable ? <input value={draft.reason} onChange={(e) => patch(person.userId, { reason: e.target.value })} className={`${cell} !text-left`} aria-label="Ghi chú quyết định" /> : <span className="text-slate-700 dark:text-slate-300 font-medium text-xs">{record?.decision_reason ?? ''}</span>}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center min-w-[100px]">
+                      {done ? <span className="font-bold text-emerald-700 dark:text-emerald-400">Đã duyệt</span> : record ? <span className="font-semibold text-slate-600 dark:text-slate-300">Đề xuất</span> : <span className="text-slate-400">—</span>}
                     </td>
                   </tr>
                 );

@@ -89,7 +89,7 @@ export function StaffPayroll() {
     }));
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 payroll-module" data-module="payroll">
       <div className="flex flex-wrap items-start justify-center gap-3">
         <div className="flex flex-wrap items-center gap-2 no-print">
           <MonthNav value={monthStart} onChange={setMonthStart} theme="staff" bare />
@@ -199,14 +199,14 @@ function PayslipView({ payslip, lines, paperLines, layout, monthLabel, employeeN
         <Metric icon={<Clock3 className="h-5 w-5" />} label="Giờ làm ghi nhận" value={`${Number(payslip.work_hours)} giờ`} tone="violet" />
       </div>
 
-      <Card className="!rounded-none">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
         <CardContent className="p-0">
-          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-3 border-b-2 border-slate-300 dark:border-slate-700 px-5 py-4 sm:px-6 bg-slate-50 dark:bg-slate-800/50">
             <span className="flex h-10 w-10 items-center justify-center rounded-none bg-emerald-50 text-emerald-600 print:hidden">
               <ReceiptText className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="font-display text-lg font-bold text-slate-900">Chi tiết phiếu lương</h2>
+              <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Chi tiết phiếu lương</h2>
             </div>
           </div>
           <div className="px-5 py-5 sm:px-6">
@@ -228,14 +228,14 @@ function PayslipView({ payslip, lines, paperLines, layout, monthLabel, employeeN
             />
           </div>
           {payslip.note && (
-            <div className="border-t border-slate-100 bg-slate-50 px-5 py-4 text-xs text-slate-600 sm:px-6">
-              <strong className="text-slate-700">Ghi chú từ HR/C&B:</strong> {payslip.note}
+            <div className="border-t-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-5 py-4 text-xs font-semibold text-slate-700 dark:text-slate-300 sm:px-6">
+              <strong className="text-slate-900 dark:text-slate-100">Ghi chú từ HR/C&B:</strong> {payslip.note}
             </div>
           )}
         </CardContent>
       </Card>
 
-      <p className="flex items-start gap-2 text-xs leading-relaxed text-slate-400 no-print">
+      <p className="flex items-start gap-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400 no-print">
         <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0" />
         Phiếu đã được duyệt chi và không thay đổi. Nếu thấy sai sót, liên hệ HR/C&B — điều chỉnh sẽ ghi vào kỳ lương sau.
       </p>
@@ -246,12 +246,12 @@ function PayslipView({ payslip, lines, paperLines, layout, monthLabel, employeeN
 function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: string; value: string; tone: 'blue' | 'emerald' | 'violet' }) {
   const tones = { blue: 'bg-blue-50 text-blue-600', emerald: 'bg-emerald-50 text-emerald-600', violet: 'bg-violet-50 text-violet-600' };
   return (
-    <Card className="!rounded-none">
+    <Card className="!rounded-none border-2 border-slate-300 dark:border-slate-700 shadow-sm">
       <CardContent className="flex items-center gap-3 py-5">
         <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-none ${tones[tone]} print:hidden`}>{icon}</span>
         <div className="min-w-0">
-          <p className="text-xs font-medium text-slate-500">{label}</p>
-          <p className="mt-1 truncate text-base font-extrabold tabular-nums text-slate-900">{value}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="mt-1 truncate text-lg font-black tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
         </div>
       </CardContent>
     </Card>

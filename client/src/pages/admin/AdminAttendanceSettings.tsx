@@ -38,7 +38,7 @@ function NumberField({
 
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs font-semibold text-slate-600">{label}</span>
+      <span className="text-xs font-black text-slate-900 dark:text-slate-100">{label}</span>
       <span className="flex items-center gap-2">
         <input
           type="number"
@@ -54,14 +54,14 @@ function NumberField({
               onChange(next);
             }
           }}
-          className={`h-9 w-24 rounded-none border bg-white px-2.5 text-sm tabular-nums focus:outline-none focus:ring-2 ${
+          className={`h-9 w-24 rounded-none border-2 bg-white dark:bg-slate-800 px-2.5 text-sm font-black tabular-nums focus:outline-none focus:ring-2 ${
             invalid
-              ? 'border-red-400 focus:border-red-400 focus:ring-red-500/15'
-              : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-500/15'
+              ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+              : 'border-slate-400 dark:border-slate-600 focus:border-indigo-500 focus:ring-indigo-500/20'
           }`}
         />
-        <span className="text-sm text-slate-500">{unit}</span>
-        {invalid && <span className="text-xs text-red-600">{min}–{max}</span>}
+        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{unit}</span>
+        {invalid && <span className="text-xs font-bold text-red-600">{min}–{max}</span>}
       </span>
     </label>
   );
@@ -135,7 +135,7 @@ export function AdminAttendanceSettings() {
     <div className="space-y-4">
       {/* Hai ô số chung nằm cùng một hàng với nút Lưu; giờ làm và công chuẩn
           bên dưới tự lưu riêng vì là danh mục nhiều dòng. */}
-      <Card className="!rounded-none">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
         <CardContent className="flex flex-wrap items-end gap-x-8 gap-y-3 !py-3">
           <NumberField
             label="Giờ làm chuẩn / ngày"

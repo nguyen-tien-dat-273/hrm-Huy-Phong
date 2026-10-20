@@ -1,6 +1,7 @@
 // ============================================================================
 // Lương & Đãi ngộ — trang khung cho các mục con trên sidebar.
 // ----------------------------------------------------------------------------
+//   Thiết lập lương (tổng quan)   → setup — gom ba mục dưới, có thanh bước
 //   Danh mục khoản lương          → catalog
 //   Tham số lương                 → params
 //   Cơ chế lương (chung + riêng)  → schemes
@@ -14,7 +15,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { endOfMonth, format, startOfMonth } from 'date-fns';
 import { Calculator, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -25,6 +26,7 @@ import { ComponentCatalog } from '@/components/payroll/ComponentCatalog';
 import { PayrollParamsTab } from '@/components/payroll/PayrollParamsTab';
 import { PayrollDryRunModal } from '@/components/payroll/PayrollDryRunModal';
 import { PaySchemeTree } from '@/components/payroll/PaySchemeTree';
+import { PayrollSetupSteps } from '@/components/payroll/PayrollSetupOverview';
 import { AdjustmentsTab } from '@/components/payroll/AdjustmentsTab';
 import { PayrollRegister, Banner, RUN_STATUS_LABEL } from '@/components/payroll/PayrollRegister';
 import { PayrollApprovals } from '@/components/payroll/PayrollApprovals';
@@ -38,13 +40,21 @@ import { loadPayrollWorkspace, type PayrollWorkspace } from '@/lib/payrollData';
 import { paramsForMonth } from '@/lib/payrollRun';
 import type { PayrollParamVersion } from '@/lib/payrollSettings';
 
-type Tab = 'register' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'approvals' | 'reports';
+type Tab = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'approvals' | 'reports';
+
+/** Các mục thuộc "Thiết lập lương" — chung một thanh bước trên đầu trang. */
+const SETUP_TABS: readonly Tab[] = ['params', 'schemes', 'catalog'];
 
 /**
  * Mỗi mục là một ROUTE riêng, đã hiện thành module con trên sidebar — trang
  * không vẽ thêm hàng tab. `monthScoped` quyết định có bộ chọn tháng không.
  */
 const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: boolean; fn: readonly AdminFunctionCode[] }> = {
+  setup: {
+    title: 'Thiết lập lương',
+    hint: '',
+    monthScoped: true, fn: ['admin.payroll_settings', 'admin.payroll_schemes', 'admin.payroll_components'],
+  },
   catalog: {
     title: 'Danh mục khoản lương',
     hint: '',
@@ -152,6 +162,10 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
     );
   }
 
+  if (tab === 'setup') {
+    return <Navigate to={`/admin/payroll/setup/params${searchParams.toString() ? `?${searchParams.toString()}` : ''}`} replace />;
+  }
+
   if (tab === 'reports') {
     return (
       <div className="space-y-4">
@@ -168,7 +182,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
     return (
       <div className="space-y-5">
         <div className="flex flex-wrap items-start justify-center gap-3 empty:hidden">
-          {meta.monthScoped && (
+          {meta.monthScoped && tab !== 'register' && (
             <div className="flex flex-wrap items-center gap-2 no-print">
               <MonthNav value={monthStart} onChange={setMonthStart} bare />
             </div>
@@ -201,12 +215,12 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   if (!data) return null;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 payroll-module" data-module="payroll">
       <div className="flex flex-wrap items-start justify-center gap-3 empty:hidden">
-        {meta.monthScoped && (
+        {meta.monthScoped && tab !== 'register' && (
           <div className="flex flex-wrap items-center gap-2 no-print">
             <MonthNav value={monthStart} onChange={setMonthStart} bare />
-            {tab !== 'register' && data.run && (
+            {data.run && (
               <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:text-slate-300">
                 Kỳ lương: {RUN_STATUS_LABEL[runStatus]}
               </span>
@@ -226,6 +240,8 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           Kỳ lương {monthLabel} đã khoá — dữ liệu tháng này chỉ xem. Sai sót ghi vào Điều chỉnh lương của kỳ đang mở.
         </Banner>
       )}
+
+      {SETUP_TABS.includes(tab) && <PayrollSetupSteps month={monthStartStr} />}
 
       {tab === 'catalog' && (
         <ComponentCatalog
@@ -253,6 +269,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           lastClosedMonth={lastClosedMonth}
           canManage={canManageSchemes}
           focusUserId={searchParams.get('user')}
+          initialTab={searchParams.get('tab') === 'amounts' ? 'amounts' : undefined}
           onChanged={reload}
           onDryRun={(personId) => setDryRun({ personId })}
         />
@@ -279,6 +296,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           monthStartStr={monthStartStr}
           monthEndStr={monthEndStr}
           monthLabel={monthLabel}
+          onMonthChange={setMonthStart}
           onChanged={reload}
         />
       )}

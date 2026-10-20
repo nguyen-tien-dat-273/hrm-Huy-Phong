@@ -15,7 +15,6 @@ import { ArrowDownLeft, ArrowUpRight, Plus, Trash2, TriangleAlert } from 'lucide
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Avatar } from '@/components/ui/Avatar';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -219,38 +218,37 @@ export function AdjustmentsTab({
         </div>
       )}
 
-      <Card className="!rounded-none">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {adjustments.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-slate-400">
+            <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
               Chưa có điều chỉnh nào cho tháng {monthLabel}.
             </p>
           ) : (
-            <ul className="divide-y divide-slate-50">
+            <ul className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900">
               {adjustments.map((adjustment) => {
                 const person = personById.get(adjustment.user_id);
                 const isRecovery = adjustment.kind === 'RECOVERY';
                 return (
-                  <li key={adjustment.id} className="flex items-start gap-3 px-5 py-4">
-                    <Avatar name={person?.name ?? '?'} url={person?.avatar_url} size="sm" />
+                  <li key={adjustment.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-bold text-slate-800">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs font-black text-slate-900 dark:text-slate-100">
                           {person?.name ?? 'Nhân sự không còn hoạt động'}
                         </span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          isRecovery ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                          isRecovery ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' : 'bg-red-50 text-red-800 dark:bg-red-950/60 dark:text-red-300 border border-red-300 dark:border-red-700'
                         }`}>
                           {KIND_SHORT[adjustment.kind]}
                         </span>
                         {adjustment.component_code && (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                          <span className="rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 px-2 py-0.5 text-xs font-bold text-slate-700 dark:text-slate-300">
                             {components.find((item) => item.code.toUpperCase() === adjustment.component_code?.toUpperCase())?.name
                               ?? adjustment.component_code}
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-600">{adjustment.reason}</p>
+                      <p className="mt-1 text-xs font-medium leading-relaxed text-slate-700 dark:text-slate-300">{adjustment.reason}</p>
                       <p className="mt-0.5 text-xs text-slate-400">
                         {adjustment.origin_month
                           ? `Bù cho kỳ ${adjustment.origin_month.slice(5, 7)}/${adjustment.origin_month.slice(0, 4)}`
@@ -258,8 +256,8 @@ export function AdjustmentsTab({
                       </p>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-2">
-                      <span className={`text-sm font-bold tabular-nums ${
-                        isRecovery ? 'text-emerald-700' : 'text-red-700'
+                      <span className={`text-base font-black tabular-nums ${
+                        isRecovery ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
                       }`}>
                         {isRecovery ? '+' : '−'}{formatVND(Number(adjustment.amount))}
                       </span>
@@ -269,7 +267,7 @@ export function AdjustmentsTab({
                           className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                           aria-label="Xóa điều chỉnh"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       )}
                     </div>

@@ -66,7 +66,7 @@ interface PersonSchemeFormProps {
   account: EmployeeBankAccount | null;
   /** Tên đơn vị của người — nơi cơ chế chung được áp xuống. */
   unitName: string | null;
-  onBack: () => void;
+  onBack?: () => void;
   onSaved: () => void;
   onAccountSaved: () => void;
   /** Mở Bảng lương tháng, đúng hàng của người này, để nhập số liệu tháng. */
@@ -295,9 +295,11 @@ export function PersonSchemeForm({
     <>
       <Card className="!rounded-none">
         <CardHeader className="flex flex-wrap items-center gap-3">
-          <Button size="sm" variant="ghost" onClick={onBack} aria-label="Quay lại danh sách">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          {onBack && (
+            <Button size="sm" variant="ghost" onClick={onBack} aria-label="Quay lại danh sách">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
           <Avatar name={person.name} url={person.avatar_url} size="md" />
           <div className="min-w-0 flex-1">
             <CardTitle>{person.name}</CardTitle>

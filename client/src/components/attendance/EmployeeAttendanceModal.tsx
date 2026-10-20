@@ -38,16 +38,16 @@ export function EmployeeAttendanceModal({
   otRecords,
   leaveRecords,
 }: EmployeeAttendanceModalProps) {
-  if (!rollup) return null;
-
-  const { profile } = rollup;
   const daysInMonth = useMemo(() => {
+    if (!rollup) return 0;
     const [y, m] = month.split('-').map(Number);
     return getDaysInMonth(new Date(y, m - 1, 1));
-  }, [month]);
+  }, [month, rollup]);
 
   // Gom dữ liệu từng ngày trong tháng của nhân sự này
   const calendarDays = useMemo(() => {
+    if (!rollup) return [];
+    const profile = rollup.profile;
     const days = [];
     const userAttMap = new Map<string, Attendance>();
     for (const a of attendances) {
@@ -103,8 +103,10 @@ export function EmployeeAttendanceModal({
       });
     }
     return days;
-  }, [attendances, daysInMonth, lateRecords, leaveRecords, month, otRecords, profile.id]);
+  }, [attendances, daysInMonth, lateRecords, leaveRecords, month, otRecords, rollup]);
 
+  if (!rollup) return null;
+  const { profile } = rollup;
   const gradeInfo = GRADE_BADGE[rollup.disciplineGrade];
 
   return (
@@ -229,24 +231,24 @@ export function EmployeeAttendanceModal({
           </div>
         </div>
 
-        {/* Lịch chi tiết từng ngày trong tháng - vuông vức */}
-        <div className="border border-slate-200 dark:border-slate-800 rounded-none">
-          <div className="border-b border-slate-200 bg-[#FCFAF8] px-3.5 py-2 text-xs font-bold text-slate-700 dark:border-slate-800 dark:bg-slate-850 dark:text-slate-200">
+        {/* Lịch chi tiết từng ngày trong tháng */}
+        <div className="border-2 border-slate-400 dark:border-slate-600 rounded-xl overflow-hidden shadow-sm">
+          <div className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] px-3.5 py-2.5 text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
             Chi tiết ngày làm việc ({month.slice(5, 7)}/{month.slice(0, 4)})
           </div>
           <div className="max-h-[360px] overflow-y-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-100 text-[11px] font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300">
+            <table className="w-full text-left text-sm border-collapse">
+              <thead className="sticky top-0 z-10 border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
                 <tr>
-                  <th className="px-3.5 py-2">Ngày</th>
-                  <th className="px-3 py-2">Thứ</th>
-                  <th className="px-3 py-2">Vào</th>
-                  <th className="px-3 py-2">Ra</th>
-                  <th className="px-3 py-2 text-right">Giờ làm</th>
-                  <th className="px-3 py-2">Ghi nhận vi phạm / OT / Nghỉ phép</th>
+                  <th className="px-3.5 py-2.5">Ngày</th>
+                  <th className="px-3 py-2.5">Thứ</th>
+                  <th className="px-3 py-2.5">Vào</th>
+                  <th className="px-3 py-2.5">Ra</th>
+                  <th className="px-3 py-2.5 text-right">Giờ làm</th>
+                  <th className="px-3 py-2.5">Ghi nhận vi phạm / OT / Nghỉ phép</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-800/60 dark:bg-slate-900">
+              <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                 {calendarDays.map((d) => {
                   const hasCheckin = Boolean(d.att?.check_in_time);
                   const isLate = Boolean(d.late);
@@ -255,39 +257,39 @@ export function EmployeeAttendanceModal({
                   return (
                     <tr
                       key={d.date}
-                      className={`transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/40 ${
-                        d.isWeekend ? 'bg-slate-50/50 dark:bg-slate-950/20' : ''
+                      className={`group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60 ${
+                        d.isWeekend ? 'bg-slate-100/40 dark:bg-slate-800/30' : ''
                       }`}
                     >
-                      <td className="px-3.5 py-2 font-mono font-semibold text-slate-700 dark:text-slate-300">
+                      <td className="px-3.5 py-2 font-mono font-bold text-slate-900 dark:text-slate-100 text-sm">
                         {String(d.day).padStart(2, '0')}/{month.slice(5, 7)}
                       </td>
-                      <td className={`px-3 py-2 ${d.isWeekend ? 'font-semibold text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                      <td className={`px-3 py-2 font-bold ${d.isWeekend ? 'text-amber-600 dark:text-amber-400' : 'text-slate-600 dark:text-slate-300'}`}>
                         {d.weekday}
                       </td>
                       <td className="px-3 py-2">
                         {d.att?.check_in_time ? (
-                          <span className={`font-mono ${isLate ? 'font-bold text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                          <span className={`font-mono font-bold text-sm ${isLate ? 'text-red-600 dark:text-red-400' : 'text-slate-900 dark:text-slate-100'}`}>
                             {formatTime(d.att.check_in_time)}
                           </span>
                         ) : (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                          <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
                         {d.att?.check_out_time ? (
-                          <span className="font-mono text-slate-700 dark:text-slate-300">
+                          <span className="font-mono font-bold text-sm text-slate-900 dark:text-slate-100">
                             {formatTime(d.att.check_out_time)}
                           </span>
                         ) : hasCheckin ? (
-                          <span className="border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 rounded-full">
+                          <span className="border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300 rounded-full">
                             Thiếu checkout
                           </span>
                         ) : (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
+                          <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
+                      <td className="px-3 py-2 text-right font-mono font-black text-sm text-slate-900 dark:text-slate-100">
                         {d.durationHours != null ? `${d.durationHours}h` : '—'}
                       </td>
                       <td className="px-3 py-2">

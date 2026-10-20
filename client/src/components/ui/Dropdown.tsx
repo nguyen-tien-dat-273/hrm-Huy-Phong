@@ -165,7 +165,7 @@ export function Dropdown({
   return (
     <div className={`w-full ${className}`}>
       {label && (
-        <label htmlFor={id} className="mb-1.5 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+        <label htmlFor={id} className="mb-1.5 block text-sm font-bold text-slate-800 dark:text-slate-200">
           {label}{required && <span className="ml-1 text-red-500" aria-hidden="true">*</span>}
         </label>
       )}
@@ -184,25 +184,25 @@ export function Dropdown({
           if (open) return;
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); openList(); }
         }}
-        className={`flex w-full items-center justify-between gap-2 border bg-white dark:bg-slate-800 text-left text-sm text-slate-900 dark:text-slate-100 transition-all hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:text-slate-500 ${triggerShape} ${
-          error ? 'border-red-400' : open ? 'border-indigo-500' : 'border-slate-200 dark:border-slate-700'
+        className={`flex w-full items-center justify-between gap-2 border bg-white dark:bg-slate-800 text-left text-sm text-slate-900 dark:text-slate-100 transition-all hover:border-slate-400 dark:hover:border-slate-500 focus:border-indigo-600 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:text-slate-500 ${triggerShape} ${
+          error ? 'border-red-400' : open ? 'border-indigo-600' : 'border-slate-300 dark:border-slate-600'
         }`}
       >
         <span className={`min-w-0 flex-1 truncate ${selected ? '' : 'text-slate-400'}`}>{selected?.label ?? placeholder}</span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {error && <p role="alert" className="mt-1.5 text-xs font-medium text-red-600">{error}</p>}
+      {error && <p role="alert" className="mt-1.5 text-xs font-semibold text-red-600">{error}</p>}
 
       {open && box && createPortal(
         <div
           ref={panelRef}
           style={{ position: 'fixed', left: box.left, width: box.width, top: box.top, bottom: box.bottom, maxHeight: box.maxHeight }}
           tabIndex={-1}
-          className={`z-[70] flex flex-col overflow-hidden ${square ? 'rounded-none' : 'rounded-xl'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 outline-none`}
+          className={`z-[70] flex flex-col overflow-hidden ${square ? 'rounded-none' : 'rounded-xl'} border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl shadow-slate-900/10 outline-none`}
           onKeyDown={onListKey}
         >
           {withSearch && (
-            <div className="relative shrink-0 border-b border-slate-100 dark:border-slate-700 p-2">
+            <div className="relative shrink-0 border-b border-slate-200 dark:border-slate-700 p-2">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
                 ref={searchRef}
@@ -210,7 +210,7 @@ export function Dropdown({
                 onChange={(event) => { setQuery(event.target.value); setActive(0); }}
                 placeholder="Gõ để lọc…"
                 aria-label="Lọc danh sách"
-                className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50/60 dark:bg-slate-900/60 text-slate-900 dark:text-slate-100 pl-8 pr-2 text-sm outline-none focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900"
+                className="h-9 w-full rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50/60 dark:bg-slate-900/60 text-slate-900 dark:text-slate-100 pl-8 pr-2 text-sm outline-none focus:border-indigo-600 focus:bg-white dark:focus:bg-slate-900"
               />
             </div>
           )}

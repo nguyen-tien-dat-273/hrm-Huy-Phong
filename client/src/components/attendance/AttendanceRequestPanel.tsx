@@ -286,7 +286,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
 
         {visible.length === 0 ? (
           square ? (
-            <p className="py-10 text-center text-sm text-slate-400">
+            <p className="py-10 text-center text-sm font-semibold text-slate-400">
               {ordered.length === 0 ? 'Không có đơn nào.' : 'Không có đơn nào khớp bộ lọc.'}
             </p>
           ) : (
@@ -294,45 +294,45 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
               <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
                 <CalendarClock className="h-5 w-5" />
               </span>
-              <p className="text-sm font-semibold text-slate-600">
+              <p className="text-sm font-bold text-slate-600">
                 {mode === 'mine' ? 'Chưa gửi đơn nào' : 'Không có đơn nào'}
               </p>
             </div>
           )
         ) : square ? (
           <>
-            <div className="overflow-x-auto rounded-none border border-slate-200">
-              <table className="w-full min-w-[900px] text-sm">
+            <div className="overflow-x-auto rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+              <table className="w-full min-w-[900px] text-sm border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-[#FCFAF8] text-left text-[11px] font-semibold text-black">
-                    <th className="px-4 py-3">Nhân sự</th>
-                    <th className="border-l border-slate-100 px-3 py-3">Loại đơn</th>
-                    <th className="border-l border-slate-100 px-3 py-3">Ngày</th>
-                    <th className="border-l border-slate-100 px-3 py-3 text-center">Thời lượng</th>
-                    <th className="border-l border-slate-100 px-3 py-3">Lý do</th>
-                    <th className="border-l border-slate-100 px-3 py-3 text-center">Trạng thái</th>
-                    <th className="border-l border-slate-100 px-3 py-3 text-center">Thao tác</th>
+                  <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                    <th className="px-4 py-3 min-w-[170px]"><div className="min-w-[170px] line-clamp-3">Nhân sự</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 min-w-[120px]"><div className="min-w-[120px] line-clamp-3">Loại đơn</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 min-w-[95px]"><div className="min-w-[95px] line-clamp-3">Ngày</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[110px]"><div className="min-w-[110px] text-center line-clamp-3">Thời lượng</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 min-w-[160px]"><div className="min-w-[160px] line-clamp-3">Lý do</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[100px]"><div className="min-w-[100px] text-center line-clamp-3">Trạng thái</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[95px]"><div className="min-w-[95px] text-center line-clamp-3">Thao tác</div></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                   {shown.map((row) => {
                     const status = STATUS_STYLE[row.status];
                     return (
-                      <tr key={row.id} className="align-top">
-                        <td className="px-4 py-3 text-sm font-bold text-slate-800">{nameOf(row.user_id)}</td>
-                        <td className="px-3 py-3 text-xs text-slate-600">{TYPE_LABEL[row.request_type]}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">{formatDate(row.work_date)}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-center text-xs font-semibold tabular-nums text-slate-700">
+                      <tr key={row.id} className="align-top hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-4 py-3 text-sm font-black text-slate-900 dark:text-slate-100">{nameOf(row.user_id)}</td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3 text-sm font-bold text-slate-700 dark:text-slate-300">{TYPE_LABEL[row.request_type]}</td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 whitespace-nowrap px-3 py-3 text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-300">{formatDate(row.work_date)}</td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 whitespace-nowrap px-3 py-3 text-center text-sm font-black tabular-nums text-slate-900 dark:text-slate-100">
                           {row.minutes != null ? `${row.minutes} phút` : row.hours != null ? `${Number(row.hours)} giờ` : '—'}
                         </td>
-                        <td className="max-w-[260px] px-3 py-3 text-xs leading-relaxed text-slate-600">
+                        <td className="border-l border-slate-300 dark:border-slate-700 max-w-[260px] px-3 py-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                           {row.reason}
-                          {row.review_note && <span className="mt-1 block text-red-600">Phản hồi: {row.review_note}</span>}
+                          {row.review_note && <span className="mt-1 block font-bold text-red-600">Phản hồi: {row.review_note}</span>}
                         </td>
-                        <td className="px-3 py-3 text-center">
-                          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${status.color}`}>{status.label}</span>
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3 text-center">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-black ${status.color}`}>{status.label}</span>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3">
                           {row.status === 'PENDING' ? (
                             <div className="flex justify-center gap-2">
                               <Button size="sm" variant="success" disabled={busy} onClick={() => void decide(row, 'APPROVED')}>
@@ -342,7 +342,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
                                 <X className="h-3.5 w-3.5" /> Từ chối
                               </Button>
                             </div>
-                          ) : <span className="block text-center text-xs text-slate-300">—</span>}
+                          ) : <span className="block text-center text-xs text-slate-400 font-bold">—</span>}
                         </td>
                       </tr>
                     );
@@ -353,31 +353,31 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
             <Pager page={currentPage} total={visible.length} noun="đơn" onPage={setPage} />
           </>
         ) : (
-          <ul className="divide-y divide-slate-50">
+          <ul className="divide-y divide-slate-300 dark:divide-slate-700">
             {shown.map((row) => {
               const status = STATUS_STYLE[row.status];
               return (
-                <li key={row.id} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center bg-slate-50 text-slate-500 ${square ? 'rounded-none' : 'rounded-lg'}`}>
+                <li key={row.id} className="flex flex-wrap items-center gap-3 py-3.5">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 ${square ? 'rounded-none' : 'rounded-lg'}`}>
                     <Clock3 className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800">
-                      {mode === 'review' && <span className="text-slate-500">{nameOf(row.user_id)} · </span>}
+                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                      {mode === 'review' && <span className="text-slate-600 dark:text-slate-400">{nameOf(row.user_id)} · </span>}
                       {TYPE_LABEL[row.request_type]}
                       {row.minutes != null && ` ${row.minutes} phút`}
                       {row.hours != null && ` ${Number(row.hours)} giờ`}
                     </p>
-                    <p className="truncate text-xs text-slate-500">
+                    <p className="truncate text-sm font-medium text-slate-600 dark:text-slate-400">
                       {formatDate(row.work_date)} · {row.reason}
                     </p>
                     {row.review_note && (
-                      <p className="mt-1 text-xs text-red-600">Phản hồi: {row.review_note}</p>
+                      <p className="mt-1 text-xs font-bold text-red-600">Phản hồi: {row.review_note}</p>
                     )}
                   </div>
                   {square
-                    ? <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${status.color}`}>{status.label}</span>
-                    : <Badge className={status.color}>{status.label}</Badge>}
+                    ? <span className={`rounded-full px-2.5 py-1 text-xs font-black ${status.color}`}>{status.label}</span>
+                    : <Badge className={`${status.color} font-black`}>{status.label}</Badge>}
 
                   {mode === 'review' && row.status === 'PENDING' && (
                     <div className="flex gap-1">

@@ -166,19 +166,27 @@ export function BankExportModal({ open, run, rows, onClose, onExported }: BankEx
           )}
 
           {template && ready.length > 0 && (
-            <div className="max-h-64 overflow-auto rounded-none border border-slate-200">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-slate-50">
-                  <tr>{template.columns.map((column) => <th key={column.header} className="px-2 py-1.5 text-left font-bold text-black">{column.header}</th>)}</tr>
+            <div className="max-h-64 overflow-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm">
+              <table className="w-full text-xs border-collapse">
+                <thead className="sticky top-0 bg-[#fdf2f4] dark:bg-[#201114] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                  <tr>{template.columns.map((column) => (
+                    <th key={column.header} className="px-3 py-2 text-left font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider text-[11px] border-l border-[#eed5d8] dark:border-[#4a1c22] first:border-l-0">
+                      {column.header}
+                    </th>
+                  ))}</tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
                   {ready.slice(0, 50).map((row, index) => {
                     const account = accountByUser.get(row.profile.id) as EmployeeBankAccount;
                     return (
-                      <tr key={row.profile.id}>
+                      <tr key={row.profile.id} className="group hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-colors">
                         {template.columns.map((column) => {
                           const value = cellOf(column.field, row, index, account);
-                          return <td key={column.header} className="whitespace-nowrap px-2 py-1 text-slate-700">{column.field === 'amount' ? formatVND(Number(value)) : value}</td>;
+                          return (
+                            <td key={column.header} className="whitespace-nowrap px-3 py-2 text-slate-900 dark:text-slate-100 font-semibold border-l border-slate-300 dark:border-slate-700 first:border-l-0">
+                              {column.field === 'amount' ? formatVND(Number(value)) : value}
+                            </td>
+                          );
                         })}
                       </tr>
                     );

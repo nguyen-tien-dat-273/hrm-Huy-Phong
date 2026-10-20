@@ -38,22 +38,22 @@ export function MonthStandardCard({ set }: { set: ScheduleSet }) {
   const currentMonth = now.getFullYear() === year ? now.getMonth() : -1;
 
   return (
-    <Card className="!rounded-none">
-      <CardHeader className="!py-3">
+    <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+      <CardHeader className="!py-3 border-b-2 border-slate-300 dark:border-slate-700">
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Công chuẩn theo tháng</CardTitle>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setYear((y) => y - 1)}
-              className="inline-flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100"
+              className="inline-flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-label="Năm trước"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="min-w-[3rem] text-center text-sm font-bold tabular-nums text-slate-800">{year}</span>
+            <span className="min-w-[3rem] text-center text-sm font-black tabular-nums text-slate-900 dark:text-slate-100">{year}</span>
             <button
               onClick={() => setYear((y) => y + 1)}
-              className="inline-flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100"
+              className="inline-flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-label="Năm sau"
             >
               <ChevronRight className="h-4 w-4" />
@@ -62,8 +62,8 @@ export function MonthStandardCard({ set }: { set: ScheduleSet }) {
         </div>
       </CardHeader>
 
-      <table className="w-full text-left">
-        <tbody className="divide-y divide-slate-50">
+      <table className="w-full text-left border-collapse">
+        <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
           {rows.map(({ month, detail }) => {
             const isOpen = open === month;
             const isCurrent = month === currentMonth;
@@ -71,10 +71,10 @@ export function MonthStandardCard({ set }: { set: ScheduleSet }) {
               <Fragment key={toIso(year, month, 1)}>
                 <tr
                   onClick={() => setOpen(isOpen ? null : month)}
-                  className={`cursor-pointer hover:bg-slate-50 ${isCurrent ? 'outline outline-2 -outline-offset-2 outline-red-500' : ''}`}
+                  className={`cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors ${isCurrent ? 'outline outline-2 -outline-offset-2 outline-red-500 bg-red-50/30' : ''}`}
                   aria-current={isCurrent ? 'date' : undefined}
                 >
-                  <td className="px-4 py-2 text-sm font-medium text-slate-700">
+                  <td className="px-4 py-2.5 text-sm font-bold text-slate-900 dark:text-slate-100">
                     <button
                       type="button"
                       aria-expanded={isOpen}
@@ -85,7 +85,7 @@ export function MonthStandardCard({ set }: { set: ScheduleSet }) {
                       Tháng {month + 1}
                     </button>
                   </td>
-                  <td className="px-4 py-2 text-right text-sm font-bold tabular-nums text-slate-800">
+                  <td className="px-4 py-2.5 text-right text-sm font-black tabular-nums text-slate-900 dark:text-slate-100">
                     {detail == null ? <span className="font-normal text-slate-400">—</span> : fmt(detail.total)}
                   </td>
                 </tr>

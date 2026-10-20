@@ -151,7 +151,13 @@ export function summarisePeriod(
 ): PeriodStats {
   const withCheckIn = attendance.filter((record) => record.check_in_time);
   const workedDates = new Set(withCheckIn.map((record) => record.date));
-  const workDays = workedDates.size;
+  const holidaySet = new Set(holidays);
+
+  let workDays = 0;
+  for (const iso of workedDates) {
+    workDays += schedules.supported ? dayWeight(schedules, iso, holidaySet) : 1;
+  }
+  workDays = Math.round(workDays * 100) / 100;
 
   let workHours = 0;
   let missingCheckout = 0;
@@ -174,7 +180,6 @@ export function summarisePeriod(
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   let leaveDays = 0;
   const leaveCoveredDates = new Set<string>();
-  const holidaySet = new Set(holidays);
   // Không có ngày lễ nào: dùng để hỏi "hôm đó ĐÁNG LẼ là ngày làm mấy công",
   // vì `dayWeight` trả 0 cho mọi ngày lễ — mà ngày lễ vẫn được HƯỞNG lương.
   const noHolidays: ReadonlySet<string> = new Set<string>();

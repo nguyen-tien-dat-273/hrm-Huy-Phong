@@ -14,7 +14,8 @@ import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 /** Độ rộng cột Nhân sự cố định ở mép trái — nút lướt trái đặt ngay sau nó. */
-export const STICKY_COL_WIDTH = 240;
+/** Độ rộng 3 cột cố định (STT + Mã NV + Nhân sự) ở mép trái — nút lướt trái đặt ngay sau nó. */
+export const STICKY_COL_WIDTH = 280;
 
 export function useColumnScroll(deps: DependencyList) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -38,13 +39,16 @@ export function useColumnScroll(deps: DependencyList) {
     return () => observer.disconnect();
   }, [updateEdge, ...deps]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** Nhảy đúng 3 cột mỗi lần bấm; cột Nhân sự đứng yên nên không tính vào. */
+  /** Nhảy đúng 3 cột mỗi lần bấm; các cột cố định đứng yên nên không tính vào. */
   const scrollColumns = (direction: 1 | -1) => {
     const el = scrollRef.current;
     if (!el) return;
     const heads = Array.from(el.querySelectorAll<HTMLElement>('thead th'));
-    const sticky = heads[0]?.offsetWidth ?? 0;
-    const cols = heads.slice(1).filter((head) => !head.classList.contains('no-print'));
+    const stickyHeads = heads.filter((head) => head.className.includes('sticky') && (head.className.includes('left-') || head.className.includes('left-[')));
+    const sticky = stickyHeads.length > 0
+      ? stickyHeads.reduce((acc, head) => acc + head.offsetWidth, 0)
+      : (heads[0]?.offsetWidth ?? 0);
+    const cols = heads.filter((head) => !stickyHeads.includes(head) && !head.classList.contains('no-print'));
     if (cols.length === 0) return;
     const visibleLeft = el.scrollLeft + sticky;
     const first = Math.max(0, cols.findIndex((head) => head.offsetLeft + head.offsetWidth > visibleLeft + 1));
@@ -55,9 +59,17 @@ export function useColumnScroll(deps: DependencyList) {
   return { scrollRef, edge, updateEdge, scrollColumns };
 }
 
-const ARROW_CLASS = 'no-print absolute top-1/2 z-40 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 text-slate-700 dark:text-slate-200 shadow-lg transition hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-700 dark:hover:text-indigo-400';
+const ARROW_CLASS = 'no-print absolute top-1/2 z-40 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 dark:border-slate-600 bg-white/95 dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 shadow-lg transition hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-700 dark:hover:text-indigo-400';
 
-export function ScrollArrows({ edge, onScroll }: { edge: { left: boolean; right: boolean }; onScroll: (direction: 1 | -1) => void }) {
+export function ScrollArrows({
+  edge,
+  onScroll,
+  stickyWidth = STICKY_COL_WIDTH,
+}: {
+  edge: { left: boolean; right: boolean };
+  onScroll: (direction: 1 | -1) => void;
+  stickyWidth?: number;
+}) {
   return (
     <>
       {edge.left && (
@@ -67,7 +79,7 @@ export function ScrollArrows({ edge, onScroll }: { edge: { left: boolean; right:
           title="Về trái 3 cột"
           aria-label="Cuộn bảng về trái 3 cột"
           className={ARROW_CLASS}
-          style={{ left: STICKY_COL_WIDTH + 8 }}
+          style={{ left: stickyWidth + 8 }}
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -95,10 +107,9 @@ export function FullscreenToggle({ full, onToggle }: { full: boolean; onToggle: 
       onClick={onToggle}
       title={full ? 'Thu nhỏ về trang (Esc)' : 'Phóng to toàn màn hình'}
       aria-label={full ? 'Thu nhỏ bảng' : 'Phóng to bảng toàn màn hình'}
-      className="no-print"
+      className="no-print h-10 w-10 p-0 shrink-0 border-slate-300 dark:border-slate-700"
     >
-      {full ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-      {full ? 'Thu nhỏ' : 'Phóng to'}
+      {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
     </Button>
   );
 }
@@ -108,7 +119,7 @@ export function TableShell({ full, children }: { full: boolean; children: ReactN
   return (
     <div className={full
       ? 'flex min-h-0 flex-1 flex-col bg-white dark:bg-slate-900'
-      : 'min-w-0 rounded-none border border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-card'}
+      : 'min-w-0 rounded-none border-2 border-slate-400 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-md'}
     >
       {children}
     </div>

@@ -284,8 +284,8 @@ export function KpiPeriodBoard({
       )}
 
       {/* Danh sách phiếu */}
-      <Card className="!rounded-none">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 no-print">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b-2 border-slate-300 dark:border-slate-700 px-4 py-3 no-print">
           <div className="w-full sm:w-56">
             <Dropdown
               aria-label="Lọc theo phòng ban"
@@ -314,61 +314,58 @@ export function KpiPeriodBoard({
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Tìm theo tên, bộ KPI…"
               aria-label="Tìm phiếu"
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
-          <span className="ml-auto text-xs font-semibold text-slate-500">{rows.length}/{data.sheets.length} phiếu</span>
+          <span className="ml-auto text-xs font-bold text-slate-700 dark:text-slate-300">{rows.length}/{data.sheets.length} phiếu</span>
           <ExportButtons options={exportOptions} disabled={rows.length === 0} />
         </div>
 
         {data.sheets.length === 0 ? (
-          <p className="px-6 py-12 text-center text-sm text-slate-500">
+          <p className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
             {period ? 'Kỳ đã mở nhưng chưa có phiếu nào.' : `Chưa mở kỳ KPI tháng ${label}.`}
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] whitespace-nowrap text-xs tabular-nums text-slate-700">
+            <table className="w-full min-w-[700px] whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-                  <th className="px-4 py-3 text-left">Nhân sự</th>
-                  <th className="border-l border-slate-100 px-3 py-3 text-left">Bộ KPI</th>
-                  <th className="border-l border-slate-100 px-3 py-3 text-center">Trạng thái</th>
-                  <th className="border-l border-slate-100 px-3 py-3 text-center">Tự chấm</th>
-                  <th className="border-l border-slate-100 px-3 py-3 text-center">Quản lý</th>
-                  <th className="border-l border-slate-100 px-3 py-3 text-center">Thưởng</th>
-                  <th className="border-l border-slate-100 px-3 py-3 text-center">KPI chốt</th>
-                  <th className="border-l border-slate-100 px-3 py-3 text-left">Người duyệt</th>
+                <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                  <th className="px-2.5 py-1.5 text-left min-w-[140px]"><div className="min-w-[140px] line-clamp-1">Nhân sự</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2 py-1.5 text-left min-w-[120px]"><div className="min-w-[120px] line-clamp-1">Bộ KPI</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-1.5 py-1.5 text-center min-w-[85px]"><div className="min-w-[85px] text-center line-clamp-1">Trạng thái</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-1 py-1.5 text-center min-w-[65px]"><div className="min-w-[65px] text-center line-clamp-1">Tự chấm</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-1 py-1.5 text-center min-w-[65px]"><div className="min-w-[65px] text-center line-clamp-1">Quản lý</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-1 py-1.5 text-center min-w-[65px]"><div className="min-w-[65px] text-center line-clamp-1">Thưởng</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-1 py-1.5 text-center min-w-[65px]"><div className="min-w-[65px] text-center line-clamp-1">KPI chốt</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2 py-1.5 text-left min-w-[100px]"><div className="min-w-[100px] line-clamp-1">Người duyệt</div></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                 {rows.map((sheet) => {
                   const person = personById.get(sheet.user_id);
                   return (
-                    <tr key={sheet.id} className="cursor-pointer transition-colors hover:bg-[#FCFAF8]" onClick={() => setOpenSheetId(sheet.id)}>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar name={person?.name ?? '?'} url={person?.avatar_url ?? null} size="sm" />
-                          <div className="min-w-0">
-                            <p className="truncate font-semibold text-slate-800">{person?.name ?? 'Nhân sự đã nghỉ'}</p>
-                            <p className="truncate text-[11px] text-slate-400">{unitName.get(sheet.unit_id ?? '') ?? '—'}</p>
-                          </div>
+                    <tr key={sheet.id} className="group cursor-pointer transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60" onClick={() => setOpenSheetId(sheet.id)}>
+                      <td className="px-2.5 py-1.5">
+                        <div className="min-w-0">
+                          <p className="truncate font-black text-xs text-slate-900 dark:text-slate-100">{person?.name ?? 'Nhân sự đã nghỉ'}</p>
+                          <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{unitName.get(sheet.unit_id ?? '') ?? '—'}</p>
                         </div>
                       </td>
-                      <td className="max-w-[220px] truncate border-l border-slate-100 px-3 py-2.5" title={sheet.set_name}>{sheet.set_name}</td>
-                      <td className="border-l border-slate-100 px-3 py-2.5 text-center">
-                        <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>
+                      <td className="max-w-[180px] truncate border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 font-bold text-slate-800 dark:text-slate-200 text-xs" title={sheet.set_name}>{sheet.set_name}</td>
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center">
+                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>
                           {SHEET_STATUS_LABEL[sheet.status]}
                         </span>
-                        {openReopen.has(sheet.id) && <span className="ml-1 text-[10px] font-semibold text-amber-700">mở lại</span>}
+                        {openReopen.has(sheet.id) && <span className="ml-1 text-[11px] font-bold text-amber-700 dark:text-amber-400">mở lại</span>}
                       </td>
-                      <td className="border-l border-slate-100 px-3 py-2.5 text-center">{fmtPct(sheet.self_pct)}</td>
-                      <td className="border-l border-slate-100 px-3 py-2.5 text-center">{fmtPct(sheet.manager_pct)}</td>
-                      <td className="border-l border-slate-100 px-3 py-2.5 text-center">{sheet.bonus_pct ? fmtPct(sheet.bonus_pct) : '—'}</td>
-                      <td className="border-l border-slate-100 px-3 py-2.5 text-center font-semibold">
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-1 py-1.5 text-center font-bold text-xs">{fmtPct(sheet.self_pct)}</td>
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-1 py-1.5 text-center font-bold text-xs">{fmtPct(sheet.manager_pct)}</td>
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-1 py-1.5 text-center font-bold text-xs">{sheet.bonus_pct ? fmtPct(sheet.bonus_pct) : '—'}</td>
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-1 py-1.5 text-center font-black text-xs text-indigo-700 dark:text-indigo-400">
                         {fmtPct(sheet.final_pct)}
-                        {sheet.grade && <span className={`ml-1.5 font-bold ${GRADE_TONE[sheet.grade] ?? ''}`}>{sheet.grade}</span>}
+                        {sheet.grade && <span className={`ml-1 font-black ${GRADE_TONE[sheet.grade] ?? ''}`}>{sheet.grade}</span>}
                       </td>
-                      <td className="border-l border-slate-100 px-3 py-2.5">
+                      <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 font-medium text-[11px]">
                         {sheet.status === 'APPROVED' ? nameOf(sheet.approved_by)
                           : sheet.status === 'BOARD' || !sheet.reviewer_id ? 'Ban Giám đốc' : nameOf(sheet.reviewer_id)}
                       </td>
@@ -383,29 +380,29 @@ export function KpiPeriodBoard({
 
       {/* Đối soát chuyển lương */}
       {locked && reconcile.length > 0 && (
-        <Card className="!rounded-none">
-          <div className="border-b border-slate-100 px-4 py-3">
-            <p className="text-sm font-bold text-slate-800">Đối soát chuyển lương</p>
+        <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
+          <div className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] px-4 py-3">
+            <p className="text-sm font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">Đối soát chuyển lương</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-xs tabular-nums text-slate-700">
+            <table className="w-full min-w-[560px] text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
-                  <th className="px-4 py-2.5 text-left">Phòng ban</th>
-                  <th className="border-l border-slate-100 px-3 py-2.5 text-center">Số phiếu</th>
-                  <th className="border-l border-slate-100 px-3 py-2.5 text-center">Đã duyệt</th>
-                  <th className="border-l border-slate-100 px-3 py-2.5 text-center">KPI bình quân</th>
-                  <th className="border-l border-slate-100 px-3 py-2.5 text-center">Đã sang lương</th>
+                <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                  <th className="px-4 py-2.5 text-left min-w-[140px]"><div className="min-w-[140px] line-clamp-3">Phòng ban</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-2.5 text-center min-w-[95px]"><div className="min-w-[95px] text-center line-clamp-3">Số phiếu</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-2.5 text-center min-w-[95px]"><div className="min-w-[95px] text-center line-clamp-3">Đã duyệt</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-2.5 text-center min-w-[120px]"><div className="min-w-[120px] text-center line-clamp-3">KPI bình quân</div></th>
+                  <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-2.5 text-center min-w-[120px]"><div className="min-w-[120px] text-center line-clamp-3">Đã sang lương</div></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                 {reconcile.map((row) => (
-                  <tr key={row.unit}>
-                    <td className="px-4 py-2">{row.unit}</td>
-                    <td className="border-l border-slate-100 px-3 py-2 text-center">{row.total}</td>
-                    <td className="border-l border-slate-100 px-3 py-2 text-center">{row.approved}</td>
-                    <td className="border-l border-slate-100 px-3 py-2 text-center">{row.approved ? fmtPct(row.sum / row.approved) : '—'}</td>
-                    <td className={`border-l border-slate-100 px-3 py-2 text-center font-semibold ${row.synced < row.approved ? 'text-amber-700' : 'text-emerald-700'}`}>
+                  <tr key={row.unit} className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
+                    <td className="px-4 py-2 font-black text-slate-900 dark:text-slate-100 text-sm">{row.unit}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold text-sm">{row.total}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold text-sm">{row.approved}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold text-sm">{row.approved ? fmtPct(row.sum / row.approved) : '—'}</td>
+                    <td className={`border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-black text-sm ${row.synced < row.approved ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
                       {row.synced}/{row.approved}
                     </td>
                   </tr>

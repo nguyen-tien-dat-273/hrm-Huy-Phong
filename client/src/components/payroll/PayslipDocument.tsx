@@ -171,8 +171,8 @@ export function PayslipDocument({
   const standardDaysText = standardDays != null ? `ngày công chuẩn: ${formatFormulaNumber(standardDays)} công` : null;
   const subtitle = layout?.title?.trim() || unitName;
 
-  const cell = 'border border-slate-500 px-3 py-2 align-top';
-  const amountCell = `${cell} text-right tabular-nums whitespace-nowrap`;
+  const cell = 'border-2 border-slate-700 px-3 py-2 align-top font-medium';
+  const amountCell = `${cell} text-right tabular-nums whitespace-nowrap font-bold`;
 
   return (
     <div
@@ -193,14 +193,14 @@ export function PayslipDocument({
       </div>
 
       <div className="mt-6 grid gap-x-10 gap-y-1.5 sm:grid-cols-2">
-        <p>Tên nhân viên: <strong>{employeeName}</strong>{employeeCode ? ` (${employeeCode})` : ''}</p>
+        <p>Tên nhân viên: <strong className="font-black">{employeeName}</strong>{employeeCode ? ` (${employeeCode})` : ''}</p>
         {headerInfo.map(({ line, format }) => (
-          <p key={line.code}>{line.name}: <strong className="tabular-nums">{formatHeaderValue(line.amount, format)}</strong></p>
+          <p key={line.code}>{line.name}: <strong className="tabular-nums font-black">{formatHeaderValue(line.amount, format)}</strong></p>
         ))}
       </div>
 
       <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[600px] border-collapse">
+        <table className="w-full min-w-[600px] border-collapse border-2 border-slate-700">
           <colgroup>
             <col className="w-16" />
             <col />
@@ -208,11 +208,11 @@ export function PayslipDocument({
             <col className="w-44" />
           </colgroup>
           <thead>
-            <tr className="bg-slate-100 font-bold text-black">
-              <th className={`${cell} text-center`}>STT</th>
-              <th className={`${cell} text-center`}>Chỉ tiêu</th>
-              <th className={`${cell} text-center`}>Cách tính</th>
-              <th className={`${cell} text-center`}>Giá trị (VND)</th>
+            <tr className="bg-slate-200 font-black text-black">
+              <th className={`${cell} text-center font-black`}>STT</th>
+              <th className={`${cell} text-center font-black`}>Chỉ tiêu</th>
+              <th className={`${cell} text-center font-black`}>Cách tính</th>
+              <th className={`${cell} text-center font-black`}>Giá trị (VND)</th>
             </tr>
           </thead>
           <tbody>

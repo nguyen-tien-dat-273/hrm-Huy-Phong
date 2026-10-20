@@ -21,7 +21,7 @@ export function notificationRoute(type: string): string {
     case 'payroll_run_submitted':
       return '/admin/payroll/approvals';
     case 'payroll_scheme_reviewed':
-      return '/admin/payroll/schemes';
+      return '/admin/payroll/setup/schemes';
     case 'payroll_run_reviewed':
       return '/admin/payroll';
     case 'payslip_published':

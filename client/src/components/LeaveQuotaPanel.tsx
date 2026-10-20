@@ -198,53 +198,51 @@ export function LeaveQuotaPanel() {
         </Button>
       </div>
 
-      <Card className="!rounded-none">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-slate-400">
+            <p className="px-5 py-10 text-center text-sm font-bold text-slate-400">
               Không có nhân sự nào khớp bộ lọc.
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-200 bg-[#FCFAF8] text-left text-[11px] font-semibold text-black">
-                    <th className="px-5 py-3">Nhân sự</th>
-                    <th className="w-32 border-l border-slate-100 px-3 py-3 text-center">Hạn mức / năm</th>
-                    <th className="w-24 border-l border-slate-100 px-3 py-3 text-center">Đã dùng</th>
-                    <th className="w-24 border-l border-slate-100 px-3 py-3 text-center">Chờ duyệt</th>
-                    <th className="w-24 border-l border-slate-100 px-3 py-3 text-center">Còn lại</th>
+                  <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                    <th className="px-2.5 py-1.5 min-w-[130px]"><div className="min-w-[130px] line-clamp-1">Nhân sự</div></th>
+                    <th className="w-24 min-w-[80px] border-l border-[#eed5d8] dark:border-[#4a1c22] px-1.5 py-1.5 text-center"><div className="min-w-[70px] text-center line-clamp-1">Hạn mức / năm</div></th>
+                    <th className="w-20 min-w-[65px] border-l border-[#eed5d8] dark:border-[#4a1c22] px-1 py-1.5 text-center"><div className="min-w-[60px] text-center line-clamp-1">Đã dùng</div></th>
+                    <th className="w-20 min-w-[65px] border-l border-[#eed5d8] dark:border-[#4a1c22] px-1 py-1.5 text-center"><div className="min-w-[60px] text-center line-clamp-1">Chờ duyệt</div></th>
+                    <th className="w-20 min-w-[65px] border-l border-[#eed5d8] dark:border-[#4a1c22] px-1 py-1.5 text-center"><div className="min-w-[60px] text-center line-clamp-1">Còn lại</div></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                   {pagedRows.map(({ profile: p, balance }) => {
                     const draft = drafts[p.id] ?? String(p.annual_leave_quota);
                     const changed = Number(draft) !== p.annual_leave_quota;
                     return (
-                      <tr key={p.id}>
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3">
-                            <Avatar name={p.name} url={p.avatar_url} size="sm" />
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-800 truncate">{p.name}</p>
-                              {p.department && (
-                                <p className="text-xs text-slate-400 truncate">{p.department}</p>
-                              )}
-                            </div>
+                      <tr key={p.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-2.5 py-1">
+                          <div className="min-w-0">
+                            <p className="font-black text-slate-900 dark:text-slate-100 truncate text-xs">{p.name}</p>
+                            {p.department && (
+                              <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate">{p.department}</p>
+                            )}
                           </div>
                         </td>
-                        <td className="px-3 py-3">
-                          <div className="flex items-center justify-center gap-1.5">
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1">
+                          <div className="flex items-center justify-center gap-1">
                             <input
                               type="number"
                               min={0}
-                              max={365}
+                              max={60}
                               value={draft}
-                              onChange={(e) => setDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                              disabled={savingId === p.id}
+                              onChange={(e) => setDrafts((d) => ({ ...d, [p.id]: e.target.value }))}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') void saveQuota(p, draft);
                               }}
-                              className="h-9 w-16 rounded-none border border-slate-200 bg-white px-2 text-center text-sm text-slate-800 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                              className="h-7 w-14 rounded-none border border-[#eed5d8] dark:border-[#4a1c22] bg-transparent px-1 text-center text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 focus:border-[#bf1f2b] focus:outline-none"
                             />
                             {savingId === p.id ? (
                               <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
@@ -257,14 +255,14 @@ export function LeaveQuotaPanel() {
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-center text-slate-600">{balance.used}</td>
-                        <td className="px-3 py-3 text-center text-amber-600">
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3 text-center text-sm font-black tabular-nums text-slate-700 dark:text-slate-300">{balance.used}</td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3 text-center text-sm font-black tabular-nums text-amber-600 dark:text-amber-400">
                           {balance.pending || '—'}
                         </td>
-                        <td className="px-3 py-3 text-center">
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3 text-center">
                           <span
-                            className={`font-semibold ${
-                              balance.remaining === 0 ? 'text-red-600' : 'text-emerald-600'
+                            className={`text-sm font-black tabular-nums ${
+                              balance.remaining === 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'
                             }`}
                           >
                             {balance.remaining}

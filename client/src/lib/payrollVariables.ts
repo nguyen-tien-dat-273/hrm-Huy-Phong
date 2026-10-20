@@ -145,15 +145,15 @@ export const RESERVED_FORMULA_NAMES: readonly string[] = [
 export type RowMode = 'FORMULA' | 'VALUE' | 'PER_PERSON' | 'MONTHLY_INPUT';
 
 export const ROW_MODE_LABEL: Record<RowMode, string> = {
-  FORMULA: 'Công thức',
-  VALUE: 'Giá trị',
-  PER_PERSON: 'Khai riêng',
-  MONTHLY_INPUT: 'Theo tháng',
+  FORMULA: 'Tính theo công thức',
+  VALUE: 'Số cố định',
+  PER_PERSON: 'Mỗi người một mức',
+  MONTHLY_INPUT: 'Nhập mỗi tháng',
 };
 
 export const ROW_MODE_HINT: Record<RowMode, string> = {
   FORMULA: 'Tính từ tham số, dữ liệu chấm công và các đầu mục khác — hoặc gõ thẳng một con số cố định',
   VALUE: 'Một con số chung; từng người khai riêng được',
-  PER_PERSON: 'Khai riêng cho từng người ở trang Cơ chế lương — bắt buộc',
+  PER_PERSON: 'Mỗi người một mức, điền ở thẻ Mức riêng (dán được từ Excel) — bắt buộc',
   MONTHLY_INPUT: 'Nhập theo tháng ngay trên Bảng lương',
 };

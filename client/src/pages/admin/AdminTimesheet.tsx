@@ -124,6 +124,7 @@ interface TimesheetRowProps {
   todayIdx: number;
   standardHours: number;
   canEdit: boolean;
+  canManage?: boolean;
   onEditCell: (person: Profile, dayIndex: number, cell: DayCell) => void;
 }
 
@@ -132,26 +133,23 @@ interface TimesheetRowProps {
  * làm trang vẽ lại nhưng dòng nào dữ liệu không đổi thì React bỏ qua, không dựng lại hàng nghìn ô.
  */
 const TimesheetRow = memo(function TimesheetRow({
-  row: r, visibleDays, weekendFlags, todayIdx, standardHours, canEdit, onEditCell,
+  row: r, visibleDays, weekendFlags, todayIdx, standardHours, canEdit, canManage = canEdit, onEditCell,
 }: TimesheetRowProps) {
   return (
-    <tr className="group transition-colors hover:bg-[#FCFAF8] dark:hover:bg-slate-800/50">
-      <td className="sticky left-0 z-10 w-[240px] min-w-[240px] max-w-[240px] bg-white dark:bg-slate-900 px-4 py-2.5 group-hover:bg-[#FCFAF8] dark:group-hover:bg-slate-800">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <Avatar name={r.profile.name} url={r.profile.avatar_url} size="sm" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold text-slate-800 dark:text-slate-100" title={r.profile.name}>{r.profile.name}</p>
-            <p className="truncate text-[11px] text-slate-400 dark:text-slate-500" title={r.profile.department || 'Chưa phân phòng ban'}>{r.profile.department || '—'}</p>
-          </div>
+    <tr className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
+      <td className="sticky left-0 z-10 w-[150px] min-w-[150px] max-w-[150px] bg-white dark:bg-slate-900 px-2.5 py-1 group-hover:bg-slate-100/80 dark:group-hover:bg-slate-800/80 border-r-2 border-slate-400 dark:border-slate-600 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] dark:shadow-[2px_0_4px_-1px_rgba(0,0,0,0.4)]">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs font-black text-slate-900 dark:text-slate-100" title={r.profile.name}>{r.profile.name}</p>
+          <p className="truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400" title={r.profile.department || 'Chưa phân phòng ban'}>{r.profile.department || '—'}</p>
         </div>
       </td>
       {visibleDays.map((i) => {
         const d = r.days[i];
         const enough = (d.hours ?? 0) >= standardHours;
-        const tone = d.missingCheckout ? 'bg-amber-100 text-amber-700'
-          : d.checkoutTime ? (enough ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700')
-            : d.onLeave ? 'bg-violet-100 text-violet-700'
-              : weekendFlags[i] ? 'bg-slate-50/70 dark:bg-slate-800/40' : '';
+        const tone = d.missingCheckout ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+          : d.checkoutTime ? (enough ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300')
+            : d.onLeave ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300'
+              : weekendFlags[i] ? 'bg-slate-100/80 dark:bg-slate-800/50' : '';
         return (
           <td
             key={i}
@@ -159,28 +157,28 @@ const TimesheetRow = memo(function TimesheetRow({
               d.missingCheckout ? `Vào ${formatTime(d.checkInTime)} · thiếu check-out`
                 : d.checkoutTime ? `Vào ${formatTime(d.checkInTime)} · Ra ${formatTime(d.checkoutTime)} · ${d.hours ?? 0} giờ công`
                   : d.onLeave ? (d.halfLeave ? 'Nghỉ phép nửa ngày (đã duyệt)' : 'Nghỉ phép đã duyệt') : '',
-              canEdit ? 'Bấm để sửa giờ vào / ra' : '',
+              canEdit ? 'Bấm để sửa giờ vào / ra' : canManage ? 'Bấm để xem chi tiết giờ vào / ra (chỉ xem)' : '',
             ].filter(Boolean).join('\n') || undefined}
-            onClick={canEdit ? () => onEditCell(r.profile, i, d) : undefined}
-            className={`border-l border-slate-100 dark:border-slate-800/80 px-0 py-2.5 text-center text-[11px] font-bold ${tone} ${i === todayIdx ? 'shadow-[inset_2px_0_0_#4f46e5,inset_-2px_0_0_#4f46e5]' : ''} ${canEdit ? 'cursor-pointer hover:ring-2 hover:ring-inset hover:ring-indigo-400' : ''}`}
+            onClick={canManage ? () => onEditCell(r.profile, i, d) : undefined}
+            className={`border-l border-slate-300 dark:border-slate-700 px-0 py-1 text-center text-[11px] font-black ${tone} ${i === todayIdx ? 'shadow-[inset_2px_0_0_#4f46e5,inset_-2px_0_0_#4f46e5]' : ''} ${canManage ? 'cursor-pointer hover:ring-2 hover:ring-inset hover:ring-indigo-400' : ''}`}
           >
             {d.missingCheckout ? '!'
               : d.checkoutTime ? formatTime(d.checkoutTime)
                 : d.onLeave ? (d.halfLeave ? '½' : 'P')
-                  : <span className="text-xs font-normal text-slate-200 dark:text-slate-600">·</span>}
+                  : <span className="text-[11px] font-normal text-slate-300 dark:text-slate-600">·</span>}
           </td>
         );
       })}
-      <td className="border-l border-slate-100 dark:border-slate-800/80 px-3 py-2.5 text-center font-semibold text-slate-800 dark:text-slate-200">{r.workDays}</td>
-      <td className="border-l border-slate-100 dark:border-slate-800/80 px-3 py-2.5 text-center font-semibold text-slate-800 dark:text-slate-200">{r.totalHours}</td>
-      <td className="border-l border-slate-100 dark:border-slate-800/80 px-3 py-2.5 text-center text-violet-600 dark:text-violet-400">{r.leaveDays || '—'}</td>
-      <td className="border-l border-slate-100 dark:border-slate-800/80 px-4 py-2.5 text-center">
+      <td className="border-l border-slate-300 dark:border-slate-700 px-1 py-1 text-center font-black text-xs text-slate-900 dark:text-slate-100">{r.workDays}</td>
+      <td className="border-l border-slate-300 dark:border-slate-700 px-1 py-1 text-center font-black text-xs text-slate-900 dark:text-slate-100">{r.totalHours}</td>
+      <td className="border-l border-slate-300 dark:border-slate-700 px-1 py-1 text-center font-black text-xs text-violet-700 dark:text-violet-400">{r.leaveDays || '—'}</td>
+      <td className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1 text-center font-black text-xs">
         {r.asgTotal > 0 ? (
-          <span className={r.asgDone === r.asgTotal ? 'font-semibold text-emerald-600 dark:text-emerald-400' : 'font-semibold text-amber-600 dark:text-amber-400'}>
+          <span className={r.asgDone === r.asgTotal ? 'font-black text-emerald-700 dark:text-emerald-400' : 'font-black text-amber-700 dark:text-amber-400'}>
             {r.asgDone}/{r.asgTotal}
           </span>
         ) : (
-          <span className="text-slate-300 dark:text-slate-600">—</span>
+          <span className="text-slate-400 dark:text-slate-600">—</span>
         )}
       </td>
     </tr>
@@ -397,7 +395,13 @@ export function AdminTimesheet() {
       return {
         profile,
         days,
-        workDays: days.filter((d) => d.hours !== null).length,
+        workDays: Math.round(days.reduce((s, d, i) => {
+          if (d.hours === null) return s;
+          const dow = dayDate(i).getDay();
+          if (dow === 6) return s + 0.5;
+          if (d.halfLeave) return s + 0.5;
+          return s + 1;
+        }, 0) * 10) / 10,
         totalHours: Math.round(days.reduce((s, d) => s + (d.hours ?? 0), 0) * 10) / 10,
         leaveDays: days.reduce((s, d) => s + (d.onLeave ? (d.halfLeave ? 0.5 : 1) : 0), 0),
         asgTotal: myAsg.total,
@@ -426,9 +430,9 @@ export function AdminTimesheet() {
   /** Tổng theo bộ lọc đang chọn. */
   const totals = useMemo(
     () => ({
-      workDays: filtered.reduce((s, r) => s + r.workDays, 0),
+      workDays: Math.round(filtered.reduce((s, r) => s + r.workDays, 0) * 10) / 10,
       totalHours: Math.round(filtered.reduce((s, r) => s + r.totalHours, 0) * 10) / 10,
-      leaveDays: filtered.reduce((s, r) => s + r.leaveDays, 0),
+      leaveDays: Math.round(filtered.reduce((s, r) => s + r.leaveDays, 0) * 10) / 10,
       asgTotal: filtered.reduce((s, r) => s + r.asgTotal, 0),
       asgDone: filtered.reduce((s, r) => s + r.asgDone, 0),
     }),
@@ -437,9 +441,9 @@ export function AdminTimesheet() {
   /** Tổng toàn công ty — dùng cho file xuất chính thức, không phụ thuộc bộ lọc. */
   const companyTotals = useMemo(
     () => ({
-      workDays: rows.reduce((s, r) => s + r.workDays, 0),
+      workDays: Math.round(rows.reduce((s, r) => s + r.workDays, 0) * 10) / 10,
       totalHours: Math.round(rows.reduce((s, r) => s + r.totalHours, 0) * 10) / 10,
-      leaveDays: rows.reduce((s, r) => s + r.leaveDays, 0),
+      leaveDays: Math.round(rows.reduce((s, r) => s + r.leaveDays, 0) * 10) / 10,
       asgTotal: rows.reduce((s, r) => s + r.asgTotal, 0),
       asgDone: rows.reduce((s, r) => s + r.asgDone, 0),
     }),
@@ -484,10 +488,12 @@ export function AdminTimesheet() {
   };
 
   /** Kỳ công đã khoá thì giờ vào/ra không sửa nữa — sai sót xử lý bằng Điều chỉnh lương kỳ sau. */
-  const canEdit = (hasAdminFunction(profile, 'admin.timesheet_lock') || isTeamlead(profile)) && periodStatus !== 'LOCKED';
+  const canManage = hasAdminFunction(profile, 'admin.timesheet_lock') || isTeamlead(profile);
+  const isLocked = periodStatus === 'LOCKED';
+  const canEdit = canManage && !isLocked;
 
   const openEdit = (person: Profile, dayIndex: number, cell: DayCell) => {
-    if (!canEdit) return;
+    if (!canManage) return;
     const date = toDateString(dayDate(dayIndex));
     // Ngày chưa có công nhưng có bản ghi chưa duyệt / thiếu giờ ra: sửa chính bản ghi đó, không thêm bản thứ hai.
     const waiting = cell.recordId ? null : pending.find((record) => record.user_id === person.id && record.date === date) ?? null;
@@ -695,11 +701,11 @@ export function AdminTimesheet() {
   }
 
   const canLock = periodSupported && hasAdminFunction(profile, 'admin.timesheet_lock');
-  const thBase = 'sticky top-0 z-20 border-l border-slate-100 dark:border-slate-800 shadow-[inset_0_-1px_0_#e2e8f0] dark:shadow-[inset_0_-1px_0_#334155]';
-  const tfBase = 'border-l border-slate-100 dark:border-slate-800 bg-[#FCFAF8] dark:bg-slate-900 shadow-[inset_0_1px_0_#e2e8f0] dark:shadow-[inset_0_1px_0_#334155]';
+  const thBase = 'sticky top-0 z-20 border-l border-[#eed5d8] dark:border-[#4a1c22] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] font-black text-xs uppercase tracking-wider whitespace-normal break-words leading-tight bg-[#fdf2f4] dark:bg-[#201114] text-[#5c0f16] dark:text-[#fde8ea]';
+  const tfBase = 'border-l border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] font-black text-sm';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 timesheet-module" data-module="timesheet">
       <div className="flex flex-wrap items-center gap-1" role="status" aria-label={`Trạng thái kỳ công: ${PERIOD_LABEL[periodStatus]}`}>
         {PERIOD_ORDER.map((step, index) => {
           const current = PERIOD_ORDER.indexOf(periodStatus);
@@ -758,7 +764,7 @@ export function AdminTimesheet() {
 
       <FullscreenPanel full={full} onExit={exitFull}>
         <TableShell full={full}>
-          <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 dark:border-slate-800 px-4 py-3 no-print">
+          <div className="flex flex-wrap items-center gap-3 border-b border-slate-300 dark:border-slate-700 px-4 py-3 no-print">
             {full && <p className="w-full text-sm font-bold text-slate-800 dark:text-slate-100 sm:w-auto">Bảng công tháng {monthLabel}</p>}
             <div className="w-full sm:w-60">
               <Dropdown
@@ -791,37 +797,37 @@ export function AdminTimesheet() {
             />
           ) : (
             <div className={full ? 'relative flex min-h-0 flex-1 flex-col' : 'relative'}>
-              <ScrollArrows edge={edge} onScroll={scrollColumns} />
+              <ScrollArrows edge={edge} onScroll={scrollColumns} stickyWidth={150} />
               <div ref={scrollRef} onScroll={updateEdge} className={scrollAreaClass(full)}>
-                <table className="w-full whitespace-nowrap text-xs tabular-nums text-slate-700">
+                <table className="w-full whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 bg-[#FCFAF8] dark:bg-slate-900 text-[11px] font-semibold text-slate-900 dark:text-slate-100">
-                      <th className="sticky left-0 top-0 z-30 w-[240px] min-w-[240px] max-w-[240px] bg-[#FCFAF8] dark:bg-slate-900 px-4 py-3 text-left shadow-[inset_0_-1px_0_#e2e8f0] dark:shadow-[inset_0_-1px_0_#334155]">Nhân sự</th>
+                    <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black text-[#5c0f16] dark:text-[#fde8ea]">
+                      <th className="sticky left-0 top-0 z-30 w-[150px] min-w-[150px] max-w-[150px] bg-[#fdf2f4] dark:bg-[#201114] px-2.5 py-1.5 text-left border-r-2 border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">Nhân sự</th>
                       {visibleDays.map((i) => {
                         const isToday = i === todayIdx;
                         const isWk = weekendFlags[i];
                         const colTone = isToday
-                          ? 'bg-indigo-600 text-white font-bold'
+                          ? 'bg-[#bf1f2b] text-white font-black'
                           : isWk
-                            ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-400 dark:text-slate-400'
-                            : 'bg-[#FCFAF8] dark:bg-slate-900 text-slate-700 dark:text-slate-200';
+                            ? 'bg-[#fae6e9] dark:bg-[#2a1418] text-[#85141d] dark:text-[#f39aa1] font-bold'
+                            : 'bg-[#fdf2f4] dark:bg-[#201114] text-[#5c0f16] dark:text-[#fde8ea] font-bold';
                         return (
                           <th
                             key={i}
-                            className={`${thBase} ${colTone} w-12 min-w-[3rem] px-0 py-3 text-center`}
+                            className={`${thBase} ${colTone} w-7 min-w-[1.75rem] px-0 py-1 text-center text-[11px] font-black`}
                             title={isToday ? `Hôm nay — ${todayLabel}` : undefined}
                           >
                             {i + 1}
                           </th>
                         );
                       })}
-                      <th className={`${thBase} bg-[#FCFAF8] dark:bg-slate-900 px-3 py-3 text-center`}>Công</th>
-                      <th className={`${thBase} bg-[#FCFAF8] dark:bg-slate-900 px-3 py-3 text-center`}>Giờ</th>
-                      <th className={`${thBase} bg-[#FCFAF8] dark:bg-slate-900 px-3 py-3 text-center`}>Phép</th>
-                      <th className={`${thBase} bg-[#FCFAF8] dark:bg-slate-900 px-4 py-3 text-center`}>Việc</th>
+                      <th className={`${thBase} min-w-[38px] max-w-[48px] px-1 py-1 text-center`}><div className="min-w-[36px] text-center line-clamp-1">Công</div></th>
+                      <th className={`${thBase} min-w-[38px] max-w-[48px] px-1 py-1 text-center`}><div className="min-w-[36px] text-center line-clamp-1">Giờ</div></th>
+                      <th className={`${thBase} min-w-[38px] max-w-[48px] px-1 py-1 text-center`}><div className="min-w-[36px] text-center line-clamp-1">Phép</div></th>
+                      <th className={`${thBase} min-w-[38px] max-w-[48px] px-1 py-1 text-center`}><div className="min-w-[36px] text-center line-clamp-1">Việc</div></th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
                     {pageRows.map((r) => (
                       <TimesheetRow
                         key={r.profile.id}
@@ -831,20 +837,21 @@ export function AdminTimesheet() {
                         todayIdx={todayIdx}
                         standardHours={standardHoursPerDay}
                         canEdit={canEdit}
+                        canManage={canManage}
                         onEditCell={onEditCell}
                       />
                     ))}
                   </tbody>
-                  <tfoot className="sticky bottom-0 z-20 bg-[#FCFAF8] dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100">
+                  <tfoot className="sticky bottom-0 z-20 bg-slate-100 dark:bg-slate-900 font-bold text-slate-900 dark:text-slate-100 border-t-2 border-slate-400 dark:border-slate-600 shadow-[0_-3px_6px_rgba(0,0,0,0.06)] dark:shadow-[0_-3px_6px_rgba(0,0,0,0.4)]">
                     <tr>
-                      <td className="sticky left-0 z-10 w-[240px] min-w-[240px] max-w-[240px] bg-[#FCFAF8] dark:bg-slate-900 px-4 py-3 text-left text-xs shadow-[inset_0_1px_0_#e2e8f0] dark:shadow-[inset_0_1px_0_#334155]">
-                        Tổng ({filtered.length} nhân sự)
+                      <td className="sticky left-0 z-10 w-[150px] min-w-[150px] max-w-[150px] bg-slate-100 dark:bg-slate-900 px-2.5 py-1.5 text-left text-xs font-black uppercase tracking-wider border-r-2 border-slate-400 dark:border-slate-600 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569]">
+                        Tổng ({filtered.length} người)
                       </td>
-                      <td colSpan={visibleDays.length} className="bg-[#FCFAF8] dark:bg-slate-900 shadow-[inset_0_1px_0_#e2e8f0] dark:shadow-[inset_0_1px_0_#334155]" />
-                      <td className={`${tfBase} px-3 py-3 text-center`}>{totals.workDays}</td>
-                      <td className={`${tfBase} px-3 py-3 text-center`}>{totals.totalHours}</td>
-                      <td className={`${tfBase} px-3 py-3 text-center text-violet-700 dark:text-violet-400`}>{totals.leaveDays || '—'}</td>
-                      <td className={`${tfBase} px-4 py-3 text-center`}>{totals.asgTotal > 0 ? `${totals.asgDone}/${totals.asgTotal}` : '—'}</td>
+                      <td colSpan={visibleDays.length} className="bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569]" />
+                      <td className={`${tfBase} px-1 py-1.5 text-center font-black text-xs text-slate-900 dark:text-slate-100`}>{totals.workDays}</td>
+                      <td className={`${tfBase} px-1 py-1.5 text-center font-black text-xs text-slate-900 dark:text-slate-100`}>{totals.totalHours}</td>
+                      <td className={`${tfBase} px-1 py-1.5 text-center font-black text-xs text-violet-700 dark:text-violet-400`}>{totals.leaveDays || '—'}</td>
+                      <td className={`${tfBase} px-1.5 py-1.5 text-center font-black text-xs text-slate-900 dark:text-slate-100`}>{totals.asgTotal > 0 ? `${totals.asgDone}/${totals.asgTotal}` : '—'}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -852,12 +859,12 @@ export function AdminTimesheet() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-100 dark:border-slate-800 px-4 py-2 text-[11px] text-slate-500 dark:text-slate-400 no-print">
-            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-emerald-100 text-[10px] font-bold text-emerald-700">17:30</span> checkout, đủ giờ công</span>
-            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-orange-100 text-[10px] font-bold text-orange-700">15:00</span> checkout, chưa đủ giờ công</span>
-            <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-amber-100 text-[10px] font-bold text-amber-700">!</span> thiếu checkout</span>
-            <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-violet-100 text-[10px] font-bold text-violet-700">P</span> nghỉ phép</span>
-            <span className="flex items-center gap-1.5"><span className="h-4 w-4 bg-slate-100 dark:bg-slate-800" /> cuối tuần</span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 no-print">
+            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-emerald-100 px-1 text-[11px] font-black text-emerald-800">17:30</span> checkout, đủ giờ công</span>
+            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-orange-100 px-1 text-[11px] font-black text-orange-800">15:00</span> checkout, chưa đủ giờ công</span>
+            <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-amber-100 text-[11px] font-black text-amber-800">!</span> thiếu checkout</span>
+            <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-violet-100 text-[11px] font-black text-violet-800">P</span> nghỉ phép</span>
+            <span className="flex items-center gap-1.5"><span className="h-4 w-4 border border-slate-300 bg-slate-100 dark:bg-slate-800" /> cuối tuần</span>
           </div>
           {pageCount > 1 && (
             <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 px-4 py-2 text-xs text-slate-500 dark:text-slate-400 no-print">
@@ -875,27 +882,40 @@ export function AdminTimesheet() {
         square
         open={!!edit}
         onClose={() => { if (!savingEdit) setEdit(null); }}
-        title={edit ? `Sửa chấm công — ${edit.profile.name} · ${edit.date.slice(8, 10)}/${edit.date.slice(5, 7)}/${edit.date.slice(0, 4)}` : ''}
+        title={edit ? `${isLocked ? 'Xem chi tiết chấm công' : 'Sửa chấm công'} — ${edit.profile.name} · ${edit.date.slice(8, 10)}/${edit.date.slice(5, 7)}/${edit.date.slice(0, 4)}` : ''}
         size="md"
       >
         {edit && (
-          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void saveEdit(); }}>
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!isLocked) void saveEdit(); }}>
+            {isLocked && (
+              <p className="rounded-none border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
+                Kỳ công đã khóa — chỉ xem chi tiết giờ vào / giờ ra, không thể chỉnh sửa.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Giờ vào" type="time" required value={edit.checkIn} className="!rounded-none"
+              <Input label="Giờ vào" type="time" required value={edit.checkIn} className="!rounded-none" disabled={isLocked}
                 onChange={(event) => setEdit({ ...edit, checkIn: event.target.value })} />
-              <Input label="Giờ ra" type="time" required value={edit.checkOut} className="!rounded-none"
+              <Input label="Giờ ra" type="time" required value={edit.checkOut} className="!rounded-none" disabled={isLocked}
                 onChange={(event) => setEdit({ ...edit, checkOut: event.target.value })} />
             </div>
-            <Textarea className="!rounded-none" label="Lý do sửa" required rows={3} value={edit.reason}
-              placeholder="Ví dụ: máy chấm công lỗi, quên check-in…"
-              onChange={(event) => setEdit({ ...edit, reason: event.target.value })}
-              error={edit.reason && edit.reason.trim().length < 3 ? 'Ít nhất 3 ký tự.' : undefined} />
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setEdit(null)} disabled={savingEdit}>Huỷ</Button>
-              <Button type="submit" disabled={savingEdit || !edit.checkIn || !edit.checkOut || edit.reason.trim().length < 3}>
-                {savingEdit ? 'Đang lưu…' : 'Lưu'}
-              </Button>
-            </div>
+            {!isLocked ? (
+              <>
+                <Textarea className="!rounded-none" label="Lý do sửa" required rows={3} value={edit.reason}
+                  placeholder="Ví dụ: máy chấm công lỗi, quên check-in…"
+                  onChange={(event) => setEdit({ ...edit, reason: event.target.value })}
+                  error={edit.reason && edit.reason.trim().length < 3 ? 'Ít nhất 3 ký tự.' : undefined} />
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="secondary" onClick={() => setEdit(null)} disabled={savingEdit}>Huỷ</Button>
+                  <Button type="submit" disabled={savingEdit || !edit.checkIn || !edit.checkOut || edit.reason.trim().length < 3}>
+                    {savingEdit ? 'Đang lưu…' : 'Lưu'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-end">
+                <Button type="button" onClick={() => setEdit(null)}>Đóng</Button>
+              </div>
+            )}
           </form>
         )}
       </Modal>

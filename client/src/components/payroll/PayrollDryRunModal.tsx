@@ -215,18 +215,18 @@ export function PayrollDryRunModal({
             </div>
 
             <div className="overflow-hidden rounded-none border border-slate-200">
-              <p className="border-b border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-slate-500">
+              <p className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
                 Nhật ký tính — theo đúng thứ tự tính
               </p>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-xs">
                   <thead>
-                    <tr className="border-b border-slate-100 text-left text-[10px] font-bold uppercase tracking-wider text-black">
+                    <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-[11px] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
                       <th className="px-3 py-2">#</th>
-                      <th className="px-3 py-2">Đầu mục</th>
-                      <th className="px-3 py-2">Cách lấy</th>
-                      <th className="px-3 py-2">Cách tính (đã thay số)</th>
-                      <th className="px-3 py-2 text-right">Kết quả</th>
+                      <th className="px-3 py-2 border-l border-[#eed5d8] dark:border-[#4a1c22]">Đầu mục</th>
+                      <th className="px-3 py-2 border-l border-[#eed5d8] dark:border-[#4a1c22]">Cách lấy</th>
+                      <th className="px-3 py-2 border-l border-[#eed5d8] dark:border-[#4a1c22]">Cách tính (đã thay số)</th>
+                      <th className="px-3 py-2 text-right border-l border-[#eed5d8] dark:border-[#4a1c22]">Kết quả</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">

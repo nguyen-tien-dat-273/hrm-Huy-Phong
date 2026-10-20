@@ -117,7 +117,7 @@ export function AdminKpi({ section }: { section: KpiSection }) {
   const reload = () => { void load(true); };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 kpi-module" data-module="kpi">
       {monthNav}
       {section === 'sets' && <KpiSetBoard data={data} onChanged={reload} />}
       {section === 'sheets' && <KpiPeriodBoard data={data} month={month} settings={settings} viewer={viewer} onChanged={reload} />}

@@ -725,20 +725,23 @@ export function AdminUsers() {
             <EmptyState title="Không tìm thấy nhân sự" description="Thử đổi từ khóa hoặc bộ lọc phòng ban." />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] text-left">
-                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                  <tr><th className="px-5 py-3 font-semibold">Nhân sự</th><th className="px-4 py-3 font-semibold">Phòng ban</th><th className="px-4 py-3 font-semibold">Điện thoại</th><th className="px-4 py-3 font-semibold">Tình trạng</th><th className="px-5 py-3 text-right font-semibold">Hồ sơ</th></tr>
+              <table className="w-full min-w-[620px] text-left text-xs">
+                <thead className="bg-[#fdf2f4] dark:bg-[#201114] text-xs uppercase tracking-wider font-black text-[#5c0f16] dark:text-[#fde8ea] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                  <tr><th className="px-3 py-1.5 font-black">Nhân sự</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Phòng ban</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Điện thoại</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Tình trạng</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-1.5 text-right font-black">Hồ sơ</th></tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {filtered.map((user) => (
-                    <tr key={user.id} className="transition-colors hover:bg-slate-50/80">
-                      <td className="px-5 py-3.5">
-                        <div className="flex min-w-0 items-center gap-3"><Avatar name={user.name} url={user.avatar_url} size="md" /><div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{user.name}</p><p className="truncate text-xs text-slate-500">{displayIdentifier(user.email)}</p></div></div>
+                    <tr key={user.id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
+                      <td className="px-3 py-1.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-bold text-slate-900 dark:text-slate-100">{user.name}</p>
+                          <p className="truncate text-[10px] text-slate-500">{displayIdentifier(user.email)}</p>
+                        </div>
                       </td>
-                      <td className="px-4 py-3.5 text-sm text-slate-600">{user.department || 'Chưa phân phòng ban'}</td>
-                      <td className="px-4 py-3.5 text-sm text-slate-600">{user.phone || '—'}</td>
-                      <td className="px-4 py-3.5"><span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${user.employment_status === 'terminated' || !user.is_active ? 'bg-slate-100 text-slate-600' : user.employment_status === 'probation' || user.employment_status === 'onboarding' ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{employmentStatusOptions[user.employment_status || 'active']}{!user.unit_id ? ' · Chưa xếp phòng ban' : ''}</span></td>
-                      <td className="px-5 py-3.5 text-right"><Button size="sm" variant="outline" onClick={() => setViewingUser(user)}>Xem hồ sơ</Button></td>
+                      <td className="px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">{user.department || 'Chưa phân phòng ban'}</td>
+                      <td className="px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">{user.phone || '—'}</td>
+                      <td className="px-2.5 py-1.5"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${user.employment_status === 'terminated' || !user.is_active ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' : user.employment_status === 'probation' || user.employment_status === 'onboarding' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{employmentStatusOptions[user.employment_status || 'active']}{!user.unit_id ? ' · Chưa xếp phòng ban' : ''}</span></td>
+                      <td className="px-3 py-1.5 text-right"><Button size="sm" variant="outline" onClick={() => setViewingUser(user)}>Xem hồ sơ</Button></td>
                     </tr>
                   ))}
                 </tbody>

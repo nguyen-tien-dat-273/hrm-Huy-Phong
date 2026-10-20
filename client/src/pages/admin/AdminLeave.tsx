@@ -5,7 +5,6 @@ import { Pager, clampPage } from '@/components/payroll/Pager';
 import { Dropdown, type DropdownOption } from '@/components/ui/Dropdown';
 import { departmentOptions, passesPeopleFilter, personOptions } from '@/lib/peopleFilter';
 import { Card, CardContent } from '@/components/ui/Card';
-import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
@@ -57,8 +56,8 @@ function Segmented<K extends string>({ items, value, onChange, label }: {
 }
 
 const PER_PAGE = 10;
-const HEAD_ROW = 'border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black';
-const COL = 'border-l border-slate-100';
+const HEAD_ROW = 'border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]';
+const COL = 'border-l border-[#eed5d8] dark:border-[#4a1c22]';
 
 const CANCEL_STATUS: Record<string, { label: string; color: string }> = {
   pending: { label: 'Chờ duyệt', color: 'bg-amber-50 text-amber-700' },
@@ -111,12 +110,9 @@ function FilterSelect({ label, value, options, onChange }: {
 
 function PersonCell({ person, fallback }: { person?: Profile | null; fallback: string }) {
   return (
-    <div className="flex items-center gap-3">
-      <Avatar name={person?.name || ''} url={person?.avatar_url} size="sm" />
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold text-slate-800">{person?.name || fallback}</p>
-        {person?.department && <p className="truncate text-xs text-slate-400">{person.department}</p>}
-      </div>
+    <div className="min-w-0">
+      <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{person?.name || fallback}</p>
+      {person?.department && <p className="truncate text-[10px] text-slate-400">{person.department}</p>}
     </div>
   );
 }
@@ -397,45 +393,45 @@ export function AdminLeave() {
             <FilterSelect label="Lọc theo nhân sự" value={personFilter} options={personOptions(cancellationPeople, deptFilter)}
               onChange={setPersonFilter} />
           </div>
-          <Card className="!rounded-none">
+          <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
             <CardContent className="p-0">
               {visibleCancellations.length === 0 ? (
-                <p className="px-5 py-10 text-center text-sm text-slate-400">
+                <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
                   {cancellations.length === 0
                     ? 'Không có yêu cầu hủy phép nào. Yêu cầu hủy đơn đã duyệt sẽ xuất hiện tại đây.'
                     : 'Không có yêu cầu nào khớp bộ lọc.'}
                 </p>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[820px] text-sm">
+                  <table className="w-full min-w-[700px] text-xs border-collapse">
                     <thead>
                       <tr className={HEAD_ROW}>
-                        <th className="px-4 py-3 text-left">Nhân sự</th>
-                        <th className={`${COL} px-3 py-3 text-left`}>Lịch nghỉ cần hủy</th>
-                        <th className={`${COL} px-3 py-3 text-left`}>Lý do hủy</th>
-                        <th className={`${COL} px-3 py-3 text-center`}>Trạng thái</th>
-                        <th className={`${COL} px-3 py-3 text-center`}>Thao tác</th>
+                        <th className="px-2.5 py-1.5 text-left min-w-[130px]"><div className="min-w-[130px] line-clamp-3">Nhân sự</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-left min-w-[130px]`}><div className="min-w-[130px] line-clamp-3">Lịch nghỉ cần hủy</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-left min-w-[130px]`}><div className="min-w-[130px] line-clamp-3">Lý do hủy</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-center min-w-[90px]`}><div className="min-w-[90px] text-center line-clamp-3">Trạng thái</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-center min-w-[90px]`}><div className="min-w-[90px] text-center line-clamp-3">Thao tác</div></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                       {pagedCancellations.map((item) => {
                         const state = CANCEL_STATUS[item.status];
                         return (
                           <tr key={item.id} className="align-top">
-                            <td className="px-4 py-3"><PersonCell person={item.leave?.profile} fallback="Nhân viên" /></td>
-                            <td className="px-3 py-3 text-xs text-slate-600">
+                            <td className="px-2.5 py-1.5"><PersonCell person={item.leave?.profile} fallback="Nhân viên" /></td>
+                            <td className="px-2 py-1.5 text-xs text-slate-600 dark:text-slate-300">
                               {item.leave ? `${formatDate(item.leave.start_date)} → ${formatDate(item.leave.end_date)}` : 'Đơn nghỉ'}
                             </td>
-                            <td className="px-3 py-3 text-xs leading-relaxed text-slate-600">
+                            <td className="px-2 py-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
                               {item.reason}
                               {item.review_note && <span className="mt-0.5 block text-slate-500">Phản hồi: {item.review_note}</span>}
                             </td>
-                            <td className="px-3 py-3 text-center"><Pill className={state.color}>{state.label}</Pill></td>
-                            <td className="px-3 py-3">
+                            <td className="px-2 py-1.5 text-center"><Pill className={state.color}>{state.label}</Pill></td>
+                            <td className="px-2 py-1.5">
                               {item.status === 'pending' ? (
-                                <div className="flex justify-center gap-2">
-                                  <Button size="sm" variant="success" onClick={() => reviewCancellation(item, 'approved')} disabled={busy}><Check className="h-4 w-4" />Duyệt hủy</Button>
-                                  <Button size="sm" variant="danger" onClick={() => { setCancelRejectTarget(item); setCancelReviewNote(''); }} disabled={busy}><X className="h-4 w-4" />Từ chối</Button>
+                                <div className="flex justify-center gap-1.5">
+                                  <Button size="sm" variant="success" onClick={() => reviewCancellation(item, 'approved')} disabled={busy}><Check className="h-3.5 w-3.5" />Duyệt</Button>
+                                  <Button size="sm" variant="danger" onClick={() => { setCancelRejectTarget(item); setCancelReviewNote(''); }} disabled={busy}><X className="h-3.5 w-3.5" />Từ chối</Button>
                                 </div>
                               ) : <span className="block text-center text-xs text-slate-300">—</span>}
                             </td>
@@ -461,31 +457,31 @@ export function AdminLeave() {
         <FilterSelect label="Lọc theo loại nghỉ" value={typeFilter} options={typeOptions} onChange={setTypeFilter} />
       </div>
 
-      <Card className="!rounded-none">
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {loading ? (
             <div className="p-5"><TableSkeleton /></div>
           ) : loadError ? (
             <ErrorState message={loadError} onRetry={loadRequests} />
           ) : visibleRequests.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm text-slate-400">
+            <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
               {requests.length === 0 ? 'Không có đơn nghỉ phép nào trong mục này.' : 'Không có đơn nào khớp bộ lọc.'}
             </p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1040px] text-sm">
+              <table className="w-full min-w-[860px] text-xs border-collapse">
                 <thead>
                   <tr className={HEAD_ROW}>
-                    <th className="px-4 py-3 text-left">Nhân sự</th>
-                    <th className={`${COL} px-3 py-3 text-left`}>Loại nghỉ</th>
-                    <th className={`${COL} px-3 py-3 text-left`}>Thời gian</th>
-                    <th className={`${COL} px-3 py-3 text-center`}>Số ngày</th>
-                    <th className={`${COL} px-3 py-3 text-left`}>Lý do</th>
-                    <th className={`${COL} px-3 py-3 text-left`}>Trạng thái</th>
-                    <th className={`${COL} px-3 py-3 text-center`}>Thao tác</th>
+                    <th className="px-2.5 py-1.5 text-left min-w-[130px]"><div className="min-w-[130px] line-clamp-3">Nhân sự</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[100px]`}><div className="min-w-[100px] line-clamp-3">Loại nghỉ</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[120px]`}><div className="min-w-[120px] line-clamp-3">Thời gian</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-center min-w-[60px]`}><div className="min-w-[60px] text-center line-clamp-3">Số ngày</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[140px]`}><div className="min-w-[140px] line-clamp-3">Lý do</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[110px]`}><div className="min-w-[110px] line-clamp-3">Trạng thái</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-center min-w-[90px]`}><div className="min-w-[90px] text-center line-clamp-3">Thao tác</div></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
                   {pagedRequests.map((request) => {
                     const type = LEAVE_TYPE_CONFIG[request.leave_type];
                     const status = leaveStatusLabel(request);
@@ -495,48 +491,48 @@ export function AdminLeave() {
 
                     return (
                       <tr key={request.id} className="align-top">
-                        <td className="px-4 py-3"><PersonCell person={request.profile} fallback="—" /></td>
-                        <td className="px-3 py-3"><Pill className={type.color}>{type.label}</Pill></td>
-                        <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-600">
+                        <td className="px-2.5 py-1.5"><PersonCell person={request.profile} fallback="—" /></td>
+                        <td className="px-2 py-1.5"><Pill className={type.color}>{type.label}</Pill></td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-slate-600 dark:text-slate-300">
                           {formatDate(request.start_date)} → {formatDate(request.end_date)}
                         </td>
-                        <td className="px-3 py-3 text-center text-sm font-bold tabular-nums text-slate-700">{Number(request.days)}</td>
-                        <td className="max-w-[240px] px-3 py-3 text-xs leading-relaxed text-slate-600">
+                        <td className="px-2 py-1.5 text-center text-xs font-bold tabular-nums text-slate-700 dark:text-slate-200">{Number(request.days)}</td>
+                        <td className="max-w-[200px] px-2 py-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
                           {request.reason || <span className="text-slate-300">—</span>}
                           {request.status === 'rejected' && request.reason_reject && (
-                            <span className="mt-1 flex items-start gap-1.5 text-red-600">
-                              <TriangleAlert className="mt-px h-3.5 w-3.5 flex-shrink-0" />
+                            <span className="mt-1 flex items-start gap-1 text-red-600">
+                              <TriangleAlert className="mt-px h-3 w-3 flex-shrink-0" />
                               Đã từ chối: {request.reason_reject}
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3 text-xs">
+                        <td className="px-2 py-1.5 text-xs">
                           <Pill className={request.is_cancelled ? 'bg-slate-100 text-slate-600' : status.color}>
                             {request.is_cancelled ? 'Đã hủy' : status.label}
                           </Pill>
                           {request.approval_stage === 'HR' && (
-                            <span className="mt-1.5 block leading-relaxed text-indigo-700">
-                              Cấp 1: <strong>{managerApprover?.name || 'Trưởng bộ phận'}</strong>
+                            <span className="mt-1 block leading-snug text-[10px] text-indigo-700 dark:text-indigo-400">
+                              Cấp 1: <strong>{managerApprover?.name || 'Trưởng BP'}</strong>
                               {request.manager_approved_at ? ` (${formatDate(request.manager_approved_at)})` : ''} · chờ HR chốt
                             </span>
                           )}
                           {request.status === 'approved' && request.manager_approved_by && (
-                            <span className="mt-1.5 block leading-relaxed text-slate-500">
-                              QL {managerApprover?.name || 'quản lý trực tiếp'} → HR {finalApprover?.name || 'Nhân sự'}
+                            <span className="mt-1 block leading-snug text-[10px] text-slate-500">
+                              QL {managerApprover?.name || 'quản lý'} → HR {finalApprover?.name || 'Nhân sự'}
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-2 py-1.5">
                           {request.status !== 'pending' ? (
                             <span className="block text-center text-xs text-slate-300">—</span>
                           ) : canAct ? (
-                            <div className="flex justify-center gap-2">
+                            <div className="flex justify-center gap-1.5">
                               <Button size="sm" variant="success" onClick={() => handleApprove(request)} disabled={busy}>
-                                <Check className="h-4 w-4" />
-                                {request.approval_stage === 'HR' ? 'HR chốt' : 'Duyệt (Cấp 1)'}
+                                <Check className="h-3.5 w-3.5" />
+                                {request.approval_stage === 'HR' ? 'HR chốt' : 'Duyệt'}
                               </Button>
                               <Button size="sm" variant="danger" onClick={() => setRejectTarget(request)} disabled={busy}>
-                                <X className="h-4 w-4" />
+                                <X className="h-3.5 w-3.5" />
                                 Từ chối
                               </Button>
                             </div>

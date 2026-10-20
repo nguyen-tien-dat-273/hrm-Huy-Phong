@@ -320,27 +320,27 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
 
   function renderRow(component: PayComponent) {
     return (
-      <tr key={component.id} className={`transition-colors hover:bg-[#FCFAF8] dark:hover:bg-slate-800/50 ${component.is_active ? '' : 'opacity-60'}`}>
+      <tr key={component.id} className={`group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60 ${component.is_active ? '' : 'opacity-60'}`}>
         <td className="px-4 py-2.5">
-          <button type="button" onClick={() => setDetail(component)} className="text-left text-sm font-semibold text-slate-800 dark:text-slate-100 hover:text-indigo-700 dark:hover:text-indigo-400">
+          <button type="button" onClick={() => setDetail(component)} className="text-left text-sm font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400">
             {component.name}
           </button>
           {categoryFilter === 'ALL' && (
-            <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">{groupName(component)}</p>
+            <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{groupName(component)}</p>
           )}
         </td>
-        <td className="border-l border-slate-100 dark:border-slate-800 px-3 py-2.5 text-center">
+        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center">
           <span className="flex flex-wrap items-center justify-center gap-1.5">
             <KindChip kind={component.kind} />
           </span>
         </td>
-        <td className="border-l border-slate-100 dark:border-slate-800 px-3 py-2.5 text-center">
-          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${component.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${component.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center">
+          <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${component.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+            <span className={`h-2 w-2 rounded-full ${component.is_active ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-600'}`} />
             {component.is_active ? 'Kích hoạt' : 'Khóa'}
           </span>
         </td>
-        <td className="px-2 py-1.5 text-center no-print">
+        <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 text-center no-print">
           <div className="flex justify-center gap-0.5">
             {!canManage && (
               <IconButton label={`Xem ${component.name}`} onClick={() => setDetail(component)}><Eye className="h-3.5 w-3.5" /></IconButton>
@@ -362,16 +362,16 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   function renderTable(rows: PayComponent[]) {
     return (
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[680px] whitespace-nowrap text-xs tabular-nums text-slate-700 dark:text-slate-300">
+        <table className="w-full min-w-[680px] whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
           <thead>
-            <tr className="border-b border-slate-200 dark:border-slate-800 bg-[#FCFAF8] dark:bg-slate-900 text-[11px] font-semibold text-slate-900 dark:text-slate-100">
-              <th className="px-4 py-3 text-left">Tên đầu mục</th>
-              <th className="border-l border-slate-100 dark:border-slate-800 px-3 py-3 text-center">Loại dòng</th>
-              <th className="border-l border-slate-100 dark:border-slate-800 px-3 py-3 text-center">Trạng thái</th>
-              <th className="w-12 px-2 py-3 no-print" />
+            <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+              <th className="px-4 py-3.5 text-left">Tên đầu mục</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3.5 text-center">Loại dòng</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3.5 text-center">Trạng thái</th>
+              <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] w-12 px-2 py-3.5 no-print" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">{rows.map(renderRow)}</tbody>
+          <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">{rows.map(renderRow)}</tbody>
         </table>
       </div>
     );

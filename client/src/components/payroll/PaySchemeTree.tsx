@@ -5,6 +5,7 @@
 //
 //   Nhân sự        danh sách người trong đơn vị — bấm một người là mở thẳng
 //                  form cơ chế lương của người đó (khai riêng ngay trên trang).
+//   Mức riêng      bảng người × dòng "mỗi người một mức", điền / dán từ Excel.
 //   Cơ chế chung   các dòng lương cả đơn vị cùng theo; đơn vị con thừa hưởng
 //                  theo \`unitLineage\`, cùng quy ước với KPI.
 //   Phiếu lương    mẫu phiếu của đơn vị: mã, tiêu đề, đầu mục lên đầu phiếu.
@@ -18,11 +19,11 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, ChevronRight, FlaskConical, Search, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Avatar } from '@/components/ui/Avatar';
 import { UnitTreeList, flattenUnitTree } from '@/components/payroll/UnitTree';
 import { UnitMechanismEditor } from '@/components/payroll/UnitMechanismEditor';
 import { PayslipLayoutEditor } from '@/components/payroll/PayslipLayoutEditor';
 import { PersonSchemeForm } from '@/components/payroll/PersonSchemeForm';
+import { PersonAmountGrid } from '@/components/payroll/PersonAmountGrid';
 import { Pager, clampPage } from '@/components/payroll/Pager';
 import { resolveMechanismRows, unitMechanismRows } from '@/lib/payrollScheme';
 import { schemeSourceOf } from '@/lib/payrollRun';
@@ -38,6 +39,8 @@ interface PaySchemeTreeProps {
   canManage: boolean;
   /** Người cần mở thẳng (từ Bảng lương). */
   focusUserId?: string | null;
+  /** Thẻ mở sẵn (từ trang tổng quan Thiết lập lương). */
+  initialTab?: 'amounts';
   onChanged: () => void;
   /** Mở hộp Chạy thử, có thể kèm người cần thử. */
   onDryRun: (personId?: string) => void;
@@ -48,13 +51,13 @@ const PEOPLE_PER_PAGE = 15;
 
 const stripTone = (text: string) => stripVietnamese(text).toLowerCase().trim();
 
-export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, canManage, focusUserId, onChanged, onDryRun }: PaySchemeTreeProps) {
+export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, canManage, focusUserId, initialTab, onChanged, onDryRun }: PaySchemeTreeProps) {
   const [unitId, setUnitId] = useState<string | null>(() => (
     focusUserId ? data.profiles.find((row) => row.id === focusUserId)?.unit_id ?? null : null
   ));
   const [personId, setPersonId] = useState<string | null>(focusUserId ?? null);
   const [includeChildren, setIncludeChildren] = useState(false);
-  const [tab, setTab] = useState<'people' | 'mechanism' | 'payslip'>('people');
+  const [tab, setTab] = useState<'people' | 'amounts' | 'mechanism' | 'payslip'>(initialTab ?? 'people');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [accounts, setAccounts] = useState<EmployeeBankAccount[]>([]);
@@ -123,7 +126,12 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
   const unit = unitId && unitId !== NO_UNIT ? data.units.find((row) => row.id === unitId) ?? null : null;
   const person = personId ? data.profiles.find((row) => row.id === personId) ?? null : null;
   const unitRowCount = unit ? unitMechanismRows(unit.id, source, monthStart, monthEnd).size : 0;
-  const unitPeopleCount = unit ? data.profiles.filter((p) => p.unit_id && descendantsOf(unit.id).has(p.unit_id)).length : 0;
+  const unitPeople = useMemo(() => {
+    if (!unit) return [];
+    const ids = descendantsOf(unit.id);
+    return data.profiles.filter((p) => p.unit_id && ids.has(p.unit_id));
+  }, [data.profiles, unit?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const unitPeopleCount = unitPeople.length;
 
   const openPerson = (id: string) => setPersonId(id);
 
@@ -190,7 +198,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                   {query.trim() ? `Kết quả tìm "${query.trim()}"` : unit?.name ?? (unitId === NO_UNIT ? 'Chưa gán đơn vị' : 'Chọn đơn vị')}
                 </CardTitle>
               </div>
-              {unit && !query.trim() && tab === 'people' && (
+              {unit && !query.trim() && (tab === 'people' || tab === 'amounts') && (
                 <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
                   <input type="checkbox" className="h-3.5 w-3.5 accent-indigo-600" checked={includeChildren} onChange={(event) => setIncludeChildren(event.target.checked)} />
                   Gồm đơn vị con
@@ -207,6 +215,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                 <div className="inline-flex rounded-none bg-slate-100 p-1 no-print" role="tablist" aria-label="Đơn vị">
                   {([
                     ['people', 'Nhân sự'],
+                    ['amounts', 'Mức riêng'],
                     ['mechanism', 'Cơ chế chung'],
                     ['payslip', 'Phiếu lương'],
                   ] as const).map(([value, label]) => (
@@ -235,6 +244,16 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                   canManage={canManage}
                   onChanged={onChanged}
                 />
+              ) : unit && !query.trim() && tab === 'amounts' ? (
+                <PersonAmountGrid
+                  data={data}
+                  people={people}
+                  monthStart={monthStart}
+                  lastClosedMonth={lastClosedMonth}
+                  canManage={canManage}
+                  onOpenPerson={openPerson}
+                  onSaved={onChanged}
+                />
               ) : unit && !query.trim() && tab === 'mechanism' ? (
                 <UnitMechanismEditor
                   key={unit.id}
@@ -244,6 +263,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                   lastClosedMonth={lastClosedMonth}
                   canManage={canManage}
                   peopleCount={unitPeopleCount}
+                  people={unitPeople}
                   onChanged={onChanged}
                 />
               ) : people.length === 0 ? (
@@ -251,38 +271,35 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                   {query.trim() ? 'Không có nhân viên nào khớp.' : 'Đơn vị này chưa có nhân sự.'}
                 </p>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[520px] text-sm">
+                <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
+                  <table className="w-full min-w-[420px] text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-100 text-left text-[11px] font-bold uppercase tracking-wider text-black">
-                        <th className="py-2 pr-3">Nhân viên</th>
-                        <th className="py-2 pr-3">Khai riêng</th>
-                        <th className="py-2 pr-3">Tình trạng</th>
-                        <th className="py-2" />
+                      <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                        <th className="py-1.5 px-2.5">Nhân viên</th>
+                        <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] py-1.5 px-2">Khai riêng</th>
+                        <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] py-1.5 px-2">Tình trạng</th>
+                        <th className="py-1.5 px-2 text-right" />
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50">
+                    <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
                       {pagePeople.map((row) => {
                         const status = statusOf(rowsOf(row));
                         const own = personalCount(row);
                         return (
-                          <tr key={row.id} className="cursor-pointer hover:bg-slate-50/70" onClick={() => openPerson(row.id)}>
-                            <td className="py-2 pr-3">
-                              <div className="flex items-center gap-2">
-                                <Avatar name={row.name} url={row.avatar_url} size="sm" />
-                                <div className="min-w-0">
-                                  <p className="truncate font-semibold text-slate-800">{row.name}</p>
-                                  <p className="truncate text-[11px] text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
-                                </div>
+                          <tr key={row.id} className="group cursor-pointer transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60" onClick={() => openPerson(row.id)}>
+                            <td className="py-1.5 px-2.5">
+                              <div className="min-w-0">
+                                <p className="truncate font-bold text-xs text-slate-900 dark:text-slate-100">{row.name}</p>
+                                <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
                               </div>
                             </td>
-                            <td className="py-2 pr-3 text-xs text-slate-600">
-                              {own > 0 ? `${own} dòng` : <span className="text-slate-400">—</span>}
+                            <td className="border-l border-slate-300 dark:border-slate-700 py-1.5 px-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                              {own > 0 ? `${own} dòng` : <span className="text-slate-400 dark:text-slate-600">—</span>}
                             </td>
-                            <td className="py-2 pr-3">
-                              <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${status.tone}`}>{status.label}</span>
+                            <td className="border-l border-slate-300 dark:border-slate-700 py-1.5 px-2">
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status.tone}`}>{status.label}</span>
                             </td>
-                            <td className="py-2 text-right text-slate-300"><ChevronRight className="inline h-4 w-4" /></td>
+                            <td className="py-1.5 px-2 text-right text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
                           </tr>
                         );
                       })}

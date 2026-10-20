@@ -5,8 +5,8 @@
 // Mỗi dòng chọn một cách lấy giá trị:
 //
 //   Công thức   [Lương cơ bản] ÷ [Công chuẩn] × [Ngày công]  — hoặc một con số
-//   Khai riêng  khai riêng cho từng người ở màn nhân sự
-//   Theo tháng  nhập mỗi tháng ngay trên Bảng lương
+//   Mỗi người một mức  điền ở thẻ "Mức riêng" (bảng người × dòng)
+//   Nhập mỗi tháng     nhập ngay trên Bảng lương
 //
 // Đơn vị con thừa hưởng dòng của cấp trên; sửa một dòng ở đây là khai lại dòng
 // đó riêng cho đơn vị này, "Bỏ khỏi đơn vị" là đơn vị này không dùng dòng đó.
@@ -22,26 +22,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FileText, Plus, RotateCcw, Save, Search, Trash2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { ITEMS_PER_PAGE, PagedList, Pager, clampPage } from '@/components/payroll/Pager';
 import { FormulaSheetModal } from '@/components/payroll/FormulaSheetModal';
 import { MechanismAddDialog } from '@/components/payroll/MechanismAddDialog';
 import { FormulaInput } from '@/components/payroll/formula/FormulaInput';
+import { flattenUnitTree } from '@/components/payroll/UnitTree';
 import { formulaScopeOf, fullMonthStats, monthEndOf, monthText } from '@/components/payroll/schemeWorkbench';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import { getTodayString } from '@/lib/utils';
-import { computePayslip, orderMechanismRows, type MechanismRow } from '@/lib/payroll';
+import { activeInPeriod, computePayslip, orderMechanismRows, type MechanismRow } from '@/lib/payroll';
 import {
   formatFormulaNumber, formulaIssueOf, normalizeText, referencedCodes, tokenizeFormula,
 } from '@/lib/formulaTokens';
 import { buildFormulaEntries } from '@/lib/formulaEntries';
 import { codeFromName, firstEditableMonth, paramsOf, versionForMonth } from '@/lib/payrollSettings';
-import { earliestSchemeMonth, unitItemsAt, unitMechanismRows } from '@/lib/payrollScheme';
-import { nameResolver, paramsForMonth, schemeSourceOf } from '@/lib/payrollRun';
-import { RESERVED_FORMULA_NAMES, ROW_MODE_LABEL } from '@/lib/payrollVariables';
+import { applyOverride, earliestSchemeMonth, unitItemsAt, unitMechanismRows } from '@/lib/payrollScheme';
+import { computeForPerson, nameResolver, paramsForMonth, schemeSourceOf } from '@/lib/payrollRun';
+import { RESERVED_FORMULA_NAMES, ROW_MODE_HINT, ROW_MODE_LABEL } from '@/lib/payrollVariables';
 import { saveIntermediate, saveScheme, type PayrollWorkspace } from '@/lib/payrollData';
-import type { OrganizationUnit, PayComponent, SchemePayloadItem, UnitRowMode } from '@/types';
+import type { OrganizationUnit, PayComponent, Profile, SchemePayloadItem, UnitRowMode } from '@/types';
 
 type DraftMode = 'FORMULA' | 'PER_PERSON' | 'MONTHLY_INPUT' | 'OFF';
 
@@ -101,11 +101,13 @@ interface UnitMechanismEditorProps {
   canManage: boolean;
   /** Số người sẽ theo cơ chế này (đơn vị và đơn vị con). */
   peopleCount: number;
+  /** Người trong đơn vị (và đơn vị con) — chọn một người để xem thử số thật. */
+  people?: readonly Profile[];
   onChanged: () => void;
 }
 
 export function UnitMechanismEditor({
-  data, unit, monthStart, lastClosedMonth, canManage, peopleCount, onChanged,
+  data, unit, monthStart, lastClosedMonth, canManage, peopleCount, people = [], onChanged,
 }: UnitMechanismEditorProps) {
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -134,7 +136,8 @@ export function UnitMechanismEditor({
   const [saving, setSaving] = useState(false);
   /** Dòng vừa thêm — nhảy tới trang có nó và đặt con trỏ vào ô công thức. */
   const [focusId, setFocusId] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  /** Người đang xem thử ('' = nhân viên mẫu đi đủ công, chưa khai riêng). */
+  const [sampleId, setSampleId] = useState('');
   const [filter, setFilter] = useState('');
   /** Hộp "Thêm đầu mục". */
   const [addOpen, setAddOpen] = useState(false);
@@ -150,7 +153,7 @@ export function UnitMechanismEditor({
   useEffect(() => {
     setDirty(false);
     setDraft(savedDraft);
-    setPage(1);
+    setSampleId('');
   }, [unit.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const readOnly = !canManage;
@@ -195,8 +198,27 @@ export function UnitMechanismEditor({
     origin: unit.name,
   })), [active, unit.name]);
 
+  const sample = sampleId ? people.find((person) => person.id === sampleId) ?? null : null;
+
   const result = useMemo(() => {
     if (!params || mechanismRows.length === 0) return null;
+    if (sample) {
+      // Cơ chế đang soạn + khai riêng của người đó, đi đủ công, số liệu tháng đã nhập.
+      const byId = new Map(mechanismRows.map((row) => [row.component.id, row]));
+      for (const item of activeInPeriod(data.items.filter((row) => row.user_id === sample.id), month, monthEnd)) {
+        const component = componentById.get(item.component_id);
+        if (!component || !component.is_active) continue;
+        byId.set(component.id, applyOverride(byId.get(component.id), component, item, 'Riêng'));
+      }
+      try {
+        return computeForPerson(sample, data, params, new Date(`${month}T00:00:00`), month, monthEnd, {
+          statsOverride: fullMonthStats(params),
+          rowsOverride: [...byId.values()].sort((a, b) => a.sortOrder - b.sortOrder),
+        }).computed;
+      } catch {
+        return null;
+      }
+    }
     return computePayslip({
       profile: { id: 'sample', name: 'Nhân viên mẫu' },
       rows: mechanismRows,
@@ -206,7 +228,7 @@ export function UnitMechanismEditor({
       catalogCodes: data.components.map((component) => component.code),
       nameOf,
     });
-  }, [data.components, mechanismRows, nameOf, params]);
+  }, [componentById, data, mechanismRows, month, monthEnd, nameOf, params, sample]);
 
   const scope = useMemo(() => formulaScopeOf(data.components, params, result), [data.components, params, result]);
   const rowCodes = useMemo(() => new Set(active.map((row) => row.component.code)), [active]);
@@ -288,6 +310,30 @@ export function UnitMechanismEditor({
     setFocusId(componentId);
   };
 
+  /**
+   * Sao chép cơ chế đang áp của một đơn vị khác (gồm cả phần nó thừa hưởng) về
+   * làm cơ chế của đơn vị này: mọi dòng thành dòng khai ở đây, dòng cấp trên mà
+   * đơn vị nguồn không có thì bỏ. Chưa lưu — xem lại rồi bấm Lưu như thường.
+   */
+  const copyFrom = async (sourceId: string) => {
+    const sourceUnit = data.units.find((row) => row.id === sourceId);
+    if (!sourceUnit) return;
+    const rows = unitMechanismRows(sourceId, source, month, monthEnd);
+    const ok = await confirm({
+      title: `Sao chép cơ chế của “${sourceUnit.name}”?`,
+      message: `${rows.size} dòng sẽ thay toàn bộ cơ chế đang soạn của ${unit.name}. Chưa lưu cho tới khi bấm Lưu.`,
+      confirmLabel: 'Sao chép',
+    });
+    if (!ok) return;
+    const copied: DraftRow[] = [...rows.values()].map((row) => ({
+      componentId: row.component.id, ...viewOfRow(row), sortOrder: row.sortOrder,
+    } as DraftRow));
+    const dropped: DraftRow[] = [...inherited.keys()]
+      .filter((id) => !rows.has(id))
+      .map((id) => ({ componentId: id, mode: 'OFF', formula: '', amount: null, sortOrder: null }));
+    change([...copied, ...dropped]);
+  };
+
   /** Chọn đầu mục trong hộp "Thêm": dòng đã bỏ của cấp trên thì dùng lại, còn lại thêm mới. */
   const pickComponent = (component: PayComponent) => {
     if (inherited.has(component.id)) {
@@ -333,18 +379,28 @@ export function UnitMechanismEditor({
   const groupOf = (component: PayComponent) => (component.category_code
     ? data.categories.find((category) => category.code === component.category_code)?.name ?? component.category_code
     : 'Dòng trung gian');
-  const safePage = clampPage(page, entries.length);
-  const pageEntries = entries.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
+  /** Nhóm theo phiếu lương: dòng trung gian trước, rồi các nhóm I–V theo thứ tự danh mục. */
+  const groups = useMemo(() => {
+    const order = new Map<string, number>(data.categories.map((category) => [category.code, category.sort_order]));
+    const byKey = new Map<string, ViewRow[]>();
+    for (const row of entries) {
+      const key = row.component.category_code ?? '';
+      byKey.set(key, [...(byKey.get(key) ?? []), row]);
+    }
+    return [...byKey.entries()]
+      .sort(([a], [b]) => (a ? order.get(a) ?? 999 : -1) - (b ? order.get(b) ?? 999 : -1))
+      .map(([key, rows]) => ({
+        key,
+        title: key ? data.categories.find((category) => category.code === key)?.name ?? key : 'Dòng trung gian (không vào thực lĩnh)',
+        rows,
+      }));
+  }, [data.categories, entries]);
 
-  // Dòng vừa thêm: sang đúng trang của nó.
-  const entryKey = entries.map((entry) => entry.component.id).join(',');
   useEffect(() => {
     if (!focusId) return undefined;
-    const index = entries.findIndex((entry) => entry.component.id === focusId);
-    if (index >= 0) setPage(Math.floor(index / ITEMS_PER_PAGE) + 1);
     const timer = window.setTimeout(() => setFocusId(null), 400);
     return () => window.clearTimeout(timer);
-  }, [focusId, entryKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [focusId]);
 
   // ---- Lưu ---------------------------------------------------------------------
   const handleSave = async () => {
@@ -380,7 +436,7 @@ export function UnitMechanismEditor({
     return (
       <li
         key={id}
-        className={`rounded-none border bg-white px-2.5 py-2.5 transition ${issue ? 'border-red-200' : 'border-indigo-200'}`}
+        className={`rounded-none border-2 bg-white dark:bg-slate-900 px-3 py-2.5 transition ${issue ? 'border-red-400 dark:border-red-600' : 'border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-600'}`}
       >
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
@@ -435,27 +491,38 @@ export function UnitMechanismEditor({
                 <button
                   type="button"
                   onClick={() => revertRow(row)}
-                  title="Bỏ phần khai lại, theo cấp trên"
-                  aria-label={`Theo cấp trên: ${component.name}`}
+                  title="Đơn vị này đang khai khác cấp trên — bấm để về như cấp trên"
+                  aria-label={`Về như cấp trên: ${component.name}`}
                   className="inline-flex items-center gap-1 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 hover:bg-indigo-100"
                 >
-                  <RotateCcw className="h-3 w-3" /> khai lại
+                  <RotateCcw className="h-3 w-3" /> Riêng đơn vị này · về như cấp trên
                 </button>
               )}
-              {(['PER_PERSON', 'MONTHLY_INPUT'] as const).map((mode) => (
-                <label key={mode} className="flex cursor-pointer items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    className="h-3.5 w-3.5 accent-indigo-600"
-                    checked={row.mode === mode}
-                    onChange={(event) => setMode(row, mode, event.target.checked)}
-                  />
-                  {ROW_MODE_LABEL[mode]}
-                  {mode === 'MONTHLY_INPUT' && kpiCodeSet.has(component.code.toUpperCase()) && (
-                    <span className="rounded bg-indigo-50 px-1 text-[10px] font-semibold text-indigo-600" title="Số tự điền khi khoá sổ KPI">từ KPI</span>
-                  )}
-                </label>
-              ))}
+              {!row.own && row.origin && (
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500" title="Dòng thừa hưởng — sửa ở đây là khai lại riêng cho đơn vị này">
+                  Theo {row.origin}
+                </span>
+              )}
+              <label className="flex items-center gap-1.5">
+                <span className="text-slate-400">Lấy số:</span>
+                <select
+                  value={row.mode === 'OFF' ? 'FORMULA' : row.mode}
+                  onChange={(event) => {
+                    const mode = event.target.value as DraftMode;
+                    setMode(row, mode, mode !== 'FORMULA');
+                  }}
+                  aria-label={`Cách lấy số của ${component.name}`}
+                  title={ROW_MODE_HINT[row.mode === 'OFF' ? 'FORMULA' : row.mode]}
+                  className="h-7 rounded border border-slate-200 bg-white px-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500"
+                >
+                  {(['FORMULA', 'PER_PERSON', 'MONTHLY_INPUT'] as const).map((mode) => (
+                    <option key={mode} value={mode}>{ROW_MODE_LABEL[mode]}</option>
+                  ))}
+                </select>
+                {row.mode === 'MONTHLY_INPUT' && kpiCodeSet.has(component.code.toUpperCase()) && (
+                  <span className="rounded bg-indigo-50 px-1 text-[10px] font-semibold text-indigo-600" title="Số tự điền khi khoá sổ KPI">từ KPI</span>
+                )}
+              </label>
               </div>
               <button
                 type="button"
@@ -483,7 +550,7 @@ export function UnitMechanismEditor({
       {!params && (
         <p className="flex items-start gap-2 rounded-none bg-amber-50 px-3 py-2 text-xs text-amber-800">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-          Chưa có bộ tham số lương hiệu lực cho tháng này — khai ở Tham số lương để tính thử được.
+          Chưa có bộ tham số lương hiệu lực cho tháng này — khai ở Thông số chung để tính thử được.
         </p>
       )}
 
@@ -492,7 +559,7 @@ export function UnitMechanismEditor({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={filter}
-            onChange={(event) => { setFilter(event.target.value); setPage(1); }}
+            onChange={(event) => setFilter(event.target.value)}
             placeholder="Lọc đầu mục theo tên…"
             aria-label="Lọc đầu mục theo tên"
             className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
@@ -503,8 +570,35 @@ export function UnitMechanismEditor({
             <Plus className="h-4 w-4" /> Thêm đầu mục
           </Button>
         )}
+        {!readOnly && data.units.length > 1 && (
+          <select
+            value=""
+            onChange={(event) => { if (event.target.value) void copyFrom(event.target.value); }}
+            aria-label="Sao chép cơ chế từ đơn vị khác"
+            className="h-9 max-w-[200px] rounded-lg border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500"
+          >
+            <option value="">Sao chép từ đơn vị…</option>
+            {flattenUnitTree(data.units)
+              .filter((row) => row.unit.id !== unit.id)
+              .map((row) => <option key={row.unit.id} value={row.unit.id}>{'  '.repeat(row.depth)}{row.unit.name}</option>)}
+          </select>
+        )}
+        {people.length > 0 && (
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 sm:ml-auto">
+            Xem thử với
+            <select
+              value={sampleId}
+              onChange={(event) => setSampleId(event.target.value)}
+              aria-label="Xem thử số với người"
+              className="h-9 max-w-[220px] rounded-lg border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-800 outline-none focus:border-indigo-500"
+            >
+              <option value="">Nhân viên mẫu</option>
+              {people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+            </select>
+          </label>
+        )}
         {active.length > 0 && (
-          <Button size="sm" variant="outline" className="sm:ml-auto" onClick={() => setSheetOpen(true)}>
+          <Button size="sm" variant="outline" className={people.length > 0 ? '' : 'sm:ml-auto'} onClick={() => setSheetOpen(true)}>
             <FileText className="h-4 w-4" /> Xem công thức dạng chữ
           </Button>
         )}
@@ -515,12 +609,30 @@ export function UnitMechanismEditor({
           {keyword ? `Không có đầu mục nào khớp “${filter.trim()}”.` : `Chưa có đầu mục nào trong cơ chế${readOnly ? '.' : ' — bấm “Thêm đầu mục”.'}`}
         </p>
       ) : (
-        <>
-          <PagedList page={safePage} total={entries.length} onPage={setPage}>
-            <ol className="space-y-2">{pageEntries.map(renderEntry)}</ol>
-          </PagedList>
-          <Pager page={safePage} total={entries.length} onPage={setPage} />
-        </>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">
+            Số bên phải là kết quả {sample ? `của ${sample.name}` : 'của một nhân viên mẫu'} nếu đi đủ công
+            {sample ? ' (gồm khai riêng và số liệu tháng đã nhập)' : ', chưa khai riêng'}.
+          </p>
+          {groups.map((group) => (
+            <section key={group.key || 'intermediate'}>
+              <h4 className="mb-2 border-b-2 border-slate-300 dark:border-slate-700 pb-1 text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">{group.title}</h4>
+              <ol className="space-y-2">{group.rows.map(renderEntry)}</ol>
+            </section>
+          ))}
+          {result && !keyword && (
+            <div className="space-y-1.5 border-t-2 border-slate-400 dark:border-slate-600 pt-3 text-sm font-semibold">
+              <div className="flex justify-between text-slate-700 dark:text-slate-300"><span>Tổng cộng</span><span className="tabular-nums font-black">{formatFormulaNumber(result.gross)}</span></div>
+              <div className="flex justify-between text-red-600 dark:text-red-400"><span>Các khoản trừ</span><span className="tabular-nums font-black">−{formatFormulaNumber(result.totalDeductions)}</span></div>
+              <div className="flex justify-between text-base font-black text-slate-900 dark:text-slate-100"><span>Thực lĩnh</span><span className="tabular-nums text-lg font-black">{formatFormulaNumber(result.netPay)}</span></div>
+              {result.warnings.length > 0 && (
+                <p className="flex items-start gap-2 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                  <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {result.warnings.join(' · ')}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       <MechanismAddDialog

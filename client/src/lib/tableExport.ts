@@ -11,7 +11,7 @@
 
 export interface ExportColumn<T> {
   header: string;
-  value: (row: T) => string | number | null | undefined;
+  value: (row: T, index: number) => string | number | null | undefined;
   width?: number;
 }
 
@@ -32,9 +32,9 @@ export async function exportExcel<T>(options: ExportOptions<T>): Promise<void> {
   if (numCols === 0) return;
 
   const header = options.columns.map((column) => column.header);
-  const rawBody = options.rows.map((row) =>
+  const rawBody = options.rows.map((row, rowIndex) =>
     options.columns.map((column) => {
-      const v = column.value(row);
+      const v = column.value(row, rowIndex);
       return v ?? '';
     })
   );
@@ -161,7 +161,7 @@ function csvCell(value: string | number | null | undefined): string {
 export function exportCsv<T>(options: ExportOptions<T>): void {
   const lines = [
     options.columns.map((column) => csvCell(column.header)).join(','),
-    ...options.rows.map((row) => options.columns.map((column) => csvCell(column.value(row))).join(',')),
+    ...options.rows.map((row, rowIndex) => options.columns.map((column) => csvCell(column.value(row, rowIndex))).join(',')),
   ];
   // BOM để Excel trên Windows mở đúng tiếng Việt.
   const blob = new Blob([`\uFEFF${lines.join('\r\n')}`], { type: 'text/csv;charset=utf-8' });

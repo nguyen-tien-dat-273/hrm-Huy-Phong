@@ -315,7 +315,7 @@ export function KpiSheetView({
             {sheet.board_review ? ' · BGĐ duyệt cuối' : ''}
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-px overflow-hidden border border-slate-200 bg-slate-200 text-center sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px overflow-hidden border-2 border-slate-400 dark:border-slate-600 bg-slate-300 dark:bg-slate-700 text-center sm:grid-cols-4">
           <Tile label="Tự chấm" value={fmtPct(selfEditable ? selfPreview.total : sheet.self_pct)} />
           <Tile label="Quản lý" value={fmtPct(mgrEditable ? (mgrPreview.complete ? mgrPreview.total : null) : sheet.manager_pct)} />
           <Tile label="Thưởng" value={fmtPct(mgrEditable ? bonusValue : sheet.bonus_pct)} />
@@ -328,40 +328,40 @@ export function KpiSheetView({
       </div>
 
       {sheet.return_reason && (sheet.status === 'REJECTED' || sheet.status === 'PENDING') && (
-        <p className="flex items-start gap-2 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p className="flex items-start gap-2 border border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/40 px-3 py-2 text-sm text-red-700 dark:text-red-300">
           <CircleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" /> Lý do trả về: <strong className="font-semibold">{sheet.return_reason}</strong>
         </p>
       )}
       {role === 'SELF' && (
-        <p className="text-xs text-slate-500">Hạn gửi: {fmtDeadline(deadlineOf(sheet.period_month, 'SELF', settings))}</p>
+        <p className="text-xs font-bold text-slate-600 dark:text-slate-400">Hạn gửi: {fmtDeadline(deadlineOf(sheet.period_month, 'SELF', settings))}</p>
       )}
       {role === 'MANAGER' && (sheet.status === 'DRAFT' || sheet.status === 'REJECTED') && (
-        <p className="text-xs font-semibold text-amber-700">Nhân viên quá hạn tự chấm — quản lý chấm thẳng.</p>
+        <p className="text-xs font-bold text-amber-700 dark:text-amber-400">Nhân viên quá hạn tự chấm — quản lý chấm thẳng.</p>
       )}
 
       {/* Bảng tiêu chí */}
-      <div className="overflow-x-auto border border-slate-200">
-        <div className="min-w-[760px] text-xs text-slate-700">
-          <div className="grid grid-cols-[minmax(220px,1.6fr)_70px_minmax(150px,1fr)_minmax(150px,1fr)_minmax(170px,1fr)] border-b border-slate-200 bg-[#FCFAF8] text-[11px] font-semibold text-black">
+      <div className="overflow-x-auto border-2 border-slate-400 dark:border-slate-600">
+        <div className="min-w-[760px] text-sm text-slate-800 dark:text-slate-100">
+          <div className="grid grid-cols-[minmax(220px,1.6fr)_70px_minmax(150px,1fr)_minmax(150px,1fr)_minmax(170px,1fr)] border-b-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">
             <div className="px-3 py-2.5">Tiêu chí</div>
-            <div className="border-l border-slate-100 px-2 py-2.5 text-center">Tỷ trọng</div>
-            <div className="border-l border-slate-100 px-2 py-2.5 text-center">Tự chấm</div>
-            <div className="border-l border-slate-100 px-2 py-2.5 text-center">Minh chứng</div>
-            <div className="border-l border-slate-100 px-2 py-2.5 text-center">{showMgr ? 'Điểm duyệt' : 'Quản lý chấm'}</div>
+            <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2.5 text-center">Tỷ trọng</div>
+            <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2.5 text-center">Tự chấm</div>
+            <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2.5 text-center">Minh chứng</div>
+            <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2.5 text-center">{showMgr ? 'Điểm duyệt' : 'Quản lý chấm'}</div>
           </div>
           {groups.map(({ group, categories }) => {
             const groupWeight = categories.reduce((sum, cat) => sum + cat.items.reduce((s, { item }) => s + item.weight, 0), 0);
             return (
               <div key={group}>
-                <div className="border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                <div className="border-b border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">
                   {GROUP_ROMAN[group]}. {GROUP_LABEL[group]} · {fmtNum(groupWeight)}%
                 </div>
                 {categories.map((category) => (
                   <div key={category.name}>
                     {(category.items.length > 1 || category.items[0].item.name !== category.name) && (
-                      <div className="border-b border-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-600">
+                      <div className="border-b border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
                         {category.name}
-                        <span className="ml-1.5 font-normal text-slate-400">{fmtNum(category.items.reduce((s, { item }) => s + item.weight, 0))}%</span>
+                        <span className="ml-1.5 font-normal text-slate-500">{fmtNum(category.items.reduce((s, { item }) => s + item.weight, 0))}%</span>
                       </div>
                     )}
                     {category.items.map(({ item, index }) => (
@@ -512,9 +512,9 @@ export function KpiSheetView({
 
 function Tile({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
-    <div className="min-w-[84px] bg-white px-3 py-1.5">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className={`tabular-nums ${strong ? 'text-base font-bold text-slate-900' : 'text-sm font-semibold text-slate-700'}`}>{value}</p>
+    <div className="min-w-[84px] bg-white dark:bg-slate-900 px-3 py-1.5 border border-slate-300 dark:border-slate-700">
+      <p className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
+      <p className={`tabular-nums ${strong ? 'text-lg sm:text-xl font-black text-indigo-700 dark:text-indigo-400' : 'text-base font-black text-slate-900 dark:text-slate-100'}`}>{value}</p>
     </div>
   );
 }
@@ -548,24 +548,24 @@ function CriterionRow({
   const weightChanged = Math.abs(eff - item.weight) > 0.005;
 
   return (
-    <div className="grid grid-cols-[minmax(220px,1.6fr)_70px_minmax(150px,1fr)_minmax(150px,1fr)_minmax(170px,1fr)] border-b border-slate-100 last:border-b-0 hover:bg-[#FCFAF8]">
+    <div className="grid grid-cols-[minmax(220px,1.6fr)_70px_minmax(150px,1fr)_minmax(150px,1fr)_minmax(170px,1fr)] border-b border-slate-300 dark:border-slate-700 last:border-b-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
       <div className="px-3 py-2" title={rule}>
-        <p className="font-semibold text-slate-800">{item.name}</p>
-        {item.measure && <p className="mt-0.5 text-[11px] leading-snug text-slate-400">{item.measure}</p>}
-        <p className="mt-0.5 text-[10px] text-slate-400">
+        <p className="font-bold text-sm text-slate-900 dark:text-slate-100">{item.name}</p>
+        {item.measure && <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">{item.measure}</p>}
+        <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
           {METHOD_LABEL[item.method]} · chuẩn {fmtNum(item.standard_score)}{item.allow_over ? ' · được vượt chuẩn' : ''}
           {item.source ? ` · ${SOURCE_LABEL[item.source]}` : ''}
         </p>
       </div>
-      <div className="border-l border-slate-100 px-2 py-2 text-center tabular-nums">
+      <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 text-center tabular-nums text-sm font-bold text-slate-900 dark:text-slate-100">
         {weightChanged ? (
           <span title="Tỷ trọng sau khi chia lại phần không phát sinh">
-            <span className="text-slate-400 line-through">{fmtNum(item.weight)}</span>{' '}
-            <span className="font-semibold text-slate-800">{fmtNum(Math.round(eff * 100) / 100)}</span>
+            <span className="text-slate-400 line-through text-xs">{fmtNum(item.weight)}</span>{' '}
+            <span className="font-black text-slate-900 dark:text-slate-100">{fmtNum(Math.round(eff * 100) / 100)}</span>
           </span>
         ) : `${fmtNum(item.weight)}%`}
       </div>
-      <div className="border-l border-slate-100 px-2 py-1.5">
+      <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5">
         {selfEditable && self ? (
           <ScoreInput item={item} value={self.value} score={self.score} na={self.na}
             hint={item.source === 'LATE_COUNT' && lateCount != null ? lateCount : null}
@@ -575,23 +575,23 @@ function CriterionRow({
         )}
         <Points value={selfPoints} />
       </div>
-      <div className="border-l border-slate-100 px-2 py-1.5">
+      <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5">
         {selfEditable && self ? (
           <div className="space-y-1">
             <input
               value={self.note}
               onChange={(event) => onSelf({ note: event.target.value })}
               placeholder="Ghi chú hoặc link"
-              className="h-8 w-full rounded-none border border-slate-200 px-2 text-xs outline-none focus:border-indigo-500"
+              className="h-8 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 text-sm font-semibold outline-none focus:border-indigo-500"
             />
             <div className="flex items-center gap-1.5">
-              <label className={`inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold ${uploading ? 'text-slate-400' : 'text-indigo-600 hover:text-indigo-700'}`}>
+              <label className={`inline-flex cursor-pointer items-center gap-1 text-xs font-bold ${uploading ? 'text-slate-400' : 'text-indigo-600 hover:text-indigo-700 dark:text-indigo-400'}`}>
                 <Paperclip className="h-3 w-3" /> {uploading ? 'Đang tải…' : self.fileName ? 'Đổi tệp' : 'Đính tệp'}
                 <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.doc,.docx,.xls,.xlsx"
                   onChange={(event) => { const file = event.target.files?.[0]; if (file) onAttach(file); event.target.value = ''; }} />
               </label>
               {self.fileName && (
-                <span className="flex min-w-0 items-center gap-1 text-[11px] text-slate-500">
+                <span className="flex min-w-0 items-center gap-1 text-xs text-slate-500">
                   <span className="truncate">{self.fileName}</span>
                   <button type="button" onClick={() => onSelf({ filePath: null, fileName: null })} aria-label="Bỏ tệp" className="text-slate-400 hover:text-red-600">
                     <X className="h-3 w-3" />
@@ -601,21 +601,21 @@ function CriterionRow({
             </div>
           </div>
         ) : (
-          <div className="space-y-0.5 text-[11px] text-slate-600">
+          <div className="space-y-0.5 text-xs text-slate-700 dark:text-slate-300 font-medium">
             {item.self_note && <p className="whitespace-pre-line">{item.self_note}</p>}
             {item.evidence_url && (
-              <a href={item.evidence_url} target="_blank" rel="noreferrer" className="block truncate font-semibold text-indigo-600 hover:underline">{item.evidence_url}</a>
+              <a href={item.evidence_url} target="_blank" rel="noreferrer" className="block truncate font-bold text-indigo-600 dark:text-indigo-400 hover:underline">{item.evidence_url}</a>
             )}
             {item.evidence_path && (
-              <button type="button" onClick={() => onOpenFile(item.evidence_path!)} className="flex items-center gap-1 font-semibold text-indigo-600 hover:underline">
+              <button type="button" onClick={() => onOpenFile(item.evidence_path!)} className="flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
                 <Paperclip className="h-3 w-3" /> {item.evidence_name ?? 'Tệp đính kèm'}
               </button>
             )}
-            {!item.self_note && !item.evidence_url && !item.evidence_path && <span className="text-slate-300">—</span>}
+            {!item.self_note && !item.evidence_url && !item.evidence_path && <span className="text-slate-400 dark:text-slate-600 font-bold">—</span>}
           </div>
         )}
       </div>
-      <div className="border-l border-slate-100 px-2 py-1.5">
+      <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5">
         {mgrEditable && mgr ? (
           <div className="space-y-1">
             <ScoreInput item={item} value={mgr.value} score={mgr.score} na={mgr.na}
@@ -626,16 +626,16 @@ function CriterionRow({
                 value={mgr.reason}
                 onChange={(event) => onMgr({ reason: event.target.value })}
                 placeholder="Lý do điều chỉnh *"
-                className={`h-8 w-full rounded-none border px-2 text-xs outline-none focus:border-indigo-500 ${needReason && !mgr.reason.trim() ? 'border-red-300 bg-red-50/50' : 'border-slate-200'}`}
+                className={`h-8 w-full rounded-none border px-2 text-sm font-semibold outline-none focus:border-indigo-500 ${needReason && !mgr.reason.trim() ? 'border-red-400 bg-red-50/50 dark:bg-red-950/40' : 'border-slate-300 dark:border-slate-600'}`}
               />
             )}
           </div>
         ) : showMgr ? (
           <div>
             <ScoreText item={item} value={item.mgr_value} score={item.mgr_score} na={item.mgr_na} />
-            {item.mgr_reason && <p className="mt-0.5 text-[11px] text-amber-700">{item.mgr_reason}</p>}
+            {item.mgr_reason && <p className="mt-0.5 text-xs font-bold text-amber-700 dark:text-amber-400">{item.mgr_reason}</p>}
           </div>
-        ) : <span className="text-slate-300">—</span>}
+        ) : <span className="text-slate-400 dark:text-slate-600 font-bold">—</span>}
         {showMgr && <Points value={mgrPoints} />}
       </div>
     </div>
@@ -644,20 +644,20 @@ function CriterionRow({
 
 function Points({ value }: { value: number | null }) {
   if (value == null) return null;
-  return <p className="mt-0.5 text-right text-[10px] font-semibold tabular-nums text-slate-400">= {fmtNum(Math.round(value * 100) / 100)}%</p>;
+  return <p className="mt-0.5 text-right text-xs font-bold tabular-nums text-slate-500 dark:text-slate-400">= {fmtNum(Math.round(value * 100) / 100)}%</p>;
 }
 
 function ScoreText({ item, value, score, na }: { item: KpiSheetItem; value: number | null; score: number | null; na: boolean }) {
-  if (na) return <span className="text-[11px] font-semibold text-slate-400">Không phát sinh</span>;
-  if (score == null && value == null) return <span className="text-slate-300">—</span>;
+  if (na) return <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Không phát sinh</span>;
+  if (score == null && value == null) return <span className="text-slate-400 dark:text-slate-600 font-bold">—</span>;
   const level = item.levels.find((entry) => Number(entry.score) === Number(score));
   return (
     <div className="tabular-nums">
       {(item.method === 'RANGE' || item.method === 'PENALTY') && value != null && (
-        <span className="text-slate-500">{fmtNum(value)}{item.method === 'PENALTY' ? ' lần' : item.value_unit === '%' ? '%' : item.value_unit ? ` ${item.value_unit}` : ''} → </span>
+        <span className="text-slate-600 dark:text-slate-400 font-medium">{fmtNum(value)}{item.method === 'PENALTY' ? ' lần' : item.value_unit === '%' ? '%' : item.value_unit ? ` ${item.value_unit}` : ''} → </span>
       )}
-      <span className="font-semibold text-slate-800">{fmtNum(score)}</span>
-      {level && <span className="ml-1 text-[11px] text-slate-500">{level.label}</span>}
+      <span className="font-black text-sm text-slate-900 dark:text-slate-100">{fmtNum(score)}</span>
+      {level && <span className="ml-1 text-xs font-semibold text-slate-600 dark:text-slate-400">{level.label}</span>}
     </div>
   );
 }
@@ -676,8 +676,8 @@ function ScoreInput({ item, value, score, na, hint, onChange }: {
   return (
     <div className="space-y-1">
       {na ? null : auto ? (
-        <p className="text-[11px] text-slate-500">
-          {value ? <><span className="font-semibold text-slate-800">{fmtNum(parseNum(value))}{unit}</span> · tự điền</> : 'Chờ số liệu kinh doanh'}
+        <p className="text-xs text-slate-500">
+          {value ? <><span className="font-bold text-slate-900 dark:text-slate-100">{fmtNum(parseNum(value))}{unit}</span> · tự điền</> : 'Chờ số liệu kinh doanh'}
         </p>
       ) : numeric ? (
         <div className="flex items-center gap-1">
@@ -686,10 +686,10 @@ function ScoreInput({ item, value, score, na, hint, onChange }: {
             inputMode="decimal"
             onChange={(event) => onChange({ value: event.target.value.replace(/[^\d.,]/g, '') })}
             placeholder={item.method === 'PENALTY' ? 'Số lần' : 'Giá trị'}
-            className="h-8 w-full min-w-0 rounded-none border border-slate-200 px-2 text-xs tabular-nums outline-none focus:border-indigo-500"
+            className="h-8 w-full min-w-0 rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 text-sm font-semibold tabular-nums outline-none focus:border-indigo-500"
             aria-label={`${item.name} — giá trị`}
           />
-          {unit && <span className="shrink-0 text-[11px] text-slate-400">{unit}</span>}
+          {unit && <span className="shrink-0 text-xs font-semibold text-slate-500">{unit}</span>}
         </div>
       ) : (
         <Dropdown
@@ -704,12 +704,12 @@ function ScoreInput({ item, value, score, na, hint, onChange }: {
         />
       )}
       <div className="flex items-center justify-between gap-2">
-        <label className="inline-flex cursor-pointer items-center gap-1 text-[11px] text-slate-500">
+        <label className="inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400">
           <input type="checkbox" checked={na} onChange={(event) => onChange({ na: event.target.checked })} className="h-3.5 w-3.5 accent-indigo-600" />
           Không phát sinh
         </label>
         {hint != null && !na && (
-          <button type="button" onClick={() => onChange({ value: String(hint) })} className="text-[11px] font-semibold text-indigo-600 hover:underline"
+          <button type="button" onClick={() => onChange({ value: String(hint) })} className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
             title="Đi muộn + về sớm theo chấm công">
             Chấm công: {hint}
           </button>
