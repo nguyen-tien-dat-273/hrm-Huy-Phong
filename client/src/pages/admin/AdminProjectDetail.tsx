@@ -24,6 +24,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { ProjectDocuments } from '@/components/ProjectDocuments';
 import { ProjectEventsPanel } from '@/components/ProjectEventsPanel';
 import { ProjectTaskWorkflowPanel } from '@/components/ProjectTaskWorkflowPanel';
+import { TaskCompletionReviewModal } from '@/components/TaskCompletionReviewModal';
 import { WorklogApprovalQueue } from '@/pages/admin/AdminWorklog';
 import { GanttChart } from '@/components/GanttChart';
 import { estimateRatio, fetchTaskTotals, formatHours as formatWorkHours } from '@/lib/worklog';
@@ -53,6 +54,7 @@ export function AdminProjectDetail() {
   const [taskHours, setTaskHours] = useState<Map<string, number>>(new Map());
   const [tab, setTab] = useState<Tab>('overview');
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [reviewTask, setReviewTask] = useState<Task | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
@@ -250,7 +252,7 @@ export function AdminProjectDetail() {
       return;
     }
     if (status === 'in_review' || status === 'done') {
-      toast('Nhân viên gửi báo cáo nghiệm thu từ Kanban; người kiểm duyệt xử lý tại tab Tác vụ.', 'warning');
+      toast('Nhân viên gửi báo cáo nghiệm thu từ Kanban; trưởng dự án duyệt ở cột Đang duyệt.', 'warning');
       return;
     }
     const { error } = await supabase.from('tasks').update({ status }).eq('id', taskId);
@@ -304,7 +306,7 @@ export function AdminProjectDetail() {
       return;
     }
     if (newStatus === 'in_review' || newStatus === 'done') {
-      toast('Nhân viên gửi báo cáo nghiệm thu từ Kanban; người kiểm duyệt xử lý tại tab Tác vụ.', 'warning');
+      toast('Nhân viên gửi báo cáo nghiệm thu từ Kanban; trưởng dự án duyệt ở cột Đang duyệt.', 'warning');
       return;
     }
     if (!((task.status === 'todo' && newStatus === 'in_progress') || (task.status === 'in_progress' && newStatus === 'todo'))) {
@@ -412,6 +414,8 @@ export function AdminProjectDetail() {
   // chỉ quản lý dự án mình làm lead — và không đụng tới dòng 'lead' (RLS chặn
   // cứng, đây chỉ là ẩn nút cho khớp). Xem migration 20260811230000.
   const iAmProjectLead = !!profile && members.some((m) => m.user_id === profile.id && (m.role_code || m.role) === 'lead');
+  /** F04.05: chỉ trưởng dự án nghiệm thu (khớp can_review_project_task_request); Admin/CEO không duyệt. */
+  const isProjectLead = !!profile && (project.lead_id === profile.id || iAmProjectLead);
   const canManageMembers =
     isFullAdmin(profile) ||
     (hasPermission(profile, 'projects') && (!isTeamlead(profile) || iAmProjectLead));
@@ -545,7 +549,7 @@ export function AdminProjectDetail() {
 	        <div className="space-y-4">
 	          <ProjectTaskWorkflowPanel
 	            projectId={id!}
-	            canReview={!!project && (project.lead_id === profile?.id || isFullAdmin(profile))}
+	            canReview={isProjectLead}
 	          />
 	          {project && (project.lead_id === profile?.id || isFullAdmin(profile)) && (
 	            <WorklogApprovalQueue projectId={project.id} />
@@ -683,6 +687,9 @@ export function AdminProjectDetail() {
                             assignee={allProfiles.find((p) => p.id === task.assignee_id)}
                             onEdit={task.status !== 'done' ? () => openEditTask(task) : undefined}
                             onDelete={task.status !== 'done' ? () => handleDeleteTask(task) : undefined}
+                            review={task.status === 'in_review'
+                              ? { mine: isProjectLead && task.assignee_id !== profile?.id, open: () => setReviewTask(task) }
+                              : undefined}
                           />
                         ))}
                       </div>
@@ -700,6 +707,12 @@ export function AdminProjectDetail() {
               ) : null}
             </DragOverlay>
           </DndContext>
+          <TaskCompletionReviewModal
+            task={reviewTask}
+            requesterName={allProfiles.find((p) => p.id === reviewTask?.assignee_id)?.name}
+            onClose={() => setReviewTask(null)}
+            onReviewed={() => { if (id) loadData(id, true); }}
+          />
           </div>
         )}
 
@@ -887,7 +900,15 @@ export function AdminProjectDetail() {
   );
 }
 
-function SortableTaskItem({ task, assignee, canMove, onEdit, onDelete }: { task: Task; assignee?: Profile; canMove: boolean; onEdit?: () => void; onDelete?: () => void }) {
+function SortableTaskItem({ task, assignee, canMove, onEdit, onDelete, review }: {
+  task: Task;
+  assignee?: Profile;
+  canMove: boolean;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  /** Thẻ ở cột Đang duyệt: `mine` = người đang xem là trưởng dự án được duyệt thẻ này. */
+  review?: { mine: boolean; open: () => void };
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: !canMove });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const priority = PRIORITY_CONFIG[task.priority];
@@ -917,6 +938,19 @@ function SortableTaskItem({ task, assignee, canMove, onEdit, onDelete }: { task:
               <Avatar name={assignee.name} url={assignee.avatar_url} size="xs" />
               <span className="text-[10px] text-slate-500 truncate">{assignee.name}</span>
             </div>
+          )}
+          {review && (
+            <button
+              type="button"
+              onClick={review.open}
+              className={`mt-2 w-full rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors ${
+                review.mine
+                  ? 'bg-amber-500 text-white hover:bg-amber-600'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {review.mine ? 'Chờ bạn duyệt · Nghiệm thu' : 'Chờ trưởng dự án duyệt · Xem báo cáo'}
+            </button>
           )}
         </div>
       </div>

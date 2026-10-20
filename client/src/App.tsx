@@ -38,7 +38,6 @@ const AdminLeave = lazyRoute('AdminLeave', () => import('@/pages/admin/AdminLeav
 const AdminSettings = lazyRoute('AdminSettings', () => import('@/pages/admin/AdminSettings').then((m) => ({ default: m.AdminSettings })));
 const AdminAttendanceSettings = lazyRoute('AdminAttendanceSettings', () => import('@/pages/admin/AdminAttendanceSettings').then((m) => ({ default: m.AdminAttendanceSettings })));
 const AdminAudit = lazyRoute('AdminAudit', () => import('@/pages/admin/AdminAudit').then((m) => ({ default: m.AdminAudit })));
-const PublicApplyPage = lazyRoute('PublicApplyPage', () => import('@/pages/public/PublicApplyPage').then((m) => ({ default: m.PublicApplyPage })));
 const AdminProcessLibrary = lazyRoute('AdminProcessLibrary', () => import('@/pages/admin/AdminProcessLibrary').then((m) => ({ default: m.AdminProcessLibrary })));
 const AdminTraining = lazyRoute('AdminTraining', () => import('@/pages/admin/AdminTraining').then((m) => ({ default: m.AdminTraining })));
 const AdminRecruitment = lazyRoute('AdminRecruitment', () => import('@/pages/admin/AdminRecruitment').then((m) => ({ default: m.AdminRecruitment })));
@@ -171,7 +170,6 @@ function AppRoutes() {
     <Routes>
       {/* Công khai, không cần đăng nhập — RC2.5. Đặt trước mọi route có
           bảo vệ để không bị chuyển hướng về màn đăng nhập. */}
-      <Route path="/tuyen-dung/:code" element={<PublicApplyPage />} />
 
       <Route path="/" element={<AuthRedirect />} />
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -214,8 +212,7 @@ function AppRoutes() {
       <Route path="/admin/process-library" element={admin('training', <AdminProcessLibrary />)} />
       <Route path="/admin/recruitment" element={adminAny(['users', 'projects'], <AdminRecruitment />)} />
       <Route path="/admin/workforce" element={admin('users', <AdminWorkforceCenter section="workers" />, { functionCode: 'admin.workforce' })} />
-      <Route path="/admin/candidate-documents" element={admin('users', <AdminDocumentRepository initialSpace="candidates" />, { functionCode: 'admin.worker_documents' })} />
-      <Route path="/admin/worker-documents" element={admin('users', <AdminDocumentRepository initialSpace="employees" allowEmployeeSpace />, { functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true })} />
+      <Route path="/admin/worker-documents" element={admin('users', <AdminDocumentRepository />, { functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/employee-lifecycle/offboarding" element={admin('users', <AdminNexusCenter section="offboarding" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/performance" element={admin('reports', <AdminNexusCenter section="performance" />, { functionCode: 'admin.performance_manage' })} />

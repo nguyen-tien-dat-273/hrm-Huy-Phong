@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Clock3, FileCheck2,
-  ExternalLink, Handshake, Plus, Search, Trash2, UserRoundCheck, UsersRound, XCircle,
+  AlertTriangle, ArrowRight, CheckCircle2, Clock3, FileText, FolderKanban, Plus, Search, Trash2, UserPlus, UserRoundCheck, UsersRound, XCircle,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -15,11 +15,15 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { fetchApproverIds, notifyUser, notifyUsers } from '@/lib/assignments';
 import { describeDbError } from '@/lib/dbError';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, isFullAdmin } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 
-type RequestStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'OPEN' | 'CLOSED' | 'CANCELLED';
-type CandidateStage = 'APPLIED' | 'HR_SCREENING' | 'MANAGER_SCREENING' | 'INTERVIEW_1' | 'INTERVIEW_2' | 'TEST' | 'OFFER' | 'HIRED' | 'REJECTED' | 'WITHDRAWN';
+// Tuyển dụng nhân sự ngoài công ty (quyết định nhóm 20/10/2026, lệch SRS F01.03):
+// Trưởng phòng lập đề xuất -> HR kiểm tra -> BGĐ (Admin/CEO) phê duyệt ->
+// Đang tuyển: Admin/CEO thêm tay nhân sự đã tuyển vào dự án (add_hire_to_project)
+// -> đủ số lượng thì đề xuất tự Hoàn tất. Không còn quản lý ứng viên.
+
+type RequestStatus = 'DRAFT' | 'SUBMITTED' | 'PENDING_BOARD' | 'RETURNED' | 'APPROVED' | 'REJECTED' | 'OPEN' | 'CLOSED' | 'CANCELLED';
 
 interface RecruitmentRequest {
   id: string;
@@ -40,44 +44,23 @@ interface RecruitmentRequest {
   review_due_at: string | null;
   reviewed_at: string | null;
   review_note: string | null;
-  external_form_url?: string | null;
+  attachment_path?: string | null;
+  attachment_name?: string | null;
+  hr_note?: string | null;
   created_at: string;
 }
 
-interface Candidate {
-  id: string;
-  requisition_id: string;
-  full_name: string;
-  email: string | null;
-  phone: string | null;
-  cv_url?: string | null;
-  source: string | null;
-  stage: CandidateStage;
-  test_due_at: string | null;
-  rejection_reason: string | null;
-  consent_at: string | null;
-  created_at: string;
-}
-
-interface Interview {
-  id: string; candidate_id: string; round: number; scheduled_at: string;
-  interviewer_id: string | null; mode: string; location_or_link: string | null;
-  status: string; score: number | null; recommendation: string | null; feedback: string | null;
-}
-
-interface Offer {
-  id: string; candidate_id: string; proposed_salary: number; start_date: string;
-  status: 'DRAFT' | 'SENT' | 'ACCEPTED' | 'DECLINED' | 'WITHDRAWN'; note: string | null;
-}
-
-interface Handoff { id: string; candidate_id: string; planned_start_date: string; status: string; }
+/** Nhân sự đã tuyển của một đề xuất, đã được thêm vào dự án. */
+interface Hire { id: string; requisition_id: string; project_id: string; user_id: string; role_code: string; added_at: string }
 
 interface DirectoryItem { id: string; name: string; }
 interface OrgItem { id: string; name: string; }
 
 const requestStatus: Record<RequestStatus, { label: string; color: string }> = {
   DRAFT: { label: 'Bản nháp', color: 'bg-slate-100 text-slate-700' },
-  SUBMITTED: { label: 'Chờ BGĐ phê duyệt', color: 'bg-amber-100 text-amber-700' },
+  SUBMITTED: { label: 'Chờ HR kiểm tra', color: 'bg-amber-100 text-amber-700' },
+  PENDING_BOARD: { label: 'Chờ BGĐ phê duyệt', color: 'bg-orange-100 text-orange-700' },
+  RETURNED: { label: 'Trả về điều chỉnh', color: 'bg-rose-100 text-rose-700' },
   APPROVED: { label: 'BGĐ đã phê duyệt', color: 'bg-blue-100 text-blue-700' },
   REJECTED: { label: 'Từ chối', color: 'bg-red-100 text-red-700' },
   OPEN: { label: 'Đang tuyển', color: 'bg-emerald-100 text-emerald-700' },
@@ -85,20 +68,32 @@ const requestStatus: Record<RequestStatus, { label: string; color: string }> = {
   CANCELLED: { label: 'Đã hủy', color: 'bg-slate-100 text-slate-500' },
 };
 
-const stages: CandidateStage[] = ['APPLIED', 'HR_SCREENING', 'MANAGER_SCREENING', 'INTERVIEW_1', 'INTERVIEW_2', 'TEST', 'OFFER', 'HIRED', 'REJECTED', 'WITHDRAWN'];
-const stageLabel: Record<CandidateStage, string> = {
-  APPLIED: 'Đã tiếp nhận hồ sơ', HR_SCREENING: 'HR sàng lọc', MANAGER_SCREENING: 'Bộ phận chuyên môn sàng lọc',
-  INTERVIEW_1: 'Phỏng vấn vòng 1', INTERVIEW_2: 'Phỏng vấn vòng 2', TEST: 'Kiểm tra năng lực (24 giờ)',
-  OFFER: 'Thông báo kết quả / offer', HIRED: 'Trúng tuyển', REJECTED: 'Không trúng tuyển', WITHDRAWN: 'Ứng viên rút',
+/** Vai trò dự án khi thêm nhân sự; trưởng dự án gán ở thông tin dự án. */
+const HIRE_ROLES: Array<{ code: string; label: string }> = [
+  { code: 'member', label: 'Thành viên' },
+  { code: 'coordinator', label: 'Điều phối dự án' },
+  { code: 'reviewer', label: 'Người kiểm duyệt' },
+  { code: 'viewer', label: 'Người xem' },
+];
+const roleLabel = (code: string) => HIRE_ROLES.find((role) => role.code === code)?.label || code;
+
+/** BR-007 / UC-M01-007: tệp đề xuất theo mẫu Huy Phong. */
+const REQUISITION_FILE_MAX = 20 * 1024 * 1024;
+const REQUISITION_FILE_EXT = ['pdf', 'doc', 'docx'];
+const checkRequisitionFile = (file: File | null): string | null => {
+  if (!file) return 'Cần đính kèm tệp đề xuất (.pdf, .doc, .docx).';
+  if (!REQUISITION_FILE_EXT.includes(file.name.split('.').pop()?.toLowerCase() || '')) return 'Tệp đề xuất chỉ nhận .pdf, .doc, .docx.';
+  if (file.size > REQUISITION_FILE_MAX) return 'Tệp đề xuất tối đa 20 MB.';
+  return null;
 };
 
 const blankRequest = {
   title: '', unit_id: '', position_id: '', headcount: '1', employment_type: 'FULL_TIME',
   reason: '', salary_min: '', salary_max: '', desired_start_date: '',
+  /** Người phụ trách tuyển; rỗng = chính người lập. */
+  hiring_manager_id: '',
 };
-const blankInterview = { round: '1', scheduled_at: '', interviewer_id: '', mode: 'OFFLINE', location_or_link: '', score: '', recommendation: '', feedback: '' };
-const blankOffer = { proposed_salary: '', start_date: '', status: 'DRAFT' as Offer['status'], note: '' };
-const blankHandoff = { planned_start_date: '', note: '' };
+const blankHire = { project_id: '', user_id: '', role_code: 'member' };
 
 function money(value: number | null) {
   return value == null ? '—' : new Intl.NumberFormat('vi-VN').format(value) + ' ₫';
@@ -116,67 +111,62 @@ export function AdminRecruitment() {
   const { toast } = useToast();
   const confirm = useConfirm();
   const canReview = hasPermission(profile, 'users');
-  const [tab, setTab] = useState<'requests' | 'candidates'>('requests');
+  /** BGĐ = Admin/CEO: phê duyệt và thêm nhân sự vào dự án. */
+  const isBoard = isFullAdmin(profile);
   const [requests, setRequests] = useState<RecruitmentRequest[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [interviews, setInterviews] = useState<Interview[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [handoffs, setHandoffs] = useState<Handoff[]>([]);
+  const [hires, setHires] = useState<Hire[]>([]);
+  const [projects, setProjects] = useState<OrgItem[]>([]);
   const [people, setPeople] = useState<DirectoryItem[]>([]);
   const [units, setUnits] = useState<OrgItem[]>([]);
   const [positions, setPositions] = useState<OrgItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [requestOpen, setRequestOpen] = useState(false);
-  const [externalFormOpen, setExternalFormOpen] = useState(false);
-  const [externalFormRequestId, setExternalFormRequestId] = useState('');
-  const [externalFormUrl, setExternalFormUrl] = useState('');
   const [requestForm, setRequestForm] = useState(blankRequest);
   const [reviewing, setReviewing] = useState<RecruitmentRequest | null>(null);
+  /** Bước duyệt đang mở: HR kiểm tra hay BGĐ phê duyệt. */
+  const [reviewMode, setReviewMode] = useState<'hr' | 'board'>('hr');
+  const [requestFile, setRequestFile] = useState<File | null>(null);
+  const [resubmitting, setResubmitting] = useState<RecruitmentRequest | null>(null);
+  const [resubmitForm, setResubmitForm] = useState({ title: '', headcount: '1', reason: '', salary_min: '', salary_max: '', desired_start_date: '' });
+  const [resubmitFile, setResubmitFile] = useState<File | null>(null);
   const [reviewNote, setReviewNote] = useState('');
-  const [rejecting, setRejecting] = useState<Candidate | null>(null);
-  const [rejectionReason, setRejectionReason] = useState('');
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
-  const [interviewing, setInterviewing] = useState<Candidate | null>(null);
-  const [interviewForm, setInterviewForm] = useState(blankInterview);
-  const [offering, setOffering] = useState<Candidate | null>(null);
-  const [offerForm, setOfferForm] = useState(blankOffer);
-  const [handingOff, setHandingOff] = useState<Candidate | null>(null);
-  const [handoffForm, setHandoffForm] = useState(blankHandoff);
+  const [changingOwner, setChangingOwner] = useState<RecruitmentRequest | null>(null);
+  const [ownerDraft, setOwnerDraft] = useState('');
+  const [requestFilter, setRequestFilter] = useState<'ALL' | 'SUBMITTED' | 'PENDING_BOARD' | 'RETURNED' | 'APPROVED' | 'OPEN' | 'CLOSED' | 'REJECTED'>('ALL');
+  const [hiring, setHiring] = useState<RecruitmentRequest | null>(null);
+  const [hireForm, setHireForm] = useState(blankHire);
 
   const load = async () => {
     setLoading(true);
-    const [requestRes, candidateRes, peopleRes, unitRes, positionRes, interviewRes, offerRes, handoffRes] = await Promise.all([
+    const [requestRes, hireRes, projectRes, peopleRes, unitRes, positionRes] = await Promise.all([
       supabase.from('recruitment_requisitions').select('*').order('created_at', { ascending: false }),
-      supabase.from('recruitment_candidates').select('*').order('created_at', { ascending: false }),
-      supabase.from('profiles_directory').select('id,name').eq('is_active', true),
+      supabase.from('recruitment_requisition_hires').select('id,requisition_id,project_id,user_id,role_code,added_at').order('added_at'),
+      supabase.from('projects').select('id,name').order('name'),
+      supabase.from('profiles_directory').select('id,name').eq('is_active', true).order('name'),
       supabase.from('organization_units').select('id,name').eq('is_active', true).order('name'),
       supabase.from('job_positions').select('id,title').eq('is_active', true).order('title'),
-      supabase.from('recruitment_interviews').select('*').order('scheduled_at', { ascending: false }),
-      supabase.from('recruitment_offers').select('*').order('created_at', { ascending: false }),
-      supabase.from('recruitment_onboarding_handoffs').select('*').order('handed_off_at', { ascending: false }),
     ]);
-    const firstError = requestRes.error || candidateRes.error || unitRes.error || positionRes.error || interviewRes.error || offerRes.error || handoffRes.error;
+    const firstError = requestRes.error || hireRes.error || unitRes.error || positionRes.error;
     if (firstError) {
       setLoadError(describeDbError(firstError));
     } else {
       setLoadError('');
       setRequests((requestRes.data || []) as RecruitmentRequest[]);
-      setCandidates((candidateRes.data || []) as Candidate[]);
+      setHires((hireRes.data || []) as Hire[]);
+      setProjects((projectRes.data || []) as OrgItem[]);
       setPeople((peopleRes.data || []) as DirectoryItem[]);
       setUnits((unitRes.data || []) as OrgItem[]);
       setPositions((positionRes.data || []).map((item) => ({ id: item.id, name: item.title })) as OrgItem[]);
-      setInterviews((interviewRes.data || []) as Interview[]);
-      setOffers((offerRes.data || []) as Offer[]);
-      setHandoffs((handoffRes.data || []) as Handoff[]);
     }
     setLoading(false);
   };
 
   useEffect(() => { void load(); }, []);
   useRealtimeSync(
-    [{ table: 'recruitment_requisitions' }, { table: 'recruitment_candidates' }, { table: 'recruitment_interviews' }, { table: 'recruitment_offers' }, { table: 'recruitment_onboarding_handoffs' }],
+    [{ table: 'recruitment_requisitions' }, { table: 'recruitment_requisition_hires' }],
     load,
     { channelKey: 'internal-recruitment' },
   );
@@ -184,53 +174,144 @@ export function AdminRecruitment() {
   const names = useMemo(() => new Map(people.map((item) => [item.id, item.name])), [people]);
   const unitNames = useMemo(() => new Map(units.map((item) => [item.id, item.name])), [units]);
   const positionNames = useMemo(() => new Map(positions.map((item) => [item.id, item.name])), [positions]);
-  const candidateCounts = useMemo(() => {
-    const result = new Map<string, number>();
-    candidates.forEach((item) => result.set(item.requisition_id, (result.get(item.requisition_id) || 0) + 1));
+  const projectNames = useMemo(() => new Map(projects.map((item) => [item.id, item.name])), [projects]);
+  const hiresByRequest = useMemo(() => {
+    const result = new Map<string, Hire[]>();
+    hires.forEach((item) => result.set(item.requisition_id, [...(result.get(item.requisition_id) || []), item]));
     return result;
-  }, [candidates]);
+  }, [hires]);
   const filteredRequests = requests.filter((item) => `${item.code} ${item.title}`.toLowerCase().includes(query.toLowerCase()));
-  const filteredCandidates = candidates.filter((item) => `${item.full_name} ${item.email || ''} ${item.phone || ''}`.toLowerCase().includes(query.toLowerCase()));
-  // Chỉ tiếp nhận hồ sơ sau khi HR đã chuyển đề xuất được duyệt sang bước triển khai tuyển dụng.
-  const activeRequests = requests.filter((item) => item.status === 'OPEN');
+  const requestFilterMatch = (item: RecruitmentRequest, key: typeof requestFilter) =>
+    key === 'ALL' || (key === 'REJECTED' ? ['REJECTED', 'CANCELLED'].includes(item.status) : item.status === key);
+  const requestFilters = ([
+    ['ALL', 'Tất cả'], ['SUBMITTED', 'Chờ HR'], ['PENDING_BOARD', 'Chờ BGĐ'], ['RETURNED', 'Trả về'], ['APPROVED', 'Đã duyệt'], ['OPEN', 'Đang tuyển'], ['CLOSED', 'Hoàn tất'], ['REJECTED', 'Từ chối / hủy'],
+  ] as const).map(([key, label]) => ({ key, label, count: requests.filter((item) => requestFilterMatch(item, key)).length }));
+  const visibleRequests = filteredRequests.filter((item) => requestFilterMatch(item, requestFilter));
+  const openHeadcount = requests.filter((item) => item.status === 'OPEN')
+    .reduce((sum, item) => sum + Math.max(0, item.headcount - (hiresByRequest.get(item.id) || []).length), 0);
 
   const createRequest = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!profile) return;
+    const fileError = checkRequisitionFile(requestFile);
+    if (fileError || !requestFile) { toast(fileError || 'Cần đính kèm tệp đề xuất.', 'warning'); return; }
     setSaving(true);
+    const attachmentPath = await uploadRequisitionFile(requestFile);
+    if (!attachmentPath) { setSaving(false); return; }
     const { error } = await supabase.from('recruitment_requisitions').insert({
+      attachment_path: attachmentPath, attachment_name: requestFile.name,
       title: requestForm.title.trim(), unit_id: requestForm.unit_id || null,
-      position_id: requestForm.position_id || null, requested_by: profile.id, hiring_manager_id: profile.id,
+      position_id: requestForm.position_id || null, requested_by: profile.id, hiring_manager_id: requestForm.hiring_manager_id || profile.id,
       headcount: Number(requestForm.headcount), employment_type: requestForm.employment_type,
       reason: requestForm.reason.trim(), salary_min: requestForm.salary_min ? Number(requestForm.salary_min) : null,
       salary_max: requestForm.salary_max ? Number(requestForm.salary_max) : null,
       desired_start_date: requestForm.desired_start_date || null, status: 'SUBMITTED',
       submitted_at: new Date().toISOString(), review_due_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
     });
-    if (error) toast('Không tạo được đề xuất: ' + describeDbError(error), 'error');
-    else {
+    if (error) {
+      toast('Không tạo được đề xuất: ' + describeDbError(error), 'error');
+      await supabase.storage.from('requisition-files').remove([attachmentPath]);
+    } else {
       const approvers = await fetchApproverIds('users');
       await notifyUsers(approvers.filter((id) => id !== profile.id), 'Đề xuất tuyển dụng mới', `${profile.name} đề xuất tuyển ${requestForm.headcount} vị trí ${requestForm.title}. HR cần trình Ban Giám đốc trong 24 giờ.`, 'recruitment_request');
+      if (requestForm.hiring_manager_id && requestForm.hiring_manager_id !== profile.id) {
+        await notifyUser(requestForm.hiring_manager_id, 'Bạn phụ trách đề xuất tuyển dụng', `${requestForm.title.trim()} · do ${profile.name} lập`, 'recruitment_owner_assigned');
+      }
       toast('Đã gửi đề xuất tuyển dụng. HR sẽ trình Ban Giám đốc trong 24 giờ.', 'success');
-      setRequestOpen(false); setRequestForm(blankRequest); await load();
+      setRequestOpen(false); setRequestForm(blankRequest); setRequestFile(null); await load();
     }
     setSaving(false);
   };
 
-  const reviewRequest = async (decision: 'APPROVED' | 'REJECTED') => {
-    if (!reviewing) return;
-    if (decision === 'REJECTED' && !reviewNote.trim()) { toast('Cần nhập lý do từ chối.', 'warning'); return; }
+  const saveOwner = async () => {
+    if (!changingOwner || !ownerDraft) return;
     setSaving(true);
-    const { error } = await supabase.rpc('review_recruitment_requisition', {
-      target_id: reviewing.id, decision, note: reviewNote.trim() || null,
-    });
-    if (error) toast('Không thể duyệt đề xuất: ' + describeDbError(error), 'error');
-    else {
-      await notifyUser(reviewing.requested_by, decision === 'APPROVED' ? 'Đề xuất tuyển dụng đã được Ban Giám đốc phê duyệt' : 'Đề xuất tuyển dụng cần điều chỉnh', `${reviewing.code} · ${reviewing.title}${reviewNote ? ` · ${reviewNote}` : ''}`, 'recruitment_review');
-      toast(decision === 'APPROVED' ? 'Đã ghi nhận Ban Giám đốc phê duyệt đề xuất.' : 'Đã ghi nhận từ chối và gửi lý do.', 'success');
-      setReviewing(null); setReviewNote(''); await load();
-    }
+    const { error } = await supabase.from('recruitment_requisitions').update({ hiring_manager_id: ownerDraft }).eq('id', changingOwner.id);
     setSaving(false);
+    if (error) { toast('Không đổi được người phụ trách: ' + describeDbError(error), 'error'); return; }
+    if (ownerDraft !== profile?.id) {
+      await notifyUser(ownerDraft, 'Bạn phụ trách đề xuất tuyển dụng', `${changingOwner.code} · ${changingOwner.title}`, 'recruitment_owner_assigned');
+    }
+    toast('Đã cập nhật người phụ trách.', 'success');
+    setChangingOwner(null);
+    await load();
+  };
+
+  const uploadRequisitionFile = async (file: File): Promise<string | null> => {
+    if (!profile) return null;
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf';
+    const path = `${profile.id}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from('requisition-files').upload(path, file, { contentType: file.type || 'application/octet-stream', upsert: false });
+    if (error) { toast('Không tải được tệp đề xuất: ' + describeDbError(error), 'error'); return null; }
+    return path;
+  };
+
+  const openRequisitionFile = async (item: RecruitmentRequest) => {
+    if (!item.attachment_path) return;
+    const { data, error } = await supabase.storage.from('requisition-files').createSignedUrl(item.attachment_path, 300);
+    if (error || !data?.signedUrl) { toast('Không mở được tệp đề xuất: ' + (error ? describeDbError(error) : 'thiếu đường dẫn'), 'error'); return; }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const openReview = (item: RecruitmentRequest, mode: 'hr' | 'board') => { setReviewing(item); setReviewMode(mode); setReviewNote(''); };
+
+  const boardIds = async () => ((await supabase.from('profiles_directory').select('id').in('role', ['admin', 'ceo']).eq('is_active', true)).data || [])
+    .map((row) => row.id as string).filter((id) => id !== profile?.id);
+
+  /** BR-005: HR trình BGĐ / trả về; BGĐ phê duyệt / không phê duyệt / trả về. */
+  const reviewRequest = async (decision: 'FORWARD' | 'RETURN' | 'APPROVED' | 'REJECTED' | 'RETURNED') => {
+    if (!reviewing) return;
+    const note = reviewNote.trim();
+    if (decision !== 'FORWARD' && decision !== 'APPROVED' && note.length < 5) { toast('Ghi rõ lý do (ít nhất 5 ký tự).', 'warning'); return; }
+    setSaving(true);
+    const { error } = reviewMode === 'hr'
+      ? await supabase.rpc('hr_review_requisition', { target_id: reviewing.id, decision, note: note || null })
+      : await supabase.rpc('board_review_requisition', { target_id: reviewing.id, decision, note: note || null });
+    setSaving(false);
+    if (error) { toast('Không xử lý được đề xuất: ' + describeDbError(error), 'error'); return; }
+    const label = `${reviewing.code} · ${reviewing.title}${note ? ` · ${note}` : ''}`;
+    const owners = [reviewing.requested_by, reviewing.hiring_manager_id];
+    if (decision === 'FORWARD') {
+      await notifyUsers(await boardIds(), 'Đề xuất tuyển dụng chờ BGĐ phê duyệt', label, 'recruitment_board_review');
+      toast('Đã trình Ban Giám đốc.', 'success');
+    } else {
+      const title = decision === 'APPROVED' ? 'Đề xuất tuyển dụng đã được BGĐ phê duyệt'
+        : decision === 'REJECTED' ? 'Đề xuất tuyển dụng không được phê duyệt' : 'Đề xuất tuyển dụng bị trả về để điều chỉnh';
+      await notifyUsers(owners.filter((id) => id !== profile?.id), title, label, 'recruitment_review');
+      toast(decision === 'APPROVED' ? 'Đã phê duyệt đề xuất.' : decision === 'REJECTED' ? 'Đã ghi nhận không phê duyệt.' : 'Đã trả về cho người lập điều chỉnh.', 'success');
+    }
+    setReviewing(null); setReviewNote(''); await load();
+  };
+
+  const openResubmit = (item: RecruitmentRequest) => {
+    setResubmitting(item);
+    setResubmitFile(null);
+    setResubmitForm({
+      title: item.title, headcount: String(item.headcount), reason: item.reason,
+      salary_min: item.salary_min == null ? '' : String(item.salary_min), salary_max: item.salary_max == null ? '' : String(item.salary_max),
+      desired_start_date: item.desired_start_date || '',
+    });
+  };
+
+  const saveResubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!resubmitting) return;
+    if (resubmitFile) { const fileError = checkRequisitionFile(resubmitFile); if (fileError) { toast(fileError, 'warning'); return; } }
+    if (!resubmitFile && !resubmitting.attachment_path) { toast('Cần đính kèm tệp đề xuất.', 'warning'); return; }
+    setSaving(true);
+    const newPath = resubmitFile ? await uploadRequisitionFile(resubmitFile) : null;
+    if (resubmitFile && !newPath) { setSaving(false); return; }
+    const { error } = await supabase.rpc('resubmit_requisition', {
+      target_id: resubmitting.id, p_title: resubmitForm.title.trim(), p_headcount: Number(resubmitForm.headcount), p_reason: resubmitForm.reason.trim(),
+      p_salary_min: resubmitForm.salary_min ? Number(resubmitForm.salary_min) : null, p_salary_max: resubmitForm.salary_max ? Number(resubmitForm.salary_max) : null,
+      p_desired_start_date: resubmitForm.desired_start_date || null, p_attachment_path: newPath, p_attachment_name: resubmitFile?.name ?? null,
+    });
+    setSaving(false);
+    if (error) { toast('Không gửi lại được: ' + describeDbError(error), 'error'); if (newPath) await supabase.storage.from('requisition-files').remove([newPath]); return; }
+    const hrIds = await fetchApproverIds('users');
+    await notifyUsers(hrIds.filter((id) => id !== profile?.id), 'Đề xuất tuyển dụng được gửi lại', `${resubmitting.code} · ${resubmitForm.title.trim()}`, 'recruitment_request');
+    toast('Đã gửi lại đề xuất. HR kiểm tra trong 24 giờ.', 'success');
+    setResubmitting(null); await load();
   };
 
   const setRequestStatus = async (item: RecruitmentRequest, status: RequestStatus) => {
@@ -240,11 +321,11 @@ export function AdminRecruitment() {
   };
 
   const removeRequest = async (item: RecruitmentRequest) => {
-    const count = candidateCounts.get(item.id) || 0;
+    const count = (hiresByRequest.get(item.id) || []).length;
     const canDelete = count === 0 && ['DRAFT', 'REJECTED', 'CANCELLED'].includes(item.status);
     const accepted = await confirm({
       title: canDelete ? `Xóa đề xuất ${item.code}?` : `Hủy đề xuất ${item.code}?`,
-      message: canDelete ? 'Đề xuất chưa phát sinh ứng viên và sẽ bị xóa.' : 'Đề xuất đã phát sinh quy trình nên chỉ được hủy để bảo toàn lịch sử.',
+      message: canDelete ? 'Đề xuất chưa có nhân sự được tuyển và sẽ bị xóa.' : 'Đề xuất đã phát sinh quy trình nên chỉ được hủy để bảo toàn lịch sử.',
       confirmLabel: canDelete ? 'Xóa đề xuất' : 'Hủy đề xuất', danger: true,
     });
     if (!accepted) return;
@@ -255,224 +336,195 @@ export function AdminRecruitment() {
     else { toast(canDelete ? 'Đã xóa đề xuất.' : 'Đã hủy đề xuất và giữ lịch sử.', 'success'); await load(); }
   };
 
-  const saveExternalForm = async (event: React.FormEvent) => {
+  const openHire = (item: RecruitmentRequest) => { setHiring(item); setHireForm(blankHire); };
+
+  const saveHire = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!externalFormRequestId) return;
-    const trimmedUrl = externalFormUrl.trim();
-    if (trimmedUrl) {
-      try { if (new URL(trimmedUrl).protocol !== 'https:') throw new Error(); }
-      catch { toast('URL form phải là địa chỉ HTTPS hợp lệ.', 'warning'); return; }
-    }
+    if (!hiring || !hireForm.project_id || !hireForm.user_id) { toast('Chọn dự án và nhân sự.', 'warning'); return; }
     setSaving(true);
-    const { error } = await supabase.from('recruitment_requisitions')
-      .update({ external_form_url: trimmedUrl || null }).eq('id', externalFormRequestId);
-    if (error) toast('Không lưu được cấu hình form: ' + describeDbError(error), 'error');
-    else {
-      toast(trimmedUrl ? 'Đã lưu liên kết form ngoài.' : 'Đã gỡ liên kết form ngoài.', 'success');
-      setExternalFormOpen(false);
-      await load();
-    }
+    const { error } = await supabase.rpc('add_hire_to_project', {
+      target_requisition: hiring.id, target_project: hireForm.project_id, target_user: hireForm.user_id, target_role: hireForm.role_code,
+    });
     setSaving(false);
+    if (error) { toast('Không thêm được nhân sự: ' + describeDbError(error), 'error'); return; }
+    const filled = (hiresByRequest.get(hiring.id) || []).length + 1;
+    toast(filled >= hiring.headcount ? 'Đã thêm nhân sự. Đề xuất đủ số lượng và chuyển Hoàn tất.' : `Đã thêm nhân sự vào dự án (${filled}/${hiring.headcount}).`, 'success');
+    if (filled >= hiring.headcount) setHiring(null); else setHireForm({ ...blankHire, project_id: hireForm.project_id, role_code: hireForm.role_code });
+    await load();
   };
 
-  const removeCandidate = async (candidate: Candidate) => {
-    const hasHistory = interviews.some((item) => item.candidate_id === candidate.id)
-      || offers.some((item) => item.candidate_id === candidate.id)
-      || handoffs.some((item) => item.candidate_id === candidate.id);
-    const canDelete = candidate.stage === 'APPLIED' && !hasHistory;
+  const removeHireRow = async (hire: Hire) => {
     const accepted = await confirm({
-      title: canDelete ? `Xóa hồ sơ ${candidate.full_name}?` : `Đánh dấu ${candidate.full_name} đã rút?`,
-      message: canDelete ? 'Hồ sơ mới tiếp nhận, chưa phát sinh nghiệp vụ và sẽ bị xóa.' : 'Hồ sơ đã có lịch sử nên không thể xóa; hệ thống sẽ chuyển sang trạng thái Ứng viên rút.',
-      confirmLabel: canDelete ? 'Xóa hồ sơ' : 'Xác nhận rút', danger: true,
+      title: `Gỡ ${names.get(hire.user_id) || 'nhân sự'} khỏi đề xuất?`,
+      message: 'Chỉ gỡ khỏi danh sách đã tuyển của đề xuất; tư cách thành viên dự án giữ nguyên (gỡ ở trang dự án nếu cần).',
+      confirmLabel: 'Gỡ khỏi đề xuất', danger: true,
     });
     if (!accepted) return;
-    const result = canDelete
-      ? await supabase.from('recruitment_candidates').delete().eq('id', candidate.id)
-      : await supabase.rpc('transition_recruitment_candidate', { target_id: candidate.id, target_stage: 'WITHDRAWN', reason: null });
-    if (result.error) toast('Không xử lý được hồ sơ: ' + describeDbError(result.error), 'error');
-    else { toast(canDelete ? 'Đã xóa hồ sơ ứng viên.' : 'Đã ghi nhận ứng viên rút.', 'success'); await load(); }
+    const { error } = await supabase.rpc('remove_hire', { target_hire: hire.id });
+    if (error) toast('Không gỡ được: ' + describeDbError(error), 'error');
+    else { toast('Đã gỡ khỏi đề xuất.', 'success'); await load(); }
   };
 
-  const updateStage = async (candidate: Candidate, stage: CandidateStage) => {
-    if (stage === 'REJECTED') { setRejecting(candidate); setRejectionReason(''); return; }
-    const { error } = await supabase.rpc('transition_recruitment_candidate', { target_id: candidate.id, target_stage: stage, reason: null });
-    if (error) toast('Không cập nhật được ứng viên: ' + describeDbError(error), 'error');
-    else { toast(`Đã chuyển sang: ${stageLabel[stage]}.`, 'success'); await load(); }
-  };
 
-  const rejectCandidate = async () => {
-    if (!rejecting || !rejectionReason.trim()) { toast('Cần nhập lý do không phù hợp.', 'warning'); return; }
-    setSaving(true);
-    const { error } = await supabase.rpc('transition_recruitment_candidate', { target_id: rejecting.id, target_stage: 'REJECTED', reason: rejectionReason.trim() });
-    if (error) toast('Không cập nhật được ứng viên: ' + describeDbError(error), 'error');
-    else { toast('Đã lưu kết quả sàng lọc.', 'success'); setRejecting(null); await load(); }
-    setSaving(false);
-  };
-
-  const openInterview = (candidate: Candidate) => {
-    const existing = interviews.find((item) => item.candidate_id === candidate.id && item.round === 1)
-      || interviews.find((item) => item.candidate_id === candidate.id);
-    setInterviewing(candidate);
-    setInterviewForm(existing ? {
-      round: String(existing.round), scheduled_at: existing.scheduled_at.slice(0, 16), interviewer_id: existing.interviewer_id || '',
-      mode: existing.mode, location_or_link: existing.location_or_link || '', score: existing.score == null ? '' : String(existing.score),
-      recommendation: existing.recommendation || '', feedback: existing.feedback || '',
-    } : blankInterview);
-  };
-
-  const saveInterview = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!interviewing) return;
-    setSaving(true);
-    const payload = {
-      candidate_id: interviewing.id, round: Number(interviewForm.round),
-      scheduled_at: new Date(interviewForm.scheduled_at).toISOString(), interviewer_id: interviewForm.interviewer_id || null,
-      mode: interviewForm.mode, location_or_link: interviewForm.location_or_link.trim() || null,
-      status: interviewForm.recommendation ? 'COMPLETED' : 'SCHEDULED',
-      score: interviewForm.score ? Number(interviewForm.score) : null,
-      recommendation: interviewForm.recommendation || null, feedback: interviewForm.feedback.trim() || null,
-    };
-    const { error } = await supabase.from('recruitment_interviews').upsert(payload, { onConflict: 'candidate_id,round' });
-    if (error) toast('Không lưu được lịch phỏng vấn: ' + describeDbError(error), 'error');
-    else {
-      const nextStage = Number(interviewForm.round) === 2 ? 'INTERVIEW_2' : 'INTERVIEW_1';
-      if (!['INTERVIEW_1', 'INTERVIEW_2', 'OFFER', 'HIRED'].includes(interviewing.stage)) {
-        await supabase.rpc('transition_recruitment_candidate', { target_id: interviewing.id, target_stage: nextStage, reason: null });
-      }
-      toast(interviewForm.recommendation ? 'Đã lưu kết quả phỏng vấn.' : 'Đã lên lịch phỏng vấn.', 'success');
-      setInterviewing(null); await load();
-    }
-    setSaving(false);
-  };
-
-  const openOffer = (candidate: Candidate) => {
-    const existing = offers.find((item) => item.candidate_id === candidate.id);
-    setOffering(candidate);
-    setOfferForm(existing ? { proposed_salary: String(existing.proposed_salary), start_date: existing.start_date, status: existing.status, note: existing.note || '' } : blankOffer);
-  };
-
-  const saveOffer = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!offering) return;
-    setSaving(true);
-    const existing = offers.find((item) => item.candidate_id === offering.id);
-    const now = new Date().toISOString();
-    const payload = {
-      candidate_id: offering.id, proposed_salary: Number(offerForm.proposed_salary), start_date: offerForm.start_date,
-      status: offerForm.status, note: offerForm.note.trim() || null,
-      sent_at: ['SENT', 'ACCEPTED', 'DECLINED'].includes(offerForm.status) ? now : null,
-      responded_at: ['ACCEPTED', 'DECLINED'].includes(offerForm.status) ? now : null,
-    };
-    const result = existing
-      ? await supabase.from('recruitment_offers').update(payload).eq('id', existing.id)
-      : await supabase.from('recruitment_offers').insert(payload);
-    if (result.error) toast('Không lưu được offer: ' + describeDbError(result.error), 'error');
-    else {
-      if (offering.stage !== 'OFFER' && offering.stage !== 'HIRED') {
-        const transition = await supabase.rpc('transition_recruitment_candidate', { target_id: offering.id, target_stage: 'OFFER', reason: null });
-        if (transition.error) toast('Đã lưu offer nhưng chưa chuyển bước: ' + describeDbError(transition.error), 'warning');
-      }
-      toast('Đã lưu thông tin thông báo kết quả / offer.', 'success'); setOffering(null); await load();
-    }
-    setSaving(false);
-  };
-
-  const saveHandoff = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!handingOff) return;
-    setSaving(true);
-    const { error } = await supabase.rpc('handoff_hired_candidate', {
-      target_candidate: handingOff.id, target_start_date: handoffForm.planned_start_date, target_note: handoffForm.note.trim() || null,
-    });
-    if (error) toast('Không bàn giao được onboarding: ' + describeDbError(error), 'error');
-    else { toast('Đã bàn giao hồ sơ sang quy trình onboarding.', 'success'); setHandingOff(null); await load(); }
-    setSaving(false);
-  };
+  const statCards: Array<{ key: string; label: string; value: number; color: string; active: boolean; onClick: () => void }> = [
+    { key: 'submitted', label: 'Chờ HR kiểm tra', value: requests.filter((item) => item.status === 'SUBMITTED').length, color: 'text-amber-600',
+      active: requestFilter === 'SUBMITTED', onClick: () => setRequestFilter('SUBMITTED') },
+    { key: 'board', label: 'Chờ BGĐ phê duyệt', value: requests.filter((item) => item.status === 'PENDING_BOARD').length, color: 'text-orange-600',
+      active: requestFilter === 'PENDING_BOARD', onClick: () => setRequestFilter('PENDING_BOARD') },
+    { key: 'open', label: 'Đang tuyển', value: requests.filter((item) => item.status === 'OPEN').length, color: 'text-emerald-600',
+      active: requestFilter === 'OPEN', onClick: () => setRequestFilter('OPEN') },
+    { key: 'headcount', label: 'Còn cần tuyển (người)', value: openHeadcount, color: 'text-indigo-600',
+      active: false, onClick: () => setRequestFilter('OPEN') },
+  ];
 
   return <div className="space-y-5">
     <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
       <div>
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600"><UserRoundCheck className="h-4 w-4" />Quản lý tuyển dụng</div>
-        <h2 className="font-display text-xl font-bold text-slate-900">Tuyển dụng nội bộ</h2>
-        <p className="mt-1 text-sm text-slate-500">Quản lý đề xuất tuyển dụng và hồ sơ ứng viên.</p>
+        <h2 className="font-display text-xl font-bold text-slate-900">Tuyển dụng nhân sự</h2>
+        <p className="mt-1 text-sm text-slate-500">Trưởng phòng lập đề xuất → HR kiểm tra → BGĐ phê duyệt → BGĐ thêm nhân sự đã tuyển vào dự án.</p>
+      </div>
+      <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất tuyển dụng</Button>
+    </div>
+
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {statCards.map((card) => (
+        <button key={card.key} type="button" onClick={card.onClick} aria-pressed={card.active}
+          className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:border-indigo-300 ${card.active ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200'}`}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{card.label}</p>
+          <p className={`mt-2 text-2xl font-bold ${card.color}`}>{card.value}</p>
+        </button>
+      ))}
+    </div>
+
+    <Card><CardContent className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-semibold text-slate-700">Đề xuất tuyển dụng ({requests.length})</p>
+        <div className="relative w-full sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã, vị trí..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400" /></div>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => { setExternalFormRequestId(activeRequests[0]?.id || ''); setExternalFormUrl(activeRequests[0]?.external_form_url || ''); setExternalFormOpen(true); }} disabled={!canReview || activeRequests.length === 0}><ExternalLink className="h-4 w-4" />Kết nối form ngoài</Button>
-        <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất tuyển dụng</Button>
-      </div>
-    </div>
-
-    <div className="grid gap-3 sm:grid-cols-3">
-      <Card><CardContent><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Chờ BGĐ phê duyệt</p><p className="mt-2 text-2xl font-bold text-amber-600">{requests.filter((item) => item.status === 'SUBMITTED').length}</p></CardContent></Card>
-      <Card><CardContent><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Đang tuyển</p><p className="mt-2 text-2xl font-bold text-emerald-600">{requests.filter((item) => item.status === 'OPEN').length}</p></CardContent></Card>
-      <Card><CardContent><p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ứng viên trong pipeline</p><p className="mt-2 text-2xl font-bold text-indigo-600">{candidates.filter((item) => !['HIRED', 'REJECTED', 'WITHDRAWN'].includes(item.stage)).length}</p></CardContent></Card>
-    </div>
-
-    <Card><CardContent>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="inline-flex rounded-xl bg-slate-100 p-1">
-          <button onClick={() => setTab('requests')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'requests' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Đề xuất tuyển dụng ({requests.length})</button>
-          <button onClick={() => setTab('candidates')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${tab === 'candidates' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>Ứng viên ({candidates.length})</button>
-        </div>
-        <div className="relative w-full sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã, vị trí, ứng viên..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400" /></div>
+        {requestFilters.map((filter) => (
+          <button key={filter.key} type="button" onClick={() => setRequestFilter(filter.key)}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${requestFilter === filter.key ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'}`}>
+            {filter.label} <span className={requestFilter === filter.key ? 'text-indigo-100' : 'text-slate-400'}>{filter.count}</span>
+          </button>
+        ))}
       </div>
     </CardContent></Card>
 
-    {loading ? <Card><CardContent><p className="py-12 text-center text-sm text-slate-400">Đang tải quy trình tuyển dụng...</p></CardContent></Card>
-      : loadError ? <Card><CardContent><div className="flex gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-800"><AlertTriangle className="h-5 w-5 shrink-0" /><div><p className="font-bold">Chưa thể đọc dữ liệu tuyển dụng</p><p className="mt-1">{loadError}</p><p className="mt-2 text-xs">Cần chạy hai migration <strong>20260919120000_internal_recruitment_flow.sql</strong> và <strong>20260919130000_recruitment_interview_offer_handoff.sql</strong> trên Supabase.</p></div></div></CardContent></Card>
-      : tab === 'requests' ? (
-        filteredRequests.length === 0 ? <Card><EmptyState icon={<UsersRound className="h-8 w-8" />} title="Chưa có đề xuất tuyển dụng" description="Trưởng bộ phận lập đề xuất; HR tiếp nhận và trình Ban Giám đốc trong 24 giờ." action={<Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất</Button>} /></Card>
-          : <div className="grid gap-4 xl:grid-cols-2">{filteredRequests.map((item) => {
-            const deadline = item.status === 'SUBMITTED' ? deadlineText(item.review_due_at) : null;
-            return <Card key={item.id}><CardContent>
-              <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold text-indigo-600">{item.code}</p><h3 className="mt-1 font-display text-base font-bold text-slate-900">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{unitNames.get(item.unit_id || '') || 'Chưa chọn đơn vị'} · {positionNames.get(item.position_id || '') || 'Chưa gắn vị trí'}</p></div><Badge className={requestStatus[item.status].color}>{requestStatus[item.status].label}</Badge></div>
-              <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-xs"><div><span className="text-slate-400">Số lượng</span><p className="mt-1 font-bold text-slate-700">{item.headcount} người</p></div><div><span className="text-slate-400">Quản lý tuyển</span><p className="mt-1 font-bold text-slate-700">{names.get(item.hiring_manager_id) || '—'}</p></div><div><span className="text-slate-400">Khoảng lương</span><p className="mt-1 font-bold text-slate-700">{money(item.salary_min)} – {money(item.salary_max)}</p></div><div><span className="text-slate-400">Ứng viên</span><p className="mt-1 font-bold text-slate-700">{candidateCounts.get(item.id) || 0} hồ sơ</p></div></div>
-              <p className="mt-3 line-clamp-2 text-sm text-slate-600">{item.reason}</p>
-              {item.status === 'OPEN' && <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs"><span className="font-semibold text-slate-600">Form ngoài: </span>{item.external_form_url ? <a className="text-indigo-700 underline" href={item.external_form_url} target="_blank" rel="noreferrer">Mở form</a> : <span className="text-amber-700">Chưa cấu hình</span>}<button type="button" className="ml-2 font-semibold text-indigo-700" onClick={() => { setExternalFormRequestId(item.id); setExternalFormUrl(item.external_form_url || ''); setExternalFormOpen(true); }}>Cấu hình</button></div>}
-              {item.review_note && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"><strong>Phản hồi:</strong> {item.review_note}</p>}
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4">
-                {deadline ? <span className={`flex items-center gap-1.5 text-xs font-semibold ${deadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4" />{deadline.text} để HR trình BGĐ</span> : <span className="text-xs text-slate-400">Đề xuất bởi {names.get(item.requested_by) || 'người dùng'}</span>}
-                <div className="flex gap-2">{canReview && item.status === 'SUBMITTED' && <Button theme="admin" onClick={() => { setReviewing(item); setReviewNote(''); }}>Trình / ghi nhận duyệt</Button>}{canReview && item.status === 'APPROVED' && <Button theme="admin" onClick={() => setRequestStatus(item, 'OPEN')}><ArrowRight className="h-4 w-4" />Triển khai tuyển dụng</Button>}{canReview && item.status === 'OPEN' && <Button variant="secondary" onClick={() => setRequestStatus(item, 'CLOSED')}><CheckCircle2 className="h-4 w-4" />Hoàn tất</Button>}{canReview && !['CLOSED', 'CANCELLED'].includes(item.status) && <Button variant="danger" onClick={() => void removeRequest(item)} aria-label={`Xóa hoặc hủy ${item.code}`}><Trash2 className="h-4 w-4" /></Button>}</div>
-              </div>
-            </CardContent></Card>;
-          })}</div>
-      ) : (
-        filteredCandidates.length === 0 ? <Card><EmptyState icon={<UserRoundCheck className="h-8 w-8" />} title="Chưa có ứng viên" description="HR tiếp nhận hồ sơ sau khi đề xuất đã được phê duyệt và chuyển sang triển khai tuyển dụng." /></Card>
-          : <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">{filteredCandidates.map((candidate) => {
-            const request = requests.find((item) => item.id === candidate.requisition_id);
-            const testDeadline = candidate.stage === 'TEST' ? deadlineText(candidate.test_due_at) : null;
-            const candidateInterviews = interviews.filter((item) => item.candidate_id === candidate.id);
-            const offer = offers.find((item) => item.candidate_id === candidate.id);
-            const handoff = handoffs.find((item) => item.candidate_id === candidate.id);
-            return <Card key={candidate.id}><CardContent>
-              <div className="flex items-start justify-between gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-50 font-bold text-indigo-700">{candidate.full_name.slice(0, 1).toUpperCase()}</div><Badge className="bg-indigo-50 text-indigo-700">{stageLabel[candidate.stage]}</Badge></div>
-              <h3 className="mt-3 font-bold text-slate-900">{candidate.full_name}</h3><p className="mt-1 text-xs text-slate-500">{request?.code || '—'} · {request?.title || 'Yêu cầu không còn tồn tại'}</p>
-              <div className="mt-3 space-y-1 text-xs text-slate-500"><p>{candidate.email || 'Chưa có email'}</p><p>{candidate.phone || 'Chưa có số điện thoại'}{candidate.source ? ` · Nguồn: ${candidate.source === 'EXTERNAL_FORM' ? 'Form ngoài' : candidate.source}` : ''}</p>{candidate.cv_url && <a href={candidate.cv_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-indigo-700 underline"><ExternalLink className="h-3 w-3" />Mở CV</a>}</div>
-              {testDeadline && <p className={`mt-3 flex items-center gap-1 text-xs font-semibold ${testDeadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4" />{testDeadline.text} để hoàn thành bài test</p>}
-              {candidate.rejection_reason && <p className="mt-3 rounded-lg bg-red-50 p-2 text-xs text-red-700">{candidate.rejection_reason}</p>}
-              <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                {candidateInterviews.map((item) => <span key={item.id} className="rounded-lg bg-blue-50 px-2 py-1 font-semibold text-blue-700">PV vòng {item.round}: {item.status === 'COMPLETED' ? (item.recommendation === 'PASS' ? 'Đạt' : item.recommendation === 'FAIL' ? 'Không đạt' : 'Cân nhắc') : new Date(item.scheduled_at).toLocaleString('vi-VN')}</span>)}
-                {offer && <span className="rounded-lg bg-violet-50 px-2 py-1 font-semibold text-violet-700">Offer: {offer.status === 'ACCEPTED' ? 'Đã nhận' : offer.status === 'DECLINED' ? 'Từ chối' : offer.status === 'SENT' ? 'Đã gửi' : 'Bản nháp'}</span>}
-                {handoff && <span className="rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">Onboarding: đã bàn giao</span>}
-              </div>
-              {canReview && <Select label="Giai đoạn xử lý" value={candidate.stage} onChange={(e) => void updateStage(candidate, e.target.value as CandidateStage)} className="mt-4">{stages.map((stage) => <option key={stage} value={stage}>{stageLabel[stage]}</option>)}</Select>}
-              {canReview && <div className="mt-3 grid grid-cols-2 gap-2"><Button variant="secondary" onClick={() => openInterview(candidate)}><CalendarClock className="h-4 w-4" />Phỏng vấn / đánh giá</Button><Button variant="secondary" onClick={() => openOffer(candidate)}><FileCheck2 className="h-4 w-4" />Thông báo / Offer</Button>{candidate.stage === 'HIRED' && !handoff && <Button theme="admin" className="col-span-2" onClick={() => { setHandingOff(candidate); setHandoffForm({ planned_start_date: offer?.start_date || '', note: '' }); }}><Handshake className="h-4 w-4" />Bàn giao onboarding</Button>}{!['HIRED', 'REJECTED', 'WITHDRAWN'].includes(candidate.stage) && <Button variant="danger" className="col-span-2" onClick={() => void removeCandidate(candidate)}><Trash2 className="h-4 w-4" />Xóa / ghi nhận rút</Button>}</div>}
-            </CardContent></Card>;
-          })}</div>
-      )}
+    {loading ? <Card><CardContent><p className="py-12 text-center text-sm text-slate-400">Đang tải đề xuất tuyển dụng...</p></CardContent></Card>
+      : loadError ? <Card><CardContent><div className="flex gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-800"><AlertTriangle className="h-5 w-5 shrink-0" /><div><p className="font-bold">Chưa thể đọc dữ liệu tuyển dụng</p><p className="mt-1">{loadError}</p></div></div></CardContent></Card>
+      : visibleRequests.length === 0 ? <Card><EmptyState icon={<UsersRound className="h-8 w-8" />} title={requests.length === 0 ? 'Chưa có đề xuất tuyển dụng' : 'Không có đề xuất phù hợp bộ lọc'} description="Trưởng bộ phận lập đề xuất; HR kiểm tra và trình Ban Giám đốc trong 24 giờ." action={requests.length === 0 ? <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất</Button> : undefined} /></Card>
+      : <div className="grid gap-4 xl:grid-cols-2">{visibleRequests.map((item) => {
+        const deadline = item.status === 'SUBMITTED' ? deadlineText(item.review_due_at) : null;
+        const itemHires = hiresByRequest.get(item.id) || [];
+        const filled = itemHires.length;
+        const showHires = ['OPEN', 'CLOSED'].includes(item.status) || filled > 0;
+        return <Card key={item.id}><CardContent className="space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0"><p className="text-xs font-bold text-indigo-600">{item.code}</p><h3 className="mt-1 font-display text-base font-bold text-slate-900">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{unitNames.get(item.unit_id || '') || 'Chưa chọn đơn vị'} · {positionNames.get(item.position_id || '') || 'Chưa gắn vị trí'}</p></div>
+            <Badge className={requestStatus[item.status].color}>{requestStatus[item.status].label}</Badge>
+          </div>
+          <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-4">
+            <div><span className="text-slate-400">Số lượng</span><p className="mt-1 font-bold text-slate-700">{item.headcount} người</p></div>
+            <div><span className="text-slate-400">Người phụ trách</span><p className="mt-1 font-bold text-slate-700">{names.get(item.hiring_manager_id) || '—'}{canReview && !['CLOSED', 'CANCELLED', 'REJECTED'].includes(item.status) && <button type="button" className="ml-1.5 text-xs font-semibold text-indigo-700 hover:underline" onClick={() => { setChangingOwner(item); setOwnerDraft(item.hiring_manager_id); }}>Đổi</button>}</p></div>
+            <div><span className="text-slate-400">Khoảng lương</span><p className="mt-1 font-bold text-slate-700">{item.salary_min == null && item.salary_max == null ? 'Thỏa thuận' : `${money(item.salary_min)} – ${money(item.salary_max)}`}</p></div>
+            <div><span className="text-slate-400">Đã tuyển</span><p className="mt-1 font-bold text-slate-700">{filled}/{item.headcount} người</p></div>
+          </div>
+          <p className="line-clamp-2 text-sm text-slate-600">{item.reason}</p>
+          {showHires && <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-700"><FolderKanban className="h-3.5 w-3.5" />Nhân sự đã thêm vào dự án</p>
+              <span className="text-xs font-semibold text-emerald-700">{filled}/{item.headcount}</span>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded bg-emerald-100"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, Math.round(filled / Math.max(1, item.headcount) * 100))}%` }} /></div>
+            {itemHires.length === 0 ? <p className="mt-2 text-xs text-slate-500">Chưa thêm nhân sự nào.</p> : <ul className="mt-2 space-y-1.5">
+              {itemHires.map((hire) => <li key={hire.id} className="flex items-center gap-2 text-xs text-slate-600">
+                <span className="font-semibold text-slate-800">{names.get(hire.user_id) || 'Nhân sự'}</span>
+                <span>→ {projectNames.get(hire.project_id) || 'Dự án'} · {roleLabel(hire.role_code)}</span>
+                <span className="ml-auto text-slate-400">{new Date(hire.added_at).toLocaleDateString('vi-VN')}</span>
+                {isBoard && <button type="button" onClick={() => void removeHireRow(hire)} className="rounded p-1 text-slate-400 hover:bg-white hover:text-red-600" aria-label="Gỡ khỏi đề xuất"><XCircle className="h-3.5 w-3.5" /></button>}
+              </li>)}
+            </ul>}
+          </div>}
+          {item.review_note && ["RETURNED", "REJECTED"].includes(item.status) && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"><strong>{item.status === "RETURNED" ? "Cần điều chỉnh:" : "Lý do không phê duyệt:"}</strong> {item.review_note}</p>}
+          {item.status === "PENDING_BOARD" && item.hr_note && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"><strong>HR ghi chú:</strong> {item.hr_note}</p>}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+            {deadline ? <span className={`flex items-center gap-1.5 text-xs font-semibold ${deadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4" />{deadline.text} để HR kiểm tra & trình BGĐ</span> : <span className="text-xs text-slate-400">Đề xuất bởi {names.get(item.requested_by) || 'người dùng'}</span>}
+            <div className="flex flex-wrap gap-2">
+              {item.attachment_path && <Button variant="outline" onClick={() => void openRequisitionFile(item)}><FileText className="h-4 w-4" />Tệp đề xuất</Button>}
+              {canReview && item.status === 'SUBMITTED' && <Button theme="admin" onClick={() => openReview(item, 'hr')}>Kiểm tra & trình BGĐ</Button>}
+              {isBoard && item.status === 'PENDING_BOARD' && <Button theme="admin" onClick={() => openReview(item, 'board')}><CheckCircle2 className="h-4 w-4" />BGĐ phê duyệt</Button>}
+              {item.status === 'RETURNED' && item.requested_by === profile?.id && <Button theme="admin" onClick={() => openResubmit(item)}>Sửa & gửi lại</Button>}
+              {canReview && item.status === 'APPROVED' && <Button theme="admin" onClick={() => setRequestStatus(item, 'OPEN')}><ArrowRight className="h-4 w-4" />Triển khai tuyển dụng</Button>}
+              {isBoard && item.status === 'OPEN' && filled < item.headcount && <Button theme="admin" onClick={() => openHire(item)}><UserPlus className="h-4 w-4" />Thêm nhân sự vào dự án</Button>}
+              {canReview && item.status === 'OPEN' && <Button variant="secondary" onClick={() => setRequestStatus(item, 'CLOSED')}><CheckCircle2 className="h-4 w-4" />Hoàn tất</Button>}
+              {canReview && !['CLOSED', 'CANCELLED'].includes(item.status) && <Button variant="danger" onClick={() => void removeRequest(item)} aria-label={`Xóa hoặc hủy ${item.code}`}><Trash2 className="h-4 w-4" /></Button>}
+            </div>
+          </div>
+        </CardContent></Card>;
+      })}</div>}
 
-    <Modal open={requestOpen} onClose={() => setRequestOpen(false)} title="Lập đề xuất tuyển dụng" size="lg"><form onSubmit={createRequest} className="space-y-4"><Input label="Vị trí cần tuyển" value={requestForm.title} onChange={(e) => setRequestForm({ ...requestForm, title: e.target.value })} required /><div className="grid gap-3 sm:grid-cols-2"><Select label="Đơn vị" value={requestForm.unit_id} onChange={(e) => setRequestForm({ ...requestForm, unit_id: e.target.value })}><option value="">Chọn đơn vị</option>{units.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Vị trí trong cơ cấu" value={requestForm.position_id} onChange={(e) => setRequestForm({ ...requestForm, position_id: e.target.value })}><option value="">Chọn vị trí</option>{positions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div><div className="grid gap-3 sm:grid-cols-3"><Input label="Số lượng" type="number" min="1" value={requestForm.headcount} onChange={(e) => setRequestForm({ ...requestForm, headcount: e.target.value })} required /><Select label="Hình thức" value={requestForm.employment_type} onChange={(e) => setRequestForm({ ...requestForm, employment_type: e.target.value })}><option value="FULL_TIME">Toàn thời gian</option><option value="PART_TIME">Bán thời gian</option><option value="CONTRACT">Hợp đồng</option><option value="INTERN">Thực tập</option></Select><Input label="Ngày mong muốn" type="date" value={requestForm.desired_start_date} onChange={(e) => setRequestForm({ ...requestForm, desired_start_date: e.target.value })} /></div><div className="grid gap-3 sm:grid-cols-2"><Input label="Lương tối thiểu" type="number" min="0" value={requestForm.salary_min} onChange={(e) => setRequestForm({ ...requestForm, salary_min: e.target.value })} /><Input label="Lương tối đa" type="number" min="0" value={requestForm.salary_max} onChange={(e) => setRequestForm({ ...requestForm, salary_max: e.target.value })} /></div><Textarea label="Lý do và yêu cầu tuyển" value={requestForm.reason} onChange={(e) => setRequestForm({ ...requestForm, reason: e.target.value })} required /><p className="rounded-xl bg-indigo-50 p-3 text-xs text-indigo-700">Sau khi gửi, HR tiếp nhận đề xuất và trình Ban Giám đốc xem xét, phê duyệt trong thời hạn 24 giờ.</p><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setRequestOpen(false)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi đề xuất'}</Button></div></form></Modal>
+    <Modal open={requestOpen} onClose={() => setRequestOpen(false)} title="Lập đề xuất tuyển dụng" size="lg"><form onSubmit={createRequest} className="space-y-4"><Input label="Vị trí cần tuyển" value={requestForm.title} onChange={(e) => setRequestForm({ ...requestForm, title: e.target.value })} required /><div className="grid gap-3 sm:grid-cols-2"><Select label="Đơn vị" value={requestForm.unit_id} onChange={(e) => setRequestForm({ ...requestForm, unit_id: e.target.value })}><option value="">Chọn đơn vị</option>{units.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Vị trí trong cơ cấu" value={requestForm.position_id} onChange={(e) => setRequestForm({ ...requestForm, position_id: e.target.value })}><option value="">Chọn vị trí</option>{positions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div><div className="grid gap-3 sm:grid-cols-3"><Input label="Số lượng" type="number" min="1" value={requestForm.headcount} onChange={(e) => setRequestForm({ ...requestForm, headcount: e.target.value })} required /><Select label="Người phụ trách tuyển" value={requestForm.hiring_manager_id || profile?.id || ''} onChange={(e) => setRequestForm({ ...requestForm, hiring_manager_id: e.target.value })}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}{person.id === profile?.id ? ' (tôi)' : ''}</option>)}</Select><Select label="Hình thức" value={requestForm.employment_type} onChange={(e) => setRequestForm({ ...requestForm, employment_type: e.target.value })}><option value="FULL_TIME">Toàn thời gian</option><option value="PART_TIME">Bán thời gian</option><option value="CONTRACT">Hợp đồng</option><option value="INTERN">Thực tập</option></Select><Input label="Ngày mong muốn" type="date" value={requestForm.desired_start_date} onChange={(e) => setRequestForm({ ...requestForm, desired_start_date: e.target.value })} /></div><div className="grid gap-3 sm:grid-cols-2"><Input label="Lương tối thiểu" type="number" min="0" value={requestForm.salary_min} onChange={(e) => setRequestForm({ ...requestForm, salary_min: e.target.value })} /><Input label="Lương tối đa" type="number" min="0" value={requestForm.salary_max} onChange={(e) => setRequestForm({ ...requestForm, salary_max: e.target.value })} /></div><Textarea label="Lý do và yêu cầu tuyển" value={requestForm.reason} onChange={(e) => setRequestForm({ ...requestForm, reason: e.target.value })} required /><label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Tệp đề xuất theo mẫu Huy Phong<span className="ml-1 text-red-500">*</span></span><input type="file" accept=".pdf,.doc,.docx" required onChange={(e) => { const file = e.target.files?.[0] || null; const err = checkRequisitionFile(file); if (file && err) { toast(err, 'warning'); e.target.value = ''; setRequestFile(null); } else setRequestFile(file); }} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" /><span className="mt-1 block text-xs text-slate-500">.pdf, .doc, .docx · tối đa 20 MB</span></label><p className="rounded-xl bg-indigo-50 p-3 text-xs text-indigo-700">Sau khi gửi, HR tiếp nhận đề xuất và trình Ban Giám đốc xem xét, phê duyệt trong thời hạn 24 giờ.</p><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setRequestOpen(false)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi đề xuất'}</Button></div></form></Modal>
 
-    <Modal open={!!reviewing} onClose={() => setReviewing(null)} title="Trình và ghi nhận phê duyệt"><div className="space-y-4"><p className="rounded-xl bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">HR kiểm tra đề xuất, trình Ban Giám đốc và ghi nhận kết quả phê duyệt tại đây.</p><div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-600">{reviewing?.code}</p><p className="mt-1 font-bold text-slate-900">{reviewing?.title}</p><p className="mt-1 text-sm text-slate-500">{reviewing?.headcount} người · {reviewing?.reason}</p></div><Textarea label="Ý kiến của Ban Giám đốc (bắt buộc khi từ chối)" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} /><div className="flex justify-end gap-2"><Button variant="danger" onClick={() => void reviewRequest('REJECTED')} disabled={saving}><XCircle className="h-4 w-4" />Không phê duyệt</Button><Button theme="admin" onClick={() => void reviewRequest('APPROVED')} disabled={saving}><CheckCircle2 className="h-4 w-4" />Ghi nhận phê duyệt</Button></div></div></Modal>
+    <Modal open={!!reviewing} onClose={() => setReviewing(null)} title={reviewMode === 'hr' ? 'HR kiểm tra đề xuất' : 'Ban Giám đốc phê duyệt'}><div className="space-y-4">
+      <p className="rounded-xl bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">{reviewMode === 'hr' ? 'Bước 1/2 · HR kiểm tra nội dung và tệp đề xuất, rồi trình Ban Giám đốc hoặc trả về để người lập điều chỉnh.' : 'Bước 2/2 · Chỉ triển khai tuyển dụng sau khi Ban Giám đốc phê duyệt.'}</p>
+      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-600">{reviewing?.code}</p><p className="mt-1 font-bold text-slate-900">{reviewing?.title}</p><p className="mt-1 text-sm text-slate-500">{reviewing?.headcount} người · {reviewing?.reason}</p>
+        {reviewing?.attachment_path ? <button type="button" onClick={() => reviewing && void openRequisitionFile(reviewing)} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 underline"><FileText className="h-4 w-4" />{reviewing.attachment_name || 'Tệp đề xuất'}</button> : <p className="mt-2 text-xs text-amber-700">Đề xuất cũ chưa có tệp đính kèm.</p>}
+        {reviewMode === 'board' && reviewing?.hr_note && <p className="mt-2 text-xs text-slate-600"><strong>HR ghi chú:</strong> {reviewing.hr_note}</p>}
+      </div>
+      <Textarea label={reviewMode === 'hr' ? 'Ghi chú của HR (bắt buộc khi trả về)' : 'Ý kiến của Ban Giám đốc (bắt buộc khi không phê duyệt / trả về)'} value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} />
+      <div className="flex flex-wrap justify-end gap-2">{reviewMode === 'hr' ? <>
+        <Button variant="outline" onClick={() => void reviewRequest('RETURN')} disabled={saving}>Trả về điều chỉnh</Button>
+        <Button theme="admin" onClick={() => void reviewRequest('FORWARD')} disabled={saving}><ArrowRight className="h-4 w-4" />Trình Ban Giám đốc</Button>
+      </> : <>
+        <Button variant="outline" onClick={() => void reviewRequest('RETURNED')} disabled={saving}>Trả về điều chỉnh</Button>
+        <Button variant="danger" onClick={() => void reviewRequest('REJECTED')} disabled={saving}><XCircle className="h-4 w-4" />Không phê duyệt</Button>
+        <Button theme="admin" onClick={() => void reviewRequest('APPROVED')} disabled={saving}><CheckCircle2 className="h-4 w-4" />Phê duyệt</Button>
+      </>}</div>
+    </div></Modal>
 
-    <Modal open={externalFormOpen} onClose={() => setExternalFormOpen(false)} title="Kết nối Google Forms" size="lg"><form onSubmit={saveExternalForm} className="space-y-4"><Select label="Đợt tuyển dụng đang mở" value={externalFormRequestId} onChange={(e) => { setExternalFormRequestId(e.target.value); setExternalFormUrl(requests.find((item) => item.id === e.target.value)?.external_form_url || ''); }} required><option value="">Chọn đợt tuyển dụng</option>{activeRequests.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.title}</option>)}</Select><Input label="URL Google Form" type="url" value={externalFormUrl} onChange={(e) => setExternalFormUrl(e.target.value)} placeholder="https://forms.gle/..." /><div className="rounded-xl bg-indigo-50 p-4 text-xs leading-relaxed text-indigo-800"><p className="font-bold">Tự động nhận câu trả lời và CV</p><p className="mt-1">Google Forms cần Apps Script trigger <strong>On form submit</strong> để gửi dữ liệu đến <code>POST /api/recruitment-applications</code>.</p><p className="mt-2">JSON: <code>{'{ requisition_code, submission_id, full_name, email, phone, cv_url, consent: true }'}</code></p><p className="mt-2">Mã đợt tuyển: <strong>{requests.find((item) => item.id === externalFormRequestId)?.code || '—'}</strong>. Cấu hình <code>RECRUITMENT_INTAKE_TOKEN</code> trên máy chủ và lưu token trong Script Properties của Apps Script. Xem <code>docs/recruitment-external-form.md</code> để cài trigger và mã mẫu. Tệp CV trong Drive cần được HR cấp quyền truy cập.</p></div><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setExternalFormOpen(false)}>Đóng</Button><Button type="submit" theme="admin" disabled={saving || !externalFormRequestId}>{saving ? 'Đang lưu...' : 'Lưu cấu hình'}</Button></div></form></Modal>
+    <Modal open={!!resubmitting} onClose={() => setResubmitting(null)} title="Sửa & gửi lại đề xuất" size="lg"><form onSubmit={saveResubmit} className="space-y-4">
+      {resubmitting?.review_note && <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700"><strong>Cần điều chỉnh:</strong> {resubmitting.review_note}</p>}
+      <Input label="Vị trí cần tuyển" value={resubmitForm.title} onChange={(e) => setResubmitForm({ ...resubmitForm, title: e.target.value })} required />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Input label="Số lượng" type="number" min="1" value={resubmitForm.headcount} onChange={(e) => setResubmitForm({ ...resubmitForm, headcount: e.target.value })} required />
+        <Input label="Lương tối thiểu" type="number" min="0" value={resubmitForm.salary_min} onChange={(e) => setResubmitForm({ ...resubmitForm, salary_min: e.target.value })} />
+        <Input label="Lương tối đa" type="number" min="0" value={resubmitForm.salary_max} onChange={(e) => setResubmitForm({ ...resubmitForm, salary_max: e.target.value })} />
+      </div>
+      <Input label="Ngày mong muốn" type="date" value={resubmitForm.desired_start_date} onChange={(e) => setResubmitForm({ ...resubmitForm, desired_start_date: e.target.value })} />
+      <Textarea label="Lý do và yêu cầu tuyển" value={resubmitForm.reason} onChange={(e) => setResubmitForm({ ...resubmitForm, reason: e.target.value })} required />
+      <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Tệp đề xuất mới {resubmitting?.attachment_path ? '(bỏ trống để giữ tệp cũ)' : <span className="text-red-500">*</span>}</span><input type="file" accept=".pdf,.doc,.docx" onChange={(e) => setResubmitFile(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" /></label>
+      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setResubmitting(null)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi lại'}</Button></div>
+    </form></Modal>
 
-    <Modal open={!!interviewing} onClose={() => setInterviewing(null)} title="Phỏng vấn và đánh giá ứng viên" size="lg"><form onSubmit={saveInterview} className="space-y-4"><p className="text-sm text-slate-500">HR phối hợp với bộ phận chuyên môn đánh giá <strong className="text-slate-800">{interviewing?.full_name}</strong>. Kết quả là căn cứ để xác định và thông báo kết quả tuyển dụng.</p><div className="grid gap-3 sm:grid-cols-2"><Select label="Vòng phỏng vấn" value={interviewForm.round} onChange={(e) => setInterviewForm({ ...interviewForm, round: e.target.value })}><option value="1">Vòng 1 · Bộ phận chuyên môn</option><option value="2">Vòng 2 · BGĐ/vị trí quan trọng</option></Select><Input label="Thời gian" type="datetime-local" value={interviewForm.scheduled_at} onChange={(e) => setInterviewForm({ ...interviewForm, scheduled_at: e.target.value })} required /></div><div className="grid gap-3 sm:grid-cols-2"><Select label="Người phỏng vấn" value={interviewForm.interviewer_id} onChange={(e) => setInterviewForm({ ...interviewForm, interviewer_id: e.target.value })}><option value="">Chưa phân công</option>{people.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Hình thức" value={interviewForm.mode} onChange={(e) => setInterviewForm({ ...interviewForm, mode: e.target.value })}><option value="OFFLINE">Trực tiếp</option><option value="ONLINE">Trực tuyến</option><option value="PHONE">Điện thoại</option></Select></div><Input label="Địa điểm hoặc liên kết" value={interviewForm.location_or_link} onChange={(e) => setInterviewForm({ ...interviewForm, location_or_link: e.target.value })} /><div className="grid gap-3 sm:grid-cols-2"><Input label="Điểm (0–100)" type="number" min="0" max="100" value={interviewForm.score} onChange={(e) => setInterviewForm({ ...interviewForm, score: e.target.value })} /><Select label="Kết quả đánh giá" value={interviewForm.recommendation} onChange={(e) => setInterviewForm({ ...interviewForm, recommendation: e.target.value })}><option value="">Chưa có kết quả</option><option value="PASS">Đạt</option><option value="HOLD">Cân nhắc</option><option value="FAIL">Không đạt</option></Select></div><Textarea label="Nhận xét / minh chứng" value={interviewForm.feedback} onChange={(e) => setInterviewForm({ ...interviewForm, feedback: e.target.value })} /><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setInterviewing(null)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu kết quả đánh giá'}</Button></div></form></Modal>
 
-    <Modal open={!!offering} onClose={() => setOffering(null)} title="Thông báo kết quả / Offer"><form onSubmit={saveOffer} className="space-y-4"><p className="text-sm text-slate-500">HR thông báo kết quả tuyển dụng cho <strong className="text-slate-800">{offering?.full_name}</strong>. Hệ thống chỉ xác nhận trúng tuyển sau khi ứng viên chấp nhận offer.</p><Input label="Mức lương đề xuất" type="number" min="0" value={offerForm.proposed_salary} onChange={(e) => setOfferForm({ ...offerForm, proposed_salary: e.target.value })} required /><Input label="Ngày dự kiến nhận việc" type="date" value={offerForm.start_date} onChange={(e) => setOfferForm({ ...offerForm, start_date: e.target.value })} required /><Select label="Trạng thái thông báo / offer" value={offerForm.status} onChange={(e) => setOfferForm({ ...offerForm, status: e.target.value as Offer['status'] })}><option value="DRAFT">Bản nháp</option><option value="SENT">Đã gửi</option><option value="ACCEPTED">Ứng viên chấp nhận</option><option value="DECLINED">Ứng viên từ chối</option><option value="WITHDRAWN">Thu hồi</option></Select><Textarea label="Ghi chú trao đổi" value={offerForm.note} onChange={(e) => setOfferForm({ ...offerForm, note: e.target.value })} /><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setOffering(null)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu thông báo kết quả'}</Button></div></form></Modal>
 
-    <Modal open={!!handingOff} onClose={() => setHandingOff(null)} title="Bàn giao sang onboarding"><form onSubmit={saveHandoff} className="space-y-4"><p className="text-sm text-slate-500">Tạo điểm bàn giao có kiểm soát cho <strong className="text-slate-800">{handingOff?.full_name}</strong>. HR tiếp tục tạo tài khoản nhân viên và checklist hội nhập tại module Hội nhập & nghỉ việc.</p><Input label="Ngày dự kiến nhận việc" type="date" value={handoffForm.planned_start_date} onChange={(e) => setHandoffForm({ ...handoffForm, planned_start_date: e.target.value })} required /><Textarea label="Thông tin bàn giao" value={handoffForm.note} onChange={(e) => setHandoffForm({ ...handoffForm, note: e.target.value })} placeholder="Hồ sơ cần bổ sung, thiết bị, mentor dự kiến..." /><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setHandingOff(null)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}><Handshake className="h-4 w-4" />{saving ? 'Đang bàn giao...' : 'Bàn giao'}</Button></div></form></Modal>
 
-    <Modal open={!!rejecting} onClose={() => setRejecting(null)} title="Ghi nhận ứng viên không phù hợp"><div className="space-y-4"><p className="text-sm text-slate-500">Lý do được lưu để HR theo dõi chất lượng nguồn tuyển và tránh đánh giá thiếu căn cứ.</p><Textarea label="Lý do" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} required /><div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => setRejecting(null)}>Hủy</Button><Button variant="danger" onClick={() => void rejectCandidate()} disabled={saving}>Xác nhận</Button></div></div></Modal>
+
+
+    <Modal open={!!changingOwner} onClose={() => setChangingOwner(null)} title="Đổi người phụ trách tuyển dụng"><div className="space-y-4">
+      <p className="text-sm text-slate-600">{changingOwner?.code} · {changingOwner?.title}</p>
+      <Select label="Người phụ trách" value={ownerDraft} onChange={(e) => setOwnerDraft(e.target.value)}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</Select>
+      <p className="text-xs text-slate-500">Người phụ trách nhận thông báo khi đề xuất được duyệt và khi có nhân sự được thêm vào dự án.</p>
+      <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setChangingOwner(null)}>Hủy</Button><Button theme="admin" disabled={saving || !ownerDraft || ownerDraft === changingOwner?.hiring_manager_id} onClick={() => void saveOwner()}>Lưu</Button></div>
+    </div></Modal>
+
+    <Modal open={!!hiring} onClose={() => setHiring(null)} title="Thêm nhân sự đã tuyển vào dự án"><form onSubmit={saveHire} className="space-y-4">
+      <div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="text-xs font-bold text-indigo-600">{hiring?.code}</p><p className="font-semibold text-slate-900">{hiring?.title}</p><p className="mt-1 text-xs text-slate-500">Đã tuyển {(hiring && (hiresByRequest.get(hiring.id) || []).length) || 0}/{hiring?.headcount} người</p></div>
+      <Select label="Dự án" value={hireForm.project_id} onChange={(e) => setHireForm({ ...hireForm, project_id: e.target.value })} required>
+        <option value="">Chọn dự án</option>
+        {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+      </Select>
+      <Select label="Nhân sự" value={hireForm.user_id} onChange={(e) => setHireForm({ ...hireForm, user_id: e.target.value })} required>
+        <option value="">Chọn nhân sự</option>
+        {people.filter((person) => !(hiring && (hiresByRequest.get(hiring.id) || []).some((hire) => hire.user_id === person.id))).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+      </Select>
+      <p className="-mt-2 text-xs text-slate-500">Nhân sự mới tuyển từ bên ngoài cần có tài khoản trước: <Link to="/admin/users" className="font-semibold text-indigo-700 underline">Hồ sơ nhân sự → Thêm người dùng</Link>.</p>
+      <Select label="Vai trò trong dự án" value={hireForm.role_code} onChange={(e) => setHireForm({ ...hireForm, role_code: e.target.value })}>
+        {HIRE_ROLES.map((role) => <option key={role.code} value={role.code}>{role.label}</option>)}
+      </Select>
+      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setHiring(null)}>Đóng</Button><Button type="submit" theme="admin" disabled={saving || !hireForm.project_id || !hireForm.user_id}><UserPlus className="h-4 w-4" />{saving ? 'Đang thêm...' : 'Thêm vào dự án'}</Button></div>
+    </form></Modal>
   </div>;
 }

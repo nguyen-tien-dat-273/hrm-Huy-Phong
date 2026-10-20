@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { notifyUser } from '@/lib/assignments';
+import { notifyUser, notifyUsers } from '@/lib/assignments';
 import { createTrainingVideoUrl } from '@/lib/training';
 
 type Assignment = { id: string; path_id: string; user_id: string; status: string };
@@ -111,7 +111,7 @@ export function StaffLearningPaths() {
     if (submitError) {
       if (filePath) await supabase.storage.from('training-step-submissions').remove([filePath]);
       toast('Không gửi được bước: ' + describeDbError(submitError), 'error');
-    } else { await notifyUser(step.approver_id, 'Có bước đào tạo cần kiểm duyệt', step.title, 'training_review'); toast('Đã gửi người kiểm duyệt.', 'success'); setDrafts((d) => ({ ...d, [key]: '' })); setFiles((f) => ({ ...f, [key]: null })); await load(); }
+    } else { await notifyUsers([step.approver_id, step.alternate_approver_id].filter((id): id is string => !!id && id !== profile?.id), 'Có bước đào tạo cần kiểm duyệt', step.title, 'training_review'); toast('Đã gửi người kiểm duyệt.', 'success'); setDrafts((d) => ({ ...d, [key]: '' })); setFiles((f) => ({ ...f, [key]: null })); await load(); }
   };
   const openFile = async (path: string) => {
     const { data, error: fileError } = await supabase.storage.from('training-step-submissions').createSignedUrl(path, 300);

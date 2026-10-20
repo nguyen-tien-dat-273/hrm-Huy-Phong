@@ -24,6 +24,7 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { notifyUser } from '@/lib/assignments';
+import { TaskCompletionReviewModal } from '@/components/TaskCompletionReviewModal';
 import { KANBAN_COLUMNS, PRIORITY_CONFIG, formatDate, getTodayString, isOverdue } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, Project, Profile, ProjectMember, MemberRole, ProjectRoleDefinition } from '@/types';
 
@@ -80,6 +81,7 @@ export function StaffKanban() {
   const [workflowEvidenceUrl, setWorkflowEvidenceUrl] = useState('');
   const [workflowEvidenceFile, setWorkflowEvidenceFile] = useState<File | null>(null);
   const [workflowSaving, setWorkflowSaving] = useState(false);
+  const [reviewTask, setReviewTask] = useState<Task | null>(null);
   const [createForm, setCreateForm] = useState({ title: '', description: '', project_id: '', assignee_id: '', start_date: '', due_date: '', priority: 'medium' as TaskPriority });
 
   const sensors = useSensors(
@@ -190,6 +192,16 @@ export function StaffKanban() {
   const canMoveTask = (task: Task) => task.assignee_id === profile?.id
     && task.status !== 'in_review'
     && hasProjectPermission(task.project_id, 'task.move_own');
+  /** Trưởng dự án = projects.lead_id hoặc thành viên vai trò lead (khớp can_review_project_task_request). */
+  const projectLeadIds = (projectId: string) => [...new Set([
+    ...projects.filter((project) => project.id === projectId && project.lead_id).map((project) => project.lead_id as string),
+    ...projectMembers
+      .filter((member) => member.project_id === projectId && (member.role_code || member.role) === 'lead')
+      .map((member) => member.user_id),
+  ])];
+  const canReviewTask = (task: Task) => task.status === 'in_review'
+    && !!profile && task.assignee_id !== profile.id
+    && projectLeadIds(task.project_id).includes(profile.id);
   const creatableProjects = projects.filter((project) => canCreateTask(project.id));
   const selectedProject = projects.find((project) => project.id === projectFilter);
   const selectedAccess = projectFilter === 'all' ? null : projectAccess[projectFilter];
@@ -391,12 +403,15 @@ export function StaffKanban() {
       toast(`Gửi yêu cầu thất bại: ${describeDbError(error)}`, 'error');
       return;
     }
-    toast(workflowKind === 'DEADLINE_EXTENSION' ? 'Đã gửi yêu cầu gia hạn.' : 'Đã gửi yêu cầu nghiệm thu.', 'success');
-    const leadId = projects.find((project) => project.id === workflowTarget.project_id)?.lead_id;
-    const reviewerIds = leadId && leadId !== profile?.id
-      ? [leadId]
-      : ((await supabase.from('profiles_directory').select('id,role').in('role', ['admin', 'ceo'])).data || [])
-          .map((reviewer) => reviewer.id).filter((reviewerId) => reviewerId !== profile?.id);
+    // F04.05: chỉ trưởng dự án duyệt nên chỉ báo cho trưởng dự án (lead_id và
+    // thành viên vai trò lead), trừ chính người gửi.
+    const reviewerIds = projectLeadIds(workflowTarget.project_id).filter((reviewerId) => reviewerId !== profile?.id);
+    toast(
+      reviewerIds.length === 0
+        ? 'Đã gửi, nhưng dự án chưa có trưởng dự án khác để duyệt. Báo quản trị viên gán trưởng dự án.'
+        : workflowKind === 'DEADLINE_EXTENSION' ? 'Đã gửi yêu cầu gia hạn.' : 'Đã gửi yêu cầu nghiệm thu.',
+      reviewerIds.length === 0 ? 'warning' : 'success',
+    );
     for (const reviewerId of reviewerIds) {
       await notifyUser(
         reviewerId,
@@ -406,9 +421,9 @@ export function StaffKanban() {
       );
     }
     if (workflowKind === 'COMPLETION' && workflowTarget) {
+      // request_project_task_action đã chuyển thẻ sang in_review trong cùng giao dịch.
       const targetId = workflowTarget.id;
       setTasks((prev) => prev.map((t) => t.id === targetId ? { ...t, status: 'in_review' } : t));
-      await supabase.from('tasks').update({ status: 'in_review' }).eq('id', targetId);
     }
     setWorkflowTarget(null);
     await loadData(true);
@@ -666,6 +681,7 @@ export function StaffKanban() {
                           ? () => openWorkflowRequest(task, 'COMPLETION') : undefined}
                         request={latestRequestByTask.get(task.id)}
                         onStart={task.status === 'todo' && canMoveTask(task) ? () => void handleStartTask(task) : undefined}
+                        onReview={canReviewTask(task) ? () => setReviewTask(task) : undefined}
                       />
                     ))}
                   </div>
@@ -690,6 +706,13 @@ export function StaffKanban() {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      <TaskCompletionReviewModal
+        task={reviewTask}
+        requesterName={profiles.find((p) => p.id === reviewTask?.assignee_id)?.name}
+        onClose={() => setReviewTask(null)}
+        onReviewed={() => void loadData(true)}
+      />
 
       <Modal open={createModalOpen} onClose={() => setCreateModalOpen(false)} title={editingTask ? 'Chỉnh sửa tác vụ' : 'Tạo tác vụ mới'}>
         <form onSubmit={handleCreateTask} className="space-y-4">
@@ -871,7 +894,7 @@ function KanbanDropColumn({ id, className, children }: {
   );
 }
 
-function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequestDeadline, onRequestCompletion, onStart, request }: {
+function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequestDeadline, onRequestCompletion, onStart, onReview, request }: {
   task: Task;
   assignee?: Profile;
   canMove: boolean;
@@ -880,6 +903,7 @@ function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequest
   onRequestDeadline?: () => void;
   onRequestCompletion?: () => void;
   onStart?: () => void;
+  onReview?: () => void;
   request?: MyTaskRequest;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: !canMove });
@@ -892,12 +916,12 @@ function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequest
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard task={task} assignee={assignee} canMove={canMove} onEdit={onEdit} onDelete={onDelete} onRequestDeadline={onRequestDeadline} onRequestCompletion={onRequestCompletion} onStart={onStart} request={request} />
+      <TaskCard task={task} assignee={assignee} canMove={canMove} onEdit={onEdit} onDelete={onDelete} onRequestDeadline={onRequestDeadline} onRequestCompletion={onRequestCompletion} onStart={onStart} onReview={onReview} request={request} />
     </div>
   );
 }
 
-function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, onRequestDeadline, onRequestCompletion, onStart, request }: {
+function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, onRequestDeadline, onRequestCompletion, onStart, onReview, request }: {
   task: Task;
   assignee?: Profile;
   dragging?: boolean;
@@ -907,6 +931,8 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
   onRequestDeadline?: () => void;
   onRequestCompletion?: () => void;
   onStart?: () => void;
+  /** Trưởng dự án mở hộp thoại nghiệm thu thẻ ở cột Đang duyệt. */
+  onReview?: () => void;
   request?: MyTaskRequest;
 }) {
   const priority = PRIORITY_CONFIG[task.priority];
@@ -1003,8 +1029,13 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
         </div>
         {assignee && <Avatar name={assignee.name} url={assignee.avatar_url} size="sm" />}
       </div>
-      {(onStart || onRequestCompletion) && (
+      {(onStart || onRequestCompletion || onReview) && (
         <div className="mt-2">
+          {onReview && (
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onReview(); }} className="w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-600">
+              Chờ bạn duyệt · Nghiệm thu
+            </button>
+          )}
           {onStart && (
             <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onStart(); }} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700">
               Bắt đầu tác vụ

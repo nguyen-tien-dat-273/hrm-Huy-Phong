@@ -13,8 +13,9 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { useToast } from '@/contexts/ToastContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { notifyUser } from '@/lib/assignments';
-import { addDays, startOfWeek, weekDays, UNLOGGED_TOLERANCE_HOURS, attendanceHours, formatHours } from '@/lib/worklog';
+import { addDays, startOfWeek, weekDays, UNLOGGED_TOLERANCE_HOURS, attendanceHours, fetchProjectLeadIds, formatHours } from '@/lib/worklog';
 import { formatDate, toDateString } from '@/lib/utils';
 import type { Attendance, Profile } from '@/types';
 
@@ -254,7 +255,10 @@ export function WorklogApprovalQueue({
   projectId?: string;
 }) {
   const { toast } = useToast();
+  const { profile } = useAuth();
   const [rows, setRows] = useState<WorklogReviewRow[]>([]);
+  /** Trưởng dự án theo từng dự án; chỉ họ được duyệt (review_project_worklog_submission). */
+  const [leadsByProject, setLeadsByProject] = useState<Map<string, string[]>>(new Map());
   const [names, setNames] = useState<Map<string, string>>(new Map());
   const [projects, setProjects] = useState<Map<string, string>>(new Map());
   const [entriesBySubmission, setEntriesBySubmission] = useState<Map<string, WorklogReviewEntry[]>>(new Map());
@@ -293,13 +297,14 @@ export function WorklogApprovalQueue({
           const end = toDateString(addDays(new Date(`${row.week_start}T00:00:00`), 6));
           return end > maximum ? end : maximum;
         }, rangeStart);
-    const [peopleResult, projectResult, logsResult] = await Promise.all([
+    const [peopleResult, projectResult, logsResult, leadMap] = await Promise.all([
       userIds.length ? supabase.from('profiles_directory').select('id,name').in('id', userIds) : Promise.resolve({ data: [], error: null }),
       projectIds.length ? supabase.from('projects').select('id,name').in('id', projectIds) : Promise.resolve({ data: [], error: null }),
       userIds.length ? supabase.from('task_worklogs')
         .select('user_id,work_date,hours,note,task:tasks!inner(id,title,project_id)')
         .in('user_id', userIds).gte('work_date', rangeStart).lte('work_date', rangeEnd)
         : Promise.resolve({ data: [], error: null }),
+      fetchProjectLeadIds(projectIds),
     ]);
     const detailError = peopleResult.error ?? projectResult.error ?? logsResult.error;
     const worklogEntries = (logsResult.data || []) as (WorklogReviewEntry & { user_id: string })[];
@@ -320,6 +325,7 @@ export function WorklogApprovalQueue({
     setNames(new Map((peopleResult.data || []).map((row) => [row.id, row.name])));
     setProjects(new Map((projectResult.data || []).map((row) => [row.id, row.name])));
     setEntriesBySubmission(entryMap);
+    setLeadsByProject(leadMap);
     setLoading(false);
   }, [weekStart, projectId]);
 
@@ -327,6 +333,9 @@ export function WorklogApprovalQueue({
   useRealtimeSync([{ table: 'worklog_submissions' }], () => load(true), {
     channelKey: `worklog-approval-${projectId ?? 'all'}-${weekStart ?? 'pending'}`,
   });
+
+  const canReview = (row: WorklogReviewRow) => !!profile && row.user_id !== profile.id
+    && (leadsByProject.get(row.project_id) ?? []).includes(profile.id);
 
   const review = async (submission: WorklogReviewRow, decision: 'APPROVED' | 'RETURNED') => {
     if (decision === 'RETURNED' && reviewNote.trim().length < 3) {
@@ -365,7 +374,7 @@ export function WorklogApprovalQueue({
               <h3 className="text-sm font-semibold text-slate-800">
                 Worklog chờ duyệt{weekStart ? ` · tuần từ ${weekStart}` : ' của dự án'}
               </h3>
-              <p className="mt-1 text-xs text-slate-500">Chỉ Project lead của dự án hoặc Admin/CEO có thể xử lý.</p>
+              <p className="mt-1 text-xs text-slate-500">Chỉ trưởng dự án duyệt; không ai tự duyệt worklog của mình.</p>
             </div>
             <Badge className="bg-amber-50 text-amber-700">{rows.length} chờ duyệt</Badge>
           </div>
@@ -405,14 +414,14 @@ export function WorklogApprovalQueue({
                       </ul>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  {canReview(row) ? <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => { setTarget(row); setReviewNote(''); }} disabled={busy}>
                       Trả lại
                     </Button>
                     <Button size="sm" variant="success" onClick={() => void review(row, 'APPROVED')} disabled={busy}>
                       Duyệt
                     </Button>
-                  </div>
+                  </div> : <Badge className="bg-slate-100 text-slate-600">Chờ trưởng dự án duyệt</Badge>}
                 </li>
               ))}
             </ul>

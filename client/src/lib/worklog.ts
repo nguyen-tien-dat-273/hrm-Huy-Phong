@@ -147,6 +147,30 @@ export function formatHours(hours: number): string {
   return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
+/**
+ * Trưởng dự án theo từng dự án: projects.lead_id + thành viên vai trò 'lead'
+ * (khớp is_project_lead trong DB). Dùng để ẩn/hiện nút duyệt và gửi thông báo.
+ */
+export async function fetchProjectLeadIds(projectIds: string[]): Promise<Map<string, string[]>> {
+  const result = new Map<string, string[]>();
+  if (projectIds.length === 0) return result;
+  const [projectsRes, membersRes] = await Promise.all([
+    supabase.from('projects').select('id, lead_id').in('id', projectIds),
+    supabase.from('project_members').select('project_id, user_id, role, role_code').in('project_id', projectIds),
+  ]);
+  const add = (projectId: string, userId: string | null) => {
+    if (!userId) return;
+    const list = result.get(projectId) ?? [];
+    if (!list.includes(userId)) list.push(userId);
+    result.set(projectId, list);
+  };
+  for (const project of (projectsRes.data || []) as { id: string; lead_id: string | null }[]) add(project.id, project.lead_id);
+  for (const member of (membersRes.data || []) as { project_id: string; user_id: string; role: string; role_code: string | null }[]) {
+    if ((member.role_code || member.role) === 'lead') add(member.project_id, member.user_id);
+  }
+  return result;
+}
+
 /** Tổng giờ đã ghi cho từng tác vụ — dùng để so với ước lượng. */
 export async function fetchTaskTotals(taskIds: string[]): Promise<Map<string, number>> {
   if (taskIds.length === 0) return new Map();

@@ -15,6 +15,7 @@ import { describeDbError } from '@/lib/dbError';
 import { removeTrainingDocument, removeTrainingVideo, uploadTrainingDocument, uploadTrainingVideo } from '@/lib/training';
 import { notifyUser } from '@/lib/assignments';
 import type { Profile, TrainingCourse, TrainingCourseStatus } from '@/types';
+import { TrainingPathsBoard } from '@/pages/admin/TrainingPathsBoard';
 
 const statusConfig: Record<TrainingCourseStatus, { label: string; color: string }> = {
   draft: { label: 'Bản nháp', color: 'bg-slate-100 text-slate-600' },
@@ -40,6 +41,8 @@ export function AdminTraining() {
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
+  /** F02.02: Admin tạo/xuất bản/phân công lộ trình ở tab riêng. */
+  const [tab, setTab] = useState<'courses' | 'paths'>('courses');
   const filteredCourses = courses.filter((course) => `${course.title} ${course.category} ${course.instructor || ''}`.toLowerCase().includes(query.trim().toLowerCase()));
 
   const load = async () => {
@@ -124,11 +127,21 @@ export function AdminTraining() {
 
   return <div className="space-y-5">
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-      <div><h2 className="font-display text-xl font-bold text-slate-800">Đào tạo</h2><p className="text-sm text-slate-500 mt-1">Tạo khóa học, giao cho nhân viên và theo dõi tiến độ hoàn thành.</p></div>
-      <Button onClick={openCreate} theme="admin"><Plus className="w-4 h-4" />Tạo khóa học</Button>
+      <div><h2 className="font-display text-xl font-bold text-slate-800">Đào tạo</h2><p className="text-sm text-slate-500 mt-1">{tab === 'courses' ? 'Tạo khóa học, giao cho nhân viên và theo dõi tiến độ hoàn thành.' : 'Tạo lộ trình, giao quản lý thiết lập mốc/checklist, phân công nhân viên và theo dõi tiến độ.'}</p></div>
+      {tab === 'courses' && <Button onClick={openCreate} theme="admin"><Plus className="w-4 h-4" />Tạo khóa học</Button>}
     </div>
+    <div role="tablist" className="inline-flex rounded-xl bg-slate-100 p-1">
+      {([['courses', 'Khóa học'], ['paths', 'Lộ trình đào tạo']] as const).map(([key, label]) => (
+        <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${tab === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+    {tab === 'paths' ? <TrainingPathsBoard /> : <>
     <Card><CardContent className="flex items-center gap-3 py-3"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo khóa học, danh mục hoặc giảng viên..." className="w-full bg-transparent text-sm outline-none" /></CardContent></Card>
     {loading ? <Card><CardContent><p className="text-sm text-slate-400 py-10 text-center">Đang tải khóa học...</p></CardContent></Card> : courses.length === 0 ? <Card><EmptyState icon={<BookOpen className="w-8 h-8" />} title="Chưa có khóa học" description="Tạo khóa học đầu tiên cho đội ngũ của bạn." action={<Button onClick={openCreate} theme="admin"><Plus className="w-4 h-4" />Tạo khóa học</Button>} /></Card> : filteredCourses.length === 0 ? <Card><EmptyState icon={<Search className="w-8 h-8" />} title="Không tìm thấy khóa học" description="Thử từ khóa khác hoặc xóa bộ lọc tìm kiếm." /></Card> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">{filteredCourses.map((course) => <Card key={course.id}><CardContent><div className="flex items-start justify-between gap-3"><div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center"><BookOpen className="w-5 h-5" /></div><Badge className={statusConfig[course.status].color}>{statusConfig[course.status].label}</Badge></div><h3 className="font-display text-base font-bold text-slate-800 mt-4">{course.title}</h3><p className="text-sm text-slate-500 mt-1 line-clamp-2">{course.description || 'Chưa có mô tả.'}</p><div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500 mt-4"><span>{course.category}</span><span>{course.duration_hours} giờ</span><span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{counts[course.id] || 0} học viên</span>{course.deadline && <span>Hạn {course.deadline}</span>}</div><div className="flex gap-2 mt-4 pt-4 border-t border-slate-100"><Button onClick={() => { setAssignOpen(course); setSelectedStaff(''); }} theme="admin" className="flex-1"><Users className="w-4 h-4" />Giao khóa học</Button><Button onClick={() => openEdit(course)} variant="secondary" aria-label="Sửa khóa học"><Edit3 className="w-4 h-4" /></Button><Button onClick={() => remove(course)} variant="danger" aria-label="Xóa khóa học"><Trash2 className="w-4 h-4" /></Button></div></CardContent></Card>)}</div>}
+    </>}
 
     <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Sửa khóa học' : 'Tạo khóa học'}><form onSubmit={submit} className="space-y-4"><Input label="Tên khóa học" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required /><div className="grid grid-cols-2 gap-3"><Input label="Danh mục" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} required /><Input label="Thời lượng (giờ)" type="number" min="0.5" step="0.5" value={form.duration_hours} onChange={(e) => setForm({ ...form, duration_hours: e.target.value })} required /></div><div className="grid grid-cols-2 gap-3"><Input label="Giảng viên" value={form.instructor} onChange={(e) => setForm({ ...form, instructor: e.target.value })} /><Input label="Hạn hoàn thành" type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} /></div><Select label="Trạng thái" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as TrainingCourseStatus })}><option value="draft">Bản nháp</option><option value="published">Đang mở</option><option value="archived">Đã lưu trữ</option></Select>
       {!editing && <fieldset className="rounded-xl border border-slate-200 p-3"><legend className="px-1 text-sm font-semibold text-slate-700">Giao khóa học cho nhân viên</legend><p className="mb-2 text-xs text-slate-500">Có thể chọn nhiều nhân viên. Bỏ trống nếu muốn lưu khóa học trước.</p><div className="max-h-44 space-y-1 overflow-y-auto">{staff.map((person) => <label key={person.id} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-50"><input type="checkbox" checked={selectedStaffIds.includes(person.id)} onChange={(event) => setSelectedStaffIds((current) => event.target.checked ? [...current, person.id] : current.filter((id) => id !== person.id))} className="h-4 w-4 accent-indigo-600" /><span>{person.name}</span><span className="text-xs text-slate-400">{person.department || 'Chưa có phòng ban'}</span></label>)}{staff.length === 0 && <p className="py-2 text-sm text-slate-400">Chưa có nhân viên đang hoạt động.</p>}</div><p className="mt-2 text-xs font-medium text-indigo-700">Đã chọn {selectedStaffIds.length} nhân viên</p></fieldset>}

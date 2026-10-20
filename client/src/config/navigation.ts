@@ -36,8 +36,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/organization', label: 'Cơ cấu tổ chức', description: 'Đơn vị, vị trí và tuyến quản lý', icon: Network, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'co cau don vi phong ban chi nhanh vi tri tuyen quan ly' },
   { to: '/admin/users', label: 'Hồ sơ nhân sự', description: 'Thông tin cá nhân, tình trạng làm việc và giấy tờ nhân viên', icon: Users, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ho so nhan su danh ba nhan vien tai khoan' },
 
-  { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tuyển dụng', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
-  { to: '/admin/candidate-documents', label: 'Kho hồ sơ ứng viên', description: 'Tra cứu CV và tài liệu ứng viên', icon: FileWarning, permission: 'users', group: 'Tuyển dụng', keywords: 'ho so ung vien cv tai lieu', functionCode: 'admin.worker_documents' },
+  { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, HR kiểm tra, BGĐ phê duyệt và thêm nhân sự vào dự án', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tuyển dụng', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
   { to: '/admin/worker-documents', label: 'Kho hồ sơ giấy tờ', description: 'Tra cứu hồ sơ và giấy tờ nhân viên', icon: FileWarning, permission: 'users', group: 'Tổ chức & Nhân sự', keywords: 'ho so nhan vien hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true },
 
   { to: '/admin/projects', label: 'Dự án', description: 'Dự án, thành viên, mốc và tác vụ', icon: FolderKanban, permission: 'projects', group: 'Công việc & Dự án', keywords: 'project tac vu' },

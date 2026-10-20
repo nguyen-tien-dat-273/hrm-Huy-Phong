@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileSpreadsheet, Search, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Phone, Building2, Wallet, Sparkles, UserCheck, CheckCircle2, ChevronDown, ChevronUp, CalendarClock, Plus } from 'lucide-react';
+import { FileSpreadsheet, Search, Trash2, Edit3, KeyRound, Copy, Check, ShieldAlert, ShieldCheck, AtSign, Phone, Building2, Wallet, CheckCircle2, Plus } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StaffFunctionSummary } from '@/components/StaffFunctionSummary';
 import { EffectivePermissions } from '@/components/EffectivePermissions';
 import { EmployeeImportModal } from '@/components/EmployeeImportModal';
-import { EmployeeDocumentVault } from '@/components/profile/EmployeeDocumentVault';
+import { EmployeeProfileModal } from '@/components/profile/EmployeeProfileModal';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -84,21 +83,6 @@ export function AdminUsers() {
   const [organizationUnits, setOrganizationUnits] = useState<{ id: string; code: string; name: string; parent_id: string | null; unit_type: string; is_active: boolean }[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState('');
   const [jobPositions, setJobPositions] = useState<{ id: string; code: string; title: string; unit_id: string; is_active: boolean }[]>([]);
-  const [pendingHandoffs, setPendingHandoffs] = useState<{
-    id: string;
-    candidate_id: string;
-    planned_start_date: string;
-    handoff_note: string | null;
-    status: string;
-    candidate_name: string;
-    candidate_email?: string;
-    candidate_phone?: string;
-    requisition_title?: string;
-    unit_id?: string | null;
-    position_id?: string | null;
-  }[]>([]);
-  const [selectedHandoffId, setSelectedHandoffId] = useState<string | null>(null);
-  const [handoffsOpen, setHandoffsOpen] = useState(true);
   const [form, setForm] = useState({
     name: '',
     identifier: '',
@@ -128,61 +112,6 @@ export function AdminUsers() {
     });
     setModalOpen(true);
   };
-
-  const loadPendingHandoffs = async () => {
-    try {
-      const { data: handoffs, error: handoffsErr } = await supabase
-        .from('recruitment_onboarding_handoffs')
-        .select('id, candidate_id, planned_start_date, handoff_note, status')
-        .eq('status', 'PENDING')
-        .order('planned_start_date', { ascending: true });
-
-      if (handoffsErr || !handoffs || handoffs.length === 0) {
-        setPendingHandoffs([]);
-        return;
-      }
-
-      const candidateIds = handoffs.map((h) => h.candidate_id);
-      const { data: candidates } = await supabase
-        .from('recruitment_candidates')
-        .select('id, full_name, email, phone, requisition_id')
-        .in('id', candidateIds);
-
-      const reqIds = (candidates || []).map((c) => c.requisition_id).filter(Boolean);
-      const { data: requisitions } = reqIds.length > 0
-        ? await supabase.from('recruitment_requisitions').select('id, title, unit_id, position_id').in('id', reqIds)
-        : { data: [] };
-
-      const candidateMap = new Map((candidates || []).map((c) => [c.id, c]));
-      const reqMap = new Map((requisitions || []).map((r) => [r.id, r]));
-
-      const mapped = handoffs.map((h) => {
-        const candidate = candidateMap.get(h.candidate_id);
-        const requisition = candidate ? reqMap.get(candidate.requisition_id) : undefined;
-        return {
-          id: h.id,
-          candidate_id: h.candidate_id,
-          planned_start_date: h.planned_start_date,
-          handoff_note: h.handoff_note,
-          status: h.status,
-          candidate_name: candidate?.full_name || 'Ứng viên',
-          candidate_email: candidate?.email || undefined,
-          candidate_phone: candidate?.phone || undefined,
-          requisition_title: requisition?.title || undefined,
-          unit_id: requisition?.unit_id || null,
-          position_id: requisition?.position_id || null,
-        };
-      });
-
-      setPendingHandoffs(mapped);
-    } catch (err) {
-      console.warn('Lỗi tải danh sách bàn giao onboarding:', err);
-    }
-  };
-
-  useEffect(() => {
-    void loadPendingHandoffs();
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -230,16 +159,6 @@ export function AdminUsers() {
     return path.join(' / ');
   };
   const companies = organizationUnits.filter((unit) => unit.is_active && unit.unit_type === 'company');
-  const companyForUnit = (unitId: string) => {
-    const visited = new Set<string>();
-    let unit = organizationUnits.find((item) => item.id === unitId);
-    while (unit && !visited.has(unit.id)) {
-      if (unit.unit_type === 'company') return unit;
-      visited.add(unit.id);
-      unit = unit.parent_id ? organizationUnits.find((item) => item.id === unit?.parent_id) : undefined;
-    }
-    return undefined;
-  };
   const unitBelongsToCompany = (unitId: string, companyId: string) => {
     const visited = new Set<string>();
     let unit = organizationUnits.find((item) => item.id === unitId);
@@ -291,37 +210,6 @@ export function AdminUsers() {
 
   const openPayslip = (user: Profile) => {
     navigate(`/admin/payroll?user=${encodeURIComponent(user.id)}`);
-  };
-
-  const openCreateFromHandoff = (handoff: typeof pendingHandoffs[number]) => {
-    setEditingUser(null);
-    setSelectedHandoffId(handoff.id);
-    setSelectedCompanyId(handoff.unit_id ? companyForUnit(handoff.unit_id)?.id || '' : '');
-    const guessedDept = handoff.unit_id ? unitName(handoff.unit_id) : '';
-    setForm({
-      name: handoff.candidate_name,
-      identifier: handoff.candidate_email || handoff.candidate_phone || '',
-      role: 'staff',
-      access_role_code: 'staff',
-      department: guessedDept === 'Chưa gán đơn vị' ? '' : guessedDept,
-      employee_code: '',
-      phone: handoff.candidate_phone || '',
-      hometown: '',
-      permanent_address: '',
-      current_address: '',
-      education_level: '',
-      school_name: '',
-      major: '',
-      graduation_year: '',
-      training_audience: '',
-      unit_id: handoff.unit_id || '',
-      position_id: handoff.position_id || '',
-      manager_id: '',
-      hire_date: handoff.planned_start_date || '',
-      employment_status: 'probation',
-      permissions: [],
-    });
-    setModalOpen(true);
   };
 
   const promoteToActive = async (user: Profile) => {
@@ -513,52 +401,6 @@ export function AdminUsers() {
           assignmentError = 'Không nhận được mã hồ sơ để lưu phân công.';
         }
 
-        if (selectedHandoffId && id) {
-          try {
-            await supabase
-              .from('recruitment_onboarding_handoffs')
-              .update({ status: 'ACCOUNT_CREATED', employee_user_id: id })
-              .eq('id', selectedHandoffId);
-
-            const { data: proc } = await supabase
-              .from('employee_lifecycle_processes')
-              .insert({
-                user_id: id,
-                process_type: 'ONBOARDING',
-                title: `Hội nhập & thử việc: ${form.name}`,
-                start_date: form.hire_date || new Date().toISOString().slice(0, 10),
-                target_date: new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10),
-                mentor_id: form.manager_id || null,
-                created_by: currentUser?.id,
-              })
-              .select('id')
-              .single();
-
-            if (proc?.id) {
-              const standardTasks = [
-                'Tiếp nhận hồ sơ nhân sự gốc và ký kết hợp đồng thử việc',
-                'Cấp phát tài khoản email nội bộ, máy tính & công cụ làm việc',
-                'Giới thiệu nội quy, chính sách phúc lợi & văn hóa công ty',
-                'Gặp gỡ Trưởng bộ phận và Mentor hướng dẫn chuyên môn',
-                'Đánh giá tiến độ sau 30 ngày thử việc',
-                'Đánh giá hoàn thành 60 ngày thử việc & thẩm định chuyển chính thức',
-              ];
-              await supabase.from('employee_checklist_items').insert(
-                standardTasks.map((title, idx) => ({
-                  process_id: proc.id,
-                  title,
-                  owner_id: form.manager_id || currentUser?.id,
-                  order_index: idx,
-                }))
-              );
-            }
-            setSelectedHandoffId(null);
-            void loadPendingHandoffs();
-          } catch (handoffErr) {
-            console.warn('Lỗi liên kết bàn giao onboarding:', handoffErr);
-          }
-        }
-
         setModalOpen(false);
         if (tempPassword) {
           setCopied(false);
@@ -573,8 +415,6 @@ export function AdminUsers() {
         }
         if (assignmentError) {
           toast(`Đã tạo tài khoản nhưng chưa lưu được phân công: ${assignmentError}`, 'warning');
-        } else if (selectedHandoffId) {
-          toast('Đã tiếp nhận ứng viên thành nhân viên và tự động tạo Lộ trình Hội nhập!', 'success');
         } else {
           toast('Tạo người dùng thành công!', 'success');
         }
@@ -663,79 +503,6 @@ export function AdminUsers() {
         </div>
       </div>
 
-      {pendingHandoffs.length > 0 && (
-        <div className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50/90 via-purple-50/70 to-blue-50/80 p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm">
-                <Sparkles className="h-5 w-5" />
-              </span>
-              <div>
-                <h4 className="text-sm font-bold text-slate-900">
-                  Ứng viên trúng tuyển chờ tiếp nhận vào nhân sự ({pendingHandoffs.length})
-                </h4>
-                <p className="text-xs text-slate-500">
-                  Ứng viên đã chấp nhận offer và được bàn giao sang onboarding từ Tuyển dụng.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setHandoffsOpen(!handoffsOpen)}
-              className="rounded-lg p-1 text-slate-400 hover:bg-white/60 hover:text-slate-600"
-              aria-label="Thu gọn hoặc mở rộng danh sách ứng viên"
-            >
-              {handoffsOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
-            </button>
-          </div>
-
-          {handoffsOpen && (
-            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {pendingHandoffs.map((handoff) => (
-                <div
-                  key={handoff.id}
-                  className="flex flex-col justify-between rounded-xl border border-indigo-100 bg-white/90 p-3.5 shadow-xs"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-bold text-slate-900">{handoff.candidate_name}</span>
-                      <Badge className="bg-indigo-50 text-indigo-700 text-[10px]">Trúng tuyển</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {handoff.requisition_title || 'Chưa gắn đợt tuyển'} · {handoff.unit_id ? unitName(handoff.unit_id) : 'Chưa gán đơn vị'}
-                    </p>
-                    <div className="mt-2 space-y-0.5 text-xs text-slate-600">
-                      {handoff.candidate_email && <p className="truncate">Email: {handoff.candidate_email}</p>}
-                      {handoff.candidate_phone && <p>SĐT: {handoff.candidate_phone}</p>}
-                      <p className="flex items-center gap-1 text-indigo-700 font-medium mt-1">
-                        <CalendarClock className="h-3.5 w-3.5" />
-                        Nhận việc: {handoff.planned_start_date ? new Date(handoff.planned_start_date).toLocaleDateString('vi-VN') : 'Chưa đặt'}
-                      </p>
-                      {handoff.handoff_note && (
-                        <p className="mt-1 text-[11px] text-slate-500 italic">
-                          "{handoff.handoff_note}"
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-2 border-t border-slate-100">
-                    <Button
-                      size="sm"
-                      theme="admin"
-                      className="w-full justify-center"
-                      onClick={() => openCreateFromHandoff(handoff)}
-                    >
-                      <UserCheck className="h-4 w-4" />
-                      Tiếp nhận & Tạo hồ sơ
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_15rem_auto] sm:items-center">
           <div className="relative">
@@ -783,43 +550,27 @@ export function AdminUsers() {
         </CardContent>
       </Card>
 
-      <Modal open={!!viewingUser} onClose={() => setViewingUser(null)} title="Hồ sơ nhân sự" size="xl">
-        {viewingUser && (
-          <div className="space-y-5">
-            <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50 p-4">
-              <Avatar name={viewingUser.name} url={viewingUser.avatar_url} size="lg" />
-              <div className="min-w-0"><h3 className="truncate text-lg font-bold text-slate-900">{viewingUser.name}</h3><p className="text-sm text-slate-500">{viewingUser.employee_code || 'Chưa cấp mã'} · {viewingUser.department || 'Chưa phân phòng ban'}</p></div>
-            </div>
-            <section className="space-y-3">
-              <div><h4 className="text-sm font-bold text-slate-900">Thông tin nhân sự</h4><p className="mt-0.5 text-xs text-slate-500">Thông tin liên hệ, tình trạng làm việc và học vấn.</p></div>
-              <dl className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tài khoản / Email</dt><dd className="mt-1 break-all text-sm font-medium text-slate-800">{displayIdentifier(viewingUser.email)}</dd></div>
-              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Điện thoại</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.phone || 'Chưa cập nhật'}</dd></div>
-              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Tài khoản & Trạng thái</dt><div className="mt-1 flex flex-wrap items-center justify-between gap-1"><div><span className={`text-sm font-semibold ${viewingUser.is_active ? 'text-emerald-600' : 'text-slate-500'}`}>{viewingUser.is_active ? 'Hoạt động' : 'Đã vô hiệu'}</span><span className="mx-1 text-slate-300">·</span><Badge className={viewingUser.employment_status === 'probation' || viewingUser.employment_status === 'onboarding' ? 'bg-amber-100 text-amber-800' : viewingUser.employment_status === 'terminated' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'}>{employmentStatusOptions[viewingUser.employment_status || 'active'] || viewingUser.employment_status}</Badge></div>{(viewingUser.employment_status === 'probation' || viewingUser.employment_status === 'onboarding') && canAdminister(viewingUser) && (<Button type="button" size="sm" variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs py-1 h-7" onClick={() => void promoteToActive(viewingUser)}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Chuyển chính thức</Button>)}</div></div>
-              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phép năm</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.annual_leave_quota} ngày</dd></div>
-              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quê quán</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.hometown || 'Chưa cập nhật'}</dd></div>
-              <div className="rounded-xl border border-slate-200 p-3"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nơi ở hiện tại</dt><dd className="mt-1 text-sm font-medium text-slate-800">{viewingUser.current_address || 'Chưa cập nhật'}</dd></div>
-              <div className="rounded-xl border border-slate-200 p-3 sm:col-span-2"><dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Học vấn</dt><dd className="mt-1 text-sm font-medium text-slate-800">{[viewingUser.school_name, viewingUser.major, viewingUser.graduation_year].filter(Boolean).join(' · ') || 'Chưa cập nhật'}</dd></div>
-              </dl>
-            </section>
-            <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <h4 className="text-sm font-bold text-slate-900">Công việc tại tổ chức</h4>
-              <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
-                <div><p className="text-xs text-slate-500">Đơn vị</p><p className="font-semibold text-slate-800">{unitName(viewingUser.unit_id)}</p></div>
-                <div><p className="text-xs text-slate-500">Vị trí</p><p className="font-semibold text-slate-800">{positionName(viewingUser.position_id)}</p></div>
-                <div><p className="text-xs text-slate-500">Quản lý trực tiếp</p><p className="font-semibold text-slate-800">{managerName(viewingUser.manager_id)}</p></div>
-              </div>
-            </section>
-            {currentUser && <EmployeeDocumentVault employee={viewingUser} actorId={currentUser.id} canManage={canAdminister(viewingUser)} />}
-            <div className="flex flex-wrap justify-end gap-2">
-              {isFullAdmin(currentUser) && <Button variant="outline" onClick={() => openPayslip(viewingUser)}><Wallet className="w-4 h-4" />Phiếu lương</Button>}
-              {canAdminister(viewingUser) && <Button variant="outline" onClick={() => { setResetTarget(viewingUser); setViewingUser(null); }}><KeyRound className="w-4 h-4" />Cấp lại mật khẩu</Button>}
-              {canAdminister(viewingUser) && <Button onClick={() => { const user = viewingUser; setViewingUser(null); openEdit(user); }}><Edit3 className="w-4 h-4" />Chỉnh sửa hồ sơ</Button>}
-              {canAdminister(viewingUser) && <Button variant="danger" onClick={() => { const user = viewingUser; setViewingUser(null); void handleDelete(user); }}><Trash2 className="w-4 h-4" />Xóa tài khoản</Button>}
-            </div>
-          </div>
+      <EmployeeProfileModal
+        user={viewingUser}
+        onClose={() => setViewingUser(null)}
+        unitName={unitName(viewingUser?.unit_id)}
+        positionName={positionName(viewingUser?.position_id)}
+        managerName={managerName(viewingUser?.manager_id)}
+        statusLabel={viewingUser ? employmentStatusOptions[viewingUser.employment_status || 'active'] || viewingUser.employment_status || '' : ''}
+        actorId={currentUser?.id}
+        canManage={!!viewingUser && canAdminister(viewingUser)}
+        statusAction={viewingUser && (viewingUser.employment_status === 'probation' || viewingUser.employment_status === 'onboarding') && canAdminister(viewingUser) && (
+          <Button type="button" size="sm" variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs py-1 h-7" onClick={() => void promoteToActive(viewingUser)}><CheckCircle2 className="h-3.5 w-3.5 mr-1" />Chuyển chính thức</Button>
         )}
-      </Modal>
+        actions={viewingUser && (
+          <>
+            {isFullAdmin(currentUser) && <Button variant="outline" onClick={() => openPayslip(viewingUser)}><Wallet className="w-4 h-4" />Phiếu lương</Button>}
+            {canAdminister(viewingUser) && <Button variant="outline" onClick={() => { setResetTarget(viewingUser); setViewingUser(null); }}><KeyRound className="w-4 h-4" />Cấp lại mật khẩu</Button>}
+            {canAdminister(viewingUser) && <Button onClick={() => { const user = viewingUser; setViewingUser(null); openEdit(user); }}><Edit3 className="w-4 h-4" />Chỉnh sửa hồ sơ</Button>}
+            {canAdminister(viewingUser) && <Button variant="danger" onClick={() => { const user = viewingUser; setViewingUser(null); void handleDelete(user); }}><Trash2 className="w-4 h-4" />Xóa tài khoản</Button>}
+          </>
+        )}
+      />
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingUser ? 'Cập nhật hồ sơ nhân sự' : 'Thêm người dùng mới'} size="xl">
         <form onSubmit={handleSubmit} className="space-y-4">

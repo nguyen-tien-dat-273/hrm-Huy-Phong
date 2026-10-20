@@ -8,7 +8,6 @@ import googleMapsLocation from './dist/api/google-maps-location.js';
 import passwordRecoveryV2 from './dist/api/password-recovery-v2.js';
 import pushConfig from './dist/api/push-config.js';
 import pushNotifications from './dist/api/push-notifications.js';
-import recruitmentApplications from './dist/api/recruitment-applications.js';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const staticRoot = join(root, 'client', 'dist');
@@ -20,7 +19,6 @@ const apiHandlers = new Map([
   ['/api/password-recovery-v2', passwordRecoveryV2],
   ['/api/push-config', pushConfig],
   ['/api/push-notifications', pushNotifications],
-  ['/api/recruitment-applications', recruitmentApplications],
 ]);
 
 const contentTypes = new Map([
