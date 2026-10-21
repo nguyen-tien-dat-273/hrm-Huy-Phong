@@ -21,7 +21,7 @@ import { PayslipLayoutEditor } from '@/components/payroll/PayslipLayoutEditor';
 import { PersonSchemeForm } from '@/components/payroll/PersonSchemeForm';
 import { Pager, clampPage } from '@/components/payroll/Pager';
 import { descendantUnitIds } from '@/lib/orgUnits';
-import { resolveMechanismRows } from '@/lib/payrollScheme';
+import { blankMechanismRows, missingLabel, resolveMechanismRows } from '@/lib/payrollScheme';
 import { schemeSourceOf } from '@/lib/payrollRun';
 import { stripVietnamese } from '@/lib/tableExport';
 import { fetchBankAccounts, type PayrollWorkspace } from '@/lib/payrollData';
@@ -74,10 +74,12 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
 
   const rowsOf = (person: Profile) => resolveMechanismRows(person, source, monthStart, monthEnd);
 
-  const statusOf = (personRows: ReturnType<typeof rowsOf>) => {
+  const statusOf = (personRows: ReturnType<typeof rowsOf>): { label: string; tone: string; title?: string } => {
     if (personRows.length === 0) return { label: 'Chưa có cơ chế', tone: 'bg-red-50 text-red-600' };
-    const missing = personRows.filter((row) => row.mode === 'PER_PERSON' && row.amount == null).length;
-    if (missing > 0) return { label: `Thiếu ${missing} giá trị`, tone: 'bg-amber-50 text-amber-700' };
+    const names = blankMechanismRows(personRows).map((row) => row.component.name);
+    if (names.length > 0) {
+      return { label: missingLabel(names), title: `Còn trống: ${names.join(', ')}`, tone: 'bg-amber-50 text-amber-700' };
+    }
     return { label: 'Đủ', tone: 'bg-emerald-50 text-emerald-700' };
   };
 
@@ -267,7 +269,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                                 {personRows.length > 0 ? `${personRows.length} dòng` : <span className="text-slate-400 dark:text-slate-600">—</span>}
                               </td>
                               <td className="border-l border-slate-300 dark:border-slate-700 py-1.5 px-2">
-                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status.tone}`}>{status.label}</span>
+                                <span className={`inline-block max-w-[14rem] truncate align-middle rounded-full px-2 py-0.5 text-[10px] font-bold ${status.tone}`} title={status.title}>{status.label}</span>
                               </td>
                               <td className="py-1.5 px-2 text-right text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
                             </tr>

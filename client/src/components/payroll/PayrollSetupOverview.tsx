@@ -19,7 +19,7 @@ import { CheckCircle2, ChevronRight, CircleAlert, FlaskConical } from 'lucide-re
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { versionForMonth } from '@/lib/payrollSettings';
-import { resolveMechanismRows } from '@/lib/payrollScheme';
+import { blankMechanismRows, missingLabel, resolveMechanismRows } from '@/lib/payrollScheme';
 import { schemeSourceOf } from '@/lib/payrollRun';
 import type { PayrollWorkspace } from '@/lib/payrollData';
 import type { Profile } from '@/types';
@@ -61,7 +61,7 @@ interface PayrollSetupOverviewProps {
   onDryRun: (personId?: string) => void;
 }
 
-interface PersonGap { person: Profile; noScheme: boolean; missing: number }
+interface PersonGap { person: Profile; noScheme: boolean; missing: string[] }
 
 export function PayrollSetupOverview({ data, monthStart, monthEnd, onDryRun }: PayrollSetupOverviewProps) {
   const navigate = useNavigate();
@@ -73,15 +73,15 @@ export function PayrollSetupOverview({ data, monthStart, monthEnd, onDryRun }: P
     const result: PersonGap[] = [];
     for (const person of data.profiles) {
       const rows = resolveMechanismRows(person, source, monthStart, monthEnd);
-      const missing = rows.filter((row) => row.mode === 'PER_PERSON' && row.amount == null).length;
-      if (rows.length === 0 || missing > 0) result.push({ person, noScheme: rows.length === 0, missing });
+      const missing = blankMechanismRows(rows).map((row) => row.component.name);
+      if (rows.length === 0 || missing.length > 0) result.push({ person, noScheme: rows.length === 0, missing });
     }
     return result;
   }, [data, monthEnd, monthStart]);
 
   const noScheme = gaps.filter((gap) => gap.noScheme);
   const lacking = gaps.filter((gap) => !gap.noScheme);
-  const missingCells = lacking.reduce((sum, gap) => sum + gap.missing, 0);
+  const missingCells = lacking.reduce((sum, gap) => sum + gap.missing.length, 0);
   const firstReady = data.profiles.find((person) => !gaps.some((gap) => gap.person.id === person.id));
 
   const steps = [
@@ -168,8 +168,11 @@ export function PayrollSetupOverview({ data, monthStart, monthEnd, onDryRun }: P
                       <span className="block truncate text-xs font-bold text-slate-800 dark:text-slate-100">{gap.person.name}</span>
                       <span className="block truncate text-[10px] text-slate-400">{gap.person.employee_code ?? '—'} · {gap.person.department || '—'}</span>
                     </span>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${gap.noScheme ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}>
-                      {gap.noScheme ? 'Chưa có cơ chế' : `Thiếu ${gap.missing} giá trị`}
+                    <span
+                      className={`max-w-[16rem] truncate rounded-full px-2 py-0.5 text-[10px] font-bold ${gap.noScheme ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}
+                      title={gap.noScheme ? undefined : `Còn trống: ${gap.missing.join(', ')}`}
+                    >
+                      {gap.noScheme ? 'Chưa có cơ chế' : missingLabel(gap.missing)}
                     </span>
                   </button>
                 </li>
