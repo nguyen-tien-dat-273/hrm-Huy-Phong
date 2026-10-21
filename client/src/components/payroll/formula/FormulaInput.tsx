@@ -15,7 +15,7 @@
 
 import {
   useEffect, useId, useMemo, useRef, useState,
-  type ClipboardEvent, type KeyboardEvent, type MouseEvent,
+  type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode,
 } from 'react';
 import { CheckCircle2, CornerDownLeft, PenLine, TriangleAlert } from 'lucide-react';
 import {
@@ -47,6 +47,12 @@ interface FormulaInputProps {
   autoFocus?: boolean;
   /** Chỉ ghi kết quả cuối một lần (không viết lại từng số thế vào); công thức chỉ là một con số thì không ghi gì thêm. */
   resultOnly?: boolean;
+  /** Nội dung nằm trong ô, sát mép phải (ví dụ nhãn "theo tháng"). */
+  trailing?: ReactNode;
+  /** Bỏ hàng nút dấu và hướng dẫn dưới ô — chỉ còn ô nhập và kết quả. */
+  compact?: boolean;
+  /** Chữ mờ khi ô trống. */
+  placeholder?: string;
 }
 
 const OPERAND_END = new Set<FormulaToken['kind']>(['ref', 'num', 'rparen', 'unknown']);
@@ -84,7 +90,7 @@ function matchParens(tokens: readonly FormulaToken[]): Map<number, number> {
 
 export function FormulaInput({
   value, onChange, entries, scope, functions = {}, leftLabel, ariaLabel, onAddEntry, softCodes,
-  formatResult = formatFormulaNumber, disabled = false, autoFocus = false, resultOnly = false,
+  formatResult = formatFormulaNumber, disabled = false, autoFocus = false, resultOnly = false, trailing, compact = false, placeholder,
 }: FormulaInputProps) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -531,7 +537,7 @@ export function FormulaInput({
                 onPaste={onPaste}
                 onFocus={() => setFocused(true)}
                 size={Math.max(query.length + 1, tokens.length === 0 ? 28 : 2)}
-                placeholder={tokens.length === 0 ? 'Gõ tên đầu mục, tham số…' : ''}
+                placeholder={tokens.length === 0 ? placeholder ?? 'Gõ tên đầu mục, tham số…' : ''}
                 role="combobox"
                 aria-label={ariaLabel ?? (leftLabel ? `Công thức ${leftLabel}` : 'Công thức')}
                 aria-expanded={showList}
@@ -541,6 +547,7 @@ export function FormulaInput({
                 className="min-w-[2ch] flex-1 bg-transparent py-0.5 text-sm text-slate-800 outline-none placeholder:text-slate-400"
               />
               {tokens.slice(caret).map((token, i) => renderToken(token, caret + i))}
+              {trailing && <span className="ml-auto shrink-0 pl-2">{trailing}</span>}
             </div>
           )}
 
@@ -597,11 +604,11 @@ export function FormulaInput({
 
       {!textMode && (
         <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${leftLabel ? 'sm:pl-1' : ''}`}>
-          {tokens.length === 0 ? (
+          {tokens.length === 0 ? (compact ? null : (
             <p className="text-xs text-slate-400">
               Gõ tên để chọn · <kbd className="rounded bg-slate-100 px-1 font-sans">Enter</kbd> chốt gợi ý · gõ + − x : ( ) để thêm dấu
             </p>
-          ) : issue ? (
+          )) : issue ? (
             <p role="alert" className="flex items-start gap-1.5 text-xs font-medium text-red-600">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {issue.message}
             </p>
@@ -625,7 +632,7 @@ export function FormulaInput({
               {[...new Set(softRefs.map((token) => nameOf(token.code) ?? token.code))].join(', ')} chưa có trong cơ chế — đang tính bằng 0.
             </p>
           )}
-          {!disabled && (
+          {!disabled && (!compact || focused) && (
             <div className="ml-auto flex items-center gap-1">
               {(['+', '-', '*', '/', '(', ')'] as const).map((op) => (
                 <button

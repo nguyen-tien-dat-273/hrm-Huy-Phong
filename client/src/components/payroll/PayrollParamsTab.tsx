@@ -180,18 +180,18 @@ export function PayrollParamsTab({
     const map = new Map<string, Set<string>>();
     const add = (code: string, where: string) => map.set(code, new Set([...(map.get(code) ?? []), where]));
     const componentById = new Map(data.components.map((component) => [component.id, component]));
-    const unitById = new Map(data.units.map((unit) => [unit.id, unit]));
-    for (const item of data.unitItems) {
-      if (!item.formula || (item.effective_to && item.effective_to < currentMonth)) continue;
-      const where = `${unitById.get(item.unit_id)?.name ?? 'Đơn vị'} · ${componentById.get(item.component_id)?.name ?? '?'}`;
+    const schemeById = new Map(data.schemes.map((scheme) => [scheme.id, scheme]));
+    for (const item of data.schemeItems) {
+      if (!item.formula) continue;
+      const where = `Bộ ${schemeById.get(item.scheme_id)?.name ?? 'mẫu'} · ${componentById.get(item.component_id)?.name ?? '?'}`;
       for (const code of [...referencedCodes(item.formula), ...referencedFunctions(item.formula)]) add(code, where);
     }
     for (const item of data.items) {
       if (!item.formula || item.effective_to) continue;
-      for (const code of [...referencedCodes(item.formula), ...referencedFunctions(item.formula)]) add(code, 'Công thức khai riêng');
+      for (const code of [...referencedCodes(item.formula), ...referencedFunctions(item.formula)]) add(code, 'Cơ chế của nhân sự');
     }
     return map;
-  }, [currentMonth, data.components, data.items, data.unitItems, data.units]);
+  }, [data.components, data.items, data.schemeItems, data.schemes]);
 
   const update = (patch: Partial<PayrollParamVersion>) => {
     setTouched(true);

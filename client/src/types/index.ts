@@ -587,8 +587,12 @@ export interface EmployeePayItem {
   id: string;
   user_id: string;
   component_id: string;
+  /** Cách lấy giá trị của dòng — cùng kiểu dòng với bộ cơ chế mẫu. */
+  mode: PayrollRowMode;
   amount: number | null;
   formula: string | null;
+  /** Thứ tự hiện trên phiếu (NULL = theo danh mục). */
+  sort_order: number | null;
   /**
    * Ba cờ khai RIÊNG cho người này. `null` = chưa khai, lấy theo danh mục.
    *
@@ -628,6 +632,24 @@ export interface UnitPayItem {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Bộ cơ chế mẫu: danh sách dòng đặt tên sẵn để sao chép cho người khác. */
+export interface PayScheme {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaySchemeItem {
+  id: string;
+  scheme_id: string;
+  component_id: string;
+  mode: PayrollRowMode;
+  amount: number | null;
+  formula: string | null;
+  sort_order: number | null;
 }
 
 /** Cách in con số của một dòng ở đầu phiếu lương: `percent` là số đã tính theo %, `ratio` là tỷ lệ 0–1. */

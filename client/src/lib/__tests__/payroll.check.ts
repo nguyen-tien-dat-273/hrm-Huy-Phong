@@ -1,8 +1,9 @@
 // Kiểm chứng engine lương. Chạy: npm run check:payroll
 import { evaluateFormula, progressiveLookup, tierLookup } from '../payrollFormula';
 import {
-  applyOverride, diffSchemeItems, earliestSchemeMonth, openRequestFor, resolveMechanismRows,
+  diffSchemeItems, earliestSchemeMonth, mechanismRowOf, openRequestFor, resolveMechanismRows,
 } from '../payrollScheme';
+import { draftOfMechanism, draftOfStored, payloadOfDraft } from '../../components/payroll/schemeDraft';
 import {
   computePayslip, orderMechanismRows, splitOvertimeHours, summarisePeriod, systemScope,
   type MechanismRow, type PayrollAdjustment,
@@ -18,7 +19,7 @@ import {
   otherDeductionsOf, PAY_REPORT_TAGS, reportTagFitsKind, reportTagKindProblem, sumReportTags,
 } from '../payrollReportTags';
 import type {
-  EmployeePayItem, LeaveRequest, PayComponent, PayComponentKind, PayReportTag, UnitPayItem,
+  EmployeePayItem, LeaveRequest, PayComponent, PayComponentKind, PayReportTag,
 } from '@/types';
 
 /**
@@ -311,25 +312,33 @@ check('dòng tiền đọc đầu mục vắng mặt thì cảnh báo',
 check('dòng trung gian đọc đầu mục vắng mặt thì không cảnh báo',
   thieuNguon.warnings.some((w) => w.includes('ALLOW_MEAL')), false);
 
-// --- Khai riêng đè dòng cơ chế (applyOverride) ------------------------------
+// --- Dòng cơ chế đọc từ dòng đã lưu / đổi qua lại với dòng đang soạn ----------
 const kpi = comp('LUONG_KPI', 'EARNING', { name: 'Lương KPI', sort_order: 200 });
 const ot = comp('OT_WEEKDAY', 'EARNING', { name: 'OT ngày thường', sort_order: 210 });
 const kpiRow: MechanismRow = { component: kpi, mode: 'FORMULA', formula: 'MUC_RIENG * TY_LE_KPI', amount: null, sortOrder: 10, origin: 'Cơ chế' };
 const otRow: MechanismRow = { component: ot, mode: 'FORMULA', formula: 'HOURLY_RATE * HE_SO_OT * OT_WEEKDAY_HOURS', amount: null, sortOrder: 20, origin: 'Cơ chế' };
-const kpiRieng = applyOverride(kpiRow, kpi, { amount: 5_000_000, formula: null }, 'Riêng');
-check('mức riêng trên dòng công thức đọc MUC_RIENG: giữ công thức', [kpiRieng.mode, kpiRieng.formula, kpiRieng.amount, kpiRieng.origin],
-  ['FORMULA', 'MUC_RIENG * TY_LE_KPI', 5_000_000, 'Riêng']);
-const otRieng = applyOverride(otRow, ot, { amount: 300_000, formula: null }, 'Riêng');
-check('mức riêng trên dòng công thức không đọc MUC_RIENG: thành giá trị', [otRieng.mode, otRieng.formula, otRieng.amount],
-  ['VALUE', null, 300_000]);
-check('công thức riêng thay công thức chung',
-  applyOverride(otRow, ot, { amount: null, formula: 'HOURLY_RATE * 2 * OT_WEEKDAY_HOURS' }, 'Riêng').formula,
-  'HOURLY_RATE * 2 * OT_WEEKDAY_HOURS');
-check('dòng hằng tháng có giá trị riêng thành giá trị',
-  applyOverride({ ...otRow, mode: 'MONTHLY_INPUT', formula: null }, ot, { amount: 1_000_000, formula: null }, 'Riêng').mode, 'VALUE');
-check('khai riêng trống thì giữ nguyên dòng', applyOverride(otRow, ot, { amount: null, formula: null }, 'Riêng'), otRow);
-const them = applyOverride(undefined, comp('PC_RIENG', 'EARNING', { sort_order: 150 }), { amount: 700_000, formula: null }, 'Riêng');
-check('đầu mục không có trong cơ chế thành dòng thêm, xếp cuối phiếu', [them.mode, them.amount, them.sortOrder], ['VALUE', 700_000, 100_150]);
+const luuCongThuc = mechanismRowOf({ mode: 'FORMULA', formula: 'MUC_RIENG * TY_LE_KPI', amount: 5_000_000, sort_order: null }, kpi, 'Riêng');
+check('dòng công thức giữ công thức, mức riêng và xếp theo danh mục khi chưa có thứ tự',
+  [luuCongThuc.mode, luuCongThuc.formula, luuCongThuc.amount, luuCongThuc.sortOrder], ['FORMULA', 'MUC_RIENG * TY_LE_KPI', 5_000_000, 200]);
+const luuSo = mechanismRowOf({ mode: 'VALUE', formula: 'bỏ qua', amount: 300_000, sort_order: 15 }, ot, 'Riêng');
+check('dòng số cố định bỏ công thức', [luuSo.mode, luuSo.formula, luuSo.amount, luuSo.sortOrder], ['VALUE', null, 300_000, 15]);
+check('dòng cũ chưa có mode: có công thức là công thức, không thì là giá trị',
+  [mechanismRowOf({ formula: 'A + B', amount: null, sort_order: null }, ot, 'x').mode,
+    mechanismRowOf({ formula: null, amount: 10, sort_order: null }, ot, 'x').mode], ['FORMULA', 'VALUE']);
+check('số cố định đọc lên thành công thức một con số',
+  draftOfStored('c', { mode: 'VALUE', formula: null, amount: 700_000, sort_order: 5 }),
+  { componentId: 'c', sortOrder: 5, mode: 'FORMULA', formula: '700000', amount: null });
+check('mỗi người một mức đọc lên thành công thức một con số; chưa khai thì để trống',
+  [draftOfStored('c', { mode: 'PER_PERSON', formula: null, amount: 4_500_000, sort_order: null }).formula,
+    draftOfStored('c', { mode: 'PER_PERSON', formula: null, amount: null, sort_order: null }).formula], ['4500000', '']);
+check('dòng công thức đọc MUC_RIENG giữ nguyên mức riêng',
+  draftOfStored('c', { mode: 'FORMULA', formula: 'MUC_RIENG * TY_LE_KPI', amount: 5_000_000, sort_order: null }).amount, 5_000_000);
+check('theo tháng không mang công thức',
+  draftOfStored('c', { mode: 'MONTHLY_INPUT', formula: 'x', amount: 1, sort_order: 1 }),
+  { componentId: 'c', sortOrder: 1, mode: 'MONTHLY_INPUT', formula: '', amount: null });
+check('dòng đã giải → dòng soạn → dòng lưu giữ nguyên nội dung',
+  payloadOfDraft([draftOfMechanism(otRow)]),
+  [{ component_id: ot.id, mode: 'FORMULA', formula: 'HOURLY_RATE * HE_SO_OT * OT_WEEKDAY_HOURS', amount: null, sort_order: 20, note: null }]);
 
 // --- KPI ---------------------------------------------------------------------
 check('Lương KPI = mức KPI × tỷ lệ KPI',
@@ -513,6 +522,16 @@ check('thứ Bảy nghỉ hẳn thì công chuẩn thấp hơn',
 
 check('chưa khai ca thì trả null (không đoán bừa)',
   monthStandardDays(EMPTY_SCHEDULES, new Date(2026, 7, 1)), null);
+
+// Công chuẩn nhập tay của tháng thắng số tính từ lịch, kể cả khi chưa khai ca;
+// tháng khác vẫn tính từ lịch.
+const manual: ScheduleSet = { ...schedules, overrides: { '2026-08-01': 22 } };
+check('công chuẩn nhập tay thay số tính từ lịch',
+  monthStandardDays(manual, new Date(2026, 7, 1), ['2026-08-03']), 22);
+check('tháng không nhập tay vẫn tính từ lịch',
+  monthStandardDays(manual, new Date(2026, 8, 1)), sepBase);
+check('nhập tay được cả khi chưa khai ca',
+  monthStandardDays({ ...EMPTY_SCHEDULES, overrides: { '2026-08-01': 24 } }, new Date(2026, 7, 1)), 24);
 
 // Dòng giải thích phải cộng ra đúng công chuẩn, kể cả khi có ngày lễ.
 const giaiThich = monthStandardBreakdown(schedules, new Date(2026, 7, 1));
@@ -763,60 +782,45 @@ check('chưa gán đơn vị thì lùi về ô chữ cũ',
   buildPayrollJournal([{ profile: { id: 'c', name: 'C', department: 'Kho vận', unit_id: null }, computed: monthly }], undefined, unitNames)
     .entries.every((e) => e.department === 'Kho vận'), true);
 
-// --- Giải cơ chế theo CÂY tổ chức -------------------------------------------
-const donVi = new Map([
-  ['hp', { id: 'hp', name: 'Huy Phong', parent_id: null }],
-  ['kd', { id: 'kd', name: 'Khối Kinh doanh', parent_id: 'hp' }],
-  ['kd1', { id: 'kd1', name: 'Phòng KD1', parent_id: 'kd' }],
-]);
+// --- Cơ chế của từng người --------------------------------------------------
 const phuCap = comp('PHU_CAP', 'EARNING', { id: 'pc', name: 'Phụ cấp' });
-/** Dòng cơ chế chung của một đơn vị; mặc định là dòng "Giá trị" 100.000 từ 01/2026. */
-const dongDonVi = (id: string, unitId: string, over: Partial<UnitPayItem> = {}): UnitPayItem => ({
-  id, unit_id: unitId, component_id: 'pc', mode: 'VALUE', amount: 100_000, formula: null, sort_order: 10,
+/** Dòng cơ chế của người u9; mặc định là dòng "số cố định" 100.000 từ 01/2026. */
+const dongRieng = (id: string, over: Partial<EmployeePayItem> = {}): EmployeePayItem => ({
+  id, user_id: 'u9', component_id: 'pc', mode: 'VALUE', amount: 100_000, formula: null, sort_order: 10,
   effective_from: '2026-01-01', effective_to: null, note: null, created_by: null, created_at: '', updated_at: '',
   ...over,
-} as UnitPayItem);
-const dongRieng = (amount: number | null, formula: string | null = null): EmployeePayItem => ({
-  id: 'e1', user_id: 'u9', component_id: 'pc', amount, formula, effective_from: '2026-01-01', effective_to: null,
-  note: null, created_by: null, created_at: '', updated_at: '',
 } as EmployeePayItem);
-const nguonCay = {
-  components: [phuCap],
-  unitById: donVi,
-  unitItems: [dongDonVi('c1', 'hp')] as UnitPayItem[],
-  employeeItems: [] as EmployeePayItem[],
-};
-const nvKd1 = { id: 'u9', unit_id: 'kd1' };
-const giai = (data: typeof nguonCay, month = '2026-10-01', end = '2026-10-31') =>
-  resolveMechanismRows(nvKd1, data as never, month, end);
-check('đơn vị con thừa hưởng cơ chế chung của công ty, ghi nguồn bằng tên đơn vị',
-  giai(nguonCay).map((r) => [r.amount, r.origin]), [[100_000, 'Huy Phong']]);
-const coKhoi = { ...nguonCay, unitItems: [dongDonVi('c1', 'hp'), dongDonVi('c2', 'kd', { amount: 300_000 })] };
-check('đơn vị GẦN nhất khai lại thì thay hẳn dòng của cấp trên',
-  giai(coKhoi).map((r) => [r.amount, r.origin]), [[300_000, 'Khối Kinh doanh']]);
-const coPhong = { ...coKhoi, unitItems: [...coKhoi.unitItems, dongDonVi('c3', 'kd1', { amount: 400_000 })] };
-check('phòng khai lại thì thắng khối',
-  giai(coPhong).map((r) => [r.amount, r.origin]), [[400_000, 'Phòng KD1']]);
-check('đơn vị khác nhánh không ảnh hưởng',
-  resolveMechanismRows({ id: 'x', unit_id: 'hp' }, coPhong as never, '2026-10-01', '2026-10-31').map((r) => r.amount), [100_000]);
-check('khai riêng của người thắng tất cả',
-  giai({ ...coPhong, employeeItems: [dongRieng(999_000)] }).map((r) => [r.amount, r.origin]), [[999_000, 'Riêng']]);
-check('đơn vị con đặt OFF thì bỏ dòng của cấp trên',
-  giai({ ...nguonCay, unitItems: [dongDonVi('c1', 'hp'), dongDonVi('c4', 'kd', { mode: 'OFF', amount: null })] }).length, 0);
-check('khai riêng thêm lại được dòng đã OFF',
-  giai({ ...nguonCay, unitItems: [dongDonVi('c1', 'hp'), dongDonVi('c4', 'kd', { mode: 'OFF', amount: null })],
-    employeeItems: [dongRieng(50_000)] }).map((r) => [r.mode, r.amount]), [['VALUE', 50_000]]);
+const nguon = { components: [phuCap], employeeItems: [dongRieng('e1')] as EmployeePayItem[] };
+const nv = { id: 'u9' };
+const giai = (data: typeof nguon, month = '2026-10-01', end = '2026-10-31') => resolveMechanismRows(nv, data as never, month, end);
+check('người chỉ có đúng dòng của mình, nguồn là "Riêng"',
+  giai(nguon).map((r) => [r.mode, r.amount, r.origin]), [['VALUE', 100_000, 'Riêng']]);
+check('dòng của người khác không lẫn sang',
+  resolveMechanismRows({ id: 'khac' }, nguon as never, '2026-10-01', '2026-10-31').length, 0);
 check('đầu mục đã khóa thì không lên phiếu',
-  giai({ ...nguonCay, components: [{ ...phuCap, is_active: false }] }).length, 0);
-const coCongThuc = { ...nguonCay, unitItems: [dongDonVi('c5', 'kd', { mode: 'FORMULA', formula: 'MUC_RIENG * WORK_DAYS', amount: null })] };
-check('mức riêng trên dòng công thức đọc MUC_RIENG: công thức giữ nguyên',
-  giai({ ...coCongThuc, employeeItems: [dongRieng(50_000)] }).map((r) => [r.mode, r.formula, r.amount]),
-  [['FORMULA', 'MUC_RIENG * WORK_DAYS', 50_000]]);
-check('dòng cơ chế hết hiệu lực trước tháng tính thì không lên phiếu',
-  giai({ ...nguonCay, unitItems: [dongDonVi('c6', 'hp', { effective_to: '2026-09-30' })] }).length, 0);
-check('dòng "Từng người" chưa khai giữ amount null để báo thiếu',
-  giai({ ...nguonCay, unitItems: [dongDonVi('c7', 'hp', { mode: 'PER_PERSON', amount: null })] }).map((r) => [r.mode, r.amount]),
+  giai({ ...nguon, components: [{ ...phuCap, is_active: false }] }).length, 0);
+check('dòng hết hiệu lực trước tháng tính thì không lên phiếu',
+  giai({ ...nguon, employeeItems: [dongRieng('e2', { effective_to: '2026-09-30' })] }).length, 0);
+check('dòng công thức giữ công thức và mức riêng',
+  giai({ ...nguon, employeeItems: [dongRieng('e3', { mode: 'FORMULA', formula: 'MUC_RIENG * WORK_DAYS', amount: 50_000 })] })
+    .map((r) => [r.mode, r.formula, r.amount]), [['FORMULA', 'MUC_RIENG * WORK_DAYS', 50_000]]);
+check('dòng "mỗi người một mức" chưa khai giữ amount null để báo thiếu',
+  giai({ ...nguon, employeeItems: [dongRieng('e4', { mode: 'PER_PERSON', amount: null })] }).map((r) => [r.mode, r.amount]),
   [['PER_PERSON', null]]);
+check('dòng theo tháng không mang công thức',
+  giai({ ...nguon, employeeItems: [dongRieng('e5', { mode: 'MONTHLY_INPUT', amount: null })] }).map((r) => [r.mode, r.formula]),
+  [['MONTHLY_INPUT', null]]);
+check('hai phiên bản cùng đầu mục: lấy phiên bản đang hiệu lực',
+  giai({ ...nguon, employeeItems: [
+    dongRieng('e6', { amount: 1, effective_to: '2026-09-30' }),
+    dongRieng('e7', { amount: 2, effective_from: '2026-10-01' }),
+  ] }).map((r) => r.amount), [2]);
+const hai = [comp('B', 'EARNING', { id: 'b', sort_order: 30 }), comp('A', 'EARNING', { id: 'a', sort_order: 20 })];
+check('xếp theo thứ tự đã lưu, chưa có thì theo danh mục',
+  resolveMechanismRows(nv, {
+    components: hai,
+    employeeItems: [dongRieng('x1', { component_id: 'b', sort_order: null }), dongRieng('x2', { component_id: 'a', sort_order: null })],
+  } as never, '2026-10-01', '2026-10-31').map((r) => r.component.code), ['A', 'B']);
 
 // --- Đề xuất cơ chế lương ----------------------------------------------------
 check('tháng áp dụng sớm nhất = tháng sau kỳ đã chốt khi chưa có phiên bản sau đó',

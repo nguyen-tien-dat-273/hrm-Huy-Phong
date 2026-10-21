@@ -134,7 +134,7 @@ export function AdminAttendanceSettings() {
   return (
     <div className="space-y-4">
       {/* Hai ô số chung nằm cùng một hàng với nút Lưu; giờ làm và công chuẩn
-          bên dưới tự lưu riêng vì là danh mục nhiều dòng. */}
+          từng tháng bên dưới tự lưu riêng vì là danh mục nhiều dòng. */}
       <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
         <CardContent className="flex flex-wrap items-end gap-x-8 gap-y-3 !py-3">
           <NumberField
@@ -166,7 +166,7 @@ export function AdminAttendanceSettings() {
 
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_23rem]">
         <WorkScheduleCard set={schedules} loading={schedulesLoading} onChanged={loadSchedules} />
-        <MonthStandardCard set={activeSchedules} />
+        <MonthStandardCard set={activeSchedules} onChanged={loadSchedules} />
       </div>
     </div>
   );

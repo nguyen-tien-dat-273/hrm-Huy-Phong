@@ -120,10 +120,9 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   }, [searched, categoryFilter, categoryOrder]);
 
   const usageOf = (component: PayComponent) => {
-    const unitIds = new Set(data.unitItems
-      .filter((item) => item.component_id === component.id && !item.effective_to && item.mode !== 'OFF').map((item) => item.unit_id));
+    const schemeIds = new Set(data.schemeItems.filter((item) => item.component_id === component.id).map((item) => item.scheme_id));
     return {
-      mechanisms: data.units.filter((unit) => unitIds.has(unit.id)).map((unit) => unit.name),
+      mechanisms: data.schemes.filter((scheme) => schemeIds.has(scheme.id)).map((scheme) => scheme.name),
       people: new Set(data.items.filter((item) => item.component_id === component.id && !item.effective_to).map((item) => item.user_id)).size,
     };
   };
@@ -237,8 +236,8 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
         title: `Khóa “${component.name}”?`,
         message:
           (used > 0
-            ? `Đầu mục đang có trong cơ chế chung của ${usage.mechanisms.length} đơn vị${usage.mechanisms.length ? ` (${usage.mechanisms.join(', ')})` : ''} `
-              + `và khai riêng của ${usage.people} nhân sự. `
+            ? `Đầu mục đang có trong ${usage.mechanisms.length} bộ cơ chế mẫu${usage.mechanisms.length ? ` (${usage.mechanisms.join(', ')})` : ''} `
+              + `và cơ chế của ${usage.people} nhân sự. `
             : '')
           + 'Khóa không xóa số liệu; đầu mục chỉ không được chọn thêm vào cơ chế mới. Mở khóa lại bất cứ lúc nào.',
         confirmLabel: 'Khóa đầu mục',
@@ -564,8 +563,8 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
                 )}
                 <Field label="Nhãn báo cáo" value={reportTagLabel(detail.report_tag) ?? 'Không gắn'} />
                 <Field label="Trạng thái" value={detail.is_active ? 'Kích hoạt' : 'Khóa'} />
-                <Field label="Có trong cơ chế chung của" value={usage.mechanisms.length ? usage.mechanisms.join(', ') : 'Chưa có đơn vị nào'} />
-                <Field label="Khai riêng" value={`${usage.people} nhân sự`} />
+                <Field label="Có trong bộ cơ chế mẫu" value={usage.mechanisms.length ? usage.mechanisms.join(', ') : 'Chưa có bộ nào'} />
+                <Field label="Trong cơ chế của" value={`${usage.people} nhân sự`} />
               </dl>
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Mô tả</p>

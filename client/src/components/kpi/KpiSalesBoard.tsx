@@ -203,7 +203,12 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
   const allSelected = rows.length > 0 && rows.filter((row) => selectable(row.target)).every((row) => selected.has(row.id));
   const disputes = data.sales.filter((row) => row.confirm_status === 'DISPUTED');
 
-  const cell = 'h-8 w-full min-w-[6.5rem] border border-slate-300 dark:border-slate-600 rounded px-2 text-center text-sm tabular-nums font-bold text-slate-900 dark:text-slate-100 hover:border-slate-400 dark:hover:border-slate-500 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-800 focus:outline-none';
+  const getCellClass = (isEdited: boolean) =>
+    `h-8 w-full min-w-[6.5rem] rounded-md border px-2 text-center text-sm tabular-nums font-bold transition-all duration-150 outline-none shadow-xs ${
+      isEdited
+        ? 'border-indigo-400 bg-indigo-50/60 text-indigo-950 ring-1 ring-indigo-400/30 dark:border-indigo-500 dark:bg-indigo-950/50 dark:text-indigo-100'
+        : 'border-slate-300 bg-white text-slate-900 hover:border-slate-400 hover:bg-slate-50/60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-750'
+    } focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:focus:border-indigo-400 dark:focus:bg-slate-800`;
 
   return (
     <div className="space-y-4">
@@ -306,24 +311,39 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
                         <p className="font-bold text-slate-900 dark:text-slate-100">{person?.name ?? '—'}</p>
                         {target?.review_reason && <p className="text-[11px] font-semibold text-red-600 dark:text-red-400">{target.review_reason}</p>}
                       </td>
-                      {(['sales_target', 'collect_target', 'customers_target'] as const).map((field) => (
-                        <td key={field} className={`border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center font-semibold ${tEdit ? 'bg-amber-100/50 dark:bg-amber-950/30' : ''}`}>
-                          {tEdit ? (
-                            <input value={valueOf(id, field, target)} inputMode="decimal" aria-label={field}
-                              onChange={(event) => setValue(id, field, event.target.value)}
-                              className={cell} />
-                          ) : fmtNum(target?.[field])}
-                        </td>
-                      ))}
-                      {(['sales_actual', 'collect_actual', 'customers_actual'] as const).map((field) => (
-                        <td key={field} className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center font-semibold">
-                          {actualEditable && target ? (
-                            <input value={valueOf(id, field, target)} inputMode="decimal" aria-label={field} placeholder="—"
-                              onChange={(event) => setValue(id, field, event.target.value)}
-                              className={cell} />
-                          ) : fmtNum(target?.[field])}
-                        </td>
-                      ))}
+                      {(['sales_target', 'collect_target', 'customers_target'] as const).map((field) => {
+                        const isEdited = edits[id]?.[field] !== undefined;
+                        return (
+                          <td key={field} className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center font-semibold">
+                            {tEdit ? (
+                              <input
+                                value={valueOf(id, field, target)}
+                                inputMode="decimal"
+                                aria-label={field}
+                                onChange={(event) => setValue(id, field, event.target.value)}
+                                className={getCellClass(isEdited)}
+                              />
+                            ) : fmtNum(target?.[field])}
+                          </td>
+                        );
+                      })}
+                      {(['sales_actual', 'collect_actual', 'customers_actual'] as const).map((field) => {
+                        const isEdited = edits[id]?.[field] !== undefined;
+                        return (
+                          <td key={field} className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center font-semibold">
+                            {actualEditable && target ? (
+                              <input
+                                value={valueOf(id, field, target)}
+                                inputMode="decimal"
+                                aria-label={field}
+                                placeholder="—"
+                                onChange={(event) => setValue(id, field, event.target.value)}
+                                className={getCellClass(isEdited)}
+                              />
+                            ) : fmtNum(target?.[field])}
+                          </td>
+                        );
+                      })}
                       <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 text-center font-semibold">
                         {target ? (
                           <span>

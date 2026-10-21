@@ -27,3 +27,22 @@ export function unitLineage(
   }
   return chain;
 }
+
+/** Đơn vị và mọi đơn vị con của nó (đi theo parent_id, chặn vòng). */
+export function descendantUnitIds(
+  rootId: string,
+  units: ReadonlyArray<{ id: string; parent_id: string | null }>,
+): Set<string> {
+  const result = new Set([rootId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const unit of units) {
+      if (unit.parent_id && result.has(unit.parent_id) && !result.has(unit.id)) {
+        result.add(unit.id);
+        grew = true;
+      }
+    }
+  }
+  return result;
+}

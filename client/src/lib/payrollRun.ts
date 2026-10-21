@@ -14,20 +14,13 @@ import { resolveMechanismRows, type SchemeSourceData } from './payrollScheme';
 import { toPayrollParams, versionForMonth, type PayrollParamVersion, type PayrollParams } from './payrollSettings';
 import { BUILTIN_FUNCTIONS, OWN_AMOUNT_CODE, OWN_AMOUNT_NAME, SYSTEM_VARIABLE_BY_CODE } from './payrollVariables';
 import { monthStandardDays } from './workSchedule';
-import type { ResolvableUnit } from './orgUnits';
 import type { PayrollWorkspace } from './payrollData';
 import type { AppSettings } from './settings';
 import type { Profile } from '@/types';
 
-export function unitMapOf(data: Pick<PayrollWorkspace, 'units'>): Map<string, ResolvableUnit> {
-  return new Map(data.units.map((unit) => [unit.id, { id: unit.id, name: unit.name, parent_id: unit.parent_id }]));
-}
-
 export function schemeSourceOf(data: PayrollWorkspace): SchemeSourceData {
   return {
     components: data.components,
-    unitById: unitMapOf(data),
-    unitItems: data.unitItems,
     employeeItems: data.items,
   };
 }

@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   CircleAlert,
   CircleCheck,
+  ClipboardCheck,
   History,
   Landmark,
   ListChecks,
@@ -24,11 +25,15 @@ import {
   TriangleAlert,
   Undo2,
   Wallet,
+  XCircle,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { ExportButtons } from '@/components/payroll/ExportButtons';
 import { Timeline } from '@/components/payroll/PayrollApprovals';
+import { ReauthDialog } from '@/components/payroll/ReauthDialog';
+import { reviewPayrollRun, REAUTH_REQUIRED } from '@/lib/payrollData';
+import { useToast } from '@/contexts/ToastContext';
 import { RUN_STATUS_LABEL } from '@/components/payroll/PayrollRegister';
 import { formatDateTime } from '@/lib/utils';
 import type { PayrollApprovalEvent, PayrollRun, PayrollRunStatus } from '@/types';
@@ -74,6 +79,7 @@ interface PayrollOperationsModalProps {
   monthLabel: string;
   monthStartStr: string;
   canManage: boolean;
+  canApprove?: boolean;
   closed: boolean;
   approved: boolean;
   busy: 'calc' | 'paid' | 'journal' | null;
@@ -93,6 +99,7 @@ interface PayrollOperationsModalProps {
   onOpenBank: () => void;
   onMarkPaid: () => Promise<void>;
   onExportJournal: () => Promise<void>;
+  onChanged?: () => void;
   exportOptions: () => any;
   nameOf: (id: string | null) => string;
   sortedCount: number;
@@ -107,6 +114,7 @@ export function PayrollOperationsModal({
   monthLabel,
   monthStartStr,
   canManage,
+  canApprove = false,
   closed,
   approved,
   busy,
@@ -126,13 +134,27 @@ export function PayrollOperationsModal({
   onOpenBank,
   onMarkPaid,
   onExportJournal,
+  onChanged,
   exportOptions,
   nameOf,
   sortedCount,
   filteredCount,
 }: PayrollOperationsModalProps) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [reviewAction, setReviewAction] = useState<'APPROVED' | 'REJECTED' | null>(null);
+
+  const handleReview = async (note: string): Promise<string | null> => {
+    if (!run || !reviewAction) return null;
+    const isApproved = reviewAction === 'APPROVED';
+    const err = await reviewPayrollRun(run.id, reviewAction, note || null);
+    if (err) return err === REAUTH_REQUIRED ? 'Phiên xác thực đã quá hạn — nhập lại mật khẩu để ký.' : err;
+    setReviewAction(null);
+    toast(isApproved ? `Đã ký duyệt chi bảng lương tháng ${monthLabel}.` : 'Đã từ chối kỳ lương — kỳ trả về Đã tính.', 'success');
+    if (onChanged) onChanged();
+    return null;
+  };
 
   return (
     <Modal square open={open} onClose={onClose} title={`Vận hành & Quy trình kỳ lương tháng ${monthLabel}`} size="xl">
@@ -170,7 +192,9 @@ export function PayrollOperationsModal({
               <div>
                 <p className="font-bold">Kỳ đã khoá lúc {formatDateTime(run?.locked_at ?? null)} bởi {nameOf(run?.locked_by ?? null)}</p>
                 <p className="mt-0.5 text-amber-700 dark:text-amber-300">
-                  Đang chờ Ban Giám đốc ký duyệt chi. Số liệu không sửa được; nếu phát hiện sai sót cần <strong>Rút lại</strong> kèm lý do.
+                  {canApprove
+                    ? 'Bạn có thẩm quyền Quản trị viên / Ban Giám đốc (admin.payroll_approve) để ký duyệt chi hoặc từ chối kỳ lương này ngay tại đây.'
+                    : 'Đang chờ Ban Giám đốc ký duyệt chi. Số liệu không sửa được; nếu phát hiện sai sót cần Kế toán rút lại kèm lý do.'}
                 </p>
               </div>
             </div>
@@ -255,19 +279,61 @@ export function PayrollOperationsModal({
                 </div>
               )}
 
-              {/* Nút Rút lại để sửa */}
-              {canManage && runStatus === 'LOCKED' && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    onClose();
-                    onOpenWithdraw();
-                  }}
-                  disabled={!!busy}
-                  className="w-full justify-center h-10 gap-2 font-bold border-amber-300 text-amber-800 dark:text-amber-300 hover:bg-amber-50"
-                >
-                  <Undo2 className="h-4 w-4" /> Rút kỳ lương về để sửa
-                </Button>
+              {/* Thao tác khi kỳ đang khoá chờ duyệt (LOCKED) */}
+              {runStatus === 'LOCKED' && (
+                <div className="space-y-2">
+                  {canApprove && (
+                    <div className="space-y-2 p-3 rounded-lg border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30">
+                      <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <ClipboardCheck className="h-3.5 w-3.5" /> Thẩm quyền phê duyệt chi
+                      </div>
+                      <Button
+                        variant="success"
+                        onClick={() => setReviewAction('APPROVED')}
+                        disabled={!!busy}
+                        className="w-full justify-center h-10 gap-2 font-bold shadow-sm"
+                      >
+                        <ClipboardCheck className="h-4 w-4" /> Ký duyệt chi kỳ lương (2FA)
+                      </Button>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setReviewAction('REJECTED')}
+                          disabled={!!busy}
+                          className="justify-center border-red-300 text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300 text-xs font-semibold"
+                        >
+                          <XCircle className="h-3.5 w-3.5 mr-1 text-red-600" /> Từ chối duyệt
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            onClose();
+                            navigate('/admin/payroll/approvals');
+                          }}
+                          className="justify-center text-xs font-semibold text-slate-700 dark:text-slate-300"
+                        >
+                          Trang duyệt chi
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {canManage && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        onClose();
+                        onOpenWithdraw();
+                      }}
+                      disabled={!!busy}
+                      className="w-full justify-center h-9 gap-2 text-xs font-semibold border-amber-300 text-amber-800 dark:text-amber-300 hover:bg-amber-50"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" /> Rút kỳ lương về để sửa
+                    </Button>
+                  )}
+                </div>
               )}
 
               {/* Nút File chi lương ngân hàng */}
@@ -441,6 +507,25 @@ export function PayrollOperationsModal({
           </Button>
         </div>
       </div>
+
+      <ReauthDialog
+        open={reviewAction !== null}
+        onClose={() => setReviewAction(null)}
+        title={reviewAction === 'APPROVED' ? `Ký duyệt chi lương tháng ${monthLabel}` : `Từ chối duyệt chi lương tháng ${monthLabel}`}
+        description={
+          reviewAction === 'APPROVED'
+            ? 'Xác nhận phê duyệt bảng lương này. Cần nhập lại mật khẩu tài khoản để ký duyệt bảo mật (2FA).'
+            : 'Từ chối bảng lương. Kỳ sẽ quay về trạng thái Đã tính để kế toán chỉnh sửa số liệu.'
+        }
+        confirmLabel={reviewAction === 'APPROVED' ? 'Ký duyệt chi' : 'Xác nhận từ chối'}
+        tone={reviewAction === 'APPROVED' ? 'success' : 'danger'}
+        note={{
+          label: 'Lý do / Ghi chú cho kế toán',
+          required: reviewAction === 'REJECTED',
+          placeholder: reviewAction === 'REJECTED' ? 'Bắt buộc nhập lý do từ chối để kế toán biết điều chỉnh…' : 'Ghi chú thêm (không bắt buộc)…',
+        }}
+        onConfirmed={handleReview}
+      />
     </Modal>
   );
 }

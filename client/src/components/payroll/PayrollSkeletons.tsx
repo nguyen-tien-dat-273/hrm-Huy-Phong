@@ -14,7 +14,7 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 
-type Section = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'approvals' | 'reports';
+type Section = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'timesheet' | 'approvals' | 'reports';
 
 /** Thanh xám — bo `rounded-md` để lớp bo lớn hơn truyền vào còn ghi đè được. */
 function Bar({ className = '' }: { className?: string }) {
@@ -418,7 +418,8 @@ function ApprovalsSkeleton() {
 export function PayrollSectionSkeleton({ section }: { section: Section }) {
   switch (section) {
     case 'catalog': return <CatalogSkeleton />;
-    case 'params': return <ParamsSkeleton />;
+    case 'params':
+    case 'timesheet': return <ParamsSkeleton />;
     case 'setup':
     case 'schemes': return <SchemesSkeleton />;
     case 'adjustments': return <AdjustmentsSkeleton />;

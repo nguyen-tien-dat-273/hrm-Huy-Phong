@@ -15,8 +15,9 @@ import { PayslipDocument, documentLinesFromCatalog } from '@/components/payroll/
 import { fullMonthStats, monthEndOf, monthText } from '@/components/payroll/schemeWorkbench';
 import { useToast } from '@/contexts/ToastContext';
 import { useAppSettings } from '@/contexts/SettingsContext';
-import { computePayslip } from '@/lib/payroll';
-import { unitMechanismRows } from '@/lib/payrollScheme';
+import { computePayslip, type MechanismRow } from '@/lib/payroll';
+import { descendantUnitIds } from '@/lib/orgUnits';
+import { resolveMechanismRows } from '@/lib/payrollScheme';
 import { nameResolver, paramsForMonth, schemeSourceOf } from '@/lib/payrollRun';
 import { savePayslipLayout, type PayrollWorkspace } from '@/lib/payrollData';
 import {
@@ -62,29 +63,39 @@ export function PayslipLayoutEditor({ data, unit, monthStart, canManage, onChang
   const origin = draft ? null
     : parentLayout.originUnitId ? data.units.find((item) => item.id === parentLayout.originUnitId)?.name ?? 'cấp trên' : null;
 
-  // ---- Dòng của cơ chế chung, để chọn và để xem phiếu mẫu ---------------------
+  // ---- Dòng trong cơ chế của người thuộc đơn vị, để chọn và để xem phiếu mẫu --
   const source = useMemo(() => schemeSourceOf(data), [data]);
-  const rows = useMemo(
-    () => [...unitMechanismRows(unit.id, source, monthStart, monthEnd).values()]
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.component.sort_order - b.component.sort_order),
-    [monthEnd, monthStart, source, unit.id],
-  );
+  const { rows, sampleRows } = useMemo(() => {
+    const ids = descendantUnitIds(unit.id, data.units);
+    const union = new Map<string, MechanismRow>();
+    let fullest: MechanismRow[] = [];
+    for (const person of data.profiles) {
+      if (!person.unit_id || !ids.has(person.unit_id)) continue;
+      const personRows = resolveMechanismRows(person, source, monthStart, monthEnd);
+      for (const row of personRows) if (!union.has(row.component.id)) union.set(row.component.id, row);
+      if (personRows.length > fullest.length) fullest = personRows;
+    }
+    return {
+      rows: [...union.values()].sort((a, b) => a.sortOrder - b.sortOrder || a.component.sort_order - b.component.sort_order),
+      sampleRows: fullest,
+    };
+  }, [data.profiles, data.units, monthEnd, monthStart, source, unit.id]);
   const intermediates = rows.filter((row) => row.component.kind === 'INFO').map((row) => row.component);
   const deductions = rows.filter((row) => row.component.kind === 'DEDUCTION').map((row) => row.component);
 
   const params = useMemo(() => paramsForMonth(data, app, new Date(`${monthStart}T00:00:00`), monthStart), [app, data, monthStart]);
   const result = useMemo(() => {
-    if (!params || rows.length === 0) return null;
+    if (!params || sampleRows.length === 0) return null;
     return computePayslip({
       profile: { id: 'sample', name: 'Nhân viên mẫu' },
-      rows,
+      rows: sampleRows,
       stats: fullMonthStats(params),
       params,
       inputs: {},
       catalogCodes: data.components.map((component) => component.code),
       nameOf: nameResolver(data.components, params),
     });
-  }, [data.components, params, rows]);
+  }, [data.components, params, sampleRows]);
 
   // ---- Sửa ---------------------------------------------------------------------
   /** Đang theo cấp trên thì tách thành mẫu riêng, mang sẵn nội dung cũ. */
@@ -167,7 +178,7 @@ export function PayslipLayoutEditor({ data, unit, monthStart, canManage, onChang
 
       <PickList
         title="Đầu phiếu"
-        empty="Cơ chế chung chưa có dòng trung gian nào."
+        empty="Nhân sự của đơn vị chưa có dòng trung gian nào."
         items={intermediates}
         isOn={(component) => !!headerFormatOf(component.code)}
         onToggle={(component, on) => setHeader(component, on)}
@@ -194,7 +205,7 @@ export function PayslipLayoutEditor({ data, unit, monthStart, canManage, onChang
 
       <PickList
         title="Khoản trừ trước Tổng cộng"
-        empty="Cơ chế chung chưa có khoản trừ nào."
+        empty="Nhân sự của đơn vị chưa có khoản trừ nào."
         items={deductions}
         isOn={(component) => layout.beforeTotal.includes(component.code)}
         onToggle={setBeforeTotal}

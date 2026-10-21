@@ -99,15 +99,16 @@ export function ScrollArrows({
   );
 }
 
-export function FullscreenToggle({ full, onToggle }: { full: boolean; onToggle: () => void }) {
+export function FullscreenToggle({ full, onToggle, square = false, className = '' }: { full: boolean; onToggle: () => void; square?: boolean; className?: string }) {
   return (
     <Button
       variant="outline"
-      size="sm"
+      size={square ? 'xs' : 'sm'}
+      square={square}
       onClick={onToggle}
       title={full ? 'Thu nhỏ về trang (Esc)' : 'Phóng to toàn màn hình'}
       aria-label={full ? 'Thu nhỏ bảng' : 'Phóng to bảng toàn màn hình'}
-      className="no-print h-10 w-10 p-0 shrink-0 border-slate-300 dark:border-slate-700"
+      className={`no-print ${square ? '!min-h-0 !h-8 !w-8' : 'h-10 w-10'} p-0 shrink-0 border-slate-300 dark:border-slate-700 ${className}`}
     >
       {full ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
     </Button>
