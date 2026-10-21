@@ -272,12 +272,30 @@ export function AdminAttendanceDevices() {
                   </Select>
                   <Button onClick={createMapping} disabled={busy || !mappingUserId.trim() || !mappingProfileId}>Thêm</Button>
                 </div>
-                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Mã máy</th><th className="px-4 py-3">Nhân viên</th><th className="px-4 py-3">Mã HRM</th><th className="w-12 px-3 py-3" /></tr></thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {selectedMappings.map((mapping) => <tr key={mapping.id}><td className="px-4 py-3 font-mono font-semibold text-indigo-700">{mapping.device_user_id}</td><td className="px-4 py-3 font-medium text-slate-800">{mapping.profile?.name}</td><td className="px-4 py-3 text-slate-500">{mapping.profile?.employee_code || '—'}</td><td className="px-3 py-3"><button onClick={() => deleteMapping(mapping.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600" aria-label="Xóa ánh xạ"><Trash2 className="h-4 w-4" /></button></td></tr>)}
-                      {selectedMappings.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Mã máy trùng mã nhân viên sẽ tự nhận. Chỉ cần thêm các trường hợp khác mã.</td></tr>}
+                <div className="overflow-x-auto rounded-xl border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                      <tr>
+                        <th className="px-4 py-3">Mã máy</th>
+                        <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-4 py-3">Nhân viên</th>
+                        <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-4 py-3">Mã HRM</th>
+                        <th className="w-12 border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
+                      {selectedMappings.map((mapping) => (
+                        <tr key={mapping.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="px-4 py-3 font-mono font-black text-indigo-700 dark:text-indigo-400 text-sm">{mapping.device_user_id}</td>
+                          <td className="border-l border-slate-300 dark:border-slate-700 px-4 py-3 font-black text-slate-900 dark:text-slate-100 text-sm">{mapping.profile?.name}</td>
+                          <td className="border-l border-slate-300 dark:border-slate-700 px-4 py-3 font-bold text-slate-600 dark:text-slate-400 text-sm">{mapping.profile?.employee_code || '—'}</td>
+                          <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3">
+                            <button onClick={() => deleteMapping(mapping.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors" aria-label="Xóa ánh xạ">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {selectedMappings.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-sm font-bold text-slate-500">Mã máy trùng mã nhân viên sẽ tự nhận. Chỉ cần thêm các trường hợp khác mã.</td></tr>}
                     </tbody>
                   </table>
                 </div>

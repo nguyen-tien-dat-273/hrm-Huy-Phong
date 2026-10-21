@@ -1145,7 +1145,7 @@ export function AdminOrganization() {
     // han khong bao loi, mau KPI chi am tham mat lien ket roi khong con ap
     // cho ai - kieu hong im lang khong ai phat hien ra.
     setSubmitting(true);
-    const { count: kpiTemplates } = await supabase.from('kpi_position_templates')
+    const { count: kpiTemplates } = await supabase.from('kpi_sets')
       .select('id', { count: 'exact', head: true }).eq('position_id', position.id);
     setSubmitting(false);
 

@@ -637,16 +637,16 @@ export function AdminAssignments() {
             />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] border-collapse">
+              <table className="w-full min-w-[700px] border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left text-xs font-semibold text-slate-500 uppercase px-4 py-3 w-44 sticky left-0 bg-white z-10">
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="text-left text-xs font-semibold text-slate-500 uppercase px-2.5 py-1.5 w-32 sticky left-0 bg-white dark:bg-slate-900 z-10">
                       Thành viên
                     </th>
                     {days.map((d) => (
                       <th
                         key={d.toISOString()}
-                        className={`text-center text-xs font-semibold uppercase px-2 py-3 ${
+                        className={`text-center text-xs font-semibold uppercase px-1.5 py-1.5 ${
                           isToday(d) ? 'text-blue-600' : 'text-slate-500'
                         }`}
                       >
@@ -658,14 +658,11 @@ export function AdminAssignments() {
                 </thead>
                 <tbody>
                   {staff.map((member) => (
-                    <tr key={member.id} className="border-b border-slate-50 align-top">
-                      <td className="px-4 py-3 sticky left-0 bg-white z-10">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar name={member.name} url={member.avatar_url} size="sm" />
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-slate-800 truncate">{member.name}</p>
-                            <p className="text-xs text-slate-400 truncate">{member.department || '—'}</p>
-                          </div>
+                    <tr key={member.id} className="border-b border-slate-50 dark:border-slate-800 align-top">
+                      <td className="px-2.5 py-1.5 sticky left-0 bg-white dark:bg-slate-900 z-10">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{member.name}</p>
+                          <p className="text-[10px] text-slate-400 truncate">{member.department || '—'}</p>
                         </div>
                       </td>
                       {days.map((d) => {

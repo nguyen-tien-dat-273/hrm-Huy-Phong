@@ -93,16 +93,16 @@ export function TwoFactorDialog({ open, title, description, confirmLabel, onClos
   };
 
   return (
-    <Modal open={open} onClose={busy ? () => undefined : onClose} title={title} size="md">
+    <Modal square open={open} onClose={busy ? () => undefined : onClose} title={title} size="md">
       <div className="space-y-4">
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">
+        <div className="rounded-none border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-900">
           {description}
         </div>
 
         {step === 'loading' && <Skeleton className="h-24" />}
 
         {step === 'enroll-start' && (
-          <div className="space-y-3 rounded-xl border border-slate-200 p-4">
+          <div className="space-y-3 rounded-none border border-slate-200 p-4">
             <p className="flex items-start gap-2 text-sm leading-relaxed text-slate-700">
               <Smartphone className="mt-0.5 h-4 w-4 flex-shrink-0 text-indigo-600" />
               Tài khoản của bạn chưa đăng ký ứng dụng xác thực. Cài Google Authenticator hoặc Microsoft
@@ -115,7 +115,7 @@ export function TwoFactorDialog({ open, title, description, confirmLabel, onClos
         )}
 
         {step === 'enroll-scan' && enrollment && (
-          <div className="grid gap-4 rounded-xl border border-slate-200 p-4 sm:grid-cols-[auto_1fr]">
+          <div className="grid gap-4 rounded-none border border-slate-200 p-4 sm:grid-cols-[auto_1fr]">
             <img src={enrollment.qrCode} alt="Mã QR đăng ký ứng dụng xác thực" className="h-40 w-40 rounded-lg border border-slate-100" />
             <div className="min-w-0 space-y-2 text-sm text-slate-600">
               <p>Mở ứng dụng xác thực, chọn <strong>Thêm tài khoản → Quét mã QR</strong>.</p>
@@ -138,7 +138,7 @@ export function TwoFactorDialog({ open, title, description, confirmLabel, onClos
               maxLength={6}
               value={code}
               onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
-              className="text-center font-mono text-lg tracking-[0.4em]"
+              className="!rounded-none text-center font-mono text-lg tracking-[0.4em]"
               error={error ?? undefined}
             />
             <div className="flex justify-end gap-2">
@@ -151,7 +151,7 @@ export function TwoFactorDialog({ open, title, description, confirmLabel, onClos
         )}
 
         {error && step !== 'verify' && step !== 'enroll-scan' && (
-          <p role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p role="alert" className="flex items-start gap-2 rounded-none bg-red-50 px-3 py-2 text-sm text-red-700">
             <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" /> {error}
           </p>
         )}

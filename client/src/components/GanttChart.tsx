@@ -132,18 +132,18 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
       )}
 
       {/* Vùng cuộn ngang. Cột tên dính trái để cuộn xa vẫn biết đang xem ai. */}
-      <div className="border border-slate-200 rounded-2xl overflow-x-auto bg-white">
+      <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-x-auto bg-white dark:bg-slate-900">
         <div style={{ minWidth: LABEL_WIDTH + gridWidth }}>
           {/* Hàng tháng */}
-          <div className="flex border-b border-slate-100 bg-slate-50/70">
+          <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/70">
             <div
-              className="flex-shrink-0 sticky left-0 z-20 bg-slate-50/70 border-r border-slate-100"
+              className="flex-shrink-0 sticky left-0 z-20 bg-slate-50/70 dark:bg-slate-800/70 border-r border-slate-100 dark:border-slate-800"
               style={{ width: LABEL_WIDTH }}
             />
             {months.map((m, i) => (
               <div
                 key={i}
-                className="text-xs font-semibold text-slate-600 px-2 py-1.5 border-r border-slate-100 truncate"
+                className="text-xs font-semibold text-slate-600 dark:text-slate-300 px-2 py-1.5 border-r border-slate-100 dark:border-slate-800 truncate"
                 style={{ width: m.span * DAY_WIDTH }}
               >
                 {m.label}
@@ -152,9 +152,9 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
           </div>
 
           {/* Hàng ngày */}
-          <div className="flex border-b border-slate-200 bg-slate-50/40">
+          <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/40">
             <div
-              className="flex-shrink-0 sticky left-0 z-20 bg-slate-50/40 border-r border-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider"
+              className="flex-shrink-0 sticky left-0 z-20 bg-slate-50/40 dark:bg-slate-800/40 border-r border-slate-100 dark:border-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
               style={{ width: LABEL_WIDTH }}
             >
               Tác vụ
@@ -162,10 +162,10 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
             {range.days.map((d) => (
               <div
                 key={d.key}
-                className={`text-center text-[11px] py-1.5 border-r border-slate-100 ${
-                  d.isToday ? 'bg-blue-50 text-blue-700 font-bold'
-                  : d.isWeekend ? 'bg-slate-100/60 text-slate-400'
-                  : 'text-slate-500'
+                className={`text-center text-[11px] py-1.5 border-r border-slate-100 dark:border-slate-800 ${
+                  d.isToday ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold'
+                  : d.isWeekend ? 'bg-slate-100/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
+                  : 'text-slate-500 dark:text-slate-400'
                 }`}
                 style={{ width: DAY_WIDTH }}
               >

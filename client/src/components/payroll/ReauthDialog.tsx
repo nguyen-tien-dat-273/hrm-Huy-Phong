@@ -73,15 +73,15 @@ export function ReauthDialog({
   };
 
   return (
-    <Modal open={open} onClose={busy ? () => undefined : onClose} title={title} size="md">
+    <Modal square open={open} onClose={busy ? () => undefined : onClose} title={title} size="md">
       <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-        <div className="flex items-start gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+        <div className="flex items-start gap-3 rounded-none border border-indigo-100 bg-indigo-50/60 px-4 py-3">
           <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-indigo-600" />
           <div className="text-sm leading-relaxed text-indigo-900">{description}</div>
         </div>
 
         {note && (
-          <Textarea
+          <Textarea className="!rounded-none"
             label={note.label}
             required={note.required}
             rows={3}
@@ -107,7 +107,7 @@ export function ReauthDialog({
         </div>
 
         {error && !noteMissing && (
-          <p role="alert" className="flex items-start gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p role="alert" className="flex items-start gap-2 rounded-none bg-red-50 px-3 py-2 text-sm text-red-700">
             <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" /> {error}
           </p>
         )}

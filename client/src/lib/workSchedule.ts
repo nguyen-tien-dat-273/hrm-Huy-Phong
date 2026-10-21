@@ -38,21 +38,52 @@ export interface WorkSchedule {
 export interface ScheduleSet {
   schedules: WorkSchedule[];
   supported: boolean;
+  /** Công chuẩn nhập tay theo tháng, khoá 'YYYY-MM-01'. Có thì thắng số tính từ lịch. */
+  overrides?: Readonly<Record<string, number>>;
 }
 
 export const EMPTY_SCHEDULES: ScheduleSet = { schedules: [], supported: false };
 
-export async function fetchWorkSchedules(): Promise<ScheduleSet> {
+/** `includeLocked`: màn thiết lập cần thấy cả cấu hình đã khóa để mở khóa lại. */
+export async function fetchWorkSchedules(includeLocked = false): Promise<ScheduleSet> {
   if (!supabase) return EMPTY_SCHEDULES;
 
-  const { data, error } = await supabase
-    .from('work_schedules')
-    .select('*')
-    .eq('is_active', true)
-    .order('effective_from');
+  let query = supabase.from('work_schedules').select('*');
+  if (!includeLocked) query = query.eq('is_active', true);
+  const { data, error } = await query.order('effective_from');
 
   if (error) return EMPTY_SCHEDULES;
-  return { schedules: (data || []) as WorkSchedule[], supported: true };
+  return { schedules: (data || []) as WorkSchedule[], supported: true, overrides: await fetchMonthOverrides() };
+}
+
+/** Bảng công chuẩn nhập tay chưa có (migration chưa chạy) thì coi như không ghi đè. */
+async function fetchMonthOverrides(): Promise<Record<string, number>> {
+  if (!supabase) return {};
+  const { data, error } = await supabase.from('month_standard_days').select('month, standard_days');
+  if (error) return {};
+  const overrides: Record<string, number> = {};
+  for (const row of data ?? []) overrides[row.month as string] = Number(row.standard_days);
+  return overrides;
+}
+
+/** Ghi công chuẩn nhập tay cho tháng; `standardDays` null là xoá, quay về số tính từ lịch. */
+export async function saveMonthOverride(
+  month: string,
+  standardDays: number | null,
+  userId: string | null,
+): Promise<{ error: string | null }> {
+  if (!supabase) return { error: 'Chưa kết nối máy chủ' };
+  const { error } = standardDays == null
+    ? await supabase.from('month_standard_days').delete().eq('month', month)
+    : await supabase.from('month_standard_days')
+      .upsert({ month, standard_days: standardDays, updated_by: userId }, { onConflict: 'month' });
+  return { error: error?.message ?? null };
+}
+
+/** Công chuẩn nhập tay của tháng, null khi tháng đó dùng số tính từ lịch. */
+export function monthOverride(set: ScheduleSet, monthStart: Date): number | null {
+  const value = set.overrides?.[toIso(monthStart.getFullYear(), monthStart.getMonth(), 1)];
+  return value != null && value > 0 ? value : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +125,17 @@ export function dayWeight(set: ScheduleSet, iso: string, holidays: ReadonlySet<s
 }
 
 /**
+ * Công chuẩn của một tháng: số nhập tay nếu HR đã đặt, không thì tính từ lịch.
+ */
+export function monthStandardDays(
+  set: ScheduleSet,
+  monthStart: Date,
+  holidays: readonly string[] = [],
+): number | null {
+  return monthOverride(set, monthStart) ?? calendarStandardDays(set, monthStart, holidays);
+}
+
+/**
  * Công chuẩn của một tháng, tính từ lịch.
  *
  * Trả `null` khi chưa có ca nào phủ tháng đó — người gọi phải rơi về ngày công
@@ -103,7 +145,7 @@ export function dayWeight(set: ScheduleSet, iso: string, holidays: ReadonlySet<s
  * Kiểm chứng bằng ví dụ của đặc tả: T8/2026 có 21 ngày thứ Hai–Sáu và 5 thứ
  * Bảy, thứ Bảy nửa ngày → 21 + 2,5 = 23,5.
  */
-export function monthStandardDays(
+export function calendarStandardDays(
   set: ScheduleSet,
   monthStart: Date,
   holidays: readonly string[] = [],
@@ -127,6 +169,66 @@ export function monthStandardDays(
   }
 
   return Math.round(total * 100) / 100;
+}
+
+export interface StandardDaysLine {
+  label: string;
+  /** Số ngày thuộc nhóm này. */
+  count: number;
+  /** Công của MỘT ngày trong nhóm. */
+  weight: number;
+}
+
+export interface StandardDaysBreakdown {
+  total: number;
+  lines: StandardDaysLine[];
+  /** Ngày lễ rơi vào ngày vốn phải đi làm — chỉ những ngày này mới làm giảm công. */
+  holidayDates: string[];
+}
+
+/**
+ * Giải thích `calendarStandardDays`: đi qua từng ngày bằng đúng `dayWeight` rồi gom
+ * theo nhóm, nên tổng các dòng luôn bằng công chuẩn. Trả null khi không tính được.
+ */
+export function monthStandardBreakdown(
+  set: ScheduleSet,
+  monthStart: Date,
+  holidays: readonly string[] = [],
+): StandardDaysBreakdown | null {
+  const total = calendarStandardDays(set, monthStart, holidays);
+  if (total == null) return null;
+
+  const year = monthStart.getFullYear();
+  const month = monthStart.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const holidaySet = new Set(holidays);
+  const noHolidays: ReadonlySet<string> = new Set();
+
+  let weekdays = 0;
+  let sundays = 0;
+  const saturdays = new Map<number, number>();
+  const holidayDates: string[] = [];
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const iso = toIso(year, month, day);
+    const weekday = new Date(`${iso}T00:00:00`).getDay();
+    // Trọng số nếu không có ngày lễ, để biết ngày lễ nào thật sự làm mất công.
+    const base = dayWeight(set, iso, noHolidays);
+
+    if (holidaySet.has(iso) && base > 0) { holidayDates.push(iso); continue; }
+    if (weekday === 0) sundays += 1;
+    else if (weekday === 6) saturdays.set(base, (saturdays.get(base) ?? 0) + 1);
+    else weekdays += 1;
+  }
+
+  const lines: StandardDaysLine[] = [{ label: 'Thứ Hai – Thứ Sáu', count: weekdays, weight: 1 }];
+  for (const [weight, count] of [...saturdays].sort((a, b) => b[0] - a[0])) {
+    lines.push({ label: 'Thứ Bảy', count, weight });
+  }
+  lines.push({ label: 'Chủ nhật', count: sundays, weight: 0 });
+  if (holidayDates.length > 0) lines.push({ label: 'Ngày lễ', count: holidayDates.length, weight: 0 });
+
+  return { total, lines, holidayDates };
 }
 
 /** Giờ công chuẩn mỗi ngày, suy từ ca trừ nghỉ trưa. */

@@ -1,185 +1,298 @@
-# M06 — Lương và Đãi ngộ: bốn tính năng chính
+# M06 — Lương và Đãi ngộ
 
-Tài liệu này mô tả phần đã làm cho F06.01–F06.04 theo `Mo06 - Lương và đãi ngộ.docx`,
-`BR_PAY.docx`, `ENT liên quan.docx` và `Ycau giao dien.docx`: chỗ nằm trong code, cách
-triển khai, cách kiểm thử và những điểm đặc tả còn phải chốt.
+Tài liệu cho người phát triển: mô hình tính lương, chỗ nằm trong code, cách triển khai,
+cách chuyển dữ liệu cũ, cách kiểm thử và những điểm nghiệp vụ còn phải chốt. Đặc tả gốc:
+`Mo06 - Lương và đãi ngộ.docx`, `BR_PAY.docx`, `ENT liên quan.docx`, `Ycau giao dien.docx`.
+
+## Mô hình: lương dựng bằng công thức
+
+Hệ thống **không biết** đâu là bảo hiểm, đâu là thuế. Nó chỉ biết ba thứ:
+
+- **Danh mục** (`payroll_components`) — 26 khoản lương chuẩn trong **5 nhóm**, mỗi khoản
+  *Cộng vào lương* (`EARNING`) hoặc *Trừ khỏi lương* (`DEDUCTION`); loại này cố định, cơ
+  chế không đổi được. Con số không cộng trừ vào thực lĩnh (đơn giá ngày, tổng cộng, thu
+  nhập tính thuế, doanh số khoán…) là **dòng trung gian** (`INFO`): không thuộc nhóm nào
+  (`category_code` rỗng — riêng *Lương cơ bản / Bậc lương* nằm ở nhóm Thu nhập cố định),
+  tạo thẳng ở màn Cơ chế lương (`save_payroll_intermediate`), `show_on_payslip` quyết định
+  nhân viên có thấy trên phiếu không. Giao diện ghi rõ chip *+ Cộng* / *− Trừ* / *Trung
+  gian*; dòng trung gian thêm nhãn *Số liệu* (nhập vào) hoặc *Tính từ dòng khác* (công
+  thức) — `KindChip.tsx`, `intermediateKindLabel` trong `lib/formulaEntries.ts`.
+- **Tham số** (`payroll_param_versions.param_tables`) — người dùng tự tạo **bảng** (ví dụ
+  "Bảo hiểm", "Phạt & khấu trừ") và thêm tham số vào. Mỗi tham số có loại và đơn vị:
+
+  | Loại | Đơn vị |
+  |---|---|
+  | Thời gian | ngày, giờ, phút, tháng |
+  | Giá | đ, đ/ngày, đ/giờ, đ/tháng, đ/lần, đ/sản phẩm |
+  | Tỷ lệ | %, hệ số |
+  | Số lượng | lần, người, chuyến, sản phẩm |
+
+  Tham số `%` vào công thức là **phần trăm thật** (1,5% = 0,015). Bảng **bậc thang** gọi
+  như một hàm trong công thức: *tra bậc* lấy mức của bậc chứa giá trị (hoa hồng), *lũy
+  tiến từng phần* cộng dồn từng khoảng (biểu thuế). Bộ tham số có ngày hiệu lực, kèm công
+  chuẩn dự phòng, cách làm tròn thực lĩnh và (không bắt buộc) kiểm tra mức sàn.
+- **Cơ chế lương** — *cơ chế chung* của đơn vị (`unit_pay_items`, đơn vị con thừa hưởng)
+  và *khai riêng* từng người (`employee_pay_items`). Màn cơ chế xếp theo thứ tự phiếu
+  lương: khối *Số liệu & dòng trung gian* → các nhóm khoản cộng → *Tổng các khoản cộng* →
+  các nhóm khoản trừ → *Thực lĩnh* (`UnitMechanismEditor.tsx`). Mỗi dòng một cách lấy giá
+  trị (`mode`):
+
+  | Cách lấy | Nghĩa |
+  |---|---|
+  | `FORMULA` Công thức | tính từ tham số, dữ liệu tự động và các dòng khác |
+  | `VALUE` Giá trị | một con số chung; đơn vị / từng người khai riêng được |
+  | `PER_PERSON` Từng người | bắt buộc khai cho từng người (ví dụ lương cơ bản) |
+  | `MONTHLY_INPUT` Hằng tháng | nhập mỗi tháng ở *Số liệu lương tháng* |
+
+Một dòng dùng được kết quả của dòng khác (đầu mục là biến); thứ tự tính theo **phụ thuộc**,
+thứ tự kéo thả chỉ là thứ tự hiện trên phiếu. Vòng lặp bị phát hiện và báo đúng tên dòng.
+`TONG_THU_NHAP` là tổng các dòng cộng (gồm cả điều chỉnh tăng). **Thực lĩnh = tổng dòng
+cộng − tổng dòng trừ**, làm tròn theo bộ tham số.
+
+**Dữ liệu tự động** (`lib/payrollVariables.ts`, `systemScope` trong `lib/payroll.ts`): ngày
+công thực tế, ngày phép, ngày lễ, ngày hưởng lương, ngày nghỉ không lương, công chuẩn của
+tháng (theo lịch làm việc), giờ làm, giờ chuẩn mỗi ngày, giờ OT ngày thường / nghỉ / lễ (từ
+đơn OT đã duyệt), tỷ lệ KPI (từ phiếu KPI đã khoá), số lần / số phút đi muộn, về sớm. Tên
+dành riêng ở client và database phải khớp nhau (`RESERVED_FORMULA_NAMES` ↔
+`payroll_reserved_formula_names()`).
+
+**Khai riêng** đè dòng của cơ chế theo lớp: người > đơn vị gần nhất trên cây
+(`applyOverride`, `resolveMechanismRows` trong
+`lib/payrollScheme.ts`). Giá trị riêng trên dòng công thức có đọc `MUC_RIENG` (mức riêng
+của chính dòng — chỉ còn ở công thức chuyển từ dữ liệu cũ) thì giữ công thức; còn lại dòng
+thành giá trị. Đầu mục không có trong cơ chế mà khai riêng thì thành dòng thêm ở cuối phiếu.
+
+**Ô công thức** (`components/payroll/formula/FormulaInput.tsx`, `lib/formulaTokens.ts`):
+công thức lưu bằng mã, người dùng thấy và gõ bằng tên dạng thẻ. Gợi ý ngay khi gõ, không
+cần dấu, khớp đầu từ và chữ cái đầu ("lcb"), xếp theo nhóm. Enter / Tab chọn; Space chỉ
+chốt khi chỉ còn một kết quả; `+ − × ÷ ( )` và `x`, `:`, `%` thành phép tính. Ngoặc tương
+ứng được tô; lỗi chỉ đúng thẻ. "Dạng chữ" cho sửa cả công thức như văn bản rồi đọc lại.
 
 ## Nguyên tắc chung
 
-- **Không có quy tắc lương nào nằm trong code.** Tỷ lệ bảo hiểm, biểu thuế, giảm trừ gia
-  cảnh, lương tối thiểu vùng, hệ số OT, bậc hoa hồng, đơn giá, cách làm tròn thực lĩnh
-  đều là dữ liệu: bộ tham số theo ngày hiệu lực (`payroll_param_versions`), mẫu bảng
-  lương theo khối (`payroll_templates` / `payroll_template_items`) và cơ chế của từng
-  người / đơn vị. Chỗ duy nhất có con số là dữ liệu **gợi ý** khi nạp lần đầu (danh mục
-  26 khoản chuẩn, bộ tham số mẫu, công thức gợi ý BL 01/BL 02). Kế toán sửa được hết các
-  dữ liệu đó trên giao diện.
-- **Cây tổ chức dùng đúng quy ước của dự án.** Mẫu BL và khoản chung của đơn vị đi xuống
-  đơn vị con bằng `unitLineage` (`lib/kpiSchemeFor.ts`) giống KPI: đơn vị gần nhất
-  thắng, tối đa 10 cấp, có chặn vòng. Cây vẽ bằng `components/payroll/UnitTree.tsx`
-  (cùng cách vẽ với `KpiSchemeBoard`). Bản database tương ứng là `payroll_template_for`.
-- **Database là chốt chặn cuối.** Mọi chuyển trạng thái (duyệt cơ chế, tính / khoá /
-  duyệt / chi trả kỳ lương, xuất file ngân hàng) đi qua RPC `security definer`. Trigger
-  chặn cập nhật thẳng cột trạng thái, chặn sửa dữ liệu của tháng đã khoá, và ghi nhật ký
-  kiểm toán.
-- **Quyền theo chức năng.** Dùng `can_function()` / `hasAdminFunction()` như các module
-  khác. Bảy mã chức năng là `admin.payroll_components`, `admin.payroll_settings`,
-  `admin.payroll_schemes`, `admin.payroll_inputs`, `admin.payroll_adjustments`,
-  `admin.payroll` và `admin.payroll_approve` (Ban Giám đốc). Mã cuối là mã mới.
+- **Không có quy tắc lương nào nằm trong code.** Tỷ lệ bảo hiểm, biểu thuế, giảm trừ,
+  lương tối thiểu vùng, hệ số OT, bậc hoa hồng, đơn giá, làm tròn đều là dữ liệu. Chỗ duy
+  nhất có con số là dữ liệu gieo sẵn (danh mục 26 đầu mục chuẩn, bộ tham số gốc, cơ chế
+  chung theo bảng lương mẫu BL 01 / BL 02 ở migration `20261021100000`).
+- **Cây tổ chức dùng đúng quy ước của dự án.** Cơ chế và giá trị chung của đơn vị đi xuống
+  đơn vị con bằng `unitLineage` (`lib/kpiSchemeFor.ts`): đơn vị gần nhất thắng, tối đa 10
+  cấp, có chặn vòng. Bản database tương ứng là `payroll_template_for`.
+- **Database là chốt chặn cuối.** Mọi chuyển trạng thái và mọi lần ghi cơ chế đi qua RPC
+  `security definer`; trigger chặn sửa dữ liệu của tháng đã khoá và ghi nhật ký kiểm toán.
+- **Quyền theo chức năng** (`can_function()` / `hasAdminFunction()`): `admin.payroll_components`
+  (danh mục), `admin.payroll_settings` (tham số, thiết kế cơ chế), `admin.payroll_schemes`
+  (áp dụng cho nhân sự), `admin.payroll_inputs`, `admin.payroll_adjustments`,
+  `admin.payroll`, `admin.payroll_approve` (Phê duyệt lương — Admin/CEO có sẵn; giao thêm cho Ban Giám đốc, Kế toán trưởng hoặc người được uỷ quyền).
+- **Giao diện không dẫn chiếu tài liệu đặc tả** (mã BR-PAY / FR06…), kể cả câu lỗi từ
+  database và ghi chú gieo sẵn.
 
 ## Bản đồ tính năng → code
 
-| Tính năng | Màn (route) | Code chính | Migration |
-|---|---|---|---|
-| F06.01 Danh mục khoản lương | `/admin/payroll/components` | `components/payroll/ComponentCatalog.tsx` | `20261013100000_m06_f0601_payroll_catalog.sql` |
-| F06.02 Tham số lương | `/admin/payroll/params` | `PayrollParamsTab.tsx`, `lib/payrollSettings.ts` | `20261013110000_m06_f0602_payroll_params_formulas.sql` |
-| F06.02 Công thức theo khối + chạy thử | `/admin/payroll/formulas` | `PayrollFormulasTab.tsx`, `PayrollFormulaBuilder.tsx`, `PayrollDryRunModal.tsx`, `lib/payrollFormula.ts` | như trên |
-| F06.03 Cơ chế lương theo sơ đồ tổ chức | `/admin/payroll/schemes` | `PaySchemeTree.tsx`, `PaySchemeModal.tsx`, `lib/payrollScheme.ts` | `20261013120000_m06_f0603_payroll_scheme_approval.sql` |
-| F06.03/F06.04 Phê duyệt của BGĐ | `/admin/payroll/approvals` | `PayrollApprovals.tsx`, `ReauthDialog.tsx` | 0603 + 0604 |
-| F06.04 Số liệu tháng, điều chỉnh | `/admin/payroll/inputs`, `/admin/payroll/adjustments` | `MonthlyInputsTab.tsx`, `AdjustmentsTab.tsx` | 0604 |
-| F06.04 Bảng lương: tính, khoá, chi, phát hành | `/admin/payroll` | `PayrollRegister.tsx`, `TwoFactorDialog.tsx`, `BankExportModal.tsx`, `lib/payrollRun.ts` | `20261013130000_m06_f0604_payroll_lock_publish.sql` |
-| F06.04 Phiếu lương của tôi | `/staff/payroll` | `pages/staff/StaffPayroll.tsx` | 0604 |
+| Tính năng | Màn (route) | Code chính |
+|---|---|---|
+| Danh mục khoản lương | `/admin/payroll/components` | `components/payroll/ComponentCatalog.tsx` |
+| Tham số lương | `/admin/payroll/params` | `PayrollParamsTab.tsx`, `lib/payrollSettings.ts`, `lib/payrollVariables.ts` |
+| Thiết kế cơ chế + chạy thử | `/admin/payroll/schemes?tab=design` | `MechanismDesigner.tsx`, `formula/FormulaInput.tsx`, `lib/formulaTokens.ts`, `lib/formulaEntries.ts`, `PayrollDryRunModal.tsx`, `lib/payroll.ts` |
+| Áp dụng cơ chế cho nhân sự | `/admin/payroll/schemes?tab=apply` | `PaySchemeTree.tsx`, `PaySchemeModal.tsx`, `lib/payrollScheme.ts` |
+| Phê duyệt của BGĐ | `/admin/payroll/approvals` | `PayrollApprovals.tsx`, `ReauthDialog.tsx` |
+| Số liệu tháng, điều chỉnh | `/admin/payroll/inputs`, `/admin/payroll/adjustments` | `MonthlyInputsTab.tsx`, `AdjustmentsTab.tsx` |
+| Bảng lương: tính, khoá, chi, phát hành | `/admin/payroll` | `PayrollRegister.tsx`, `TwoFactorDialog.tsx`, `BankExportModal.tsx`, `lib/payrollRun.ts`, `lib/payrollJournal.ts` |
+| Phiếu lương của tôi | `/staff/payroll` | `pages/staff/StaffPayroll.tsx`, `PayslipBreakdown.tsx` |
+
+`/admin/payroll/formulas` (màn "Công thức theo khối" cũ) chuyển sang tab Thiết kế cơ chế.
 
 `pages/admin/AdminPayroll.tsx` chỉ là khung: nạp dữ liệu tháng một lần
-(`loadPayrollWorkspace`) rồi chia cho từng mục. Phiếu lương của **một** người trong
-**một** tháng luôn tính qua một hàm duy nhất là `computeForPerson` (`lib/payrollRun.ts`).
-Bảng lương, chạy thử và phần xem trước ở Cơ chế lương đều gọi hàm này, nên ba màn không
-thể ra ba con số khác nhau.
+(`loadPayrollWorkspace`) rồi chia cho từng mục. Phiếu lương của **một** người trong **một**
+tháng luôn tính qua `computeForPerson` (`lib/payrollRun.ts`); bảng lương, chạy thử, kết quả
+thử ở màn thiết kế và ước tính khi khai riêng đều gọi hàm này.
 
-## F06.01 — Danh mục khoản lương
+Migration theo thứ tự: `20261013100000_m06_f0601_payroll_catalog`,
+`20261013110000_m06_f0602_payroll_params_formulas`, `20261013120000_m06_f0603_payroll_scheme_approval`,
+`20261013130000_m06_f0604_payroll_lock_publish`, `20261017100000_m06_f0601_catalog_dmkl`,
+`20261017110000_m06_formula_mechanism` (mô hình công thức + chuyển dữ liệu cũ),
+`20261018100000_m06_scheme_apply_direct`, `20261019100000_m06_unit_mechanism`,
+`20261020100000_m06_adjustment_component`, `20261021100000_m06_intermediate_rows` (dòng trung
+gian + gieo lại dữ liệu theo tài liệu — xem mục cuối), `20261021110000_m06_default_params`,
+`20261021120000_m06_fix_default_percent`, `20261021130000_m06_align_with_payroll_sheets`,
+`20261021140000_m06_overtime_per_sheet`, `20261021150000_m06_late_deduction_input`.
 
-- Có 26 khoản chuẩn trong 5 nhóm bắt buộc (`payroll_component_categories`). Nút "Nạp danh
-  mục chuẩn" chỉ thêm những khoản còn thiếu.
-- Mỗi khoản có các trường: mã, tên, nhóm, loại (cộng / trừ / chi phí doanh nghiệp), tính
-  chất (cố định / biến đổi), nguồn tính (gán được / engine tự tính), đơn giá mặc định, cờ
-  chịu thuế, cờ tính bảo hiểm, trạng thái và mô tả hạch toán.
-- Trùng mã báo đúng câu của đặc tả: "Mã khoản lương đã tồn tại trên hệ thống."
-- Xoá một khoản (RPC `remove_payroll_component`):
-  - nếu khoản đã nằm trong kỳ lương đã khoá thì chuyển sang **ngừng hoạt động**;
-  - nếu chưa dùng ở kỳ nào thì xoá hẳn.
-  - Cả hai trường hợp đều ghi nhật ký kiểm toán.
-- Danh sách có tìm kiếm, lọc, sắp xếp, phân trang và xuất Excel / CSV / In-PDF (UI_02).
+## Danh mục khoản lương
 
-## F06.02 — Tham số & công thức
+- 26 đầu mục chuẩn (`payroll_standard_catalog()`); nút *Khởi tạo danh mục chuẩn* chỉ thêm
+  những đầu mục còn thiếu. *Lương cơ bản* là dòng *Trung gian* (là MỨC để các dòng khác
+  nhân chia), không tự cộng vào lương.
+- Thẻ lọc: *Tất cả*, 5 nhóm, và *Dòng trung gian* (dòng `INFO` không thuộc nhóm nào — xem,
+  đổi tên, bật *Hiện trên phiếu lương*, xoá).
+- Trường: mã, tên, loại dòng, nhóm (bắt buộc với khoản cộng / trừ), nhãn báo cáo, trạng thái, mô tả. Danh mục không có tính chất
+  hay giá trị mặc định — con số nằm ở cơ chế. Cách tính, cờ thuế / bảo hiểm, trần của danh mục kiểu cũ không còn — mọi
+  cách tính nằm ở công thức của dòng cơ chế. Các cột cũ còn trong bảng để đọc lịch sử.
+- Không đặt được mã trùng tên dữ liệu tự động; tên không trùng (không phân biệt hoa thường).
+- Xoá (`remove_payroll_component`): đã nằm trong kỳ lương đã khoá thì chuyển *Khóa*, chưa
+  dùng thì xoá hẳn; cả hai ghi nhật ký.
+- Mỗi đầu mục cho biết đang có trong cơ chế nào, ai khai riêng, đơn vị nào khai chung.
+- **Nhãn báo cáo** (không bắt buộc): người dùng gắn cho đầu mục để báo cáo nhân sự biết số
+  nào thuộc cột nào — *Bảo hiểm người lao động đóng*, *Doanh nghiệp đóng thêm*, *Thuế thu
+  nhập cá nhân*, *Thu nhập tính thuế*. Nhãn **không vào công thức và không đổi cách
+  tính**; khi chạy bảng lương, số của các đầu mục cùng nhãn được cộng vào cột tương ứng của
+  phiếu (`insurance_employee`, `insurance_employer`, `personal_income_tax`,
+  `taxable_income`) để màn *Báo cáo nhân sự → Bảo hiểm & thuế* đọc. Nhãn đi cùng loại
+  dòng: bảo hiểm NLĐ và thuế phải là dòng *Trừ khỏi lương*; doanh nghiệp đóng thêm và thu
+  nhập tính thuế là dòng *Trung gian* — form và database đều chặn nhãn sai loại. Đầu mục
+  chưa gắn nhãn thì cột ghi 0. Dòng gắn *Doanh nghiệp đóng thêm* không hiện trên phiếu của
+  chính nhân viên (`get_my_payslip`). Engine tính lương không đọc nhãn
+  (`lib/payrollReportTags.ts`).
 
-- **Bộ tham số theo ngày hiệu lực**, luôn bắt đầu từ ngày đầu tháng. Chỉ thêm / sửa được
-  bộ có hiệu lực **sau** kỳ lương đã chốt gần nhất (`firstEditableMonth`).
-  - Bộ tham số gồm: tỷ lệ BHXH / BHYT / BHTN của NLĐ và DN, KPCĐ, trần đóng, giảm trừ
-    bản thân / NPT, biểu thuế 7 bậc, lương cơ sở, lương tối thiểu vùng, thuế khấu trừ
-    thẳng, làm tròn thực lĩnh.
-  - Có thêm tham số tự đặt tên (hệ số OT, đơn giá…) và biểu bậc thang. Biểu bậc thang gọi
-    được như một hàm trong công thức, ví dụ hoa hồng BL 02: `HH_BL02(TY_LE)`.
-- **Mẫu bảng lương theo khối.** BL 01 dùng cho Văn phòng / Kho / Vận chuyển, BL 02 dùng
-  cho Kinh doanh. Mỗi mẫu được gán cho một đơn vị trên cây, đơn vị con thừa hưởng. Gán
-  "không áp mẫu" có nghĩa là chặn thừa hưởng.
-- **Kiểm tra cú pháp có vị trí lỗi** (`explainFormulaError`): phần lỗi tô đỏ ngay trong ô
-  công thức. Database kiểm lại khi lưu.
-- **Chạy thử** với một nhân viên, với số liệu giả định hoặc số liệu thật. Có nhật ký từng
-  bước tính, chạy được cả với bộ tham số **chưa lưu** hoặc với một mẫu BL bất kỳ.
+## Tham số lương
 
-## F06.03 — Cơ chế lương theo sơ đồ tổ chức
+- Bộ tham số theo ngày hiệu lực, luôn từ ngày đầu tháng; chỉ thêm / sửa được bộ có hiệu lực
+  **sau** kỳ lương đã chốt gần nhất (`firstEditableMonth`). Bộ đã dùng cho kỳ đã chốt bị
+  khoá ở database.
+- Bảng tham số / bảng bậc thang tự tạo, đổi tên, xoá. Mã tham số đi theo tên cho tới khi
+  được dùng trong công thức, và tự tránh tên dữ liệu tự động / tên đầu mục. Cột *Dùng ở*
+  cho biết dòng cơ chế nào đang dùng tham số; xoá tham số đang dùng phải xác nhận.
+- Kiểm tra ở client (`validateParamVersion`) và ở database (`validate_payroll_param_version`):
+  mã hợp lệ, không trùng, không trùng tên dành riêng, giá trị là số, đơn vị đúng loại, bậc
+  thang tăng dần.
+- *Thiết lập chung*: công chuẩn khi tháng chưa khai ca làm việc, làm tròn thực lĩnh, kiểm
+  tra mức sàn (đầu mục ≥ tham số, ví dụ Lương cơ bản ≥ Lương tối thiểu vùng) khi trình đề
+  xuất — kiểm ở giao diện và ở `payroll_validate_scheme_payload`.
+- *Chạy thử với bộ này* dùng bộ đang soạn, chưa cần lưu.
 
-**Luồng thao tác:** cây tổ chức → đơn vị → danh sách nhân sự (có trạng thái cơ chế) → một
-người → **Thiết lập Cơ chế Lương**. Màn thiết lập có các phần:
+## Thiết kế cơ chế
 
-- Người phụ thuộc, cách tính thuế, tham gia bảo hiểm và mức đóng, công chuẩn riêng.
-- Mẫu bảng lương: theo đơn vị hoặc gán riêng.
-- Các khoản thừa hưởng (từ mẫu khối và đơn vị cấp trên), chỉ để xem.
-- Tick các khoản khai riêng, mỗi khoản có mức / công thức riêng và ba cờ thuế, bảo hiểm,
-  lương gốc.
-- Ước tính Gross / Net nếu đi đủ công.
-- Tài khoản nhận lương.
+- Danh sách cơ chế bên trái; mỗi cơ chế có hiệu lực theo tháng, các đơn vị đang dùng, nút
+  *Gán cho đơn vị*, *Chạy thử*, đổi tên, ngừng dùng, xoá (chỉ xoá được cơ chế chưa từng gán).
+- Tạo cơ chế: trống, sao chép cơ chế có sẵn, hoặc nạp bộ gợi ý khối Văn phòng / Kinh doanh
+  (`seed_payroll_mechanism_defaults`, chỉ cho cơ chế còn trống; tự thêm các đầu mục còn
+  thiếu vào danh mục).
+- Mỗi dòng: loại dòng (+ / − / ·), cách lấy giá trị, công thức hoặc giá trị, kết quả với
+  dữ liệu thử, "Dùng / Được dùng ở". *Dữ liệu thử* lấy số thật của một nhân viên hoặc số
+  giả định; mọi dòng tính lại ngay, không ghi gì.
+- *Lưu cơ chế* (`save_payroll_mechanism`) thay trọn bộ dòng từ tháng hiệu lực: dòng cũ đóng
+  ở cuối tháng trước, tháng cũ giữ nguyên. Không chen trước phiên bản đã có ở tháng sau,
+  không lưu vào tháng đã chốt. Sửa công thức của cơ chế dùng chung **không** cần BGĐ duyệt.
 
-Đơn vị cũng có "khoản chung" riêng, khai cùng kiểu.
+## Áp dụng cơ chế cho nhân sự
 
-**Duyệt (BR-PAY-012):**
+**Luồng:** cây tổ chức → đơn vị → danh sách nhân sự (cơ chế, *Đủ x/y* giá trị riêng, tình
+trạng) → một người → *Thiết lập cơ chế lương*:
 
-- Màn thiết lập không ghi thẳng vào cơ chế. Nó tạo một **đề xuất**
-  (`payroll_scheme_requests`) đi qua các trạng thái *Nháp → Chờ BGĐ duyệt → Đã duyệt /
-  Bị từ chối*. Đề xuất bị từ chối thì sửa và trình lại được.
-- Chỉ khi BGĐ ký duyệt, database mới áp đề xuất. Cơ chế chưa duyệt **không** được engine
-  dùng.
-- Đề xuất là bản thay thế toàn bộ phần khai riêng kể từ tháng áp dụng:
-  - khoản cũ đóng ở cuối tháng trước;
-  - khoản không còn trong đề xuất thì thôi áp.
-- BGĐ chỉ thấy phần **thay đổi** so với hiện hành (`diffSchemeItems`).
-- Người trình không tự duyệt được đề xuất của mình.
+- *Theo cơ chế*: của đơn vị (thừa hưởng theo cây) hoặc gán riêng; *Áp dụng từ tháng*.
+- *Giá trị riêng*: các dòng *Từng người* (bắt buộc) và *Giá trị* (gợi ý giá trị chung).
+- *Công thức riêng / dòng thêm riêng*: đè công thức của một dòng (ví dụ thuế khoán), hoặc
+  thêm đầu mục chưa có trong cơ chế.
+- Danh sách chỉ hiện đầu mục đã thiết lập; muốn thêm thì bấm *Thêm đầu mục* cạnh ô lọc. Không có
+  khối thực lĩnh mẫu — thực lĩnh xem ở *Chạy thử* và Bảng lương. Cuối trang là tài khoản nhận lương.
 
-**BR-PAY-013:** khi trình duyệt, nếu mức của khoản lương gốc thấp hơn lương tối thiểu vùng
-của bộ tham số tháng áp dụng thì bị chặn ở cả giao diện lẫn database. Lưu nháp vẫn được.
+Đơn vị có *Giá trị chung của đơn vị*, khai cùng kiểu.
 
-**Không chen phiên bản:** đề xuất không được áp từ tháng sớm hơn một phiên bản đã có hiệu
-lực sau đó, và không được áp vào tháng đã chốt (`earliestSchemeMonth`). Database kiểm lại
-cả hai điều này.
+**Duyệt:** màn khai riêng tạo **đề xuất** (`payroll_scheme_requests`) *Nháp → Chờ BGĐ duyệt
+→ Đã duyệt / Bị từ chối*. Chỉ khi BGĐ ký duyệt (nhập lại mật khẩu), database mới áp: phần
+khai riêng cũ đóng ở cuối tháng trước, phần mới hiệu lực từ tháng áp dụng. BGĐ chỉ thấy
+phần **thay đổi** (`diffSchemeItems`, so cả giá trị lẫn công thức). Người trình không tự
+duyệt. Không chen trước phiên bản đã có hiệu lực sau đó, không áp vào tháng đã chốt
+(`earliestSchemeMonth`); database kiểm lại.
 
-## F06.04 — Tính toán, điều chỉnh, khoá kỳ, phát hành
+## Tính toán, điều chỉnh, khoá kỳ, phát hành
 
 Vòng đời kỳ lương: `DRAFT → CALCULATED → LOCKED → APPROVED → PAID`.
 
-1. **Tính bảng lương nháp.**
-   - Dữ liệu vào: công đã duyệt (M03), KPI (M05), đơn OT / đi muộn đã duyệt, số liệu
-     tháng và điều chỉnh.
-   - Thực lĩnh làm tròn theo tham số (mặc định tới hàng nghìn), phần chênh ghi riêng vào
-     `rounding_adjustment`.
-   - "Tính lại" ghi đè bộ phiếu nháp trong **một** transaction.
-2. **Điều chỉnh tăng (+) / giảm (−)** bắt buộc có lý do, có thể ghi kỳ phát sinh. Kỳ đã
-   khoá thì không thêm được: sai sót của kỳ đó ghi vào kỳ đang mở.
-3. **Khoá kỳ bằng 2FA** (FR06.04.03).
-   - Danh sách kiểm tra trước khi khoá:
-     - kỳ công đã khoá (bắt buộc);
-     - KPI đã khoá (bắt buộc);
-     - bộ phiếu đã tính khớp số liệu hiện tại (bắt buộc);
-     - không còn người thiếu cơ chế (cảnh báo);
-     - không còn đề xuất chờ duyệt (cảnh báo);
-     - không còn cảnh báo tính toán (cảnh báo).
-   - KTT nhập mã TOTP. Lần đầu đăng ký bằng mã QR ngay trong hộp thoại.
-   - Database chỉ khoá khi phiên ở mức `aal2` và vừa nhập TOTP trong 5 phút. Khi khoá,
-     database ghi dấu vân tay SHA-256 của toàn bộ phiếu và gửi thông báo cho BGĐ.
-   - Đang chờ duyệt mà cần sửa thì KTT **rút lại** kèm lý do.
-4. **BGĐ ký duyệt chi / từ chối** (BR-PAY-010).
-   - Ký bằng cách nhập lại mật khẩu, hạn 5 phút. Từ chối bắt buộc có lý do và trả kỳ về
-     *Đã tính*.
-   - Database đối chiếu lại dấu vân tay: số liệu khác lúc khoá thì không duyệt được.
-   - Người khoá kỳ không tự duyệt chi.
-5. **File chi lương ngân hàng** (VietinBank, BIDV), chỉ xuất được sau khi BGĐ duyệt.
-   - Bố cục cột, nội dung chuyển khoản và tuỳ chọn bỏ dấu đều là dữ liệu
-     (`payroll_bank_templates`).
-   - Người chưa khai tài khoản bị liệt kê riêng và không có trong file.
-   - Mỗi lần xuất đều ghi nhật ký.
-6. **Xác nhận đã chi trả & phát hành phiếu** (`PAID`). Nhân viên nhận thông báo.
-7. **Nhân viên xem phiếu** (FR06.04.05, BR-PAY-011).
-   - Chỉ xem được phiếu của mình và chỉ khi kỳ đã phát hành.
-   - Phải nhập lại mật khẩu: trên điện thoại, trình quản lý mật khẩu điền bằng vân tay /
-     FaceID. Phiên xem có hạn 15 phút.
-   - Có In / Lưu PDF (UI_08).
-   - Không còn bản "tạm tính" trên máy nhân viên: con số nhân viên thấy luôn là con số đã
-     được ký.
-8. **Sau khi khoá, không mở lại kỳ** (BR-PAY-009). Kỳ công của tháng đã khoá lương cũng
-   không mở lại được: nút ở Bảng công ẩn đi và database chặn. Sai sót xử lý bằng điều
-   chỉnh của kỳ sau.
+1. **Tính bảng lương nháp.** Dữ liệu vào: công đã duyệt, KPI, đơn OT / đi muộn đã duyệt,
+   số liệu tháng, điều chỉnh. Bảng lương có **một cột cho mỗi đầu mục** (cột dòng trung
+   gian không có dấu + / − và không cộng tổng), rồi Tổng cộng / Tổng trừ / Thực nhận. Thực
+   lĩnh làm tròn theo tham số, phần chênh ghi riêng. "Tính lại" ghi đè bộ phiếu nháp trong
+   một transaction. Khi chốt phiếu, bốn cột báo cáo của phiếu lấy theo **Nhãn báo cáo** của
+   đầu mục (chưa gắn nhãn thì 0) và `payslips.other_deductions` là phần khấu trừ còn lại —
+   cộng bảo hiểm + thuế + còn lại luôn ra tổng trừ.
+2. **Điều chỉnh tăng (+) / giảm (−)** bắt buộc có lý do, có thể ghi kỳ phát sinh; điều chỉnh
+   tăng nằm trong `TONG_THU_NHAP`. Kỳ đã khoá thì ghi vào kỳ đang mở.
+3. **Khoá kỳ bằng 2FA.** Danh sách kiểm tra: kỳ công đã khoá, KPI đã khoá, bộ phiếu khớp
+   số liệu hiện tại (bắt buộc); người thiếu cơ chế, đề xuất chờ duyệt, cảnh báo tính toán
+   (cảnh báo). Database chỉ khoá khi phiên ở `aal2` và vừa nhập TOTP trong 5 phút; ghi dấu
+   vân tay SHA-256 của toàn bộ phiếu và báo BGĐ. KTT rút lại được kèm lý do.
+4. **BGĐ ký duyệt chi / từ chối** bằng mật khẩu (5 phút). Database đối chiếu dấu vân tay;
+   người khoá kỳ không tự duyệt chi.
+5. **File chi lương ngân hàng** (VietinBank, BIDV) sau khi BGĐ duyệt; bố cục là dữ liệu
+   (`payroll_bank_templates`); người chưa khai tài khoản bị liệt kê riêng.
+6. **Bút toán kết chuyển** (`lib/payrollJournal.ts`): Nợ 642 / Có 334 tổng các khoản cộng;
+   mỗi đầu mục trừ một bút toán Nợ 334 / Có 338 mang tên đầu mục — kế toán chỉnh tài khoản
+   chi tiết trong file.
+7. **Xác nhận đã chi trả & phát hành phiếu** (`PAID`), nhân viên nhận thông báo, xem phiếu
+   của mình sau khi nhập lại mật khẩu (phiên 15 phút), có In / Lưu PDF.
+8. **Sau khi khoá không mở lại kỳ**; kỳ công của tháng đã khoá lương cũng không mở lại.
+
+## Chuyển dữ liệu cũ (migration `20261017110000`)
+
+Chạy một lần (nhận biết qua cột `payroll_template_items.mode`), không tính lại kỳ đã khoá:
+
+- **Danh mục:** khoản "hệ thống tự tính" thành đầu mục thường; lương gốc và phần doanh
+  nghiệp đóng thành *Chỉ để tính*; thêm nhóm *Số liệu & dòng trung gian* và các đầu mục phụ
+  trợ (Đơn giá ngày / giờ, Lương đóng bảo hiểm, Số người phụ thuộc, Thu nhập chịu thuế /
+  tính thuế, BH doanh nghiệp đóng…) khi có dữ liệu lương. Các đầu mục bảo hiểm NLĐ, thuế,
+  thu nhập tính thuế, BH doanh nghiệp đóng và khoản "doanh nghiệp chi" tự định nghĩa trước
+  đây được gắn **Nhãn báo cáo** tương ứng để báo cáo nhân sự giữ liên tục.
+- **Tham số:** các cột cố định, tham số tự đặt và biểu thuế thành bảng (Lương nền, Bảo hiểm,
+  Thuế TNCN, Biểu thuế lũy tiến, các nhóm tham số cũ, bảng tra bậc cũ). Ghi chú bỏ dẫn
+  chiếu tài liệu, tên không dấu được đặt lại có dấu.
+- **Công thức:** biến cũ (`BASE`, `GROSS`, `MONTHLY_RATE`, `INSURANCE_EMPLOYEE`,
+  `TAXABLE_INCOME`) đổi sang đầu mục / dữ liệu mới; cách tính của danh mục (theo ngày,
+  theo giờ / sản lượng, %, chia ngày công, trần) thành công thức của dòng; `/ 100` sau
+  tham số % được bỏ; `KPI_PCT / 100` thành *Tỷ lệ KPI*; biến nhập tay lạ thành đầu mục
+  *Chỉ để tính* có dòng *Hằng tháng*; số đã nhập ở kỳ chưa chốt đổi sang mã mới.
+- **Cơ chế:** mọi cơ chế đang dùng được thêm các dòng engine cũ tính ngầm (lương thời gian /
+  phép / lễ, bảo hiểm, thu nhập chịu thuế với đúng các khoản không chịu thuế — kể cả trần
+  miễn thuế và phần OT vượt giờ thường —, thu nhập tính thuế, thuế lũy tiến, và phần doanh
+  nghiệp đóng thêm: BHXH / BHYT / BHTN / KPCĐ phía doanh nghiệp, cùng điều kiện miễn đóng và
+  mức trần với phần người lao động). Người không
+  thuộc cơ chế nào, đơn vị "không áp mẫu" và mẫu đã ngừng dùng chuyển sang **Cơ chế chung**.
+- **Từng người:** người phụ thuộc, mức đóng BH, không đóng BH, thuế khoán / không khấu trừ,
+  công chuẩn riêng (thay mọi chỗ đọc công chuẩn), lương ngày / giờ / khoán (người khoán /
+  không khấu trừ thuế còn có số tính thuế riêng = toàn bộ thu nhập chịu thuế / 0, như cột
+  "thu nhập tính thuế" của engine cũ), lương gốc ở hồ
+  sơ (chỉ khi engine cũ thực sự dùng nó), cờ không chịu thuế khai riêng → giá trị / công
+  thức riêng cùng khoảng hiệu lực. Khai riêng cũ được ghi rõ mức để cách gộp mới ra đúng
+  như cách "thay trọn dòng" của engine cũ. Đề xuất đang mở chuyển payload sang dạng mới.
+
+Đã đối chiếu bằng cách chạy engine cũ (commit trước) trên dữ liệu trước migration và engine
+mới trên dữ liệu sau migration cho 12 người phủ các nhánh trên: thực lĩnh khớp tới từng
+đồng. Bốn cột báo cáo (bảo hiểm NLĐ, doanh nghiệp đóng thêm, thuế, thu nhập tính thuế)
+cũng khớp engine cũ cho cả 12 người. Khác biệt đã biết:
+
+1. Bảo hiểm là một dòng (BHXH, BHYT, BHTN) làm tròn một lần thay vì ba dòng làm tròn
+   riêng — có thể lệch 1đ. Phần doanh nghiệp đóng cũng vậy.
+2. Phần doanh nghiệp đóng (BHXH / BHYT / BHTN / KPCĐ phía DN) là dòng *Chỉ để tính* "BH
+   doanh nghiệp đóng" trong cơ chế (có công thức, sửa được), không còn tính ngầm. Khoản
+   BH / KPCĐ doanh nghiệp tự gán tay trước đây (cùng mã ER_*) không còn được tính.
+3. Truy lĩnh đánh dấu "không chịu thuế" không còn ý nghĩa: mọi điều chỉnh tăng nằm trong
+   tổng các khoản cộng (ô "chịu thuế" ở màn Điều chỉnh đã bỏ).
+4. Công thức cũ đọc `GROSS` (tổng thu nhập tính tới thời điểm đó) trong một khoản **cộng**
+   giờ thành vòng lặp với tổng các khoản cộng — cần viết lại nếu có.
+5. Cờ chịu thuế của từng dòng trong **đề xuất cũ đang mở** bị bỏ khi chuyển payload.
 
 ## Triển khai
 
-1. Chạy bốn migration `supabase/migrations/20261013*_m06_*.sql` theo thứ tự tên file.
-2. **Bật MFA TOTP cho Supabase Auth.**
-   - Môi trường local đã bật trong `supabase/config.toml` (`[auth.mfa.totp]`).
-   - Project hosted phải bật ở Dashboard → Authentication → Multi-Factor. Chưa bật thì KTT
-     không khoá kỳ được.
-3. Giao chức năng **Phê duyệt lương** (`admin.payroll_approve`) cho tài khoản Ban Giám đốc
-   ở màn cấp quyền.
-4. Kế toán làm lần lượt:
-   - nạp danh mục chuẩn;
-   - kiểm tra lại bộ tham số (đặc biệt các điểm ở mục cuối);
-   - nạp công thức gợi ý cho BL 01 / BL 02 và gán mẫu cho các khối;
-   - lập cơ chế cho từng người rồi trình BGĐ duyệt;
-   - khai tài khoản nhận lương.
+1. Chạy sáu migration M06 theo thứ tự tên file.
+2. **Bật MFA TOTP cho Supabase Auth** (local: `supabase/config.toml` `[auth.mfa.totp]`;
+   hosted: Dashboard → Authentication → Multi-Factor). Chưa bật thì không khoá kỳ được.
+3. Giao chức năng **Phê duyệt lương** (`admin.payroll_approve`) cho Ban Giám đốc và/hoặc Kế toán trưởng. Admin/CEO có sẵn quyền này. Người khoá kỳ (hoặc người trình đề xuất) không tự duyệt kỳ/đề xuất của chính mình, trừ Admin/CEO.
+4. Kế toán: kiểm tra bộ tham số (đặc biệt các điểm ở mục cuối) → mở *Cơ chế lương*, rà
+   *Cơ chế chung* và các cơ chế đã chuyển (hoặc tạo từ gợi ý khối Văn phòng / Kinh doanh)
+   → gán cơ chế cho các khối → khai giá trị riêng cho từng người rồi trình BGĐ → khai tài
+   khoản nhận lương.
 
 ## Kiểm thử
 
-- `npm run check:all`: 497 kiểm chứng cho engine, công thức, giải cây, đề xuất cơ chế và
-  các luồng.
-- SQL chạy trên Postgres cục bộ: 105 ca cho cả bốn migration, gồm quyền, trạng thái, khoá
-  dữ liệu, 2FA / ký lại, vân tay số liệu, BR-PAY-009/010/011/012/013. Các ca này không
-  nằm trong repo; dựng lại bằng một Postgres trống và các file migration.
+- `npm run check:all`: `check:payroll` (207 kiểm chứng: tham số theo bảng, lũy tiến / tra
+  bậc, từng cách lấy giá trị, thứ tự phụ thuộc, vòng lặp, tổng thu nhập, khai riêng đè dòng,
+  KPI, phần không chịu thuế, trần, điều chỉnh, làm tròn, giải theo cây, đề xuất, bút toán,
+  tổng hợp công, lịch, đi muộn, chia giờ OT) và `check:flows` (81 kiểm chứng: giải bộ KPI,
+  thang điểm, đếm ngày phép, ô công thức dạng thẻ — tách / ghép, gợi ý, đọc chữ, chuyển
+  "Dạng chữ" qua lại không đổi công thức).
+- Migration đã chạy trên Postgres cục bộ: trên database trống, trên database có dữ liệu
+  kiểu cũ (rồi chạy lại lần hai không lỗi), các RPC mới (lưu cơ chế theo phiên bản, nạp
+  gợi ý, bộ tham số mới, đề xuất → kiểm mức sàn → ký duyệt → áp dụng, chặn mã dành riêng),
+  và kiểm không còn chữ dẫn chiếu tài liệu. Các ca này không nằm trong repo.
+- Kịch bản UAT thủ công (134 ca): [m06-kich-ban-test.md](m06-kich-ban-test.md).
 - `npx tsc -p tsconfig.app.json --noEmit`, `npx eslint . --quiet`,
   `npm run supabase:local:check` và `npm run build` đều đã chạy qua.
 
@@ -187,32 +300,121 @@ Vòng đời kỳ lương: `DRAFT → CALCULATED → LOCKED → APPROVED → PAI
 
 - Lương gốc bị cộng hai lần khi khoản lương gốc vừa có trong danh mục vừa khai riêng.
 - Đồng bộ KPI sang số liệu lương đọc nhầm cột.
-- Nhân viên không bao giờ xem được phiếu đã duyệt. Policy cũ tra `payroll_runs` bằng quyền
-  của nhân viên, nên điều kiện luôn rỗng. Đã sửa bằng hàm `security definer`.
+- Nhân viên không bao giờ xem được phiếu đã duyệt (policy tra `payroll_runs` bằng quyền của
+  nhân viên) — sửa bằng hàm `security definer`.
 - Điều chỉnh lương đọc được chéo giữa các nhân viên.
+- Gõ `0.015` trong ô công thức bị đọc thành 15; số lẻ trong công thức hiện làm tròn 2 chữ
+  số nên chuyển qua "Dạng chữ" rồi về làm đổi công thức.
 
-## Điểm đặc tả cần chốt
+## Điểm nghiệp vụ cần chốt
 
-Các điểm dưới đây đều là dữ liệu, nên đổi trên giao diện chứ không phải sửa code. Chúng
-được ghi ra vì đặc tả mâu thuẫn hoặc có thể đã lệch với quy định hiện hành:
+Đều là dữ liệu — đổi trên giao diện chứ không phải sửa code:
 
-1. **Hệ số OT.** BR-PAY-003 ghi ngày thường 1,0 và CN / lễ 2,0. FR06.02 lại ghi 1,5 / 2,0
-   / 3,0. Bộ luật Lao động 2019 (Đ.98) quy định tối thiểu 150% / 200% / 300%.
-2. **Quy đổi đơn hàng ngoài giờ.** BR-PAY-003 ghi "1 đơn hàng ngoài giờ = 1 giờ", còn
-   hướng dẫn khác ghi 2 giờ / ngày.
-3. **Hoa hồng BL 02.** BR-PAY-004 để hở hai khoảng 89–90% và 104–105%. Biểu bậc thang
-   hiện hiểu mỗi bậc áp từ ngưỡng của nó tới ngay dưới ngưỡng kế tiếp, nên lấp kín hai
-   khoảng hở này.
-4. **Giảm trừ gia cảnh.** FR06.02.01 ghi bản thân 11 triệu và NPT 6,2 triệu. Hai con số
-   này lấy từ hai văn bản khác nhau, cần xác nhận mức áp dụng cho từng kỳ.
-5. **Biểu thuế TNCN.** Đặc tả ghi 7 bậc. Nếu biểu thuế mới có hiệu lực, chỉ cần tạo một
-   bộ tham số mới với ngày hiệu lực tương ứng.
-6. **Mẫu file ngân hàng.** Bố cục cột VietinBank / BIDV hiện theo mẫu phổ biến, phải đối
-   chiếu với file mẫu ngân hàng cấp theo hợp đồng e-banking.
-7. **Chữ ký số.** "Ký điện tử" của BGĐ đang được hiểu là xác thực lại bằng mật khẩu kèm
-   nhật ký và dấu vân tay số liệu, không phải chữ ký số PKI / USB token. Nếu cần PKI thì
-   phải tích hợp thêm nhà cung cấp chữ ký số.
-8. **Trưởng phòng xem lương phòng mình.** Đặc tả có nhắc nhưng chưa có quy tắc phân quyền
-   rõ, nên chưa làm.
-9. **Lương tối thiểu cho lao động theo giờ / bán thời gian.** BR-PAY-013 hiện so mức lương
-   tháng với lương tối thiểu vùng tháng. Lương tối thiểu giờ chưa được kiểm.
+1. **Hệ số OT.** BR-PAY-003 ghi ngày thường 1,0 và CN / lễ 2,0; FR06.02 ghi 1,5 / 2,0 /
+   3,0; Bộ luật Lao động 2019 (Đ.98) quy định tối thiểu 150% / 200% / 300%.
+2. **Quy đổi đơn hàng ngoài giờ.** BR-PAY-003 ghi "1 đơn hàng ngoài giờ = 1 giờ", hướng dẫn
+   khác ghi 2 giờ / ngày.
+3. **Hoa hồng BL 02.** BR-PAY-004 để hở hai khoảng 89–90% và 104–105%. Bảng tra bậc hiểu
+   mỗi bậc áp từ ngưỡng của nó tới ngay dưới ngưỡng kế tiếp, nên lấp kín hai khoảng hở.
+4. **Giảm trừ gia cảnh.** FR06.02.01 ghi bản thân 11 triệu và NPT 6,2 triệu — lấy từ hai văn
+   bản khác nhau, cần xác nhận mức áp dụng cho từng kỳ.
+5. **Biểu thuế TNCN.** Biểu mới có hiệu lực thì tạo bộ tham số mới với ngày hiệu lực tương ứng.
+6. **Mẫu file ngân hàng.** Bố cục VietinBank / BIDV theo mẫu phổ biến, phải đối chiếu với file
+   mẫu ngân hàng cấp theo hợp đồng e-banking.
+7. **Chữ ký số.** "Ký điện tử" của BGĐ hiện là xác thực lại bằng mật khẩu kèm nhật ký và dấu
+   vân tay số liệu, không phải chữ ký số PKI / USB token.
+8. **Trưởng phòng xem lương phòng mình.** Chưa có quy tắc phân quyền rõ, nên chưa làm.
+9. **Mức sàn cho lao động theo giờ / bán thời gian.** Kiểm tra mức sàn hiện so một đầu mục
+   với một tham số (ví dụ lương tháng với lương tối thiểu vùng tháng); lương tối thiểu giờ
+   chưa được kiểm.
+
+## Dòng trung gian và dữ liệu theo tài liệu (migration `20261021100000`)
+
+Chạy lại được. Dữ liệu cũ được **bỏ** (người dùng chấp thuận), thay bằng dữ liệu theo
+`Mo06`, `DMKL`, hai mẫu phiếu lương và file `BANG LUONG GUI HRM`:
+
+- **Danh mục:** bỏ nhóm thứ sáu *Số liệu & dòng trung gian*; `category_code` được để trống
+  với dòng `INFO`. Chỉ còn 26 khoản chuẩn — khoản cộng / trừ khác bị xoá (đã lên phiếu thì
+  chỉ *Khóa*), khai riêng của khoản đó mất theo. Thêm `show_on_payslip`.
+- **Dòng trung gian gieo sẵn:** Đơn giá ngày / giờ, Số công làm thêm sau 22h, Bậc lương KPI,
+  Doanh số thu tiền hàng / khoán / cắt mã / thu cắt lô, Tỷ lệ đạt doanh số (%), Số lần
+  thiếu báo cáo, Tổng cộng, Lương đóng bảo hiểm, Số người phụ thuộc, Thu nhập miễn thuế,
+  Thu nhập tính thuế, BH doanh nghiệp đóng. Dòng trung gian cũ khác bị xoá / khoá.
+- **Cơ chế chung:** xoá hết `unit_pay_items`, gieo lại từ tháng sau kỳ đã chốt gần nhất:
+  BL 01 (28 dòng) cho mọi đơn vị gốc; BL 02 (khai lại 16 dòng, tắt Lương vận chuyển) cho
+  đơn vị *Kinh doanh* trên cùng (tên chứa "kinh doanh"). Khai riêng từng người của các
+  khoản còn lại giữ nguyên.
+- Công thức theo sheet BL01: *Tổng cộng* = tổng khoản cộng − các khoản phạt (cột W);
+  *Thu nhập miễn thuế* = 1.000.000 ÷ công chuẩn × ngày hưởng lương + MIN(1.200.000,
+  1.500.000 ÷ công chuẩn × ngày hưởng lương) (cột X, viết thẳng số như sheet — muốn đổi thì
+  thay bằng tham số); *Thu nhập tính thuế* = MAX(0, Tổng cộng − miễn thuế − NPT × giảm trừ
+  NPT − bảo hiểm − giảm trừ bản thân) (cột Z); quỹ 1% = (lương thời gian + lương vận chuyển
+  / doanh thu) × 1% (cột AC). Kiểm chứng trong `payroll.check.ts` (mục "Bảng lương mẫu").
+- Hàm không còn dùng: `payroll_mechanism_suggestions`, `payroll_ensure_components`.
+- RPC mới `save_payroll_intermediate(id, code, name, show, note)` — quyền
+  `admin.payroll_schemes` hoặc `admin.payroll_components`, chỉ sửa được dòng `INFO`.
+- `get_my_payslip` chỉ trả dòng trung gian có `show_on_payslip` (và không phải phần doanh
+  nghiệp đóng).
+- `get_my_payslip` trả kèm `category_name` / `category_sort` cho từng dòng (nhân viên không
+  đọc được danh mục) để phiếu dạng mẫu chia mục I, II, III….
+
+## Khớp bảng lương mẫu (migration `20261021110000` → `20261021140000`)
+
+- `110000`: thêm vào mọi bộ tham số các mã công thức mẫu cần mà còn thiếu (hệ số OT, quỹ,
+  đơn giá phạt, hoa hồng cắt mã / cắt lô, ngưỡng thưởng vượt) vào bảng "Hệ số & đơn giá chung".
+  Tham số đơn vị % lưu theo số phần trăm (1 = 1%). `120000` sửa hai giá trị bản đầu ghi sai.
+- `130000` đối chiếu từng cột sheet BL01 / BL 02 / CAT LO:
+  - BL 01: *Trách nhiệm* = *Mức trách nhiệm* (dòng trung gian mới, khai từng người) × tỷ lệ KPI;
+    *Thu nhập miễn thuế* = *Mức miễn thuế theo người* (mặc định 1.000.000, có người 500.000) ÷
+    công chuẩn × ngày hưởng lương + MIN(trần, mức tháng ÷ công chuẩn × ngày hưởng lương).
+  - BL 02: *Bậc lương KPI* = bậc lương ÷ 3; *Trách nhiệm* là số khai riêng (không nhân KPI);
+    hoa hồng cắt lô chỉ khi đạt từ 75%; thưởng doanh số 150% = nửa tháng bậc lương; đạt dưới 30%
+    khoán thì lương thời gian còn 70% (chưa giao khoán thì đủ).
+  - Tham số: giảm trừ 15,5 tr / 6,2 tr, biểu thuế 5 bậc (sheet dùng biểu này; Mo06 / DMKL còn
+    ghi 7 bậc — theo sheet vì là luật đang áp), bảng hoa hồng 75 / 90 / 105%, bảo hiểm NLĐ
+    8 / 1,5 / 1%, DN 17,5 / 3 / 1%, công chuẩn mặc định 23,5, làm tròn nghìn.
+  - Chỉ sửa dòng cơ chế còn đúng bản gieo; chỉ sửa bộ tham số chưa dùng cho kỳ chốt (bộ mới
+    nhất đã khoá thì chép thành bộ mới từ kỳ đang mở). Chạy lại được.
+- `140000` làm thêm giờ theo sheet *Thêm giờ VC* (công ty chọn theo sheet): đơn giá giờ = *Lương
+  tính làm thêm giờ* (dòng trung gian mới, mặc định = bậc lương, khai riêng nếu khác) ÷ công chuẩn ÷
+  giờ chuẩn; hệ số ngày thường 1, ngày nghỉ 1,5, lễ 2; kinh doanh làm ngày lễ × 3 trên đơn giá ngày
+  (`HE_SO_LAM_LE_KD`). Thấp hơn mức tối thiểu của luật (150 / 200 / 300%) — đổi ở Tham số nếu cần.
+- `150000` phạt đi muộn quá số lần: tiền trừ = *Số công bị trừ do đi muộn quá số lần* (nhập mỗi tháng,
+  như cột "Trừ công đi muộn" ở sheet) × đơn giá ngày. Phần trừ phép nằm bên Nghỉ phép — phần lương
+  không đọc và không ghi sổ phép.
+- Kiểm chứng: `payroll.check.ts` mục "Bảng lương mẫu"; năm người của sheet tháng 8 ở
+  `docs/m06-kich-ban-test.md` mục 4 khớp thực lĩnh từng đồng. *Chạy thử* có ô *Công chuẩn của
+  tháng* để tính như tháng khác.
+
+## Đối chiếu với tài liệu
+
+- **Xem công thức dạng chữ** (nút ở *Cơ chế chung* và ở form khai riêng từng người —
+  `FormulaSheetModal`, logic ở `lib/formulaSheet.ts`): mỗi khoản cộng / trừ một phương
+  trình, nhóm theo danh mục, đánh số liên tục, kèm *Tổng các khoản cộng* và *Thực lĩnh*.
+  Dòng trung gian không đứng riêng; mặc định được thay bằng công thức của nó (trong ngoặc)
+  để so thẳng với mục 8 của đặc tả — tắt đi thì giữ tên. Dòng trung gian là số liệu nhập
+  tay / khai từng người thì giữ tên. Có nút chép toàn bộ dạng chữ.
+- **Dạng phiếu lương** (thẻ cạnh *Chi tiết* ở chi tiết phiếu của Bảng lương, Chạy thử và
+  trang Phiếu lương của tôi — `PayslipDocument`): trình bày như mẫu BL 01 / BL 02 — đầu
+  phiếu (công ty, mã mẫu, tháng, tiêu đề, tên, các dòng trung gian được tích lên đầu phiếu),
+  bảng STT | Chỉ tiêu | Cách tính | Giá trị, nhóm khoản cộng theo danh mục (I, II…; mục một
+  dòng gộp lên dòng mục, mục đầu kèm công chuẩn), nhóm khoản trừ *trước Tổng cộng*, *Tổng
+  cộng* (= khoản cộng − khoản trừ trước Tổng cộng), mỗi khoản trừ còn lại một số La Mã,
+  *Thực lĩnh*, chỗ ký. Phía kế toán chỉ hiện dòng trung gian nhân viên được thấy, giống
+  phiếu nhân viên nhận. Modal chi tiết phiếu ở Bảng lương rộng `xl`.
+- **Mẫu phiếu lương theo đơn vị** (`payslip_layouts`, migration `20261022100000`, logic ở
+  `lib/payslipLayout.ts`, khai ở khung *Mẫu phiếu lương* đầu màn *Cơ chế chung*): mã mẫu,
+  tiêu đề (trống = tên đơn vị), dòng trung gian *Lên đầu phiếu* kèm cách in (số / tiền /
+  phần trăm / tỷ lệ 0–1), khoản trừ *Trước Tổng cộng*. Đơn vị con không có mẫu riêng thì
+  theo cấp trên (`payslip_layout_of_unit`); không có mẫu ở đâu thì dòng trung gian hiện theo
+  cờ `show_on_payslip` như trước. Lưu bằng `save_payslip_layout` (quyền
+  `admin.payroll_schemes`), chỉ đổi cách trình bày. `get_my_payslip` trả kèm `layout` và
+  chỉ trả dòng trung gian có trong đầu phiếu của mẫu. Gieo sẵn: đơn vị gốc BL 01, Kinh
+  doanh BL 02, ba khoản phạt đứng trước Tổng cộng.
+
+## Xoá bảng lương / phiếu cũ
+
+`supabase/paste-xoa-bang-luong-cu.sql` — dán vào SQL Editor. Xoá mọi kỳ lương, phiếu,
+dòng phiếu và nhật ký duyệt của kỳ (kể cả kỳ đã khoá / chi trả: tạm tắt trigger chặn sửa
+phiếu trong cùng giao dịch rồi bật lại). Không đụng danh mục, tham số, cơ chế, số liệu
+tháng, điều chỉnh (muốn xoá hai thứ cuối thì bỏ comment mục 4). Không hoàn tác được.

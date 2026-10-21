@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { AttendanceRequestPanel } from '@/components/attendance/AttendanceRequestPanel';
-import { Check, X, CalendarOff, TriangleAlert, RotateCcw } from 'lucide-react';
+import { Check, X, TriangleAlert } from 'lucide-react';
+import { Pager, clampPage } from '@/components/payroll/Pager';
+import { Dropdown, type DropdownOption } from '@/components/ui/Dropdown';
+import { departmentOptions, passesPeopleFilter, personOptions } from '@/lib/peopleFilter';
 import { Card, CardContent } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Textarea } from '@/components/ui/Input';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
@@ -21,7 +21,101 @@ import { fetchManagerIds, notifyUser, notifyUsers } from '@/lib/assignments';
 import { LeaveQuotaPanel } from '@/components/LeaveQuotaPanel';
 import { formatDate } from '@/lib/utils';
 import { hasPermission } from '@/lib/permissions';
-import type { LeaveCancellationRequest, LeaveRequest, LeaveStatus, Profile } from '@/types';
+import type { LeaveCancellationRequest, LeaveRequest, Profile } from '@/types';
+
+/** Nhãn trạng thái / loại đơn — cùng kiểu viên thuốc với các màn Lương & Đãi ngộ. */
+function Pill({ className, children }: { className: string; children: ReactNode }) {
+  return <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${className}`}>{children}</span>;
+}
+
+/** Thanh chọn dạng phân đoạn vuông góc, dùng chung cho tab chính và bộ lọc trạng thái. */
+function Segmented<K extends string>({ items, value, onChange, label }: {
+  items: ReadonlyArray<{ key: K; label: string }>;
+  value: K;
+  onChange: (key: K) => void;
+  label: string;
+}) {
+  return (
+    <div className="inline-flex max-w-full overflow-x-auto rounded-none bg-slate-100 p-1" role="tablist" aria-label={label}>
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="tab"
+          aria-selected={value === item.key}
+          onClick={() => onChange(item.key)}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-none px-3 py-1.5 text-sm font-semibold transition ${
+            value === item.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const PER_PAGE = 10;
+const HEAD_ROW = 'border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]';
+const COL = 'border-l border-[#eed5d8] dark:border-[#4a1c22]';
+
+const CANCEL_STATUS: Record<string, { label: string; color: string }> = {
+  pending: { label: 'Chờ duyệt', color: 'bg-amber-50 text-amber-700' },
+  approved: { label: 'Đã duyệt hủy', color: 'bg-emerald-50 text-emerald-700' },
+  rejected: { label: 'Đã từ chối', color: 'bg-red-50 text-red-700' },
+};
+
+/** Bộ lọc trạng thái kiểu gạch chân — khác thanh phân đoạn của nhóm đơn ở trên để không lẫn hai cấp lọc. */
+function StatusTabs<K extends string>({ items, value, onChange, label }: {
+  items: ReadonlyArray<{ key: K; label: string }>;
+  value: K;
+  onChange: (key: K) => void;
+  label: string;
+}) {
+  return (
+    <div className="flex gap-5 overflow-x-auto border-b border-slate-200" role="tablist" aria-label={label}>
+      {items.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="tab"
+          aria-selected={value === item.key}
+          onClick={() => onChange(item.key)}
+          className={`-mb-px shrink-0 border-b-2 px-0.5 pb-2.5 text-sm font-semibold transition ${
+            value === item.key
+              ? 'border-indigo-600 text-indigo-700'
+              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+          }`}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** Một ô lọc dạng Dropdown có ô gõ để tìm — cùng kiểu bộ lọc phòng ban ở Bảng lương tháng. */
+function FilterSelect({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: readonly DropdownOption[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="w-full sm:w-60">
+      <Dropdown aria-label={label} searchable value={value} options={options} onChange={onChange} />
+    </div>
+  );
+}
+
+function PersonCell({ person, fallback }: { person?: Profile | null; fallback: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{person?.name || fallback}</p>
+      {person?.department && <p className="truncate text-[10px] text-slate-400">{person.department}</p>}
+    </div>
+  );
+}
 
 export function AdminLeave() {
   const { profile } = useAuth();
@@ -44,6 +138,10 @@ export function AdminLeave() {
   const [busy, setBusy] = useState(false);
   const [cancelRejectTarget, setCancelRejectTarget] = useState<LeaveCancellationRequest | null>(null);
   const [cancelReviewNote, setCancelReviewNote] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [personFilter, setPersonFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [page, setPage] = useState(1);
 
   /** Một trung tâm cho mọi loại đơn đã có nghiệp vụ xử lý phía sau. */
   const [tab, setTab] = useState<'attendance' | 'requests' | 'cancellations' | 'quota'>(
@@ -54,6 +152,10 @@ export function AdminLeave() {
     if (tab === 'attendance' && !canReviewAttendance && canReviewLeave) setTab('requests');
     if (tab !== 'attendance' && !canReviewLeave && canReviewAttendance) setTab('attendance');
   }, [tab, canReviewAttendance, canReviewLeave]);
+
+  // Đổi nhóm đơn / trạng thái thì bỏ các ô lọc (danh sách tuỳ chọn đổi theo dữ liệu); đổi bất kỳ ô lọc nào thì về trang đầu.
+  useEffect(() => { setDeptFilter(''); setPersonFilter(''); setTypeFilter(''); }, [tab, filter]);
+  useEffect(() => { setPage(1); }, [tab, filter, deptFilter, personFilter, typeFilter]);
 
   useEffect(() => {
     loadRequests();
@@ -247,196 +349,230 @@ export function AdminLeave() {
     { key: 'all', label: 'Tất cả' },
   ];
 
-  return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="font-display text-2xl font-extrabold text-slate-900">Trung tâm đơn từ</h1>
-        <p className="mt-1 text-sm text-slate-500">Duyệt tập trung đơn nghỉ phép, đi muộn, về sớm, làm thêm giờ và yêu cầu hủy phép.</p>
-      </div>
+  const requestPeople = requests.map((request) => request.profile);
+  const cancellationPeople = cancellations.map((item) => item.leave?.profile);
+  const typeOptions: DropdownOption[] = [
+    { value: '', label: 'Tất cả loại nghỉ' },
+    ...Object.entries(LEAVE_TYPE_CONFIG).map(([value, config]) => ({ value, label: config.label })),
+  ];
 
-      <div className="flex max-w-full gap-1 overflow-x-auto p-1 bg-slate-100 rounded-xl w-fit">
-        {([
+  const visibleRequests = requests.filter((request) =>
+    passesPeopleFilter(request.profile, request.user_id, deptFilter, personFilter)
+    && (!typeFilter || request.leave_type === typeFilter));
+  const visibleCancellations = cancellations.filter((item) =>
+    passesPeopleFilter(item.leave?.profile, item.leave?.user_id, deptFilter, personFilter));
+
+  const requestPage = clampPage(page, visibleRequests.length, PER_PAGE);
+  const cancelPage = clampPage(page, visibleCancellations.length, PER_PAGE);
+  const pagedRequests = visibleRequests.slice((requestPage - 1) * PER_PAGE, requestPage * PER_PAGE);
+  const pagedCancellations = visibleCancellations.slice((cancelPage - 1) * PER_PAGE, cancelPage * PER_PAGE);
+
+  return (
+    <div className="space-y-4">
+      <Segmented
+        label="Nhóm đơn"
+        value={tab}
+        onChange={setTab}
+        items={[
           ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đi muộn · Về sớm · Làm thêm' }] : []),
           ...(canReviewLeave ? [{ key: 'requests' as const, label: 'Nghỉ phép' }] : []),
           ...(canManageLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép' }] : []),
           ...(canManageLeave ? [{ key: 'quota' as const, label: 'Quỹ phép' }] : []),
-        ] as const).map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`h-9 shrink-0 px-4 rounded-lg text-sm font-medium transition-colors ${
-              tab === t.key ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        ]}
+      />
 
       {tab === 'attendance' ? (
-        <AttendanceRequestPanel mode="review" />
+        <AttendanceRequestPanel mode="review" square />
       ) : tab === 'quota' ? (
         <LeaveQuotaPanel />
       ) : tab === 'cancellations' ? (
-        <Card>
-          <CardContent className="p-0">
-            {cancellations.length === 0 ? (
-              <EmptyState icon={<RotateCcw className="h-8 w-8" />} title="Không có yêu cầu hủy" description="Yêu cầu hủy đơn đã duyệt sẽ xuất hiện tại đây." />
-            ) : (
-              <div className="divide-y divide-slate-50">
-                {cancellations.map((item) => (
-                  <div key={item.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
-                    <Avatar name={item.leave?.profile?.name || ''} url={item.leave?.profile?.avatar_url} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-800">{item.leave?.profile?.name || 'Nhân viên'}</span>
-                        <Badge className={item.status === 'pending' ? 'bg-amber-100 text-amber-700' : item.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
-                          {item.status === 'pending' ? 'Chờ duyệt' : item.status === 'approved' ? 'Đã duyệt hủy' : 'Đã từ chối'}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-sm text-slate-600">{item.leave ? `${formatDate(item.leave.start_date)} → ${formatDate(item.leave.end_date)}` : 'Đơn nghỉ'} · {item.reason}</p>
-                      {item.review_note && <p className="mt-1 text-xs text-slate-500">Phản hồi: {item.review_note}</p>}
-                    </div>
-                    {item.status === 'pending' && (
-                      <div className="flex gap-2">
-                        <Button size="sm" onClick={() => reviewCancellation(item, 'approved')} disabled={busy}><Check className="h-4 w-4" />Duyệt hủy</Button>
-                        <Button size="sm" variant="outline" onClick={() => { setCancelRejectTarget(item); setCancelReviewNote(''); }} disabled={busy}><X className="h-4 w-4" />Từ chối</Button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <FilterSelect label="Lọc theo phòng ban" value={deptFilter} options={departmentOptions(cancellationPeople)}
+              onChange={(value) => { setDeptFilter(value); setPersonFilter(''); }} />
+            <FilterSelect label="Lọc theo nhân sự" value={personFilter} options={personOptions(cancellationPeople, deptFilter)}
+              onChange={setPersonFilter} />
+          </div>
+          <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
+            <CardContent className="p-0">
+              {visibleCancellations.length === 0 ? (
+                <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
+                  {cancellations.length === 0
+                    ? 'Không có yêu cầu hủy phép nào. Yêu cầu hủy đơn đã duyệt sẽ xuất hiện tại đây.'
+                    : 'Không có yêu cầu nào khớp bộ lọc.'}
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px] text-xs border-collapse">
+                    <thead>
+                      <tr className={HEAD_ROW}>
+                        <th className="px-2.5 py-1.5 text-left min-w-[130px]"><div className="min-w-[130px] line-clamp-3">Nhân sự</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-left min-w-[130px]`}><div className="min-w-[130px] line-clamp-3">Lịch nghỉ cần hủy</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-left min-w-[130px]`}><div className="min-w-[130px] line-clamp-3">Lý do hủy</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-center min-w-[90px]`}><div className="min-w-[90px] text-center line-clamp-3">Trạng thái</div></th>
+                        <th className={`${COL} px-2 py-1.5 text-center min-w-[90px]`}><div className="min-w-[90px] text-center line-clamp-3">Thao tác</div></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
+                      {pagedCancellations.map((item) => {
+                        const state = CANCEL_STATUS[item.status];
+                        return (
+                          <tr key={item.id} className="align-top">
+                            <td className="px-2.5 py-1.5"><PersonCell person={item.leave?.profile} fallback="Nhân viên" /></td>
+                            <td className="px-2 py-1.5 text-xs text-slate-600 dark:text-slate-300">
+                              {item.leave ? `${formatDate(item.leave.start_date)} → ${formatDate(item.leave.end_date)}` : 'Đơn nghỉ'}
+                            </td>
+                            <td className="px-2 py-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
+                              {item.reason}
+                              {item.review_note && <span className="mt-0.5 block text-slate-500">Phản hồi: {item.review_note}</span>}
+                            </td>
+                            <td className="px-2 py-1.5 text-center"><Pill className={state.color}>{state.label}</Pill></td>
+                            <td className="px-2 py-1.5">
+                              {item.status === 'pending' ? (
+                                <div className="flex justify-center gap-1.5">
+                                  <Button size="sm" variant="success" onClick={() => reviewCancellation(item, 'approved')} disabled={busy}><Check className="h-3.5 w-3.5" />Duyệt</Button>
+                                  <Button size="sm" variant="danger" onClick={() => { setCancelRejectTarget(item); setCancelReviewNote(''); }} disabled={busy}><X className="h-3.5 w-3.5" />Từ chối</Button>
+                                </div>
+                              ) : <span className="block text-center text-xs text-slate-300">—</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <Pager page={cancelPage} total={visibleCancellations.length} size={PER_PAGE} noun="yêu cầu" onPage={setPage} />
+        </>
       ) : (
       <>
-      <div className="flex flex-wrap gap-2">
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`h-9 px-4 rounded-xl text-sm font-medium transition-colors ${
-              filter === f.key
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <StatusTabs label="Lọc theo trạng thái" value={filter} onChange={setFilter} items={filters} />
+      <div className="flex flex-wrap items-center gap-3">
+        <FilterSelect label="Lọc theo phòng ban" value={deptFilter} options={departmentOptions(requestPeople)}
+          onChange={(value) => { setDeptFilter(value); setPersonFilter(''); }} />
+        <FilterSelect label="Lọc theo nhân sự" value={personFilter} options={personOptions(requestPeople, deptFilter)}
+          onChange={setPersonFilter} />
+        <FilterSelect label="Lọc theo loại nghỉ" value={typeFilter} options={typeOptions} onChange={setTypeFilter} />
       </div>
 
-      <Card>
+      <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {loading ? (
             <div className="p-5"><TableSkeleton /></div>
           ) : loadError ? (
             <ErrorState message={loadError} onRetry={loadRequests} />
-          ) : requests.length === 0 ? (
-            <EmptyState
-              icon={<CalendarOff className="w-8 h-8" />}
-              title="Không có đơn nghỉ phép"
-              description="Chưa có đơn nào trong mục này."
-            />
+          ) : visibleRequests.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
+              {requests.length === 0 ? 'Không có đơn nghỉ phép nào trong mục này.' : 'Không có đơn nào khớp bộ lọc.'}
+            </p>
           ) : (
-            <div className="divide-y divide-slate-50">
-              {requests.map((request) => {
-                const type = LEAVE_TYPE_CONFIG[request.leave_type];
-                const status = leaveStatusLabel(request);
-                const managerApprover = request.manager_approved_by ? profileMap.get(request.manager_approved_by) : null;
-                const finalApprover = request.approved_by ? profileMap.get(request.approved_by) : null;
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-xs border-collapse">
+                <thead>
+                  <tr className={HEAD_ROW}>
+                    <th className="px-2.5 py-1.5 text-left min-w-[130px]"><div className="min-w-[130px] line-clamp-3">Nhân sự</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[100px]`}><div className="min-w-[100px] line-clamp-3">Loại nghỉ</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[120px]`}><div className="min-w-[120px] line-clamp-3">Thời gian</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-center min-w-[60px]`}><div className="min-w-[60px] text-center line-clamp-3">Số ngày</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[140px]`}><div className="min-w-[140px] line-clamp-3">Lý do</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-left min-w-[110px]`}><div className="min-w-[110px] line-clamp-3">Trạng thái</div></th>
+                    <th className={`${COL} px-2 py-1.5 text-center min-w-[90px]`}><div className="min-w-[90px] text-center line-clamp-3">Thao tác</div></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
+                  {pagedRequests.map((request) => {
+                    const type = LEAVE_TYPE_CONFIG[request.leave_type];
+                    const status = leaveStatusLabel(request);
+                    const managerApprover = request.manager_approved_by ? profileMap.get(request.manager_approved_by) : null;
+                    const finalApprover = request.approved_by ? profileMap.get(request.approved_by) : null;
+                    const canAct = request.approval_stage === 'HR' ? canReviewHr : hasPermission(profile, 'leave');
 
-                return (
-                  <div key={request.id} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50/70 transition-colors">
-                    <Avatar name={request.profile?.name || ''} url={request.profile?.avatar_url} size="sm" />
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="text-sm font-medium text-slate-800">{request.profile?.name || '—'}</span>
-                        <Badge className={type.color}>{type.label}</Badge>
-                        <Badge className={request.is_cancelled ? 'bg-slate-100 text-slate-600' : status.color}>
-                          {request.is_cancelled ? 'Đã hủy' : status.label}
-                        </Badge>
-                        <span className="text-xs font-medium text-slate-500">{Number(request.days)} ngày</span>
-                      </div>
-                      <p className="text-sm text-slate-600">
-                        {formatDate(request.start_date)} → {formatDate(request.end_date)}
-                        {request.profile?.department && <span className="text-slate-400"> · {request.profile.department}</span>}
-                      </p>
-                      {request.reason && <p className="text-xs text-slate-500 mt-0.5">Lý do: {request.reason}</p>}
-                      {request.approval_stage === 'HR' && (
-                        <div className="mt-1.5 flex items-center gap-1.5 text-xs text-indigo-700 bg-indigo-50/90 border border-indigo-100 px-2.5 py-1 rounded-lg w-fit">
-                          <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />
-                          <span>
-                            Cấp 1 đã duyệt bởi <strong>{managerApprover?.name || 'Trưởng bộ phận'}</strong>
-                            {request.manager_approved_at ? ` (${formatDate(request.manager_approved_at)})` : ''} · Chờ Nhân sự/HR chốt
-                          </span>
-                        </div>
-                      )}
-                      {request.status === 'approved' && request.manager_approved_by && (
-                        <p className="text-xs text-slate-500 mt-1">
-                          Qua 2 cấp duyệt: Quản lý ({managerApprover?.name || 'quản lý trực tiếp'}) → HR ({finalApprover?.name || 'Nhân sự'})
-                        </p>
-                      )}
-                      {request.status === 'rejected' && request.reason_reject && (
-                        <p className="text-xs text-red-600 mt-1 flex items-start gap-1.5">
-                          <TriangleAlert className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-                          Đã từ chối: {request.reason_reject}
-                        </p>
-                      )}
-                    </div>
-
-                    {request.status === 'pending' && (
-                      <div className="flex items-center gap-2">
-                        {request.approval_stage === 'HR' ? (
-                          canReviewHr ? (
-                            <Button size="sm" onClick={() => handleApprove(request)} disabled={busy} theme="admin">
-                              <Check className="w-4 h-4" />
-                              HR chốt
-                            </Button>
+                    return (
+                      <tr key={request.id} className="align-top">
+                        <td className="px-2.5 py-1.5"><PersonCell person={request.profile} fallback="—" /></td>
+                        <td className="px-2 py-1.5"><Pill className={type.color}>{type.label}</Pill></td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-slate-600 dark:text-slate-300">
+                          {formatDate(request.start_date)} → {formatDate(request.end_date)}
+                        </td>
+                        <td className="px-2 py-1.5 text-center text-xs font-bold tabular-nums text-slate-700 dark:text-slate-200">{Number(request.days)}</td>
+                        <td className="max-w-[200px] px-2 py-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
+                          {request.reason || <span className="text-slate-300">—</span>}
+                          {request.status === 'rejected' && request.reason_reject && (
+                            <span className="mt-1 flex items-start gap-1 text-red-600">
+                              <TriangleAlert className="mt-px h-3 w-3 flex-shrink-0" />
+                              Đã từ chối: {request.reason_reject}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-xs">
+                          <Pill className={request.is_cancelled ? 'bg-slate-100 text-slate-600' : status.color}>
+                            {request.is_cancelled ? 'Đã hủy' : status.label}
+                          </Pill>
+                          {request.approval_stage === 'HR' && (
+                            <span className="mt-1 block leading-snug text-[10px] text-indigo-700 dark:text-indigo-400">
+                              Cấp 1: <strong>{managerApprover?.name || 'Trưởng BP'}</strong>
+                              {request.manager_approved_at ? ` (${formatDate(request.manager_approved_at)})` : ''} · chờ HR chốt
+                            </span>
+                          )}
+                          {request.status === 'approved' && request.manager_approved_by && (
+                            <span className="mt-1 block leading-snug text-[10px] text-slate-500">
+                              QL {managerApprover?.name || 'quản lý'} → HR {finalApprover?.name || 'Nhân sự'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5">
+                          {request.status !== 'pending' ? (
+                            <span className="block text-center text-xs text-slate-300">—</span>
+                          ) : canAct ? (
+                            <div className="flex justify-center gap-1.5">
+                              <Button size="sm" variant="success" onClick={() => handleApprove(request)} disabled={busy}>
+                                <Check className="h-3.5 w-3.5" />
+                                {request.approval_stage === 'HR' ? 'HR chốt' : 'Duyệt'}
+                              </Button>
+                              <Button size="sm" variant="danger" onClick={() => setRejectTarget(request)} disabled={busy}>
+                                <X className="h-3.5 w-3.5" />
+                                Từ chối
+                              </Button>
+                            </div>
                           ) : (
-                            <Button size="sm" variant="outline" disabled title="Đơn cần Nhân sự/HR duyệt cấp cuối">
-                              Chờ HR chốt
-                            </Button>
-                          )
-                        ) : (
-                          hasPermission(profile, 'leave') ? (
-                            <Button size="sm" onClick={() => handleApprove(request)} disabled={busy} theme="admin">
-                              <Check className="w-4 h-4" />
-                              Quản lý duyệt (Cấp 1)
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="outline" disabled title="Đang chờ quản lý trực tiếp duyệt trước">
-                              Chờ quản lý duyệt
-                            </Button>
-                          )
-                        )}
-                        {(request.approval_stage === 'HR' ? canReviewHr : hasPermission(profile, 'leave')) && (
-                        <Button size="sm" variant="outline" onClick={() => setRejectTarget(request)} disabled={busy}>
-                          <X className="w-4 h-4" />
-                          Từ chối
-                        </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                            <div className="flex justify-center">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled
+                                title={request.approval_stage === 'HR' ? 'Đơn cần Nhân sự/HR duyệt cấp cuối' : 'Đang chờ quản lý trực tiếp duyệt trước'}
+                              >
+                                {request.approval_stage === 'HR' ? 'Chờ HR chốt' : 'Chờ quản lý duyệt'}
+                              </Button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
       </Card>
+      {!loading && !loadError && (
+        <Pager page={requestPage} total={visibleRequests.length} size={PER_PAGE} noun="đơn" onPage={setPage} />
+      )}
       </>
       )}
 
       <Modal
+        square
         open={!!rejectTarget}
         onClose={() => { setRejectTarget(null); setRejectReason(''); }}
         title={`Từ chối đơn của ${rejectTarget?.profile?.name || ''}`}
       >
         <div className="space-y-4">
           <Textarea
+            className="!rounded-none"
             label="Lý do từ chối"
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
@@ -451,19 +587,19 @@ export function AdminLeave() {
             <Button type="button" variant="outline" onClick={() => { setRejectTarget(null); setRejectReason(''); }} className="flex-1">
               Hủy
             </Button>
-            <Button type="button" onClick={handleReject} disabled={busy} className="flex-1">
+            <Button type="button" variant="danger" onClick={handleReject} disabled={busy} className="flex-1">
               {busy ? 'Đang xử lý...' : 'Xác nhận từ chối'}
             </Button>
           </div>
         </div>
       </Modal>
 
-      <Modal open={!!cancelRejectTarget} onClose={() => { setCancelRejectTarget(null); setCancelReviewNote(''); }} title="Từ chối yêu cầu hủy phép">
+      <Modal square open={!!cancelRejectTarget} onClose={() => { setCancelRejectTarget(null); setCancelReviewNote(''); }} title="Từ chối yêu cầu hủy phép">
         <div className="space-y-4">
-          <Textarea label="Lý do từ chối" value={cancelReviewNote} onChange={(e) => setCancelReviewNote(e.target.value)} rows={3} />
+          <Textarea className="!rounded-none" label="Lý do từ chối" value={cancelReviewNote} onChange={(e) => setCancelReviewNote(e.target.value)} rows={3} />
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => { setCancelRejectTarget(null); setCancelReviewNote(''); }} className="flex-1">Đóng</Button>
-            <Button onClick={() => cancelRejectTarget && reviewCancellation(cancelRejectTarget, 'rejected', cancelReviewNote)} disabled={busy || !cancelReviewNote.trim()} className="flex-1">Xác nhận từ chối</Button>
+            <Button variant="danger" onClick={() => cancelRejectTarget && reviewCancellation(cancelRejectTarget, 'rejected', cancelReviewNote)} disabled={busy || !cancelReviewNote.trim()} className="flex-1">Xác nhận từ chối</Button>
           </div>
         </div>
       </Modal>

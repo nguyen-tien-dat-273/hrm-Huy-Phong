@@ -1,10 +1,10 @@
 // ============================================================================
-// Phê duyệt lương — màn của Ban Giám đốc (UI_04).
+// Phê duyệt lương — màn của người có chức năng Phê duyệt lương (Admin/CEO, Ban Giám đốc, Kế toán trưởng…).
 // ----------------------------------------------------------------------------
 // Hai loại hồ sơ cùng một hàng chờ:
-//   • Đề xuất cơ chế lương (BR-PAY-012) — BGĐ thấy đúng phần THAY ĐỔI so với
-//     cơ chế hiện hành, không phải đọc lại cả cơ chế;
-//   • Kỳ lương đã khoá (FR06.04.04) — BGĐ thấy tổng quỹ lương rồi ký chi.
+//   • Đề xuất cơ chế lương — BGĐ thấy đúng phần THAY ĐỔI so với cơ chế hiện
+//     hành (đổi cơ chế, đổi giá trị riêng), không phải đọc lại cả cơ chế;
+//   • Kỳ lương đã khoá — BGĐ thấy tổng quỹ lương rồi ký chi.
 //
 // "Ký" = xác thực lại bằng mật khẩu ngay trước thao tác (ReauthDialog);
 // database chỉ nhận khi phiên vừa xác thực trong vài phút. Từ chối bắt buộc
@@ -18,13 +18,14 @@ import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
 import { ReauthDialog } from '@/components/payroll/ReauthDialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { isFullAdmin } from '@/lib/permissions';
 import { useToast } from '@/contexts/ToastContext';
 import { formatDateTime, formatVND } from '@/lib/utils';
-import { payProfileForPeriod } from '@/lib/payroll';
-import { versionForMonth } from '@/lib/payrollSettings';
+import { paramsOf, versionForMonth } from '@/lib/payrollSettings';
+import { describeFormula, formatFormulaNumber } from '@/lib/formulaTokens';
+import { nameResolver } from '@/lib/payrollRun';
 import {
-  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, baseAmountOf, diffSchemeItems, personalItemsAt, profilePayloadOf,
-  unitItemsAt,
+  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, diffSchemeItems, personalItemsAt,
 } from '@/lib/payrollScheme';
 import { stripVietnamese } from '@/lib/tableExport';
 import {
@@ -32,9 +33,9 @@ import {
   reviewPayrollRun, reviewSchemeRequest, type PayrollWorkspace, type RunTotals,
 } from '@/lib/payrollData';
 import { notifyUsers } from '@/lib/assignments';
-import type {
-  PayComponent, PayrollApprovalEvent, PayrollRun, PayrollSchemeRequest, SchemePayloadItem, SchemePayloadProfile,
-} from '@/types';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { ApprovalListSkeleton } from '@/components/payroll/PayrollSkeletons';
+import type { PayComponent, PayrollApprovalEvent, PayrollRun, PayrollSchemeRequest, SchemePayloadItem } from '@/types';
 
 interface PayrollApprovalsProps {
   data: PayrollWorkspace;
@@ -47,7 +48,7 @@ type Kind = 'ALL' | 'SCHEME' | 'RUN';
 type Decision = 'APPROVED' | 'REJECTED';
 
 const RUN_STATUS_TEXT: Record<PayrollRun['status'], string> = {
-  DRAFT: 'Bản nháp', CALCULATED: 'Đã tính', LOCKED: 'Chờ BGĐ duyệt', APPROVED: 'Đã duyệt chi', PAID: 'Đã chi trả & phát hành',
+  DRAFT: 'Bản nháp', CALCULATED: 'Đã tính', LOCKED: 'Chờ duyệt', APPROVED: 'Đã duyệt chi', PAID: 'Đã chi trả & phát hành',
 };
 
 export const PAYROLL_EVENT_TEXT: Record<string, string> = {
@@ -55,16 +56,6 @@ export const PAYROLL_EVENT_TEXT: Record<string, string> = {
   CALCULATED: 'Tính lương', LOCKED: 'Khoá kỳ (2FA)', WITHDRAWN: 'Rút lại để sửa',
   PAID: 'Xác nhận chi trả & phát hành phiếu', BANK_EXPORTED: 'Xuất file ngân hàng',
 };
-
-const PROFILE_FIELDS: Array<{ key: keyof SchemePayloadProfile; label: string }> = [
-  { key: 'dependents', label: 'Người phụ thuộc' },
-  { key: 'tax_mode', label: 'Cách tính thuế' },
-  { key: 'flat_tax_rate', label: 'Thuế suất khấu trừ (%)' },
-  { key: 'insurance_enabled', label: 'Tham gia bảo hiểm' },
-  { key: 'insurance_base', label: 'Mức đóng bảo hiểm' },
-  { key: 'standard_days_override', label: 'Công chuẩn riêng' },
-  { key: 'template_id', label: 'Mẫu bảng lương' },
-];
 
 const monthText = (iso: string) => `${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const monthEndOf = (monthStart: string) => {
@@ -109,11 +100,11 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
     return (id: string | null | undefined) => (id ? byId.get(id) ?? 'Người dùng đã nghỉ' : '—');
   }, [data.profiles]);
   const componentById = useMemo(() => new Map(data.components.map((c) => [c.id, c])), [data.components]);
-  const templateById = useMemo(() => new Map(data.templates.map((t) => [t.id, t])), [data.templates]);
+  const formulaNameOf = useMemo(() => nameResolver(data.components, null), [data.components]);
 
   const targetOf = (request: PayrollSchemeRequest) => (request.target_type === 'USER'
     ? { name: nameOf(request.user_id), sub: data.profiles.find((p) => p.id === request.user_id)?.department ?? 'Nhân sự' }
-    : { name: data.units.find((u) => u.id === request.unit_id)?.name ?? 'Đơn vị đã xoá', sub: 'Khoản chung của đơn vị' });
+    : { name: data.units.find((u) => u.id === request.unit_id)?.name ?? 'Đơn vị đã xoá', sub: 'Cơ chế chung của đơn vị' });
 
   const toggle = async (key: string, type: 'SCHEME' | 'RUN', id: string) => {
     setExpanded((current) => (current === key ? null : key));
@@ -160,7 +151,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
         await notifyUsers(
           [recipient],
           approved ? `Bảng lương ${monthText(action.item.month_start)} đã được duyệt chi` : `Bảng lương ${monthText(action.item.month_start)} bị từ chối`,
-          approved ? 'Có thể xuất file ngân hàng và xác nhận chi trả.' : `Lý do: ${note}. Kỳ đã mở lại để điều chỉnh.`,
+          approved ? 'Có thể xuất file ngân hàng và xác nhận chi trả.' : `Lý do: ${note}. Kỳ đã trả về Đã tính để Kế toán điều chỉnh.`,
           'payroll_run_reviewed',
         );
       }
@@ -176,13 +167,13 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-xl bg-slate-100 p-1">
+        <div className="inline-flex rounded-none bg-slate-100 p-1">
           {([['pending', `Chờ duyệt`, ClipboardCheck], ['history', 'Lịch sử', History]] as const).map(([key, label, Icon]) => (
             <button
               key={key}
               type="button"
               onClick={() => setView(key)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+              className={`inline-flex items-center gap-1.5 rounded-none px-3 py-1.5 text-sm font-semibold transition ${
                 view === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
               }`}
             >
@@ -212,15 +203,15 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
       </div>
 
       {!canApprove && view === 'pending' && pendingTotal > 0 && (
-        <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Bạn đang xem với quyền đọc. Chỉ người có chức năng <strong>Phê duyệt lương</strong> (Ban Giám đốc) được ký.
+        <p className="rounded-none border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Bạn đang xem với quyền đọc. Chỉ người có chức năng <strong>Phê duyệt lương</strong> được ký.
         </p>
       )}
 
       {loading ? (
-        <Card><CardContent><p className="py-8 text-center text-sm text-slate-500">Đang tải hồ sơ…</p></CardContent></Card>
+        <ApprovalListSkeleton />
       ) : shownSchemes.length === 0 && shownRuns.length === 0 ? (
-        <Card>
+        <Card className="!rounded-none">
           <CardContent>
             <p className="py-10 text-center text-sm text-slate-500">
               {view === 'pending' ? 'Không có hồ sơ nào chờ duyệt.' : 'Chưa có lịch sử phê duyệt.'}
@@ -234,7 +225,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
             const total = totals.get(run.id);
             const open = expanded === key;
             return (
-              <Card key={key}>
+              <Card className="!rounded-none" key={key}>
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <button type="button" onClick={() => void toggle(key, 'RUN', run.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
@@ -252,13 +243,11 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                     </span>
                   </div>
                   {total && (
-                    <div className="grid gap-2 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-6">
+                    <div className="grid gap-2 rounded-none bg-slate-50 p-3 text-xs sm:grid-cols-4">
                       <Stat label="Số phiếu" text={String(total.count)} />
-                      <Stat label="Tổng Gross" text={formatVND(total.gross)} />
-                      <Stat label="BH người lao động" text={formatVND(total.insuranceEmployee)} />
-                      <Stat label="Thuế TNCN" text={formatVND(total.pit)} />
-                      <Stat label="BH doanh nghiệp" text={formatVND(total.insuranceEmployer)} />
-                      <Stat label="Tổng thực chi (Net)" text={formatVND(total.net)} strong />
+                      <Stat label="Tổng các khoản cộng" text={formatVND(total.gross)} />
+                      <Stat label="Tổng các khoản trừ" text={formatVND(total.deductions)} />
+                      <Stat label="Tổng thực chi" text={formatVND(total.net)} strong />
                     </div>
                   )}
                   {open && <Timeline rows={events[run.id]} nameOf={nameOf} />}
@@ -284,9 +273,10 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
             const key = `scheme-${request.id}`;
             const target = targetOf(request);
             const open = expanded === key || view === 'pending';
-            const ownRequest = request.submitted_by === profile?.id;
+            // Database miễn quy tắc "người trình không tự duyệt" cho Admin/CEO — giao diện khớp theo.
+            const ownRequest = request.submitted_by === profile?.id && !isFullAdmin(profile);
             return (
-              <Card key={key}>
+              <Card className="!rounded-none" key={key}>
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <button type="button" onClick={() => void toggle(key, 'SCHEME', request.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
@@ -307,17 +297,17 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                   </div>
                   {request.note && <p className="text-xs text-slate-600"><strong>Căn cứ:</strong> {request.note}</p>}
                   {request.review_note && request.status !== 'SUBMITTED' && (
-                    <p className="text-xs text-slate-600"><strong>Ý kiến BGĐ:</strong> {request.review_note}</p>
+                    <p className="text-xs text-slate-600"><strong>Ý kiến người duyệt:</strong> {request.review_note}</p>
                   )}
                   {open && (
                     request.status === 'SUBMITTED'
-                      ? <SchemeChanges request={request} data={data} componentById={componentById} templateName={(id) => templateById.get(id)?.code ?? 'Mẫu đã xoá'} />
-                      : <PayloadList items={request.payload.items} componentById={componentById} />
+                      ? <SchemeChanges request={request} data={data} componentById={componentById} />
+                      : <PayloadList items={request.payload.items} componentById={componentById} nameOf={formulaNameOf} />
                   )}
                   {expanded === key && <Timeline rows={events[request.id]} nameOf={nameOf} />}
                   {request.status === 'SUBMITTED' && canApprove && (
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      {ownRequest && <span className="mr-auto text-xs text-slate-500">Bạn là người trình — người khác trong BGĐ phải duyệt.</span>}
+                      {ownRequest && <span className="mr-auto text-xs text-slate-500">Bạn là người trình — người có quyền duyệt khác phải duyệt.</span>}
                       <Button size="sm" variant="danger" disabled={ownRequest} onClick={() => setAction({ type: 'SCHEME', item: request, decision: 'REJECTED' })}>
                         <XCircle className="h-4 w-4" /> Từ chối
                       </Button>
@@ -366,21 +356,23 @@ function Stat({ label, text, strong = false }: { label: string; text: string; st
   );
 }
 
-function itemText(item: SchemePayloadItem | null, component: PayComponent | undefined): string {
+function itemText(item: SchemePayloadItem | null, nameOf: (code: string) => string | undefined): string {
   if (!item) return '—';
-  if (item.formula?.trim()) return item.formula.trim();
-  if (item.amount == null) return 'theo danh mục';
-  return component?.calc_type === 'PERCENT' ? `${item.amount}%` : formatVND(item.amount);
+  if (item.formula?.trim()) return describeFormula(item.formula.trim(), nameOf);
+  if (item.amount == null) return 'theo mức chung';
+  return formatFormulaNumber(item.amount);
 }
 
-function PayloadList({ items, componentById }: { items: SchemePayloadItem[]; componentById: Map<string, PayComponent> }) {
-  if (items.length === 0) return <p className="text-xs text-slate-500">Không có khoản khai riêng.</p>;
+function PayloadList({ items, componentById, nameOf }: {
+  items: SchemePayloadItem[]; componentById: Map<string, PayComponent>; nameOf: (code: string) => string | undefined;
+}) {
+  if (items.length === 0) return <p className="text-xs text-slate-500">Không có giá trị khai riêng.</p>;
   return (
-    <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-xs">
+    <ul className="divide-y divide-slate-100 rounded-none border border-slate-200 text-xs">
       {items.map((item) => (
         <li key={item.component_id} className="flex items-center gap-2 px-3 py-1.5">
           <span className="font-semibold text-slate-700">{componentById.get(item.component_id)?.name ?? '?'}</span>
-          <span className="ml-auto font-mono text-slate-500">{itemText(item, componentById.get(item.component_id))}</span>
+          <span className="ml-auto text-slate-500">{itemText(item, nameOf)}</span>
         </li>
       ))}
     </ul>
@@ -388,76 +380,54 @@ function PayloadList({ items, componentById }: { items: SchemePayloadItem[]; com
 }
 
 /** Phần THAY ĐỔI so với cơ chế đang áp ở tháng hiệu lực — thứ BGĐ ký. */
-function SchemeChanges({ request, data, componentById, templateName }: {
+function SchemeChanges({ request, data, componentById }: {
   request: PayrollSchemeRequest;
   data: PayrollWorkspace;
   componentById: Map<string, PayComponent>;
-  templateName: (id: string) => string;
 }) {
   const month = request.effective_from;
   const monthEnd = monthEndOf(month);
   const version = versionForMonth(data.paramVersions, month);
+  const nameOf = nameResolver(data.components, null);
   const before = request.target_type === 'USER' && request.user_id
     ? personalItemsAt(data.items, request.user_id, month, monthEnd)
-    : request.unit_id ? unitItemsAt(data.unitItems, request.unit_id, month, monthEnd) : [];
+    : [];
   const changes = diffSchemeItems(before, request.payload.items).filter((change) => change.kind !== 'SAME');
 
-  const currentProfile = request.target_type === 'USER' && request.user_id
-    ? profilePayloadOf(
-      payProfileForPeriod(data.payProfiles.filter((row) => row.user_id === request.user_id), monthEnd),
-      version?.flatTaxRate ?? 0,
-    )
-    : null;
-  const nextProfile = request.payload.profile ?? null;
-  const fieldText = (key: keyof SchemePayloadProfile, value: unknown) => {
-    if (value == null || value === '') return key === 'template_id' ? 'Theo đơn vị' : '—';
-    if (key === 'template_id') return templateName(String(value));
-    if (key === 'insurance_enabled') return value ? 'Có' : 'Không';
-    if (key === 'tax_mode') return { PROGRESSIVE: 'Lũy tiến', FLAT: 'Khấu trừ thẳng', NONE: 'Không khấu trừ' }[String(value)] ?? String(value);
-    if (key === 'insurance_base') return formatVND(Number(value));
-    return String(value);
-  };
-  const profileChanges = currentProfile && nextProfile
-    ? PROFILE_FIELDS.filter(({ key }) => (currentProfile[key] ?? null) !== (nextProfile[key] ?? null))
-    : [];
-  const base = baseAmountOf(request.payload.items, data.components);
+  // Kiểm tra mức sàn của bộ tham số (nếu có khai), để BGĐ thấy trước khi ký.
+  const floorComponent = version?.floorComponentCode ? data.components.find((item) => item.code === version.floorComponentCode) : undefined;
+  const floorParam = version?.floorParamCode ? paramsOf(version).find((item) => item.code === version.floorParamCode) : undefined;
+  const floorValue = floorComponent ? request.payload.items.find((item) => item.component_id === floorComponent.id)?.amount ?? null : null;
 
   return (
     <div className="space-y-2">
-      {changes.length === 0 && profileChanges.length === 0 ? (
-        <p className="text-xs text-slate-500">Không đổi khoản nào so với cơ chế hiện hành.</p>
+      {changes.length === 0 ? (
+        <p className="text-xs text-slate-500">Không đổi gì so với cơ chế hiện hành.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-200">
-          <table className="w-full min-w-[480px] text-xs">
-            <thead>
-              <tr className="bg-slate-50 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                <th className="px-3 py-1.5">Nội dung</th>
-                <th className="px-3 py-1.5">Hiện hành</th>
-                <th className="px-3 py-1.5">Đề xuất</th>
+        <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
+          <table className="w-full min-w-[480px] text-xs border-collapse">
+            <thead className="bg-[#fdf2f4] dark:bg-[#201114] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+              <tr className="text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                <th className="px-3.5 py-2.5">Nội dung</th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3.5 py-2.5">Hiện hành</th>
+                <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3.5 py-2.5">Đề xuất</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {profileChanges.map(({ key, label }) => (
-                <tr key={key}>
-                  <td className="px-3 py-1.5 font-semibold text-slate-700">{label}</td>
-                  <td className="px-3 py-1.5 text-slate-500">{fieldText(key, currentProfile?.[key])}</td>
-                  <td className="px-3 py-1.5 font-semibold text-amber-700">{fieldText(key, nextProfile?.[key])}</td>
-                </tr>
-              ))}
+            <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
               {changes.map((change) => {
                 const component = componentById.get(change.componentId);
                 return (
-                  <tr key={change.componentId}>
-                    <td className="px-3 py-1.5 font-semibold text-slate-700">
+                  <tr key={change.componentId} className="group hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-colors">
+                    <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">
                       {component?.name ?? '?'}
-                      <span className={`ml-1.5 rounded px-1 py-0.5 text-[9px] font-bold ${
-                        change.kind === 'ADDED' ? 'bg-emerald-50 text-emerald-700' : change.kind === 'REMOVED' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+                      <span className={`ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                        change.kind === 'ADDED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : change.kind === 'REMOVED' ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                       }`}>
-                        {change.kind === 'ADDED' ? 'THÊM' : change.kind === 'REMOVED' ? 'BỎ' : 'ĐỔI'}
+                        {change.kind === 'ADDED' ? 'MỚI' : change.kind === 'REMOVED' ? 'BỎ' : 'ĐỔI'}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 font-mono text-slate-500">{itemText(change.before, component)}</td>
-                    <td className="px-3 py-1.5 font-mono font-semibold text-slate-800">{itemText(change.after, component)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-medium text-slate-500 dark:text-slate-400">{itemText(change.before, nameOf)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">{itemText(change.after, nameOf)}</td>
                   </tr>
                 );
               })}
@@ -465,9 +435,9 @@ function SchemeChanges({ request, data, componentById, templateName }: {
           </table>
         </div>
       )}
-      {base != null && version && (
-        <p className={`text-xs ${base < version.regionalMinimumWage ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
-          Lương cơ bản đề xuất {formatVND(base)} · lương tối thiểu vùng {version.regionCode}: {formatVND(version.regionalMinimumWage)}
+      {floorComponent && floorParam && floorValue != null && (
+        <p className={`text-xs ${floorValue < floorParam.value ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+          {floorComponent.name} đề xuất {formatVND(floorValue)} · {floorParam.name}: {formatVND(floorParam.value)}
         </p>
       )}
     </div>
@@ -475,7 +445,15 @@ function SchemeChanges({ request, data, componentById, templateName }: {
 }
 
 export function Timeline({ rows, nameOf }: { rows: PayrollApprovalEvent[] | undefined; nameOf: (id: string | null) => string }) {
-  if (!rows) return <p className="text-xs text-slate-400">Đang tải lịch sử…</p>;
+  if (!rows) {
+    return (
+      <div className="space-y-2 border-l-2 border-slate-100 pl-3" role="status" aria-busy="true">
+        <span className="sr-only">Đang tải lịch sử…</span>
+        <Skeleton className="h-3.5 w-3/4 !rounded-md" />
+        <Skeleton className="h-3.5 w-1/2 !rounded-md" />
+      </div>
+    );
+  }
   if (rows.length === 0) return <p className="text-xs text-slate-400">Chưa có lịch sử.</p>;
   return (
     <ol className="space-y-1.5 border-l-2 border-slate-100 pl-3 text-xs">
