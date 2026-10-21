@@ -123,6 +123,8 @@ patches/
 
 # Goi cai bridge - chua token that, khong day len git
 dist-bridge/
+.env.recruitment
+.env.migration
 .local-pg/
 
 # Tai lieu dac ta, du lieu mau va file tam

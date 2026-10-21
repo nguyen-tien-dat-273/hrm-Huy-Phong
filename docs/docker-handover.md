@@ -29,13 +29,13 @@ Máy chủ Linux có Docker Engine và Docker Compose plugin. Tài liệu Supaba
    Đọc và cấu hình secrets/domain theo tài liệu chính thức trước khi chạy Compose. Giữ Compose project name là `supabase` để network mặc định là `supabase_default`.
 2. Đặt `SUPABASE_PUBLIC_URL`, `API_EXTERNAL_URL` và `SITE_URL` theo domain HTTPS của khách hàng trong cấu hình Supabase. `SITE_URL` phải là domain HRM để luồng xác thực và khôi phục mật khẩu hoạt động đúng. Cấu hình SMTP thật (và SMS nếu dùng khôi phục qua điện thoại); không bàn giao với mailer thử nghiệm mặc định.
 3. Chạy Supabase trước để tạo network và khởi tạo các dịch vụ.
-4. Sao chép `.env.docker.example` thành `.env.docker`, điền URL public, `ANON_KEY`, `SERVICE_ROLE_KEY` và `POSTGRES_PASSWORD` từ cấu hình Supabase của chính khách hàng. Không đưa file này vào Git hoặc gửi service-role key qua chat.
+4. Sao chép `.env.docker.example` thành `.env.docker`, điền URL public, `ANON_KEY`, `SERVICE_ROLE_KEY` và `POSTGRES_PASSWORD` từ cấu hình Supabase của chính khách hàng. Không đưa file này vào Git hoặc gửi service-role key qua chat. Token webhook tuyển dụng được lưu riêng trong `.env.recruitment` để không lẫn với các credentials Supabase.
 5. Gắn thư mục Storage của Supabase vào `SUPABASE_STORAGE_PATH` và một thư mục backup riêng trên NAS vào `BACKUP_PATH`. NAS phải được mount sẵn trên máy chủ; không mở dịch vụ NAS ra Internet.
    Thư mục NAS phải ghi được bởi UID/GID trong `BACKUP_UID` và `BACKUP_GID`.
 6. Chạy từ thư mục repository:
 
    ```sh
-   docker compose --env-file .env.docker up -d --build
+   docker compose --env-file .env.docker --env-file .env.recruitment up -d --build
    ```
 
 HRM mặc định chỉ bind vào `127.0.0.1:8080`. Cấu hình reverse proxy của khách hàng để đưa domain HTTPS về cổng này. Supabase URL được đóng vào frontend lúc build và phải truy cập được từ trình duyệt người dùng; `SUPABASE_INTERNAL_URL` chỉ dùng cho API server bên trong Docker network.
