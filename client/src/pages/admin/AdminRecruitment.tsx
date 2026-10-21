@@ -291,8 +291,14 @@ export function AdminRecruitment() {
     } else {
       const title = decision === 'APPROVED' ? 'Đề xuất tuyển dụng đã được BGĐ phê duyệt'
         : decision === 'REJECTED' ? 'Đề xuất tuyển dụng không được phê duyệt' : 'Đề xuất tuyển dụng bị trả về để điều chỉnh';
-      await notifyUsers(owners.filter((id) => id !== profile?.id), title, label, 'recruitment_review');
-      toast(decision === 'APPROVED' ? 'Đã phê duyệt đề xuất.' : decision === 'REJECTED' ? 'Đã ghi nhận không phê duyệt.' : 'Đã trả về cho người lập điều chỉnh.', 'success');
+      const assignee = decision === 'APPROVED' && reviewing.hiring_manager_id !== profile?.id ? reviewing.hiring_manager_id : null;
+      await notifyUsers(owners.filter((id) => id !== profile?.id && id !== assignee), title, label, 'recruitment_review');
+      if (assignee) {
+        await notifyUser(assignee, 'Bạn được giao thực hiện đề xuất tuyển dụng',
+          `${label} · BGĐ đã phê duyệt. Bạn phụ trách tuyển và bổ sung nhân sự giải quyết đề xuất (${reviewing.headcount} người).`,
+          'recruitment_owner_assigned');
+      }
+      toast(decision === 'APPROVED' ? 'Đã phê duyệt đề xuất và báo người phụ trách.' : decision === 'REJECTED' ? 'Đã ghi nhận không phê duyệt.' : 'Đã trả về cho người lập điều chỉnh.', 'success');
     }
     setReviewing(null); setReviewNote(''); await load();
   };
@@ -398,7 +404,7 @@ export function AdminRecruitment() {
       <div>
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600"><UserRoundCheck className="h-4 w-4" />Quản lý tuyển dụng</div>
         <h2 className="font-display text-xl font-bold text-slate-900">Tuyển dụng nhân sự</h2>
-        <p className="mt-1 text-sm text-slate-500">Trưởng phòng lập đề xuất → HR kiểm tra → BGĐ phê duyệt → BGĐ thêm nhân sự đã tuyển vào dự án.</p>
+        <p className="mt-1 text-sm text-slate-500">Trưởng phòng lập đề xuất → HR kiểm tra → BGĐ phê duyệt → BGĐ thêm nhân sự giải quyết đề xuất.</p>
       </div>
       <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất tuyển dụng</Button>
     </div>
@@ -438,42 +444,42 @@ export function AdminRecruitment() {
         const showHires = ['OPEN', 'CLOSED'].includes(item.status) || filled > 0;
         return <Card key={item.id}><CardContent className="space-y-3">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0"><p className="text-xs font-bold text-indigo-600">{item.code}</p><h3 className="mt-1 font-display text-base font-bold text-slate-900">{item.title}</h3><p className="mt-1 text-xs text-slate-500">{unitNames.get(item.unit_id || '') || 'Chưa chọn đơn vị'} · {positionNames.get(item.position_id || '') || 'Chưa gắn vị trí'}</p></div>
-            <Badge className={requestStatus[item.status].color}>{requestStatus[item.status].label}</Badge>
+            <div className="min-w-0 flex-1"><p className="break-words text-xs font-bold text-indigo-600">{item.code}</p><h3 className="mt-1 break-words font-display text-base font-bold text-slate-900">{item.title}</h3><p className="mt-1 break-words text-xs text-slate-500">{unitNames.get(item.unit_id || '') || 'Chưa chọn đơn vị'} · {positionNames.get(item.position_id || '') || 'Chưa gắn vị trí'}</p></div>
+            <Badge className={`shrink-0 whitespace-nowrap ${requestStatus[item.status].color}`}>{requestStatus[item.status].label}</Badge>
           </div>
           <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-4">
-            <div><span className="text-slate-400">Số lượng</span><p className="mt-1 font-bold text-slate-700">{item.headcount} người</p></div>
-            <div><span className="text-slate-400">Người phụ trách</span><p className="mt-1 font-bold text-slate-700">{names.get(item.hiring_manager_id) || '—'}{canReview && !['CLOSED', 'CANCELLED', 'REJECTED'].includes(item.status) && <button type="button" className="ml-1.5 text-xs font-semibold text-indigo-700 hover:underline" onClick={() => { setChangingOwner(item); setOwnerDraft(item.hiring_manager_id); }}>Đổi</button>}</p></div>
-            <div><span className="text-slate-400">Khoảng lương</span><p className="mt-1 font-bold text-slate-700">{item.salary_min == null && item.salary_max == null ? 'Thỏa thuận' : `${money(item.salary_min)} – ${money(item.salary_max)}`}</p></div>
-            <div><span className="text-slate-400">Đã tuyển</span><p className="mt-1 font-bold text-slate-700">{filled}/{item.headcount} người</p></div>
+            <div className="min-w-0"><span className="block truncate text-slate-400">Số lượng</span><p className="mt-1 break-words font-bold text-slate-700">{item.headcount} người</p></div>
+            <div className="min-w-0"><span className="block truncate text-slate-400">Người phụ trách</span><p className="mt-1 break-words font-bold text-slate-700">{names.get(item.hiring_manager_id) || '—'}{canReview && !['CLOSED', 'CANCELLED', 'REJECTED'].includes(item.status) && <button type="button" className="ml-1.5 whitespace-nowrap text-xs font-semibold text-indigo-700 hover:underline" onClick={() => { setChangingOwner(item); setOwnerDraft(item.hiring_manager_id); }}>Đổi</button>}</p></div>
+            <div className="min-w-0"><span className="block truncate text-slate-400">Khoảng lương</span><p className="mt-1 break-words font-bold text-slate-700">{item.salary_min == null && item.salary_max == null ? 'Thỏa thuận' : <><span className="whitespace-nowrap">{money(item.salary_min)}</span> – <span className="whitespace-nowrap">{money(item.salary_max)}</span></>}</p></div>
+            <div className="min-w-0"><span className="block truncate text-slate-400">Đã tuyển</span><p className="mt-1 break-words font-bold text-slate-700">{filled}/{item.headcount} người</p></div>
           </div>
-          <p className="line-clamp-2 text-sm text-slate-600">{item.reason}</p>
+          <p className="line-clamp-2 break-words text-sm text-slate-600">{item.reason}</p>
           {showHires && <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-700"><FolderKanban className="h-3.5 w-3.5" />Nhân sự đã thêm vào dự án</p>
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-700"><FolderKanban className="h-3.5 w-3.5" />Nhân sự giải quyết đề xuất</p>
               <span className="text-xs font-semibold text-emerald-700">{filled}/{item.headcount}</span>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded bg-emerald-100"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, Math.round(filled / Math.max(1, item.headcount) * 100))}%` }} /></div>
             {itemHires.length === 0 ? <p className="mt-2 text-xs text-slate-500">Chưa thêm nhân sự nào.</p> : <ul className="mt-2 space-y-1.5">
-              {itemHires.map((hire) => <li key={hire.id} className="flex items-center gap-2 text-xs text-slate-600">
-                <span className="font-semibold text-slate-800">{names.get(hire.user_id) || 'Nhân sự'}</span>
-                <span>→ {projectNames.get(hire.project_id) || 'Dự án'} · {roleLabel(hire.role_code)}</span>
-                <span className="ml-auto text-slate-400">{new Date(hire.added_at).toLocaleDateString('vi-VN')}</span>
-                {isBoard && <button type="button" onClick={() => void removeHireRow(hire)} className="rounded p-1 text-slate-400 hover:bg-white hover:text-red-600" aria-label="Gỡ khỏi đề xuất"><XCircle className="h-3.5 w-3.5" /></button>}
+              {itemHires.map((hire) => <li key={hire.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600">
+                <span className="min-w-0 break-words font-semibold text-slate-800">{names.get(hire.user_id) || 'Nhân sự'}</span>
+                <span className="min-w-0 break-words">→ {projectNames.get(hire.project_id) || 'Dự án'} · {roleLabel(hire.role_code)}</span>
+                <span className="ml-auto shrink-0 whitespace-nowrap text-slate-400">{new Date(hire.added_at).toLocaleDateString('vi-VN')}</span>
+                {isBoard && <button type="button" onClick={() => void removeHireRow(hire)} className="shrink-0 rounded p-1 text-slate-400 hover:bg-white hover:text-red-600" aria-label="Gỡ khỏi đề xuất"><XCircle className="h-3.5 w-3.5" /></button>}
               </li>)}
             </ul>}
           </div>}
-          {item.review_note && ["RETURNED", "REJECTED"].includes(item.status) && <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"><strong>{item.status === "RETURNED" ? "Cần điều chỉnh:" : "Lý do không phê duyệt:"}</strong> {item.review_note}</p>}
-          {item.status === "PENDING_BOARD" && item.hr_note && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"><strong>HR ghi chú:</strong> {item.hr_note}</p>}
+          {item.review_note && ["RETURNED", "REJECTED"].includes(item.status) && <p className="break-words rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"><strong>{item.status === "RETURNED" ? "Cần điều chỉnh:" : "Lý do không phê duyệt:"}</strong> {item.review_note}</p>}
+          {item.status === "PENDING_BOARD" && item.hr_note && <p className="break-words rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"><strong>HR ghi chú:</strong> {item.hr_note}</p>}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
-            {deadline ? <span className={`flex items-center gap-1.5 text-xs font-semibold ${deadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4" />{deadline.text} để HR kiểm tra & trình BGĐ</span> : <span className="text-xs text-slate-400">Đề xuất bởi {names.get(item.requested_by) || 'người dùng'}</span>}
-            <div className="flex flex-wrap gap-2">
+            {deadline ? <span className={`flex min-w-0 items-center gap-1.5 break-words text-xs font-semibold ${deadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4 shrink-0" />{deadline.text} để HR kiểm tra & trình BGĐ</span> : <span className="min-w-0 break-words text-xs text-slate-400">Đề xuất bởi {names.get(item.requested_by) || 'người dùng'}</span>}
+            <div className="ml-auto flex flex-wrap justify-end gap-2">
               {item.attachment_path && <Button variant="outline" onClick={() => void openRequisitionFile(item)}><FileText className="h-4 w-4" />Tệp đề xuất</Button>}
               {canReview && item.status === 'SUBMITTED' && <Button theme="admin" onClick={() => openReview(item, 'hr')}>Kiểm tra & trình BGĐ</Button>}
               {isBoard && item.status === 'PENDING_BOARD' && <Button theme="admin" onClick={() => openReview(item, 'board')}><CheckCircle2 className="h-4 w-4" />BGĐ phê duyệt</Button>}
               {item.status === 'RETURNED' && item.requested_by === profile?.id && <Button theme="admin" onClick={() => openResubmit(item)}>Sửa & gửi lại</Button>}
               {canReview && item.status === 'APPROVED' && <Button theme="admin" onClick={() => setRequestStatus(item, 'OPEN')}><ArrowRight className="h-4 w-4" />Triển khai tuyển dụng</Button>}
-              {isBoard && item.status === 'OPEN' && filled < item.headcount && <Button theme="admin" onClick={() => openHire(item)}><UserPlus className="h-4 w-4" />Thêm nhân sự vào dự án</Button>}
+              {isBoard && item.status === 'OPEN' && filled < item.headcount && <Button theme="admin" onClick={() => openHire(item)}><UserPlus className="h-4 w-4" />Thêm nhân sự giải quyết đề xuất</Button>}
               {canReview && item.status === 'OPEN' && <Button variant="secondary" onClick={() => setRequestStatus(item, 'CLOSED')}><CheckCircle2 className="h-4 w-4" />Hoàn tất</Button>}
               {canReview && !['CLOSED', 'CANCELLED'].includes(item.status) && <Button variant="danger" onClick={() => void removeRequest(item)} aria-label={`Xóa hoặc hủy ${item.code}`}><Trash2 className="h-4 w-4" /></Button>}
             </div>
@@ -485,7 +491,7 @@ export function AdminRecruitment() {
 
     <Modal open={!!reviewing} onClose={() => setReviewing(null)} title={reviewMode === 'hr' ? 'HR kiểm tra đề xuất' : 'Ban Giám đốc phê duyệt'}><div className="space-y-4">
       <p className="rounded-xl bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">{reviewMode === 'hr' ? 'Bước 1/2 · HR kiểm tra nội dung và tệp đề xuất, rồi trình Ban Giám đốc hoặc trả về để người lập điều chỉnh.' : 'Bước 2/2 · Chỉ triển khai tuyển dụng sau khi Ban Giám đốc phê duyệt.'}</p>
-      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-600">{reviewing?.code}</p><p className="mt-1 font-bold text-slate-900">{reviewing?.title}</p><p className="mt-1 text-sm text-slate-500">{reviewing?.headcount} người · {reviewing?.reason}</p>
+      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-600">{reviewing?.code}</p><p className="mt-1 break-words font-bold text-slate-900">{reviewing?.title}</p><p className="mt-1 break-words text-sm text-slate-500">{reviewing?.headcount} người · {reviewing?.reason}</p>
         {reviewing?.attachment_path ? <button type="button" onClick={() => reviewing && void openRequisitionFile(reviewing)} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 underline"><FileText className="h-4 w-4" />{reviewing.attachment_name || 'Tệp đề xuất'}</button> : <p className="mt-2 text-xs text-amber-700">Đề xuất cũ chưa có tệp đính kèm.</p>}
         {reviewMode === 'board' && reviewing?.hr_note && <p className="mt-2 text-xs text-slate-600"><strong>HR ghi chú:</strong> {reviewing.hr_note}</p>}
       </div>
@@ -526,7 +532,7 @@ export function AdminRecruitment() {
       <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setChangingOwner(null)}>Hủy</Button><Button theme="admin" disabled={saving || !ownerDraft || ownerDraft === changingOwner?.hiring_manager_id} onClick={() => void saveOwner()}>Lưu</Button></div>
     </div></Modal>
 
-    <Modal open={!!hiring} onClose={() => setHiring(null)} title="Thêm nhân sự đã tuyển vào dự án"><form onSubmit={saveHire} className="space-y-4">
+    <Modal open={!!hiring} onClose={() => setHiring(null)} title="Thêm nhân sự giải quyết đề xuất"><form onSubmit={saveHire} className="space-y-4">
       <div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="text-xs font-bold text-indigo-600">{hiring?.code}</p><p className="font-semibold text-slate-900">{hiring?.title}</p><p className="mt-1 text-xs text-slate-500">Đã tuyển {(hiring && (hiresByRequest.get(hiring.id) || []).length) || 0}/{hiring?.headcount} người</p></div>
       <Select label="Dự án" value={hireForm.project_id} onChange={(e) => setHireForm({ ...hireForm, project_id: e.target.value })} required>
         <option value="">Chọn dự án</option>
@@ -540,7 +546,7 @@ export function AdminRecruitment() {
       <Select label="Vai trò trong dự án" value={hireForm.role_code} onChange={(e) => setHireForm({ ...hireForm, role_code: e.target.value })}>
         {HIRE_ROLES.map((role) => <option key={role.code} value={role.code}>{role.label}</option>)}
       </Select>
-      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setHiring(null)}>Đóng</Button><Button type="submit" theme="admin" disabled={saving || !hireForm.project_id || !hireForm.user_id}><UserPlus className="h-4 w-4" />{saving ? 'Đang thêm...' : 'Thêm vào dự án'}</Button></div>
+      <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setHiring(null)}>Đóng</Button><Button type="submit" theme="admin" disabled={saving || !hireForm.project_id || !hireForm.user_id}><UserPlus className="h-4 w-4" />{saving ? 'Đang thêm...' : 'Thêm nhân sự giải quyết'}</Button></div>
     </form></Modal>
   </div>;
 }
