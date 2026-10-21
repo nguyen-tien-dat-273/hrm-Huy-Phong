@@ -12,10 +12,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import {
-  addDays, startOfWeek, UNLOGGED_TOLERANCE_HOURS, attendanceHours, fetchDayEntries, formatHours, saveDayEntries, type WorklogEntry,
+  addDays, startOfWeek, UNLOGGED_TOLERANCE_HOURS, attendanceHours, fetchDayEntries, fetchProjectLeadIds, formatHours, saveDayEntries, type WorklogEntry,
 } from '@/lib/worklog';
 import { getTodayString, toDateString } from '@/lib/utils';
-import { notifyUser } from '@/lib/assignments';
+import { notifyUsers } from '@/lib/assignments';
+import { WorklogApprovalQueue } from '@/pages/admin/AdminWorklog';
 import type { Attendance } from '@/types';
 
 interface WorklogSubmission {
@@ -46,11 +47,13 @@ export function StaffWorklog() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [attendance, setAttendance] = useState<Attendance | null>(null);
+  const [attendanceShifts, setAttendanceShifts] = useState<Attendance[]>([]);
   const [weekSubmissions, setWeekSubmissions] = useState<WorklogSubmission[]>([]);
   const [weekProjectDetails, setWeekProjectDetails] = useState<Map<string, { name: string; leadId: string | null }>>(new Map());
   const [weekLogProjectIds, setWeekLogProjectIds] = useState<string[]>([]);
   const [submittingWeek, setSubmittingWeek] = useState(false);
+  /** Có dẫn dắt dự án nào không: chỉ trưởng dự án thấy khung duyệt worklog. */
+  const [leadsAnyProject, setLeadsAnyProject] = useState(false);
   const weekStart = toDateString(startOfWeek(new Date(`${date}T00:00:00`)));
   const weekEnd = toDateString(addDays(new Date(`${weekStart}T00:00:00`), 6));
   const weekEnded = weekEnd < getTodayString();
@@ -58,6 +61,17 @@ export function StaffWorklog() {
   const lockedProjectIds = new Set(weekSubmissions
     .filter((submission) => submission.status === 'SUBMITTED' || submission.status === 'APPROVED')
     .map((submission) => submission.project_id));
+
+  useEffect(() => {
+    if (!profile) return;
+    void (async () => {
+      const [{ count: leadCount }, { count: memberLeadCount }] = await Promise.all([
+        supabase.from('projects').select('id', { count: 'exact', head: true }).eq('lead_id', profile.id),
+        supabase.from('project_members').select('id', { count: 'exact', head: true }).eq('user_id', profile.id).eq('role_code', 'lead'),
+      ]);
+      setLeadsAnyProject((leadCount ?? 0) + (memberLeadCount ?? 0) > 0);
+    })();
+  }, [profile]);
 
   useEffect(() => {
     if (profile) load();
@@ -120,8 +134,8 @@ export function StaffWorklog() {
         ?? null,
     );
     setEntries(entryResult.entries);
-    // Lay ca dau tien trong ngay lam moc gio vao.
-    setAttendance(((attResult.data ?? [])[0] as Attendance) ?? null);
+    // Giữ mọi ca trong ngày: người làm hai ca phải được cộng đủ giờ có mặt.
+    setAttendanceShifts((attResult.data ?? []) as Attendance[]);
     setWeekSubmissions((submissionResult.data || []) as WorklogSubmission[]);
     setWeekProjectDetails(projectDetails);
     setWeekLogProjectIds([...projectDetails.keys()]);
@@ -142,13 +156,15 @@ export function StaffWorklog() {
 
   const handleSave = async () => {
     if (!profile) return;
-    const locked = entries.some((entry) => lockedProjectIds.has(entry.task.project_id));
-    if (locked) {
+    // Dự án đã gửi/đã duyệt tuần này bị khóa (DB cũng chặn); vẫn lưu được giờ
+    // của các dự án khác trong cùng ngày.
+    const editable = entries.filter((entry) => !lockedProjectIds.has(entry.task.project_id));
+    if (editable.length === 0) {
       toast('Worklog tuần này đã gửi duyệt hoặc được duyệt, không thể sửa.', 'warning');
       return;
     }
     setSaving(true);
-    const { error } = await saveDayEntries(profile.id, date, entries);
+    const { error } = await saveDayEntries(profile.id, date, editable);
     setSaving(false);
 
     if (error) {
@@ -179,15 +195,12 @@ export function StaffWorklog() {
       return;
     }
 
-    const { data: projectsData, error: projectsError } = await supabase
-      .from('projects').select('id,name,lead_id').in('id', weekLogProjectIds);
-    if (projectsError) {
-      toast(`Đã gửi worklog, nhưng không tải được người duyệt: ${describeDbError(projectsError)}`, 'warning');
-    } else {
-      for (const project of projectsData || []) {
-        if (project.lead_id && project.lead_id !== profile?.id) {
-          await notifyUser(project.lead_id, 'Worklog tuần chờ duyệt', `${project.name} · tuần từ ${weekStart}`, 'worklog_review');
-        }
+    // Báo mọi trưởng dự án (lead_id + thành viên vai trò lead), trừ chính người gửi.
+    const leadMap = await fetchProjectLeadIds(weekLogProjectIds);
+    for (const projectId of weekLogProjectIds) {
+      const reviewers = (leadMap.get(projectId) ?? []).filter((id) => id !== profile?.id);
+      if (reviewers.length > 0) {
+        await notifyUsers(reviewers, 'Worklog tuần chờ duyệt', `${weekProjectDetails.get(projectId)?.name ?? 'Dự án'} · tuần từ ${weekStart}`, 'worklog_review');
       }
     }
     toast(`Đã gửi worklog của ${data ?? 0} dự án cho Project lead.`, 'success');
@@ -195,7 +208,12 @@ export function StaffWorklog() {
   };
 
   const totalLogged = entries.reduce((sum, e) => sum + e.hours, 0);
-  const presentHours = attendanceHours(attendance ?? undefined);
+  const closedShiftHours = attendanceShifts.map((shift) => attendanceHours(shift)).filter((hours): hours is number => hours !== null);
+  const openShiftCount = attendanceShifts.length - closedShiftHours.length;
+  const presentHours = closedShiftHours.length > 0
+    ? Math.round(closedShiftHours.reduce((sum, hours) => sum + hours, 0) * 10) / 10
+    : null;
+  const allLocked = entries.length > 0 && entries.every((entry) => lockedProjectIds.has(entry.task.project_id));
   const gap = presentHours !== null ? Math.round((presentHours - totalLogged) * 10) / 10 : null;
 
   const shiftDate = (days: number) => setDate(toDateString(addDays(new Date(`${date}T00:00:00`), days)));
@@ -209,7 +227,7 @@ export function StaffWorklog() {
           <button onClick={() => shiftDate(-1)} className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors" aria-label="Ngày trước">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button onClick={() => shiftDate(1)} className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors" aria-label="Ngày sau">
+          <button onClick={() => shiftDate(1)} disabled={date >= getTodayString()} className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" aria-label="Ngày sau">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -217,7 +235,7 @@ export function StaffWorklog() {
         <input
           type="date"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => { if (e.target.value) setDate(e.target.value > getTodayString() ? getTodayString() : e.target.value); }}
           max={getTodayString()}
           className="h-10 px-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
         />
@@ -359,7 +377,7 @@ export function StaffWorklog() {
               <div className="text-sm">
                 {presentHours === null ? (
                   <p className="text-slate-400">
-                    {attendance ? 'Chưa check-out nên chưa tính được giờ có mặt.' : 'Không có dữ liệu chấm công ngày này.'}
+                    {attendanceShifts.length > 0 ? 'Chưa check-out nên chưa tính được giờ có mặt.' : 'Không có dữ liệu chấm công ngày này.'}
                   </p>
                 ) : gap !== null && gap > UNLOGGED_TOLERANCE_HOURS ? (
                   <p className="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
@@ -383,11 +401,17 @@ export function StaffWorklog() {
                     Khớp với chấm công ({formatHours(presentHours)} có mặt).
                   </p>
                 )}
+                {presentHours !== null && (closedShiftHours.length > 1 || openShiftCount > 0) && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {closedShiftHours.length > 1 ? `Cộng ${closedShiftHours.length} ca đã check-out.` : ''}
+                    {openShiftCount > 0 ? ` Còn ${openShiftCount} ca chưa check-out, chưa tính.` : ''}
+                  </p>
+                )}
               </div>
 
               <Button
                 onClick={handleSave}
-                disabled={saving || !dirty || entries.some((entry) => lockedProjectIds.has(entry.task.project_id))}
+                disabled={saving || !dirty || allLocked}
                 className="w-full sm:w-auto"
               >
                 <Save className="w-4 h-4" />
@@ -397,6 +421,8 @@ export function StaffWorklog() {
           </CardContent>
         </Card>
       )}
+
+      {leadsAnyProject && <WorklogApprovalQueue />}
 
       {!loading && entries.some((e) => e.task.status === 'done') && (
         <p className="text-xs text-slate-400">

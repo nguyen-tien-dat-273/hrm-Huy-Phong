@@ -179,6 +179,12 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       email_confirm: true,
       user_metadata: { name },
     });
+    if (createError && /already (been )?registered|already exists/i.test(createError.message || '')) {
+      const { data: owner } = await service.from('profiles').select('name, is_active').eq('email', identifier.email).maybeSingle();
+      return fail(response, 409, owner
+        ? `${identifier.email} đã là tài khoản của "${owner.name}"${owner.is_active ? '' : ' (đã ngừng hoạt động)'}. Dùng email/tên đăng nhập khác hoặc sửa hồ sơ hiện có.`
+        : `${identifier.email} đã được đăng ký trong hệ thống. Dùng email/tên đăng nhập khác.`);
+    }
     if (createError || !created.user) return fail(response, 400, createError?.message || 'Không tạo được tài khoản.');
 
     const profilePayload: Record<string, unknown> = {

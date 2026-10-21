@@ -29,6 +29,7 @@ interface Command {
   fullAdminOnly?: boolean;
   functionCode?: AdminFunctionCode | readonly AdminFunctionCode[];
   hideForTeamlead?: boolean;
+  teamleadEmployeeDocuments?: boolean;
   run: () => void;
 }
 
@@ -70,6 +71,7 @@ export function CommandPalette() {
         fullAdminOnly: item.fullAdminOnly,
         functionCode: item.functionCode,
         hideForTeamlead: item.hideForTeamlead,
+        teamleadEmployeeDocuments: item.teamleadEmployeeDocuments,
         run: go(item.to),
       })),
 
@@ -100,10 +102,10 @@ export function CommandPalette() {
       (c) => {
         const allowed = c.anyPermissions?.length
           ? c.anyPermissions.some((permission) => hasPermission(profile, permission))
-          : (c.permission ? hasPermission(profile, c.permission) : true);
+          : (c.permission ? (hasPermission(profile, c.permission) || (c.teamleadEmployeeDocuments && isTeamlead(profile))) : true);
         return allowed
           && (!c.fullAdminOnly || isFullAdmin(profile))
-          && (!c.functionCode || hasAdminFunction(profile, c.functionCode))
+          && (!c.functionCode || hasAdminFunction(profile, c.functionCode) || (c.teamleadEmployeeDocuments && isTeamlead(profile)))
           && (!c.hideForTeamlead || !isTeamlead(profile));
       },
     );

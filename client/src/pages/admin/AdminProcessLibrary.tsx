@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Building2, FileText, Plus, TriangleAlert, Upload } from 'lucide-react';
+import { BookOpen, Building2, Eye, FileText, Plus, TriangleAlert, Upload } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -81,6 +81,7 @@ export function AdminProcessLibrary() {
   const [draft, setDraft] = useState(BLANK);
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<ProcessDocument | null>(null);
 
   const canManage = isFullAdmin(profile);
 
@@ -101,7 +102,7 @@ export function AdminProcessLibrary() {
     setLoading(false);
   };
 
-  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, []);
 
   const unitName = (id: string | null) =>
     id ? units.find((u) => u.id === id)?.name ?? 'Đơn vị đã xoá' : 'Toàn công ty';
@@ -240,7 +241,7 @@ export function AdminProcessLibrary() {
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-slate-800">
-                      {doc.title}
+                      <button type="button" onClick={() => setSelectedDoc(doc)} className="text-left hover:text-indigo-700">{doc.title}</button>
                       <Badge className="bg-slate-100 text-slate-600">{CATEGORY_LABEL[doc.category]}</Badge>
                       <Badge className={status.color}>{status.label}</Badge>
                     </p>
@@ -256,17 +257,22 @@ export function AdminProcessLibrary() {
                       <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-400">{doc.summary}</p>
                     )}
                   </div>
-                  {doc.file_path && (
-                    <Button size="sm" variant="outline" onClick={() => void openFile(doc)}>
-                      Mở file
-                    </Button>
-                  )}
+                  <Button size="sm" variant="outline" onClick={() => setSelectedDoc(doc)}><Eye className="h-4 w-4" />Chi tiết</Button>
                 </li>
               );
             })}
           </ul>
         </CardContent></Card>
       )}
+
+      <Modal open={!!selectedDoc} onClose={() => setSelectedDoc(null)} title={selectedDoc?.title || 'Chi tiết quy trình'} size="lg">
+        {selectedDoc && <div className="space-y-4">
+          <div className="flex flex-wrap gap-2"><Badge className="bg-slate-100 text-slate-700">{CATEGORY_LABEL[selectedDoc.category]}</Badge><Badge className={STATUS_STYLE[selectedDoc.status].color}>{STATUS_STYLE[selectedDoc.status].label}</Badge><Badge className="bg-indigo-50 text-indigo-700">{selectedDoc.version_label}</Badge></div>
+          <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt className="text-xs text-slate-500">Mã tài liệu</dt><dd className="mt-1 font-mono font-semibold">{selectedDoc.code}</dd></div><div><dt className="text-xs text-slate-500">Phạm vi</dt><dd className="mt-1 font-medium">{unitName(selectedDoc.unit_id)}</dd></div><div><dt className="text-xs text-slate-500">Ngày hiệu lực</dt><dd className="mt-1 font-medium">{formatDate(selectedDoc.effective_from)}</dd></div></dl>
+          <div><h3 className="text-sm font-semibold text-slate-800">Nội dung / tóm tắt</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{selectedDoc.summary || 'Chưa có phần tóm tắt.'}</p></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">{selectedDoc.file_name || 'Chưa đính kèm file'}</span>{selectedDoc.file_path && <Button variant="outline" onClick={() => void openFile(selectedDoc)}><FileText className="h-4 w-4" />Mở tài liệu đầy đủ</Button>}</div>
+        </div>}
+      </Modal>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Ban hành tài liệu" size="lg">
         <div className="space-y-4">
