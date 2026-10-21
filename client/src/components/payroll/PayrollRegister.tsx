@@ -46,7 +46,7 @@ import { formatVND } from '@/lib/utils';
 import type { ComputedPayslip, MechanismRow } from '@/lib/payroll';
 import type { PayrollParams } from '@/lib/payrollSettings';
 import { computeForPerson, nameResolver, schemeSourceOf } from '@/lib/payrollRun';
-import { resolveMechanismRows } from '@/lib/payrollScheme';
+import { blankMechanismRows, resolveMechanismRows } from '@/lib/payrollScheme';
 import { buildPayrollJournal } from '@/lib/payrollJournal';
 import { formatFormulaNumber, normalizeText } from '@/lib/formulaTokens';
 import {
@@ -289,7 +289,7 @@ export function PayrollRegister({
 
   /** Người chưa thiết lập xong (chưa có cơ chế / thiếu mức riêng bắt buộc) — nhắc trước khi chốt. */
   const setupGaps = useMemo(() => (closed ? [] : liveRows.filter((row) => !row.hasScheme
-    || (row.mechanismRows ?? []).some((item) => item.mode === 'PER_PERSON' && item.amount == null))), [closed, liveRows]);
+    || blankMechanismRows(row.mechanismRows ?? []).length > 0)), [closed, liveRows]);
 
   const savedInputs = useMemo(
     () => new Map(data.inputs.map((input) => [`${input.user_id}|${input.code}`, String(Number(input.quantity))])),
@@ -1456,9 +1456,17 @@ export function PayrollRegister({
                   <p className="font-bold">
                     {setupGaps.length} người chưa thiết lập xong lương
                   </p>
-                  <p className="mt-0.5 text-amber-800 dark:text-amber-300">
-                    Chưa có cơ chế hoặc còn trống mức riêng bắt buộc — phiếu của họ có thể ra thiếu.
-                  </p>
+                  <ul className="mt-1 space-y-0.5 text-amber-800 dark:text-amber-300">
+                    {setupGaps.slice(0, 8).map((gap) => {
+                      const blanks = blankMechanismRows(gap.mechanismRows ?? []).map((item) => item.component.name);
+                      return (
+                        <li key={gap.profile.id}>
+                          <strong>{gap.profile.name}</strong>: {gap.hasScheme ? `còn trống ${blanks.join(', ')}` : 'chưa có cơ chế — phiếu ra 0đ'}
+                        </li>
+                      );
+                    })}
+                    {setupGaps.length > 8 && <li>… và {setupGaps.length - 8} người khác.</li>}
+                  </ul>
                 </div>
               </div>
               <Button

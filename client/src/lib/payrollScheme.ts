@@ -61,6 +61,18 @@ export function resolveMechanismRows(
   return [...rows.values()].sort((a, b) => a.sortOrder - b.sortOrder || a.component.sort_order - b.component.sort_order);
 }
 
+/** Dòng còn trống: "mỗi người một mức" chưa có số, hoặc công thức để trống. */
+export function blankMechanismRows(rows: readonly MechanismRow[]): MechanismRow[] {
+  return rows.filter((row) => (row.mode === 'PER_PERSON' && row.amount == null)
+    || (row.mode === 'FORMULA' && !row.formula?.trim() && row.amount == null));
+}
+
+/** "Thiếu Lương cơ bản, Mức KPI" — gọi đúng tên, quá nhiều thì rút gọn. */
+export function missingLabel(names: readonly string[], max = 2): string {
+  if (names.length <= max) return `Thiếu ${names.join(', ')}`;
+  return `Thiếu ${names.slice(0, max).join(', ')} +${names.length - max}`;
+}
+
 // ---------------------------------------------------------------------------
 // Đề xuất cơ chế lương
 // ---------------------------------------------------------------------------

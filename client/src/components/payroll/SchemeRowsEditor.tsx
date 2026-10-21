@@ -39,6 +39,9 @@ interface SchemeRowsEditorProps {
   blankPlaceholder?: string;
 }
 
+/** id của một dòng trên trang — để bấm tên dòng còn thiếu là cuộn tới nó. */
+export const schemeRowDomId = (componentId: string) => `scheme-row-${componentId}`;
+
 /** Nhãn "theo tháng" trong ô: bật = nhập mỗi tháng trên Bảng lương. */
 function MonthlyChip({ on, disabled, onToggle }: { on: boolean; disabled: boolean; onToggle: () => void }) {
   return (
@@ -178,7 +181,7 @@ export function SchemeRowsEditor({
               />
             );
             return (
-              <li key={row.componentId} className="group">
+              <li key={row.componentId} id={schemeRowDomId(row.componentId)} className="group scroll-mt-24">
                 <div className="flex items-start gap-2">
                   <div
                     className={`${boxClass(!!issue)} w-40 shrink-0 font-bold sm:w-56 ${
@@ -216,10 +219,15 @@ export function SchemeRowsEditor({
                         trailing={chip}
                       />
                     )}
-                    {cyclic.has(component.code) && (
+                    {cyclic.has(component.code) ? (
                       <p className="mt-1 flex items-start gap-1.5 text-xs font-medium text-red-600">
                         <TriangleAlert className="mt-0.5 h-3.5 w-3.5" />
                         Vòng lặp: {[...cyclic].map((code) => nameOf(code) ?? code).join(' → ')}.
+                      </p>
+                    ) : issue && !monthly && !row.formula.trim() && (
+                      <p className="mt-1 flex items-start gap-1.5 text-xs font-medium text-red-600">
+                        <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {issue}
                       </p>
                     )}
                   </div>

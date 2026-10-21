@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { Avatar } from '@/components/ui/Avatar';
 import { BankAccountCard } from '@/components/payroll/BankAccountCard';
 import { SchemeCopyMenu } from '@/components/payroll/SchemeCopyMenu';
-import { SchemeRowsEditor } from '@/components/payroll/SchemeRowsEditor';
+import { SchemeRowsEditor, schemeRowDomId } from '@/components/payroll/SchemeRowsEditor';
 import { SchemeSaveBar } from '@/components/payroll/SchemeSaveBar';
 import {
   draftOfMechanism, draftOfPayload, draftOfStored, payloadOfDraft, sameDraft, type SchemeDraftRow,
@@ -28,7 +28,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { formatFormulaNumber } from '@/lib/formulaTokens';
 import { getTodayString } from '@/lib/utils';
 import { firstEditableMonth } from '@/lib/payrollSettings';
-import { earliestSchemeMonth, personalItemsAt, resolveMechanismRows } from '@/lib/payrollScheme';
+import { earliestSchemeMonth, missingLabel, personalItemsAt, resolveMechanismRows } from '@/lib/payrollScheme';
 import { schemeSourceOf } from '@/lib/payrollRun';
 import { saveScheme, type PayrollWorkspace } from '@/lib/payrollData';
 import type { EmployeeBankAccount, PayScheme, Profile } from '@/types';
@@ -131,13 +131,18 @@ export function PersonSchemeForm({
     onSaved();
   };
 
-  const missing = resolveMechanismRows(person, source, month, monthEnd)
-    .filter((row) => row.mode === 'PER_PERSON' && row.amount == null).length;
+  // Đếm trên bản đang soạn để điền xong ô nào là nhãn đổi ngay.
+  const blankRows = rows.filter((row) => row.mode === 'FORMULA' && !row.formula.trim() && row.amount == null
+    && workbench.componentById.has(row.componentId));
+  const blankNames = blankRows.map((row) => workbench.componentById.get(row.componentId)?.name ?? '');
   const status = rows.length === 0
     ? { label: 'Chưa có cơ chế', tone: 'bg-red-50 text-red-600' }
-    : missing > 0
-      ? { label: `Thiếu ${missing} giá trị`, tone: 'bg-amber-50 text-amber-700' }
+    : blankRows.length > 0
+      ? { label: missingLabel(blankNames), tone: 'bg-amber-50 text-amber-700' }
       : { label: 'Đủ', tone: 'bg-emerald-50 text-emerald-700' };
+  const jumpTo = (componentId: string) => {
+    document.getElementById(schemeRowDomId(componentId))?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
   const hasMonthly = rows.some((row) => row.mode === 'MONTHLY_INPUT');
 
   return (
@@ -156,7 +161,12 @@ export function PersonSchemeForm({
               {person.employee_code ?? '—'} · {unitName ?? (person.department || 'Chưa có đơn vị')}
             </p>
           </div>
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${status.tone}`}>{status.label}</span>
+          <span
+            className={`max-w-[16rem] truncate rounded-full px-2.5 py-1 text-[11px] font-bold ${status.tone}`}
+            title={blankNames.length > 0 ? `Còn trống: ${blankNames.join(', ')}` : undefined}
+          >
+            {status.label}
+          </span>
           <Button size="sm" variant="outline" onClick={onDryRun}>
             <FlaskConical className="h-4 w-4" /> Chạy thử
           </Button>
@@ -185,6 +195,23 @@ export function PersonSchemeForm({
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
               Chưa có bộ tham số lương hiệu lực cho tháng này — khai ở Thông số chung để kiểm tra công thức.
             </p>
+          )}
+          {blankRows.length > 0 && (
+            <div className="flex items-start gap-2 rounded-none border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/40 dark:text-amber-200">
+              <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+              <p className="leading-relaxed">
+                <strong>Còn {blankRows.length} dòng chưa có giá trị</strong> — phiếu lương tính các dòng này bằng 0:{' '}
+                {blankRows.map((row, index) => (
+                  <span key={row.componentId}>
+                    {index > 0 && ', '}
+                    <button type="button" onClick={() => jumpTo(row.componentId)} className="font-bold underline underline-offset-2 hover:text-amber-700">
+                      {blankNames[index]}
+                    </button>
+                  </span>
+                ))}
+                . Gõ một con số hoặc công thức vào ô viền đỏ rồi bấm Lưu.
+              </p>
+            </div>
           )}
 
           <SchemeRowsEditor
