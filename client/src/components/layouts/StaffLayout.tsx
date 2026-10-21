@@ -181,7 +181,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
   const openNotification = async (notification: Notification) => {
     await markNotificationRead(notification.id);
     setNotifOpen(false);
-    navigate(notificationRoute(notification.type));
+    navigate(notificationRoute(notification.type, notification.message));
   };
 
   const currentPage = STAFF_NAV_ITEMS.find((item) => {

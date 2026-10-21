@@ -29,7 +29,7 @@ export const ADMIN_FUNCTIONS: Record<AdminFunctionCode, { label: string; descrip
   'admin.overview': { label: 'Tổng quan điều hành', description: 'Xem dashboard điều hành và cảnh báo toàn công ty.', module: 'reports' },
   'admin.employee_lifecycle': { label: 'Hội nhập & nghỉ việc', description: 'Quản lý checklist onboarding/offboarding.', module: 'users' },
   'admin.workforce': { label: 'Hồ sơ người lao động', description: 'Quản lý hồ sơ và tiến trình tuyển chọn.', module: 'users' },
-  'admin.worker_documents': { label: 'Hồ sơ giấy tờ lao động', description: 'Theo dõi hợp đồng, visa và tài liệu.', module: 'users' },
+  'admin.worker_documents': { label: 'Kho hồ sơ giấy tờ', description: 'Tra cứu hồ sơ ứng viên và hồ sơ nhân viên.', module: 'users' },
   'admin.payroll': { label: 'Bảng lương', description: 'Chạy bảng lương nháp, khoá kỳ bằng 2FA, xuất file ngân hàng, xác nhận chi trả.', module: 'attendance' },
   'admin.payroll_schemes': { label: 'Áp cơ chế lương cho nhân sự', description: 'Gán cơ chế và khai giá trị riêng (lương cơ bản, số người phụ thuộc…) cho từng nhân sự, trình duyệt.', module: 'attendance' },
   'admin.payroll_inputs': { label: 'Số liệu lương tháng', description: 'Nhập số liệu hằng tháng của cơ chế lương: doanh số, số chuyến…', module: 'attendance' },

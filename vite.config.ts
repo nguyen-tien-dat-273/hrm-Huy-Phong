@@ -50,6 +50,7 @@ export default defineConfig({
   envDir: '..',
   plugins: [react(), tailwindcss(), devChatbotApi()],
   resolve: { alias: { '@': path.resolve(import.meta.dirname, 'client/src') } },
-  server: { host: true, allowedHosts: true },
+  // Dev: /api/* chạy ở server/index.mjs (cổng 8080); production dùng Vercel Functions.
+  server: { host: true, allowedHosts: true, proxy: { '/api': 'http://localhost:8080' } },
   build: { chunkSizeWarningLimit: 1500 },
 });

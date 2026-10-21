@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
+  DndContext, DragOverlay, PointerSensor, useDroppable, useSensor, useSensors,
   closestCorners, type DragStartEvent, type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Calendar, AlertCircle, Edit3, Trash2, Plus, ShieldCheck, Send } from 'lucide-react';
+import { GripVertical, Calendar, CalendarDays, Clock3, History, KanbanSquare, AlertCircle, Edit3, Trash2, Plus, ShieldCheck, Send, Paperclip, X } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
@@ -24,10 +24,12 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { notifyUser } from '@/lib/assignments';
-import { KANBAN_COLUMNS, PRIORITY_CONFIG, formatDate, isOverdue } from '@/lib/utils';
+import { TaskCompletionReviewModal } from '@/components/TaskCompletionReviewModal';
+import { KANBAN_COLUMNS, PRIORITY_CONFIG, formatDate, getTodayString, isOverdue } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, Project, Profile, ProjectMember, MemberRole, ProjectRoleDefinition } from '@/types';
 
 type ProjectAccess = Pick<ProjectRoleDefinition, 'code' | 'name' | 'permissions'>;
+type TaskViewFilter = 'all' | 'today' | 'upcoming' | 'history';
 interface MyTaskRequest {
   id: string;
   task_id: string;
@@ -55,7 +57,7 @@ const LEGACY_ACCESS: Record<string, ProjectAccess> = {
 };
 
 export function StaffKanban() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile } = useAuth();
   const { toast } = useToast();
   const confirm = useConfirm();
@@ -69,6 +71,7 @@ export function StaffKanban() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [projectFilter, setProjectFilter] = useState<string>(() => searchParams.get('project') || 'all');
+  const [taskView, setTaskView] = useState<TaskViewFilter>('all');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [workflowTarget, setWorkflowTarget] = useState<Task | null>(null);
@@ -78,6 +81,7 @@ export function StaffKanban() {
   const [workflowEvidenceUrl, setWorkflowEvidenceUrl] = useState('');
   const [workflowEvidenceFile, setWorkflowEvidenceFile] = useState<File | null>(null);
   const [workflowSaving, setWorkflowSaving] = useState(false);
+  const [reviewTask, setReviewTask] = useState<Task | null>(null);
   const [createForm, setCreateForm] = useState({ title: '', description: '', project_id: '', assignee_id: '', start_date: '', due_date: '', priority: 'medium' as TaskPriority });
 
   const sensors = useSensors(
@@ -186,9 +190,20 @@ export function StaffKanban() {
   const canDeleteTask = (projectId: string) => hasProjectPermission(projectId, 'task.delete');
   const canAssignTask = (projectId: string) => hasProjectPermission(projectId, 'task.assign');
   const canMoveTask = (task: Task) => task.assignee_id === profile?.id
-    && task.status !== 'in_review' && task.status !== 'done'
+    && task.status !== 'in_review'
     && hasProjectPermission(task.project_id, 'task.move_own');
+  /** Trưởng dự án = projects.lead_id hoặc thành viên vai trò lead (khớp can_review_project_task_request). */
+  const projectLeadIds = (projectId: string) => [...new Set([
+    ...projects.filter((project) => project.id === projectId && project.lead_id).map((project) => project.lead_id as string),
+    ...projectMembers
+      .filter((member) => member.project_id === projectId && (member.role_code || member.role) === 'lead')
+      .map((member) => member.user_id),
+  ])];
+  const canReviewTask = (task: Task) => task.status === 'in_review'
+    && !!profile && task.assignee_id !== profile.id
+    && projectLeadIds(task.project_id).includes(profile.id);
   const creatableProjects = projects.filter((project) => canCreateTask(project.id));
+  const selectedProject = projects.find((project) => project.id === projectFilter);
   const selectedAccess = projectFilter === 'all' ? null : projectAccess[projectFilter];
   const assignableProfiles = Array.from(new Map(
     projectMembers
@@ -200,9 +215,16 @@ export function StaffKanban() {
     if (!latestRequestByTask.has(request.task_id)) latestRequestByTask.set(request.task_id, request);
   }
 
-  const filteredTasks = projectFilter === 'all'
+  const projectTasks = projectFilter === 'all'
     ? tasks
     : tasks.filter((t) => t.project_id === projectFilter);
+  const today = getTodayString();
+  const todayTasks = projectTasks.filter((task) => task.due_date === today || task.start_date === today);
+  const upcomingTasks = projectTasks.filter((task) => task.status !== 'done' && (task.due_date || task.start_date || '') > today);
+  const historyTasks = projectTasks.filter((task) => task.status === 'done');
+  const filteredTasks = taskView === 'today' ? todayTasks
+    : taskView === 'upcoming' ? upcomingTasks
+      : taskView === 'history' ? historyTasks : projectTasks;
 
   const handleDragStart = (e: DragStartEvent) => {
     const task = tasks.find((item) => item.id === e.active.id);
@@ -266,7 +288,8 @@ export function StaffKanban() {
       return;
     }
     const validMove = (task.status === 'todo' && newStatus === 'in_progress')
-      || (task.status === 'in_progress' && newStatus === 'todo');
+      || (task.status === 'in_progress' && newStatus === 'todo')
+      || (task.status === 'done' && (newStatus === 'todo' || newStatus === 'in_progress'));
     if (!validMove) {
       toast('Chuyển cột không đúng thứ tự.', 'warning');
       return;
@@ -284,6 +307,18 @@ export function StaffKanban() {
     }
   };
 
+  const handleStartTask = async (task: Task) => {
+    if (!canMoveTask(task) || task.status !== 'todo') return;
+    setTasks((prev) => prev.map((item) => item.id === task.id ? { ...item, status: 'in_progress' } : item));
+    const { error } = await supabase.from('tasks').update({ status: 'in_progress' }).eq('id', task.id);
+    if (error) {
+      toast(`Không thể bắt đầu tác vụ: ${error.message}`, 'error');
+      await loadData(true);
+      return;
+    }
+    toast('Đã chuyển tác vụ sang Đang làm. Khi hoàn tất, chọn “Nộp task” để gửi nghiệm thu.', 'success');
+  };
+
   const openWorkflowRequest = (task: Task, kind: 'DEADLINE_EXTENSION' | 'COMPLETION') => {
     setWorkflowTarget(task);
     setWorkflowKind(kind);
@@ -292,6 +327,24 @@ export function StaffKanban() {
     setWorkflowEvidenceUrl('');
     setWorkflowEvidenceFile(null);
   };
+
+  useEffect(() => {
+    const taskId = searchParams.get('task');
+    if (!taskId || loading) return;
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task) return;
+    if (task.status === 'in_progress' && task.assignee_id === profile?.id) {
+      setWorkflowTarget(task);
+      setWorkflowKind('COMPLETION');
+      setWorkflowDate('');
+      setWorkflowNote('');
+      setWorkflowEvidenceUrl('');
+      setWorkflowEvidenceFile(null);
+    }
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('task');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams, tasks, loading, profile?.id]);
 
   const submitWorkflowRequest = async () => {
     if (!workflowTarget) return;
@@ -303,8 +356,8 @@ export function StaffKanban() {
       toast('Chọn hạn mới.', 'warning');
       return;
     }
-    if (workflowKind === 'COMPLETION' && !workflowEvidenceUrl.trim() && !workflowEvidenceFile) {
-      toast('Thêm ít nhất một link hoặc file minh chứng trước khi gửi nghiệm thu.', 'warning');
+    if (workflowKind === 'COMPLETION' && !workflowEvidenceFile) {
+      toast('Đính kèm file minh chứng trước khi gửi nghiệm thu.', 'warning');
       return;
     }
     const evidenceUrl = workflowEvidenceUrl.trim();
@@ -350,12 +403,15 @@ export function StaffKanban() {
       toast(`Gửi yêu cầu thất bại: ${describeDbError(error)}`, 'error');
       return;
     }
-    toast(workflowKind === 'DEADLINE_EXTENSION' ? 'Đã gửi yêu cầu gia hạn.' : 'Đã gửi yêu cầu nghiệm thu.', 'success');
-    const leadId = projects.find((project) => project.id === workflowTarget.project_id)?.lead_id;
-    const reviewerIds = leadId && leadId !== profile?.id
-      ? [leadId]
-      : ((await supabase.from('profiles_directory').select('id,role').in('role', ['admin', 'ceo'])).data || [])
-          .map((reviewer) => reviewer.id).filter((reviewerId) => reviewerId !== profile?.id);
+    // F04.05: chỉ trưởng dự án duyệt nên chỉ báo cho trưởng dự án (lead_id và
+    // thành viên vai trò lead), trừ chính người gửi.
+    const reviewerIds = projectLeadIds(workflowTarget.project_id).filter((reviewerId) => reviewerId !== profile?.id);
+    toast(
+      reviewerIds.length === 0
+        ? 'Đã gửi, nhưng dự án chưa có trưởng dự án khác để duyệt. Báo quản trị viên gán trưởng dự án.'
+        : workflowKind === 'DEADLINE_EXTENSION' ? 'Đã gửi yêu cầu gia hạn.' : 'Đã gửi yêu cầu nghiệm thu.',
+      reviewerIds.length === 0 ? 'warning' : 'success',
+    );
     for (const reviewerId of reviewerIds) {
       await notifyUser(
         reviewerId,
@@ -363,6 +419,11 @@ export function StaffKanban() {
         workflowTarget.title,
         'project_task_review',
       );
+    }
+    if (workflowKind === 'COMPLETION' && workflowTarget) {
+      // request_project_task_action đã chuyển thẻ sang in_review trong cùng giao dịch.
+      const targetId = workflowTarget.id;
+      setTasks((prev) => prev.map((t) => t.id === targetId ? { ...t, status: 'in_review' } : t));
     }
     setWorkflowTarget(null);
     await loadData(true);
@@ -506,40 +567,70 @@ export function StaffKanban() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <select
-            value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
-            className="h-10 px-3.5 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-          >
-            <option value="all">Tất cả dự án</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          {selectedAccess && (
-            <Badge className={selectedAccess.permissions.some((permission) => permission !== 'project.view') ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}>
-              <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-              {selectedAccess.name}
-            </Badge>
-          )}
+    <div className="space-y-5">
+      <header className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-sm sm:px-6">
+        <p className="text-lg font-bold tracking-tight text-slate-800">{selectedProject?.name || 'Dự án của tôi'}</p>
+        <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+          <span>Dự án</span><span className="text-slate-300">/</span><span className="font-medium text-emerald-700">Bảng tác vụ</span>
+          {selectedAccess && <Badge className="ml-1 bg-emerald-50 text-emerald-700"><ShieldCheck className="mr-1 h-3.5 w-3.5" />{selectedAccess.name}</Badge>}
         </div>
-        {creatableProjects.length > 0 && (
-          <Button
-            theme="staff"
-            onClick={() => {
-              const initialProject = projectFilter !== 'all' && canCreateTask(projectFilter) ? projectFilter : creatableProjects[0].id;
-              setEditingTask(null);
-              setCreateForm({ title: '', description: '', project_id: initialProject, assignee_id: '', start_date: '', due_date: '', priority: 'medium' });
-              setCreateModalOpen(true);
-            }}
-          >
-            <Plus className="w-4 h-4" /> Tạo tác vụ
-          </Button>
-        )}
-      </div>
+      </header>
+
+      <section className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm sm:p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Lọc tác vụ">
+            {([
+              { value: 'all', label: 'Tất cả', count: projectTasks.length, icon: KanbanSquare },
+              { value: 'today', label: 'Hôm nay', count: todayTasks.length, icon: CalendarDays },
+              { value: 'upcoming', label: 'Sắp tới', count: upcomingTasks.length, icon: Clock3 },
+              { value: 'history', label: 'Lịch sử tác vụ', count: historyTasks.length, icon: History },
+            ] as const).map((filter) => {
+              const Icon = filter.icon;
+              const active = taskView === filter.value;
+              return (
+                <button
+                  key={filter.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setTaskView(filter.value)}
+                  className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors sm:text-sm ${active
+                    ? 'border-rose-600 bg-rose-600 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {filter.label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{filter.count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <select
+              value={projectFilter}
+              onChange={(e) => setProjectFilter(e.target.value)}
+              aria-label="Chọn dự án"
+              className="h-10 min-w-48 flex-1 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 sm:flex-none"
+            >
+              <option value="all">Tất cả dự án</option>
+              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            {creatableProjects.length > 0 && (
+              <Button
+                theme="staff"
+                onClick={() => {
+                  const initialProject = projectFilter !== 'all' && canCreateTask(projectFilter) ? projectFilter : creatableProjects[0].id;
+                  setEditingTask(null);
+                  setCreateForm({ title: '', description: '', project_id: initialProject, assignee_id: '', start_date: '', due_date: '', priority: 'medium' });
+                  setCreateModalOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4" /> Tạo tác vụ
+              </Button>
+            )}
+          </div>
+        </div>
+      </section>
 
       <DndContext
         sensors={sensors}
@@ -557,9 +648,10 @@ export function StaffKanban() {
           {KANBAN_COLUMNS.map((column) => {
             const columnTasks = filteredTasks.filter((t) => t.status === column.value);
             return (
-              <div
+              <KanbanDropColumn
+                id={column.value}
                 key={column.value}
-                className="bg-slate-100/70 rounded-2xl p-3 min-h-[400px] flex flex-col border border-slate-200/50
+                className="bg-slate-50/90 rounded-2xl p-3 min-h-[440px] flex flex-col border border-slate-200/70 shadow-sm
                            w-[85vw] flex-shrink-0 snap-start md:w-auto md:flex-shrink"
               >
                 <div className={`flex items-center justify-between mb-3 px-1 border-t-4 ${column.accent} rounded-t-lg pt-2`}>
@@ -588,16 +680,18 @@ export function StaffKanban() {
                           && latestRequestByTask.get(task.id)?.status !== 'SUBMITTED'
                           ? () => openWorkflowRequest(task, 'COMPLETION') : undefined}
                         request={latestRequestByTask.get(task.id)}
+                        onStart={task.status === 'todo' && canMoveTask(task) ? () => void handleStartTask(task) : undefined}
+                        onReview={canReviewTask(task) ? () => setReviewTask(task) : undefined}
                       />
                     ))}
                   </div>
                 </SortableContext>
                 {columnTasks.length === 0 && (
                   <div className="flex-1 flex items-center justify-center text-xs text-slate-400 py-4">
-                    Chưa có tác vụ
+                    Kéo tác vụ vào đây
                   </div>
                 )}
-              </div>
+              </KanbanDropColumn>
             );
           })}
         </div>
@@ -612,6 +706,13 @@ export function StaffKanban() {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      <TaskCompletionReviewModal
+        task={reviewTask}
+        requesterName={profiles.find((p) => p.id === reviewTask?.assignee_id)?.name}
+        onClose={() => setReviewTask(null)}
+        onReviewed={() => void loadData(true)}
+      />
 
       <Modal open={createModalOpen} onClose={() => setCreateModalOpen(false)} title={editingTask ? 'Chỉnh sửa tác vụ' : 'Tạo tác vụ mới'}>
         <form onSubmit={handleCreateTask} className="space-y-4">
@@ -719,23 +820,52 @@ export function StaffKanban() {
             {workflowKind === 'COMPLETION' && (
               <>
               <Input
-                label="Link minh chứng (bắt buộc)"
+                label="Link minh chứng (tùy chọn)"
                 type="url"
                 value={workflowEvidenceUrl}
                 onChange={(event) => setWorkflowEvidenceUrl(event.target.value)}
                 placeholder="https://..."
                 autoComplete="url"
               />
-              <label className="block text-sm font-semibold text-slate-700">
-                Hoặc tải file minh chứng (tối đa 10 MB)
-                <input type="file" className="mt-1 block w-full text-sm font-normal" onChange={(event) => setWorkflowEvidenceFile(event.target.files?.[0] ?? null)} />
-                {workflowEvidenceFile && <span className="mt-1 block text-xs font-normal text-slate-500">{workflowEvidenceFile.name}</span>}
-              </label>
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-slate-700">File minh chứng (bắt buộc)</p>
+                <label htmlFor="completion-evidence-file" className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition hover:border-indigo-400 hover:bg-indigo-50/50">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm"><Paperclip className="h-5 w-5" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-indigo-700">Chọn file từ máy tính</span>
+                    <span className="mt-0.5 block text-xs font-normal text-slate-500">Tối đa 10 MB · Link minh chứng là tùy chọn, nhưng bắt buộc phải gán file minh chứng</span>
+                  </span>
+                  <input
+                    id="completion-evidence-file"
+                    type="file"
+                    className="sr-only"
+                    onChange={(event) => {
+                      setWorkflowEvidenceFile(event.target.files?.[0] ?? null);
+                      event.currentTarget.value = '';
+                    }}
+                  />
+                </label>
+                {workflowEvidenceFile && (
+                  <div className="flex items-center gap-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+                    <Paperclip className="h-4 w-4 shrink-0 text-indigo-600" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{workflowEvidenceFile.name}</span>
+                    <span className="shrink-0 text-[11px] text-slate-500">{(workflowEvidenceFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowEvidenceFile(null)}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-red-600"
+                      aria-label="Gỡ file minh chứng"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </div>
               </>
             )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setWorkflowTarget(null)} disabled={workflowSaving}>Hủy</Button>
-              <Button onClick={() => void submitWorkflowRequest()} disabled={workflowSaving || workflowNote.trim().length < (workflowKind === 'COMPLETION' ? 10 : 3) || (workflowKind === 'COMPLETION' && !workflowEvidenceUrl.trim() && !workflowEvidenceFile)}>
+              <Button onClick={() => void submitWorkflowRequest()} disabled={workflowSaving || workflowNote.trim().length < (workflowKind === 'COMPLETION' ? 10 : 3) || (workflowKind === 'COMPLETION' && !workflowEvidenceFile)}>
                 <Send className="h-4 w-4" />
                 {workflowSaving ? 'Đang gửi…' : 'Gửi Project lead'}
               </Button>
@@ -747,7 +877,24 @@ export function StaffKanban() {
   );
 }
 
-function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequestDeadline, onRequestCompletion, request }: {
+function KanbanDropColumn({ id, className, children }: {
+  id: TaskStatus;
+  className: string;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${className} transition-colors ${isOver ? 'bg-emerald-50 ring-2 ring-emerald-300' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequestDeadline, onRequestCompletion, onStart, onReview, request }: {
   task: Task;
   assignee?: Profile;
   canMove: boolean;
@@ -755,6 +902,8 @@ function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequest
   onDelete?: () => void;
   onRequestDeadline?: () => void;
   onRequestCompletion?: () => void;
+  onStart?: () => void;
+  onReview?: () => void;
   request?: MyTaskRequest;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id, disabled: !canMove });
@@ -767,12 +916,12 @@ function SortableTaskCard({ task, assignee, canMove, onEdit, onDelete, onRequest
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard task={task} assignee={assignee} canMove={canMove} onEdit={onEdit} onDelete={onDelete} onRequestDeadline={onRequestDeadline} onRequestCompletion={onRequestCompletion} request={request} />
+      <TaskCard task={task} assignee={assignee} canMove={canMove} onEdit={onEdit} onDelete={onDelete} onRequestDeadline={onRequestDeadline} onRequestCompletion={onRequestCompletion} onStart={onStart} onReview={onReview} request={request} />
     </div>
   );
 }
 
-function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, onRequestDeadline, onRequestCompletion, request }: {
+function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, onRequestDeadline, onRequestCompletion, onStart, onReview, request }: {
   task: Task;
   assignee?: Profile;
   dragging?: boolean;
@@ -781,6 +930,9 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
   onDelete?: () => void;
   onRequestDeadline?: () => void;
   onRequestCompletion?: () => void;
+  onStart?: () => void;
+  /** Trưởng dự án mở hộp thoại nghiệm thu thẻ ở cột Đang duyệt. */
+  onReview?: () => void;
   request?: MyTaskRequest;
 }) {
   const priority = PRIORITY_CONFIG[task.priority];
@@ -877,6 +1029,25 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
         </div>
         {assignee && <Avatar name={assignee.name} url={assignee.avatar_url} size="sm" />}
       </div>
+      {(onStart || onRequestCompletion || onReview) && (
+        <div className="mt-2">
+          {onReview && (
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onReview(); }} className="w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-600">
+              Chờ bạn duyệt · Nghiệm thu
+            </button>
+          )}
+          {onStart && (
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onStart(); }} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700">
+              Bắt đầu tác vụ
+            </button>
+          )}
+          {onRequestCompletion && (
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRequestCompletion(); }} className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700">
+              Nộp task · gửi nghiệm thu
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

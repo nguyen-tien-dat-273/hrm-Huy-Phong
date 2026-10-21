@@ -137,3 +137,5 @@ HP HRM/
 
 # Script chay tay tam thoi tren Supabase SQL Editor
 supabase/paste-*.sql
+.env.recruitment
+.env.migration

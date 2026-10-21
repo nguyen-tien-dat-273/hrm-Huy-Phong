@@ -10,6 +10,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { CheckCircle2, ClipboardList, Clock, RotateCcw, Send, TriangleAlert } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -217,6 +218,12 @@ export function StaffAssignments() {
                     <p className="mt-0.5 text-xs text-slate-500">{task.project?.name || 'Dự án'}{task.due_date ? ` · Hạn ${formatDate(task.due_date)}` : ''}</p>
                   </div>
                   <Badge className={status.style}>{status.label}</Badge>
+                  <Link
+                    to={`/staff/kanban?project=${encodeURIComponent(task.project_id)}&task=${encodeURIComponent(task.id)}`}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                  >
+                    {task.status === 'in_progress' ? 'Nộp task' : 'Mở Kanban'}
+                  </Link>
                 </li>;
               })}
             </ul>

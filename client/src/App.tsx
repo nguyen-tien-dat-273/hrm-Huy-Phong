@@ -46,11 +46,11 @@ const AdminAudit = lazyRoute('AdminAudit', () => import('@/pages/admin/AdminAudi
 const AdminChatbotLogs = lazyRoute('AdminChatbotLogs', () => import('@/pages/admin/AdminChatbotLogs').then((m) => ({ default: m.AdminChatbotLogs })));
 const PublicOnboardingPage = lazyRoute('PublicOnboardingPage', () => import('@/pages/public/PublicOnboardingPage').then((m) => ({ default: m.PublicOnboardingPage })));
 const AdminOnboarding = lazyRoute('AdminOnboarding', () => import('@/pages/admin/AdminOnboarding').then((m) => ({ default: m.AdminOnboarding })));
-const PublicApplyPage = lazyRoute('PublicApplyPage', () => import('@/pages/public/PublicApplyPage').then((m) => ({ default: m.PublicApplyPage })));
 const AdminProcessLibrary = lazyRoute('AdminProcessLibrary', () => import('@/pages/admin/AdminProcessLibrary').then((m) => ({ default: m.AdminProcessLibrary })));
 const AdminTraining = lazyRoute('AdminTraining', () => import('@/pages/admin/AdminTraining').then((m) => ({ default: m.AdminTraining })));
 const AdminRecruitment = lazyRoute('AdminRecruitment', () => import('@/pages/admin/AdminRecruitment').then((m) => ({ default: m.AdminRecruitment })));
 const AdminWorkforceCenter = lazyRoute('AdminWorkforceCenter', () => import('@/pages/admin/AdminWorkforceCenter').then((m) => ({ default: m.AdminWorkforceCenter })));
+const AdminDocumentRepository = lazyRoute('AdminDocumentRepository', () => import('@/pages/admin/AdminDocumentRepository').then((m) => ({ default: m.AdminDocumentRepository })));
 const AdminKpi = lazyRoute('AdminKpi', () => import('@/pages/admin/AdminKpi').then((m) => ({ default: m.AdminKpi })));
 const AdminNexusCenter = lazyRoute('AdminNexusCenter', () => import('@/pages/admin/AdminNexusCenter').then((m) => ({ default: m.AdminNexusCenter })));
 const ProfilePage = lazyRoute('ProfilePage', () => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
@@ -63,10 +63,8 @@ const StaffLeave = lazyRoute('StaffLeave', () => import('@/pages/staff/StaffLeav
 const StaffReports = lazyRoute('StaffReports', () => import('@/pages/staff/StaffReports').then((m) => ({ default: m.StaffReports })));
 const StaffPayroll = lazyRoute('StaffPayroll', () => import('@/pages/staff/StaffPayroll').then((m) => ({ default: m.StaffPayroll })));
 const StaffTraining = lazyRoute('StaffTraining', () => import('@/pages/staff/StaffTraining').then((m) => ({ default: m.StaffTraining })));
-const StaffGrowth = lazyRoute('StaffGrowth', () => import('@/pages/staff/StaffGrowth').then((m) => ({ default: m.StaffGrowth })));
 const StaffKpi = lazyRoute('StaffKpi', () => import('@/pages/staff/StaffKpi').then((m) => ({ default: m.StaffKpi })));
 const StaffProcesses = lazyRoute('StaffProcesses', () => import('@/pages/staff/StaffProcesses').then((m) => ({ default: m.StaffProcesses })));
-const StaffAssignments = lazyRoute('StaffAssignments', () => import('@/pages/staff/StaffAssignments').then((m) => ({ default: m.StaffAssignments })));
 
 function AppLoading() {
   return (
@@ -137,7 +135,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
 function admin(
   permission: AdminPermission,
   page: ReactNode,
-  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode | readonly AdminFunctionCode[]; denyTeamlead?: boolean } = {},
+  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode | readonly AdminFunctionCode[]; denyTeamlead?: boolean; teamleadEmployeeDocuments?: boolean } = {},
 ) {
   return <ProtectedRoute permission={permission} {...options}><AdminLayout>{page}</AdminLayout></ProtectedRoute>;
 }
@@ -190,7 +188,6 @@ function AppRoutes() {
     <Routes>
       {/* Công khai, không cần đăng nhập — RC2.5. Đặt trước mọi route có
           bảo vệ để không bị chuyển hướng về màn đăng nhập. */}
-      <Route path="/tuyen-dung/:code" element={<PublicApplyPage />} />
       <Route path="/khai-bao/:code" element={<PublicOnboardingPage />} />
 
       <Route path="/" element={<AuthRedirect />} />
@@ -243,8 +240,9 @@ function AppRoutes() {
       <Route path="/admin/process-library" element={admin('training', <AdminProcessLibrary />)} />
       <Route path="/admin/recruitment" element={adminAny(['users', 'projects'], <AdminRecruitment />)} />
       <Route path="/admin/workforce" element={admin('users', <AdminWorkforceCenter section="workers" />, { functionCode: 'admin.workforce' })} />
-      <Route path="/admin/worker-documents" element={admin('users', <AdminWorkforceCenter section="documents" />, { functionCode: 'admin.worker_documents' })} />
+      <Route path="/admin/worker-documents" element={admin('users', <AdminDocumentRepository />, { functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
+      <Route path="/admin/employee-lifecycle/offboarding" element={admin('users', <AdminNexusCenter section="offboarding" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/performance" element={admin('reports', <AdminKpi section="sets" />, { functionCode: KPI_SECTION_FUNCTIONS.sets })} />
       <Route path="/admin/performance/schemes" element={<Navigate to="/admin/performance" replace />} />
       <Route path="/admin/performance/review" element={admin('reports', <AdminKpi section="sheets" />, { functionCode: KPI_SECTION_FUNCTIONS.sheets })} />
@@ -273,10 +271,9 @@ function AppRoutes() {
       <Route path="/staff/reports" element={staff(<StaffReports />)} />
       <Route path="/staff/payroll" element={staff(<StaffPayroll />)} />
       <Route path="/staff/training" element={staff(<StaffTraining />)} />
-      <Route path="/staff/growth" element={staff(<StaffGrowth />)} />
+      <Route path="/staff/growth" element={<Navigate to="/staff/dashboard" replace />} />
       <Route path="/staff/kpi" element={staff(<StaffKpi />)} />
       <Route path="/staff/processes" element={staff(<StaffProcesses />)} />
-      <Route path="/staff/assignments" element={staff(<StaffAssignments />)} />
 
       {/* Fallback */}
       <Route path="*" element={<AuthRedirect />} />

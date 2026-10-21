@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, CheckCircle2, ExternalLink, PlayCircle } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { BookOpen, CheckCircle2, ExternalLink, FileText, PlayCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -10,7 +11,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { createTrainingVideoUrl } from '@/lib/training';
+import { createTrainingDocumentUrl, createTrainingVideoUrl } from '@/lib/training';
+import { StaffLearningPaths } from '@/pages/staff/StaffLearningPaths';
+import { TrainingPathsBoard } from '@/pages/admin/TrainingPathsBoard';
+import { Modal } from '@/components/ui/Modal';
 import type { TrainingCourse, TrainingEnrollment, TrainingEnrollmentStatus } from '@/types';
 
 const statusConfig: Record<TrainingEnrollmentStatus, { label: string; color: string }> = {
@@ -21,6 +25,7 @@ const statusConfig: Record<TrainingEnrollmentStatus, { label: string; color: str
 
 export function StaffTraining() {
   const { profile } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [courses, setCourses] = useState<TrainingCourse[]>([]);
   const [enrollments, setEnrollments] = useState<TrainingEnrollment[]>([]);
@@ -29,6 +34,8 @@ export function StaffTraining() {
   const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
   const [progressDrafts, setProgressDrafts] = useState<Record<string, number>>({});
   const [savingEnrollmentId, setSavingEnrollmentId] = useState<string | null>(null);
+  const [detailCourse, setDetailCourse] = useState<TrainingCourse | null>(null);
+  const [documentUrls, setDocumentUrls] = useState<Record<string, string>>({});
 
   const load = async (silent = false) => {
     if (!profile) return;
@@ -39,21 +46,36 @@ export function StaffTraining() {
     ]);
     const error = courseError || enrollmentError;
     setLoadError(error ? 'Không tải được dữ liệu đào tạo: ' + describeDbError(error) : null);
-    setCourses((courseData || []) as TrainingCourse[]);
     const nextEnrollments = (enrollmentData || []) as TrainingEnrollment[];
     setEnrollments(nextEnrollments);
+    const assignedCourses = nextEnrollments.map((item) => item.course).filter((course): course is TrainingCourse => Boolean(course));
+    const visibleCourses = [...new Map([...((courseData || []) as TrainingCourse[]), ...assignedCourses].map((course) => [course.id, course])).values()];
+    setCourses(visibleCourses);
     const nextUrls: Record<string, string> = {};
-    for (const course of (courseData || []) as TrainingCourse[]) {
+    const nextDocumentUrls: Record<string, string> = {};
+    for (const course of visibleCourses) {
       if (course.video_path) {
         const signed = await createTrainingVideoUrl(course.video_path);
         if (signed.url) nextUrls[course.id] = signed.url;
       }
+      if (course.document_path) {
+        const signed = await createTrainingDocumentUrl(course.document_path);
+        if (signed.url) nextDocumentUrls[course.id] = signed.url;
+      }
     }
     setVideoUrls(nextUrls);
+    setDocumentUrls(nextDocumentUrls);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, [profile]);
+  useEffect(() => {
+    const requestedTitle = searchParams.get('course');
+    if (!requestedTitle || !courses.length) return;
+    const match = courses.find((course) => course.title === requestedTitle);
+    if (match) setDetailCourse(match);
+    setSearchParams((current) => { const next = new URLSearchParams(current); next.delete('course'); return next; }, { replace: true });
+  }, [courses, searchParams, setSearchParams]);
   useRealtimeSync(profile ? [{ table: 'training_courses' }, { table: 'training_enrollments', filter: `user_id=eq.${profile.id}` }] : [], () => load(true), { enabled: !!profile, channelKey: `staff-training-${profile?.id ?? 'anonymous'}` });
 
   const enrollmentFor = (courseId: string) => enrollments.find((item) => item.course_id === courseId);
@@ -81,6 +103,8 @@ export function StaffTraining() {
 
   return (
     <div className="space-y-5">
+      <TrainingPathsBoard managerView />
+      <StaffLearningPaths />
       <div>
         <h2 className="font-display text-xl font-bold text-slate-800">Đào tạo của tôi</h2>
         <p className="mt-1 text-sm text-slate-500">Theo dõi các khóa học và lộ trình phát triển cá nhân.</p>
@@ -103,9 +127,6 @@ export function StaffTraining() {
             return (
               <Card key={course.id}>
                 <CardContent>
-                  {videoUrls[course.id] && (
-                    <video controls preload="metadata" className="mb-4 aspect-video w-full rounded-xl bg-slate-900" src={videoUrls[course.id]} />
-                  )}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
                       <BookOpen className="h-5 w-5" />
@@ -114,6 +135,7 @@ export function StaffTraining() {
                   </div>
                   <h3 className="mt-4 font-display text-base font-bold text-slate-800">{course.title}</h3>
                   <p className="mt-1 line-clamp-2 text-sm text-slate-500">{course.description || 'Chưa có mô tả.'}</p>
+                  {enrollment?.status === 'completed' && <p className="mt-2 text-xs font-medium text-emerald-700">Hoàn thành khóa học</p>}
                   <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-500">
                     <span>{course.category}</span>
                     <span>{course.duration_hours} giờ</span>
@@ -149,6 +171,7 @@ export function StaffTraining() {
                     </div>
                   )}
                   <div className="mt-4 flex gap-2 border-t border-slate-100 pt-4">
+                    <Button variant="secondary" onClick={() => setDetailCourse(course)} className="flex-1">Xem chi tiết</Button>
                     {enrollment ? (
                       <Button
                         onClick={() => void updateProgress(enrollment, enrollment.progress === 100 ? 0 : 100)}
@@ -165,11 +188,6 @@ export function StaffTraining() {
                         <PlayCircle className="h-4 w-4" />Đăng ký học
                       </Button>
                     )}
-                    {course.resource_url && (
-                      <a href={course.resource_url} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 px-3 text-slate-600 hover:bg-slate-50" aria-label={`Mở tài liệu ${course.title}`}>
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -177,6 +195,15 @@ export function StaffTraining() {
           })}
         </div>
       )}
+      <Modal open={!!detailCourse} onClose={() => setDetailCourse(null)} title={detailCourse?.title || 'Chi tiết khóa học'}>
+        {detailCourse && <div className="space-y-4">
+          {videoUrls[detailCourse.id] && <video controls preload="metadata" className="aspect-video w-full rounded-xl bg-slate-900" src={videoUrls[detailCourse.id]} />}
+          <p className="whitespace-pre-wrap text-sm text-slate-600">{detailCourse.description || 'Khóa học chưa có mô tả.'}</p>
+          <div className="flex flex-wrap gap-3 text-xs text-slate-500"><span>{detailCourse.category}</span><span>{detailCourse.duration_hours} giờ</span>{detailCourse.instructor && <span>{detailCourse.instructor}</span>}{detailCourse.deadline && <span>Hạn {detailCourse.deadline}</span>}</div>
+          {detailCourse.document_path && documentUrls[detailCourse.id] && <a href={documentUrls[detailCourse.id]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700"><FileText className="h-4 w-4" />{detailCourse.document_file_name || 'Mở tài liệu khóa học'}<ExternalLink className="h-4 w-4" /></a>}
+          {!enrollmentFor(detailCourse.id) && <Button onClick={() => void enroll(detailCourse)} theme="staff"><PlayCircle className="h-4 w-4" />Đăng ký học</Button>}
+        </div>}
+      </Modal>
     </div>
   );
 }
