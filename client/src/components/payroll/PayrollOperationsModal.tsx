@@ -26,10 +26,12 @@ import {
   Undo2,
   Wallet,
   XCircle,
+  Printer,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { ExportButtons } from '@/components/payroll/ExportButtons';
+import type { PrintSignOff } from '@/lib/tablePrint';
 import { Timeline } from '@/components/payroll/PayrollApprovals';
 import { ReauthDialog } from '@/components/payroll/ReauthDialog';
 import { reviewPayrollRun, REAUTH_REQUIRED } from '@/lib/payrollData';
@@ -99,8 +101,10 @@ interface PayrollOperationsModalProps {
   onOpenBank: () => void;
   onMarkPaid: () => Promise<void>;
   onExportJournal: () => Promise<void>;
+  onPrintJournal: () => Promise<void>;
   onChanged?: () => void;
   exportOptions: () => any;
+  signOff: () => PrintSignOff;
   nameOf: (id: string | null) => string;
   sortedCount: number;
   filteredCount: number;
@@ -134,8 +138,10 @@ export function PayrollOperationsModal({
   onOpenBank,
   onMarkPaid,
   onExportJournal,
+  onPrintJournal,
   onChanged,
   exportOptions,
+  signOff,
   nameOf,
   sortedCount,
   filteredCount,
@@ -371,7 +377,7 @@ export function PayrollOperationsModal({
                 Xuất tài liệu & Báo cáo
               </span>
               <div className="flex flex-wrap items-center gap-2">
-                <ExportButtons options={exportOptions} disabled={sortedCount === 0} />
+                <ExportButtons options={exportOptions} signOff={signOff} disabled={sortedCount === 0} />
                 <Button
                   variant="outline"
                   size="sm"
@@ -381,6 +387,16 @@ export function PayrollOperationsModal({
                   className="gap-1.5"
                 >
                   <BookOpenCheck className="h-3.5 w-3.5" /> Bút toán kết chuyển
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void onPrintJournal()}
+                  disabled={!!busy || !approved || filteredCount === 0}
+                  title={approved ? undefined : 'Duyệt chi xong mới in bút toán kết chuyển'}
+                  className="gap-1.5"
+                >
+                  <Printer className="h-3.5 w-3.5" /> In bút toán
                 </Button>
               </div>
             </div>

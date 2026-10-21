@@ -8,7 +8,7 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { Download, TriangleAlert } from 'lucide-react';
+import { Download, Printer, TriangleAlert } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
@@ -16,6 +16,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { formatVND } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { stripVietnamese } from '@/lib/tableExport';
+import { printTables, type PrintSignOff } from '@/lib/tablePrint';
 import { fetchBankAccounts, fetchBankTemplates, recordBankExport } from '@/lib/payrollData';
 import type { BankExportField, EmployeeBankAccount, PayrollBankTemplate, PayrollRun, Profile } from '@/types';
 
@@ -27,12 +28,13 @@ export interface BankExportRow {
 interface BankExportModalProps {
   open: boolean;
   run: PayrollRun;
+  signOff?: PrintSignOff;
   rows: BankExportRow[];
   onClose: () => void;
   onExported: () => void;
 }
 
-export function BankExportModal({ open, run, rows, onClose, onExported }: BankExportModalProps) {
+export function BankExportModal({ open, run, signOff, rows, onClose, onExported }: BankExportModalProps) {
   const { toast } = useToast();
   const [templates, setTemplates] = useState<PayrollBankTemplate[]>([]);
   const [accounts, setAccounts] = useState<EmployeeBankAccount[]>([]);
@@ -78,6 +80,26 @@ export function BankExportModal({ open, run, rows, onClose, onExported }: BankEx
         .replace(/\{EMPLOYEE_CODE\}/g, row.profile.employee_code ?? '')
         .replace(/\{NAME\}/g, row.profile.name));
       default: return '';
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!template || ready.length === 0) return;
+    try {
+      await printTables({
+        title: `Danh sách chi lương tháng ${mm}/${yyyy}`,
+        subtitle: template.sheet_name,
+        signOff,
+        tables: [{
+          header: template.columns.map((column) => column.header),
+          rows: ready.map((row, index) => {
+            const account = accountByUser.get(row.profile.id) as EmployeeBankAccount;
+            return template.columns.map((column) => cellOf(column.field, row, index, account));
+          }),
+        }],
+      });
+    } catch (error) {
+      toast('In thất bại: ' + (error instanceof Error ? error.message : String(error)), 'error');
     }
   };
 
@@ -198,6 +220,9 @@ export function BankExportModal({ open, run, rows, onClose, onExported }: BankEx
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose} disabled={busy}>Đóng</Button>
+            <Button variant="outline" onClick={() => void handlePrint()} disabled={busy || !template || ready.length === 0}>
+              <Printer className="h-4 w-4" /> In danh sách
+            </Button>
             <Button onClick={() => void handleExport()} disabled={busy || !template || ready.length === 0}>
               <Download className="h-4 w-4" /> {busy ? 'Đang xuất…' : 'Tải file Excel'}
             </Button>
