@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PostgrestError } from '@supabase/supabase-js';
-import { FileSpreadsheet, Table as TableIcon, Lock, Unlock, ScanSearch, Search, TriangleAlert, CalendarDays } from 'lucide-react';
+import { FileSpreadsheet, Printer, Table as TableIcon, Lock, Unlock, ScanSearch, Search, TriangleAlert, CalendarDays } from 'lucide-react';
 import { startOfMonth, endOfMonth, format, getDaysInMonth } from 'date-fns';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -21,6 +21,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError, describeDbErrorOrNull } from '@/lib/dbError';
 import { formatTime, toDateString } from '@/lib/utils';
+import { printTables } from '@/lib/tablePrint';
 import { hasAdminFunction, isTeamlead } from '@/lib/permissions';
 import { fetchPayrollMonthClosed } from '@/lib/payrollData';
 import { fetchTimesheetMetrics, type TimesheetMetrics } from '@/lib/timesheetPayroll';
@@ -619,6 +620,116 @@ export function AdminTimesheet() {
     loadData(true);
   };
 
+  // Dữ liệu 3 bảng dùng chung cho Excel và bản in.
+  const buildSheets = () => {
+    // ---- Sheet 1: Bảng công ------------------------------------------------
+    const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
+    const sheet1: (string | number)[][] = [
+      [`BẢNG CÔNG THÁNG ${monthLabel}`],
+      [`Ký hiệu: HH:mm = giờ checkout cuối ngày (ô xám: chưa check-in) · P = nghỉ phép · P/2 = nghỉ nửa ngày · ! = thiếu checkout · trống = vắng`],
+      [],
+      ['STT', 'Phòng ban', 'Mã nhân viên', 'Tên nhân viên', ...dayHeaders, 'Ngày công', 'Giờ công', 'Nghỉ phép', 'Việc xong/giao'],
+      ...rows.map((r, i) => [
+        i + 1,
+        r.profile.department ?? '',
+        r.profile.employee_code ?? '',
+        r.profile.name,
+        ...r.days.map((d) =>
+          d.missingCheckIn ? (d.checkoutTime ? formatTime(d.checkoutTime) : '—') : d.missingCheckout ? '!' : d.checkoutTime ? formatTime(d.checkoutTime) : d.onLeave ? (d.halfLeave ? 'P/2' : 'P') : '',
+        ),
+        r.workDays,
+        r.totalHours,
+        r.leaveDays,
+        `${r.asgDone}/${r.asgTotal}`,
+      ]),
+      [],
+      ['', 'TỔNG', '', '', ...dayHeaders.map(() => ''), companyTotals.workDays, companyTotals.totalHours, companyTotals.leaveDays, `${companyTotals.asgDone}/${companyTotals.asgTotal}`],
+    ];
+    // ---- Sheet 2: Chi tiết chấm công --------------------------------------
+    const nameById = new Map(profiles.map((p) => [p.id, p.name]));
+    const allAtt = [...attendance];
+    for (const p of pending) {
+      if (!allAtt.some((a) => a.id === p.id)) allAtt.push(p as Attendance);
+    }
+    const detail = allAtt.sort((a, b) => a.date.localeCompare(b.date) || (nameById.get(a.user_id) ?? '').localeCompare(nameById.get(b.user_id) ?? ''));
+    const sheet2: (string | number)[][] = [
+      [`CHI TIẾT CHẤM CÔNG THÁNG ${monthLabel}`],
+      [],
+      ['STT', 'Họ tên', 'Ngày', 'Check-in', 'Check-out', 'Giờ công', 'Trạng thái', 'Quản lý duyệt'],
+      ...detail.map((a, i) => [
+        i + 1,
+        nameById.get(a.user_id) ?? '—',
+        a.date,
+        a.check_in_time ? formatTime(a.check_in_time) : 'THIẾU',
+        a.check_out_time ? formatTime(a.check_out_time) : 'THIẾU',
+        hoursBetween(a, sessionsByAttendance),
+        a.status === 'completed' ? 'Hoàn thành' : 'Đang làm',
+        a.approved_by_lead ? 'Đã duyệt' : 'Chưa',
+      ]),
+    ];
+    // ---- Sheet 3: Công việc giao theo ngày --------------------------------
+    const sheet3: (string | number)[][] = [
+      [`CÔNG VIỆC GIAO THEO NGÀY — THÁNG ${monthLabel}`],
+      [],
+      ['STT', 'Họ tên', 'Được giao', 'Đã xác nhận', 'Chờ xác nhận', 'Cần làm lại', 'Tỷ lệ hoàn thành'],
+      ...rows
+        .filter((r) => r.asgTotal > 0)
+        .map((r, i) => {
+          const mine = assignments.filter((a) => a.user_id === r.profile.id);
+          return [
+            i + 1,
+            r.profile.name,
+            r.asgTotal,
+            r.asgDone,
+            mine.filter((a) => a.status === 'submitted').length,
+            mine.filter((a) => a.status === 'rejected').length,
+            `${Math.round((r.asgDone / r.asgTotal) * 100)}%`,
+          ];
+        }),
+    ];
+    // Bản xuất Excel: gom theo phòng ban, chèn một dòng tên phòng ban trước mỗi nhóm.
+    const groups = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const key = r.profile.department?.trim() || 'Chưa phân phòng ban';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(r);
+    }
+    const width = sheet1[3].length;
+    const groupedBody: (string | number)[][] = [];
+    const groupRowIdx: number[] = [];
+    const firstBodyRow = 4;
+    for (const [dept, members] of [...groups].sort(([a], [b]) => a.localeCompare(b, 'vi'))) {
+      groupRowIdx.push(firstBodyRow + groupedBody.length);
+      groupedBody.push([`PHÒNG BAN: ${dept} (${members.length} nhân viên)`]);
+      members.forEach((r, i) => {
+        const flat = sheet1[firstBodyRow + rows.indexOf(r)].slice();
+        flat[0] = i + 1;
+        groupedBody.push(flat);
+      });
+    }
+    const sheet1Grouped = [...sheet1.slice(0, firstBodyRow), ...groupedBody, ...sheet1.slice(firstBodyRow + rows.length)];
+    return { sheet1, sheet1Grouped, groupRowIdx, width, sheet2, sheet3, dayHeaders };
+  };
+
+  const handlePrint = async () => {
+    try {
+      const { sheet1, sheet2, sheet3 } = buildSheets();
+      const rowsOf = (sheet: (string | number)[][], headerAt: number) => sheet.slice(headerAt + 1).filter((r) => r.length > 0);
+      await printTables({
+        title: `Bảng công tháng ${monthLabel}`,
+        subtitle: String(sheet1[1][0]),
+        landscape: true,
+        tables: [
+          { header: sheet1[3].map(String), rows: rowsOf(sheet1, 3) },
+          { caption: String(sheet2[0][0]), header: sheet2[2].map(String), rows: rowsOf(sheet2, 2) },
+          { caption: String(sheet3[0][0]), header: sheet3[2].map(String), rows: rowsOf(sheet3, 2) },
+        ],
+      });
+    } catch (e) {
+      toast('In thất bại: ' + (e instanceof Error ? e.message : String(e)), 'error');
+    }
+  };
+
   // --------------------------------------------------------------------------
   // Xuất Excel — 3 sheet: Bảng công / Chi tiết chấm công / Công việc.
   // Thư viện nạp động để không phình bundle chính (~400KB chỉ ai bấm mới tải).
@@ -628,33 +739,12 @@ export function AdminTimesheet() {
     try {
       const XLSX = await import('xlsx');
 
-      // ---- Sheet 1: Bảng công ------------------------------------------------
-      const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
-      const sheet1: (string | number)[][] = [
-        [`BẢNG CÔNG THÁNG ${monthLabel}`],
-        [`Ký hiệu: HH:mm = giờ checkout cuối ngày (ô xám: chưa check-in) · P = nghỉ phép · P/2 = nghỉ nửa ngày · ! = thiếu checkout · trống = vắng`],
-        [],
-        ['STT', 'Phòng ban', 'Mã nhân viên', 'Tên nhân viên', ...dayHeaders, 'Ngày công', 'Giờ công', 'Nghỉ phép', 'Việc xong/giao'],
-        ...rows.map((r, i) => [
-          i + 1,
-          r.profile.department ?? '',
-          r.profile.employee_code ?? '',
-          r.profile.name,
-          ...r.days.map((d) =>
-            d.missingCheckIn ? (d.checkoutTime ? formatTime(d.checkoutTime) : '—') : d.missingCheckout ? '!' : d.checkoutTime ? formatTime(d.checkoutTime) : d.onLeave ? (d.halfLeave ? 'P/2' : 'P') : '',
-          ),
-          r.workDays,
-          r.totalHours,
-          r.leaveDays,
-          `${r.asgDone}/${r.asgTotal}`,
-        ]),
-        [],
-        ['', 'TỔNG', '', '', ...dayHeaders.map(() => ''), companyTotals.workDays, companyTotals.totalHours, companyTotals.leaveDays, `${companyTotals.asgDone}/${companyTotals.asgTotal}`],
-      ];
-      const ws1 = XLSX.utils.aoa_to_sheet(sheet1);
+      const { sheet1Grouped, groupRowIdx, width, sheet2, sheet3, dayHeaders } = buildSheets();
+      const ws1 = XLSX.utils.aoa_to_sheet(sheet1Grouped);
       ws1['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: dayHeaders.length + 7 } },
         { s: { r: 1, c: 0 }, e: { r: 1, c: dayHeaders.length + 7 } },
+        ...groupRowIdx.map((r) => ({ s: { r, c: 0 }, e: { r, c: width - 1 } })),
       ];
       ws1['!cols'] = [
         { wch: 6 }, { wch: 20 }, { wch: 14 }, { wch: 24 },
@@ -663,35 +753,7 @@ export function AdminTimesheet() {
       ];
       ws1['!rows'] = [{ hpt: 26 }, { hpt: 18 }, { hpt: 10 }, { hpt: 24 }];
       ws1['!views'] = [{ state: 'frozen', ySplit: 4 }];
-      ws1['!autofilter'] = {
-        ref: XLSX.utils.encode_range({
-          s: { r: 3, c: 0 },
-          e: { r: Math.max(3, sheet1.length - 3), c: dayHeaders.length + 7 },
-        }),
-      };
 
-      // ---- Sheet 2: Chi tiết chấm công --------------------------------------
-      const nameById = new Map(profiles.map((p) => [p.id, p.name]));
-      const allAtt = [...attendance];
-      for (const p of pending) {
-        if (!allAtt.some((a) => a.id === p.id)) allAtt.push(p as Attendance);
-      }
-      const detail = allAtt.sort((a, b) => a.date.localeCompare(b.date) || (nameById.get(a.user_id) ?? '').localeCompare(nameById.get(b.user_id) ?? ''));
-      const sheet2: (string | number)[][] = [
-        [`CHI TIẾT CHẤM CÔNG THÁNG ${monthLabel}`],
-        [],
-        ['STT', 'Họ tên', 'Ngày', 'Check-in', 'Check-out', 'Giờ công', 'Trạng thái', 'Quản lý duyệt'],
-        ...detail.map((a, i) => [
-          i + 1,
-          nameById.get(a.user_id) ?? '—',
-          a.date,
-          a.check_in_time ? formatTime(a.check_in_time) : 'THIẾU',
-          a.check_out_time ? formatTime(a.check_out_time) : 'THIẾU',
-          hoursBetween(a, sessionsByAttendance),
-          a.status === 'completed' ? 'Hoàn thành' : 'Đang làm',
-          a.approved_by_lead ? 'Đã duyệt' : 'Chưa',
-        ]),
-      ];
       const ws2 = XLSX.utils.aoa_to_sheet(sheet2);
       ws2['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
       ws2['!cols'] = [{ wch: 6 }, { wch: 24 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }];
@@ -704,26 +766,6 @@ export function AdminTimesheet() {
         }),
       };
 
-      // ---- Sheet 3: Công việc giao theo ngày --------------------------------
-      const sheet3: (string | number)[][] = [
-        [`CÔNG VIỆC GIAO THEO NGÀY — THÁNG ${monthLabel}`],
-        [],
-        ['STT', 'Họ tên', 'Được giao', 'Đã xác nhận', 'Chờ xác nhận', 'Cần làm lại', 'Tỷ lệ hoàn thành'],
-        ...rows
-          .filter((r) => r.asgTotal > 0)
-          .map((r, i) => {
-            const mine = assignments.filter((a) => a.user_id === r.profile.id);
-            return [
-              i + 1,
-              r.profile.name,
-              r.asgTotal,
-              r.asgDone,
-              mine.filter((a) => a.status === 'submitted').length,
-              mine.filter((a) => a.status === 'rejected').length,
-              `${Math.round((r.asgDone / r.asgTotal) * 100)}%`,
-            ];
-          }),
-      ];
       const ws3 = XLSX.utils.aoa_to_sheet(sheet3);
       ws3['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }];
       ws3['!cols'] = [{ wch: 6 }, { wch: 24 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 18 }];
@@ -814,9 +856,14 @@ export function AdminTimesheet() {
             <CalendarDays className="h-3.5 w-3.5" /> Hôm nay
           </Button>
         </div>
-        <Button className="lg:order-3 lg:justify-self-end" variant="outline" size="sm" onClick={handleExport} disabled={exporting || rows.length === 0 || periodStatus !== 'LOCKED'} title={periodStatus !== 'LOCKED' ? 'Khóa kỳ công trước khi xuất bản chính thức' : undefined}>
-          <FileSpreadsheet className="h-3.5 w-3.5" /> {exporting ? 'Đang xuất…' : 'Xuất bảng công'}
-        </Button>
+        <div className="flex items-center gap-2 lg:order-3 lg:justify-self-end">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting || rows.length === 0 || periodStatus !== 'LOCKED'} title={periodStatus !== 'LOCKED' ? 'Khóa kỳ công trước khi xuất bản chính thức' : undefined}>
+            <FileSpreadsheet className="h-3.5 w-3.5" /> {exporting ? 'Đang xuất…' : 'Xuất bảng công'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => void handlePrint()} disabled={rows.length === 0}>
+            <Printer className="h-3.5 w-3.5" /> In bảng công
+          </Button>
+        </div>
       </div>
 
       <FullscreenPanel full={full} onExit={exitFull}>

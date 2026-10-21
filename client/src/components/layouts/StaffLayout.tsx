@@ -4,6 +4,7 @@ import {
   LayoutDashboard, KanbanSquare,
   Bell, ChevronDown, Menu, X, ArrowLeft, Eye, KeyRound, LogOut, ShieldCheck,
   UserCircle, BookOpen, Target, WalletCards, Clock, LayoutGrid, Moon, Sun,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useViewMode } from '@/contexts/ViewModeContext';
@@ -41,10 +42,18 @@ const navGroups: {
     chip: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-700',
   },
   {
-    name: 'Công việc', icon: KanbanSquare, hint: 'Dự án, tác vụ và nhật ký giờ',
+    name: 'Công việc', icon: KanbanSquare, hint: 'Dự án và nhật ký giờ',
     iconIdle: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400', iconOn: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30',
     tileOn: 'bg-orange-50 dark:bg-orange-500/15', textOn: 'text-orange-700 dark:text-orange-300',
     chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
+  },
+  {
+    // Lime: cam la cua "Du an", tim/indigo da co o "Tong quan" - lime la sac
+    // lanh con trong, khong dung voi cum nao canh no.
+    name: 'Giao việc', icon: ClipboardList, hint: 'Việc quản lý giao theo ngày',
+    iconIdle: 'bg-lime-50 text-lime-700 dark:bg-lime-500/15 dark:text-lime-400', iconOn: 'bg-lime-600 text-white shadow-sm shadow-lime-600/30',
+    tileOn: 'bg-lime-50 dark:bg-lime-500/15', textOn: 'text-lime-700 dark:text-lime-300',
+    chip: 'bg-lime-600 text-white shadow-sm shadow-lime-600/30 hover:bg-lime-700',
   },
   {
     name: 'Thời gian & Lịch', icon: Clock, hint: 'Chấm công và các loại đơn từ',

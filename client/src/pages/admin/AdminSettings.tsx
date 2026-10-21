@@ -37,6 +37,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { PermissionFunctionList } from '@/components/PermissionFunctionList';
 import { StaffFunctionSummary } from '@/components/StaffFunctionSummary';
+import { ReminderRulesCard } from '@/components/ReminderRulesCard';
 import { FunctionPermissionPicker } from '@/components/FunctionPermissionPicker';
 import { useToast } from '@/contexts/ToastContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -389,6 +390,8 @@ export function AdminSettings() {
           />
         </CardContent>
       </Card>
+
+      <ReminderRulesCard />
 
       {/* Bảo mật: nêu đúng cơ chế đang chạy. Trước đây chỗ này là công tắc 2FA
           giả — bật lên báo "Đã lưu" mà hệ thống không có 2FA nào cả. */}

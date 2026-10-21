@@ -55,11 +55,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let active = true;
     (async () => {
-      const current = await getCurrentUser();
-      if (!active) return;
-      setProfile(current);
-      if (current) await loadUsers();
-      if (active) setLoading(false);
+      // Mạng chập chờn hoặc khóa phiên của Supabase bị tranh giữa các tab có
+      // thể làm các lệnh này ném lỗi. Không có try/finally thì `loading` kẹt ở
+      // true mãi và mọi route trả về null — màn hình trắng, tải lại mới hết.
+      try {
+        const current = await getCurrentUser();
+        if (!active) return;
+        setProfile(current);
+        if (current) await loadUsers();
+      } catch (error) {
+        console.error('[AuthProvider] không nạp được phiên đăng nhập', error);
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
 
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
@@ -192,7 +200,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await signInApi(identifier, password);
     if (result.error) return { error: result.error };
     if (result.user) setProfile(result.user);
-    await loadUsers();
+    try {
+      await loadUsers();
+    } catch (error) {
+      // Đăng nhập đã thành công; danh sách người dùng nạp lại sau cũng được.
+      console.error('[AuthProvider] không nạp được danh sách người dùng', error);
+    }
     return { error: null };
   };
 

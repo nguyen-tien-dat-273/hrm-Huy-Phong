@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Download, ShieldCheck, Users, Wallet, Target, Award } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Printer, ShieldCheck, Users, Wallet, Target, Award } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts';
@@ -13,9 +13,11 @@ import { useToast } from '@/contexts/ToastContext';
 import { hasAdminFunction } from '@/lib/permissions';
 import { describeDbError } from '@/lib/dbError';
 import { formatVND } from '@/lib/utils';
+import { printTables } from '@/lib/tablePrint';
 import { supabase } from '@/lib/supabase';
 
-type ReportKey = 'movement' | 'kpi' | 'insurance';
+type ReportKey = 'movement' | 'annual' | 'kpi' | 'insurance';
+type AnnualMetric = 'net' | 'gross' | 'insurance' | 'tax';
 type MovementType = 'HIRED' | 'TERMINATED' | 'REACTIVATED' | 'STATUS_CHANGED';
 
 interface ReportUnit {
@@ -78,11 +80,65 @@ interface KpiReviewReport {
 
 const REPORT_TABS: Array<{ key: ReportKey; label: string }> = [
   { key: 'movement', label: 'Biến động & quỹ lương' },
+  { key: 'annual', label: 'Lương nhân viên theo năm' },
   { key: 'kpi', label: 'Tổng hợp KPI' },
   { key: 'insurance', label: 'BHXH & thuế TNCN' },
 ];
 
+const ANNUAL_METRICS: Array<{ key: AnnualMetric; label: string }> = [
+  { key: 'net', label: 'Thực lĩnh' },
+  { key: 'gross', label: 'Lương gộp' },
+  { key: 'insurance', label: 'BH người lao động' },
+  { key: 'tax', label: 'Thuế TNCN' },
+];
+
+interface AnnualRow {
+  userId: string;
+  code: string;
+  name: string;
+  department: string;
+  /** Giá trị của chỉ tiêu đang chọn theo 12 tháng (null = tháng không có phiếu lương). */
+  months: Array<number | null>;
+  metricTotal: number;
+  gross: number;
+  insurance: number;
+  tax: number;
+  net: number;
+}
+
 const MONTHS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+
+interface AnnualDepartmentRow {
+  department: string;
+  employees: number;
+  months: number[];
+  metricTotal: number;
+  gross: number;
+  insurance: number;
+  tax: number;
+  net: number;
+}
+
+/** Gộp các dòng nhân viên theo phòng ban: mỗi phòng ban một dòng, đủ 12 tháng. */
+function groupAnnualByDepartment(rows: AnnualRow[]): AnnualDepartmentRow[] {
+  const grouped = new Map<string, AnnualDepartmentRow>();
+  for (const row of rows) {
+    const key = row.department || 'Chưa phân phòng ban';
+    const dept = grouped.get(key) ?? {
+      department: key, employees: 0, months: Array<number>(12).fill(0),
+      metricTotal: 0, gross: 0, insurance: 0, tax: 0, net: 0,
+    };
+    dept.employees += 1;
+    row.months.forEach((value, i) => { dept.months[i] += value ?? 0; });
+    dept.metricTotal += row.metricTotal;
+    dept.gross += row.gross;
+    dept.insurance += row.insurance;
+    dept.tax += row.tax;
+    dept.net += row.net;
+    grouped.set(key, dept);
+  }
+  return [...grouped.values()].sort((a, b) => a.department.localeCompare(b.department, 'vi'));
+}
 const currentYear = () => new Date().getFullYear();
 const monthKey = (date: string) => date.slice(0, 7);
 const amount = (value: number | string | null | undefined) => Number(value ?? 0);
@@ -134,6 +190,8 @@ export function AdminWorkforceReports({
   const [runs, setRuns] = useState<PayrollRun[]>([]);
   const [payslips, setPayslips] = useState<PayslipReport[]>([]);
   const [reviews, setReviews] = useState<KpiReviewReport[]>([]);
+  const [annualMetric, setAnnualMetric] = useState<AnnualMetric>('net');
+  const [employeeQuery, setEmployeeQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -377,6 +435,41 @@ export function AdminWorkforceReports({
     };
   }), [year, visiblePayslips, visibleRuns]);
 
+  // Mỗi nhân viên một dòng, gom các phiếu lương đã duyệt của 12 tháng trong năm.
+  const annualRows = useMemo<AnnualRow[]>(() => {
+    const pick = (slip: PayslipReport) => (
+      annualMetric === 'net' ? amount(slip.net_pay)
+        : annualMetric === 'gross' ? amount(slip.gross_pay)
+          : annualMetric === 'insurance' ? amount(slip.insurance_employee)
+            : amount(slip.personal_income_tax)
+    );
+    const grouped = new Map<string, AnnualRow>();
+    for (const slip of visiblePayslips) {
+      const run = visibleRuns.get(slip.run_id);
+      if (!run) continue;
+      const monthIndex = Number(run.month_start.slice(5, 7)) - 1;
+      const row = grouped.get(slip.user_id) ?? {
+        userId: slip.user_id,
+        code: slip.employee_code ?? '',
+        name: slip.employee_name,
+        department: slip.department ?? '',
+        months: Array<number | null>(12).fill(null),
+        metricTotal: 0, gross: 0, insurance: 0, tax: 0, net: 0,
+      };
+      row.months[monthIndex] = (row.months[monthIndex] ?? 0) + pick(slip);
+      row.metricTotal += pick(slip);
+      row.gross += amount(slip.gross_pay);
+      row.insurance += amount(slip.insurance_employee);
+      row.tax += amount(slip.personal_income_tax);
+      row.net += amount(slip.net_pay);
+      grouped.set(slip.user_id, row);
+    }
+    const query = employeeQuery.trim().toLowerCase();
+    return [...grouped.values()]
+      .filter((row) => !query || `${row.code} ${row.name} ${row.department}`.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
+  }, [visiblePayslips, visibleRuns, annualMetric, employeeQuery]);
+
   const kpiRows = useMemo(() => {
     const grouped = new Map<string, { month: string; unit: string; total: number; count: number; ratings: Map<string, number> }>();
     for (const review of visibleReviews) {
@@ -424,23 +517,75 @@ export function AdminWorkforceReports({
     });
   }, [year, visibleReviews]);
 
+  // Bảng chính của báo cáo đang chọn — dùng chung cho Excel và bản in.
+  const reportRows = () => {
+    const metricLabel = ANNUAL_METRICS.find((m) => m.key === annualMetric)?.label ?? '';
+    const rows = report === 'annual'
+      ? [
+        ['STT', 'Mã NV', 'Họ tên', 'Phòng ban', ...MONTHS.map((m) => `T${Number(m)}`), `Cộng ${metricLabel.toLowerCase()}`],
+        ...annualRows.map((row, index) => [index + 1, row.code, row.name, row.department, ...row.months.map((v) => v ?? ''), row.metricTotal]),
+        ['', '', 'TỔNG CỘNG', '', ...MONTHS.map((_, i) => annualRows.reduce((s, r) => s + (r.months[i] ?? 0), 0)), annualRows.reduce((s, r) => s + r.metricTotal, 0)],
+      ]
+      : report === 'movement'
+      ? [
+        ['Tháng', 'Tuyển mới', 'Nghỉ việc ghi nhận từ lúc bật lịch sử', 'Quay lại', 'Tỷ lệ nghỉ việc (%)', 'Số phiếu lương đã duyệt', 'Tổng lương gộp', 'BH doanh nghiệp'],
+        ...movementRows.map((row) => [reportMonthLabel(row.month), row.hired, row.terminated, row.activeAgain, row.turnoverRate == null ? '' : Number(row.turnoverRate.toFixed(2)), row.employees, row.gross, row.employerInsurance]),
+      ]
+      : report === 'insurance'
+        ? [
+          ['Tháng', 'Số phiếu lương', 'Thu nhập tính thuế', 'BH NLĐ', 'BH doanh nghiệp', 'Thuế TNCN'],
+          ...insuranceRows.map((row) => [reportMonthLabel(row.month), row.employees, row.taxable, row.employeeInsurance, row.employerInsurance, row.incomeTax]),
+        ]
+        : [
+          ['Tháng', 'Đơn vị', 'Số phiếu KPI đã khóa', 'Điểm trung bình (%)', 'Xếp loại'],
+          ...kpiRows.map((row) => [reportMonthLabel(row.month), row.unit, row.count, Number(row.average.toFixed(1)), row.ratingSummary]),
+        ];
+    return rows;
+  };
+
+  // Bảng phụ đi kèm bảng chính (sheet thứ hai trong Excel, bảng thứ hai khi in).
+  const extraTable = (): { caption: string; header: string[]; rows: (string | number)[][] } | null => {
+    if (report === 'movement') {
+      return { caption: 'Cơ cấu phòng ban', header: ['Phòng ban', 'Nhân sự hiện tại', 'Tỷ trọng (%)'], rows: departmentRows.map((row) => [row.department, row.count, Number(row.percentage.toFixed(1))]) };
+    }
+    if (report === 'annual') {
+      return {
+        caption: 'Tổng hợp thu nhập cả năm theo nhân viên',
+        header: ['STT', 'Mã NV', 'Họ tên', 'Phòng ban', 'Số tháng có lương', 'Lương gộp', 'BH NLĐ', 'Thuế TNCN', 'Thực lĩnh'],
+        rows: [
+          ...annualRows.map((row, index) => [index + 1, row.code, row.name, row.department, row.months.filter((v) => v != null).length, row.gross, row.insurance, row.tax, row.net]),
+          ['', '', 'TỔNG CỘNG', '', '', annualRows.reduce((s, r) => s + r.gross, 0), annualRows.reduce((s, r) => s + r.insurance, 0), annualRows.reduce((s, r) => s + r.tax, 0), annualRows.reduce((s, r) => s + r.net, 0)],
+          ['', '', 'THEO PHÒNG BAN', '', '', '', '', '', ''],
+          ...groupAnnualByDepartment(annualRows).map((d, index) => [index + 1, '', d.department, '', d.employees, d.gross, d.insurance, d.tax, d.net]),
+        ],
+      };
+    }
+    return null;
+  };
+
+  const printReport = async () => {
+    try {
+      const rows = reportRows();
+      const extra = extraTable();
+      const titles = { movement: 'Biến động nhân sự & chi phí', annual: `Lương nhân viên theo năm — ${ANNUAL_METRICS.find((m) => m.key === annualMetric)?.label}`, insurance: 'Bảo hiểm & thuế TNCN', kpi: 'Kết quả KPI' } as const;
+      await printTables({
+        title: `Báo cáo quản trị — ${titles[report as keyof typeof titles] ?? report} năm ${year}`,
+        subtitle: report === 'annual' ? 'Đơn vị tính: VNĐ — chỉ gồm các kỳ lương đã duyệt hoặc đã chi trả' : undefined,
+        landscape: report === 'annual' ? true : undefined,
+        tables: [
+          { header: rows[0].map(String), rows: rows.slice(1) },
+          ...(extra ? [extra] : []),
+        ],
+      });
+    } catch (error) {
+      toast('In thất bại: ' + (error instanceof Error ? error.message : String(error)), 'error');
+    }
+  };
+
   const exportExcel = async () => {
     try {
       const XLSX = await import('xlsx');
-      const rows = report === 'movement'
-        ? [
-          ['Tháng', 'Tuyển mới', 'Nghỉ việc ghi nhận từ lúc bật lịch sử', 'Quay lại', 'Tỷ lệ nghỉ việc (%)', 'Số phiếu lương đã duyệt', 'Tổng lương gộp', 'BH doanh nghiệp'],
-          ...movementRows.map((row) => [reportMonthLabel(row.month), row.hired, row.terminated, row.activeAgain, row.turnoverRate == null ? '' : Number(row.turnoverRate.toFixed(2)), row.employees, row.gross, row.employerInsurance]),
-        ]
-        : report === 'insurance'
-          ? [
-            ['Tháng', 'Số phiếu lương', 'Thu nhập tính thuế', 'BH NLĐ', 'BH doanh nghiệp', 'Thuế TNCN'],
-            ...insuranceRows.map((row) => [reportMonthLabel(row.month), row.employees, row.taxable, row.employeeInsurance, row.employerInsurance, row.incomeTax]),
-          ]
-          : [
-            ['Tháng', 'Đơn vị', 'Số phiếu KPI đã khóa', 'Điểm trung bình (%)', 'Xếp loại'],
-            ...kpiRows.map((row) => [reportMonthLabel(row.month), row.unit, row.count, Number(row.average.toFixed(1)), row.ratingSummary]),
-          ];
+      const rows = reportRows();
       const ws = XLSX.utils.aoa_to_sheet(rows);
       ws['!cols'] = rows[0].map((h, colIdx) => {
         let maxLen = String(h).length;
@@ -475,15 +620,22 @@ export function AdminWorkforceReports({
 
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, ws, 'Báo cáo');
-      if (report === 'movement') {
-        const deptRows = [
-          ['Phòng ban', 'Nhân sự hiện tại', 'Tỷ trọng (%)'],
-          ...departmentRows.map((row) => [row.department, row.count, Number(row.percentage.toFixed(1))]),
-        ];
-        const deptWs = XLSX.utils.aoa_to_sheet(deptRows);
-        deptWs['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 18 }];
-        deptWs['!rows'] = [{ hpt: 26 }, ...Array(deptRows.length - 1).fill({ hpt: 22 })];
-        XLSX.utils.book_append_sheet(workbook, deptWs, 'Cơ cấu phòng ban');
+      const extra = extraTable();
+      if (extra) {
+        const extraRows = [extra.header, ...extra.rows];
+        const extraWs = XLSX.utils.aoa_to_sheet(extraRows);
+        extraWs['!cols'] = extra.header.map((h, colIdx) => ({
+          wch: Math.max(14, h.length + 4, ...extra.rows.map((r) => String(r[colIdx] ?? '').length + 2)),
+        }));
+        extraWs['!rows'] = [{ hpt: 26 }, ...Array(extraRows.length - 1).fill({ hpt: 22 })];
+        const extraRange = XLSX.utils.decode_range(extraWs['!ref'] || 'A1');
+        for (let R = 1; R <= extraRange.e.r; R++) {
+          for (let C = 0; C <= extraRange.e.c; C++) {
+            const cell = extraWs[XLSX.utils.encode_cell({ r: R, c: C })];
+            if (cell && typeof cell.v === 'number' && Number.isInteger(cell.v) && Math.abs(cell.v) >= 1000) cell.z = '#,##0';
+          }
+        }
+        XLSX.utils.book_append_sheet(workbook, extraWs, report === 'annual' ? 'Tổng hợp cả năm' : 'Cơ cấu phòng ban');
       }
       XLSX.writeFile(workbook, `bao-cao-quan-tri-${report}-${year}.xlsx`);
       toast('Đã xuất báo cáo quản trị.', 'success');
@@ -570,6 +722,16 @@ export function AdminWorkforceReports({
             <Download className="h-3.5 w-3.5" /> Xuất Excel
           </Button>
 
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 rounded-md gap-2 text-xs font-semibold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs"
+            onClick={() => void printReport()}
+            disabled={!hasReportPermission}
+          >
+            <Printer className="h-3.5 w-3.5" /> In
+          </Button>
+
           {canViewPayroll && (
             <span className="ml-auto text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline-block">
               Quy mô: <strong className="font-mono text-slate-800 dark:text-slate-200">{currentHeadcount}</strong> nhân sự
@@ -610,6 +772,16 @@ export function AdminWorkforceReports({
               departmentRows={departmentRows}
               eventTrackingStartedOn={eventTrackingStartedOn}
               hasEventHistoryTable={hasEventHistoryTable}
+            />
+          )}
+          {report === 'annual' && canViewPayroll && (
+            <AnnualPayrollReport
+              rows={annualRows}
+              metric={annualMetric}
+              onMetricChange={setAnnualMetric}
+              query={employeeQuery}
+              onQueryChange={setEmployeeQuery}
+              year={year}
             />
           )}
           {report === 'insurance' && canViewPayroll && <InsuranceReport rows={insuranceRows} />}
@@ -1179,6 +1351,180 @@ function InsuranceReport({ rows }: {
             <Td align="right" mono bold>{formatVND(taxTotal)}</Td>
           </tr>
         </tfoot>
+      </ReportTable>
+    </div>
+  );
+}
+
+function AnnualPayrollReport({ rows, metric, onMetricChange, query, onQueryChange, year }: {
+  rows: AnnualRow[];
+  metric: AnnualMetric;
+  onMetricChange: (metric: AnnualMetric) => void;
+  query: string;
+  onQueryChange: (query: string) => void;
+  year: string;
+}) {
+  const metricLabel = ANNUAL_METRICS.find((m) => m.key === metric)?.label ?? '';
+  const sum = (pick: (row: AnnualRow) => number) => rows.reduce((total, row) => total + pick(row), 0);
+  const monthTotals = MONTHS.map((_, i) => rows.reduce((total, row) => total + (row.months[i] ?? 0), 0));
+  const deptRows = useMemo(() => groupAnnualByDepartment(rows), [rows]);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-4">
+        <SummaryCard icon={<Users className="h-4 w-4" />} label="Nhân viên có phiếu lương" value={String(rows.length)} />
+        <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Tổng lương gộp năm" value={formatVND(sum((r) => r.gross))} />
+        <SummaryCard icon={<ShieldCheck className="h-4 w-4" />} label="BH NLĐ + Thuế TNCN" value={formatVND(sum((r) => r.insurance + r.tax))} />
+        <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Tổng thực lĩnh năm" value={formatVND(sum((r) => r.net))} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-none border border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-4 py-2.5">
+        <div className="w-48">
+          <Dropdown
+            square
+            compact
+            aria-label="Chỉ tiêu hiển thị theo tháng"
+            value={metric}
+            options={ANNUAL_METRICS.map((m) => ({ value: m.key, label: m.label }))}
+            onChange={(val) => onMetricChange(val as AnnualMetric)}
+          />
+        </div>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Tìm mã, họ tên, phòng ban…"
+          aria-label="Tìm nhân viên"
+          className="h-9 w-64 rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+        />
+        <span className="ml-auto text-[11px] text-slate-500 dark:text-slate-400">
+          Chỉ gồm các kỳ lương đã duyệt hoặc đã chi trả · ô “—” là tháng không có phiếu lương
+        </span>
+      </div>
+
+      <ReportTable title={`${metricLabel} theo tháng của từng nhân viên`} subtitle={`Năm ${year} · VNĐ`}>
+        <thead>
+          <tr>
+            <Th align="center" className="w-12">STT</Th>
+            <Th align="left">Mã NV</Th>
+            <Th align="left">Họ tên</Th>
+            <Th align="left">Phòng ban</Th>
+            {MONTHS.map((m) => <Th key={m} align="right">T{Number(m)}</Th>)}
+            <Th align="right">Cộng</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={row.userId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+              <Td align="center">{index + 1}</Td>
+              <Td align="left" mono>{row.code || '—'}</Td>
+              <Td align="left" bold>{row.name}</Td>
+              <Td align="left">{row.department || '—'}</Td>
+              {row.months.map((value, i) => (
+                <Td key={i} align="right" mono>{value == null ? '—' : formatVND(value)}</Td>
+              ))}
+              <Td align="right" mono bold>{formatVND(row.metricTotal)}</Td>
+            </tr>
+          ))}
+        </tbody>
+        {rows.length === 0 ? (
+          <tbody><tr><td colSpan={17} className="p-8 text-center text-slate-400 dark:text-slate-500">Chưa có phiếu lương đã duyệt trong năm {year}.</td></tr></tbody>
+        ) : (
+          <tfoot>
+            <tr className="border-t-2 border-slate-300 dark:border-slate-600 bg-slate-100/90 dark:bg-slate-800 font-bold text-slate-900 dark:text-slate-100">
+              <Td align="left">&nbsp;</Td>
+              <Td align="left" bold>TỔNG CỘNG</Td>
+              <Td align="left">&nbsp;</Td>
+              <Td align="left">&nbsp;</Td>
+              {monthTotals.map((value, i) => <Td key={i} align="right" mono bold>{formatVND(value)}</Td>)}
+              <Td align="right" mono bold>{formatVND(sum((r) => r.metricTotal))}</Td>
+            </tr>
+          </tfoot>
+        )}
+      </ReportTable>
+
+      <ReportTable title="Tổng hợp thu nhập cả năm theo nhân viên" subtitle={`Năm ${year} · VNĐ`}>
+        <thead>
+          <tr>
+            <Th align="left">Nhân viên</Th>
+            <Th align="center">Số tháng có lương</Th>
+            <Th align="right">Lương gộp</Th>
+            <Th align="right">BH NLĐ</Th>
+            <Th align="right">Thuế TNCN</Th>
+            <Th align="right">Thực lĩnh</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.userId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+              <Td align="left" bold>{row.name}{row.code ? <span className="ml-2 font-mono font-normal text-slate-400">{row.code}</span> : null}</Td>
+              <Td align="center" mono>{row.months.filter((v) => v != null).length}</Td>
+              <Td align="right" mono>{formatVND(row.gross)}</Td>
+              <Td align="right" mono>{formatVND(row.insurance)}</Td>
+              <Td align="right" mono>{formatVND(row.tax)}</Td>
+              <Td align="right" mono bold>{formatVND(row.net)}</Td>
+            </tr>
+          ))}
+        </tbody>
+      </ReportTable>
+
+      <ReportTable title={`${metricLabel} theo tháng của từng phòng ban`} subtitle={`Năm ${year} · VNĐ`}>
+        <thead>
+          <tr>
+            <Th align="center" className="w-12">STT</Th>
+            <Th align="left">Phòng ban</Th>
+            <Th align="center">Số NV</Th>
+            {MONTHS.map((m) => <Th key={m} align="right">T{Number(m)}</Th>)}
+            <Th align="right">Cộng</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {deptRows.map((row, index) => (
+            <tr key={row.department} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+              <Td align="center">{index + 1}</Td>
+              <Td align="left" bold>{row.department}</Td>
+              <Td align="center" mono>{row.employees}</Td>
+              {row.months.map((value, i) => <Td key={i} align="right" mono>{formatVND(value)}</Td>)}
+              <Td align="right" mono bold>{formatVND(row.metricTotal)}</Td>
+            </tr>
+          ))}
+        </tbody>
+        {deptRows.length > 0 ? (
+          <tfoot>
+            <tr className="border-t-2 border-slate-300 dark:border-slate-600 bg-slate-100/90 dark:bg-slate-800 font-bold text-slate-900 dark:text-slate-100">
+              <Td align="left">&nbsp;</Td>
+              <Td align="left" bold>TỔNG CỘNG</Td>
+              <Td align="center" mono bold>{deptRows.reduce((s, r) => s + r.employees, 0)}</Td>
+              {monthTotals.map((value, i) => <Td key={i} align="right" mono bold>{formatVND(value)}</Td>)}
+              <Td align="right" mono bold>{formatVND(sum((r) => r.metricTotal))}</Td>
+            </tr>
+          </tfoot>
+        ) : null}
+      </ReportTable>
+
+      <ReportTable title="Tổng hợp thu nhập cả năm theo phòng ban" subtitle={`Năm ${year} · VNĐ`}>
+        <thead>
+          <tr>
+            <Th align="left">Phòng ban</Th>
+            <Th align="center">Số NV</Th>
+            <Th align="right">Lương gộp</Th>
+            <Th align="right">BH NLĐ</Th>
+            <Th align="right">Thuế TNCN</Th>
+            <Th align="right">Thực lĩnh</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {deptRows.map((row) => (
+            <tr key={row.department} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+              <Td align="left" bold>{row.department}</Td>
+              <Td align="center" mono>{row.employees}</Td>
+              <Td align="right" mono>{formatVND(row.gross)}</Td>
+              <Td align="right" mono>{formatVND(row.insurance)}</Td>
+              <Td align="right" mono>{formatVND(row.tax)}</Td>
+              <Td align="right" mono bold>{formatVND(row.net)}</Td>
+            </tr>
+          ))}
+        </tbody>
       </ReportTable>
     </div>
   );

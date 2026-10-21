@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'r
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
-  BookOpenCheck, Calculator, Check, CheckCircle2, CircleAlert, CircleCheck, Columns3, FileSpreadsheet, History,
+  BookOpenCheck, Printer, Calculator, Check, CheckCircle2, CircleAlert, CircleCheck, Columns3, FileSpreadsheet, History,
   Lock, Pencil, Plus, Save, Search, Settings, SlidersHorizontal, TriangleAlert, Unlock, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -26,6 +26,8 @@ import { PayslipBreakdown } from '@/components/payroll/PayslipBreakdown';
 import { documentLinesFromCatalog } from '@/components/payroll/PayslipDocument';
 import { resolvePayslipLayout } from '@/lib/payslipLayout';
 import { ExportButtons } from '@/components/payroll/ExportButtons';
+import { printTables } from '@/lib/tablePrint';
+import { payrollSignOff, signOffLines } from '@/lib/payrollSignOff';
 import { TwoFactorDialog } from '@/components/payroll/TwoFactorDialog';
 import { BankExportModal } from '@/components/payroll/BankExportModal';
 import { Timeline } from '@/components/payroll/PayrollApprovals';
@@ -716,10 +718,9 @@ export function PayrollRegister({
   };
 
   /** Bút toán kết chuyển — chỉ có nghĩa khi số liệu đã được duyệt. */
-  const handleExportJournal = async () => {
+  const handleExportJournal = async (mode: 'excel' | 'print' = 'excel') => {
     setBusy('journal');
     try {
-      const XLSX = await import('xlsx');
       const journal = buildPayrollJournal(filtered.map((row) => ({ profile: row.profile, computed: row.computed })), undefined, unitNames);
       const sheet: (string | number)[][] = [
         [`BÚT TOÁN KẾT CHUYỂN LƯƠNG THÁNG ${monthLabel}`],
@@ -735,7 +736,21 @@ export function PayrollRegister({
         ['Tổng các khoản cộng (Có 334)', '', '', '', journal.totals.gross, ''],
         ['Tổng các khoản trừ', '', '', '', journal.totals.deductions, ''],
         ['THỰC CHI CHO NGƯỜI LAO ĐỘNG', '', '', '', journal.totals.netPay, ''],
+        [],
+        ...signOffLines(signOffOf()).map((line) => [line]),
       ];
+      if (mode === 'print') {
+        await printTables({
+          title: String(sheet[0][0]),
+          subtitle: String(sheet[1][0]),
+          landscape: true,
+          signOff: signOffOf(),
+          tables: [{ header: sheet[4].map(String), rows: sheet.slice(5).filter((r) => r.length > 0 && r[0] !== 'ĐỐI CHIẾU') }],
+        });
+        setBusy(null);
+        return;
+      }
+      const XLSX = await import('xlsx');
       const worksheet = XLSX.utils.aoa_to_sheet(sheet);
       worksheet['!merges'] = [
         { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },
@@ -763,6 +778,9 @@ export function PayrollRegister({
     }
     setBusy(null);
   };
+
+  /** Chữ ký điện tử + con dấu "ĐÃ DUYỆT" lấy từ dấu vết kỳ lương, in ở chân chứng từ. */
+  const signOffOf = () => payrollSignOff(run, nameOf);
 
   /** Mỗi đầu mục một cột — đúng như bảng lương kế toán vẫn đối chiếu. */
   const exportOptions = () => ({
@@ -956,7 +974,7 @@ export function PayrollRegister({
               {onMonthChange && (
                 <MonthNav value={monthStart} onChange={onMonthChange} compact square />
               )}
-              <ExportButtons options={exportOptions} disabled={sorted.length === 0} square />
+              <ExportButtons options={exportOptions} signOff={signOffOf} disabled={sorted.length === 0} square />
               <Button
                 variant="outline"
                 size="xs"
@@ -967,6 +985,17 @@ export function PayrollRegister({
                 className="!min-h-0 !h-8 px-2.5 text-xs border-slate-300 dark:border-slate-700 gap-1.5 hidden md:inline-flex"
               >
                 <BookOpenCheck className="h-3.5 w-3.5" /> Bút toán
+              </Button>
+              <Button
+                variant="outline"
+                size="xs"
+                square
+                onClick={() => void handleExportJournal('print')}
+                disabled={!!busy || !approved || filtered.length === 0}
+                title={approved ? 'In bút toán kết chuyển' : 'Duyệt chi xong mới in bút toán kết chuyển'}
+                className="!min-h-0 !h-8 px-2.5 text-xs border-slate-300 dark:border-slate-700 gap-1.5 hidden md:inline-flex"
+              >
+                <Printer className="h-3.5 w-3.5" /> In bút toán
               </Button>
               <FullscreenToggle full={full} onToggle={() => setFull((value) => !value)} square />
               <Button
@@ -1566,6 +1595,7 @@ export function PayrollRegister({
         <BankExportModal
           open={bankOpen}
           run={run}
+          signOff={signOffOf()}
           rows={payableRows.map((row) => ({ profile: row.profile, net: row.computed.netPay }))}
           onClose={() => setBankOpen(false)}
           onExported={onChanged}
@@ -1762,8 +1792,10 @@ export function PayrollRegister({
         onOpenWithdraw={() => setWithdrawOpen(true)}
         onOpenBank={() => setBankOpen(true)}
         onMarkPaid={handleMarkPaid}
-        onExportJournal={handleExportJournal}
+        onExportJournal={() => handleExportJournal()}
+        onPrintJournal={() => handleExportJournal('print')}
         exportOptions={exportOptions}
+        signOff={signOffOf}
         nameOf={nameOf}
         sortedCount={sorted.length}
         filteredCount={filtered.length}

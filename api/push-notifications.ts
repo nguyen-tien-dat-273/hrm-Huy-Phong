@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import webpush from 'web-push';
+import { deliverNotices, type NoticeRow } from './_push.js';
 
 type ApiRequest = {
   method?: string;
@@ -13,9 +13,6 @@ type ApiResponse = {
   setHeader: (name: string, value: string) => void;
 };
 
-type PushRow = { endpoint: string; p256dh: string; auth: string; user_id: string };
-type NoticeRow = { id: string; user_id: string; type: string; title: string; message: string };
-
 function readBearer(request: ApiRequest): string | null {
   const raw = request.headers.authorization;
   const value = Array.isArray(raw) ? raw[0] : raw;
@@ -28,35 +25,6 @@ function parseBody(body: unknown): Record<string, unknown> {
     try { return JSON.parse(body) as Record<string, unknown>; } catch { return {}; }
   }
   return {};
-}
-
-function targetUrl(type: string): string {
-  switch (type) {
-    case 'assignment_submitted': return '/admin/assignments';
-    case 'attendance_request_created':
-    case 'leave_requested':
-    case 'leave_updated':
-    case 'leave_cancellation_requested': return '/admin/leave';
-    case 'recruitment_request':
-    case 'recruitment_review': return '/admin/recruitment';
-    case 'assignment_new':
-    case 'assignment_approved':
-    case 'assignment_rejected': return '/staff/assignments';
-    case 'project_task_assigned': return '/staff/kanban';
-    case 'attendance_approved': return '/staff/attendance';
-    case 'attendance_request_approved':
-    case 'attendance_request_rejected':
-    case 'leave_approved':
-    case 'leave_rejected':
-    case 'leave_cancellation_approved':
-    case 'leave_cancellation_rejected': return '/staff/leave';
-    case 'training_assigned': return '/staff/training';
-    case 'lifecycle_assigned':
-    case 'lifecycle_mentor':
-    case 'lifecycle_task': return '/staff/growth';
-    case 'push_test': return '/profile';
-    default: return '/';
-  }
 }
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
@@ -103,47 +71,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   const rows = (notices ?? []) as NoticeRow[];
   if (rows.length === 0) return response.status(403).json({ error: 'Không có thông báo hợp lệ thuộc phiên hiện tại.' });
 
-  const userIds = [...new Set(rows.map((row) => row.user_id))];
-  const { data: subscriptions, error: subscriptionError } = await service
-    .from('push_subscriptions')
-    .select('endpoint, p256dh, auth, user_id')
-    .in('user_id', userIds);
-  if (subscriptionError) return response.status(500).json({ error: 'Không đọc được danh sách thiết bị.' });
+  const result = await deliverNotices(service, rows, { subject, publicKey, privateKey });
+  if ('error' in result) return response.status(500).json({ error: result.error });
 
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-  const staleEndpoints: string[] = [];
-  let sent = 0;
-
-  await Promise.all(((subscriptions ?? []) as PushRow[]).map(async (subscription) => {
-    const notice = rows.find((row) => row.user_id === subscription.user_id);
-    if (!notice) return;
-    try {
-      await webpush.sendNotification(
-        { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
-        JSON.stringify({
-          title: notice.title,
-          body: notice.message,
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-          tag: notice.id,
-          data: { url: targetUrl(notice.type), notificationId: notice.id },
-        }),
-        { TTL: 60 * 60 * 24, urgency: 'high' },
-      );
-      sent += 1;
-    } catch (error) {
-      const statusCode = (error as { statusCode?: number }).statusCode;
-      if (statusCode === 404 || statusCode === 410) staleEndpoints.push(subscription.endpoint);
-    }
-  }));
-
-  if (staleEndpoints.length > 0) {
-    await service.from('push_subscriptions').delete().in('endpoint', staleEndpoints);
-  }
-  await service
-    .from('notifications')
-    .update({ push_sent_at: new Date().toISOString() })
-    .in('id', rows.map((row) => row.id));
-
-  return response.status(200).json({ sent, devices: subscriptions?.length ?? 0 });
+  return response.status(200).json(result);
 }

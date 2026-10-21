@@ -4,10 +4,12 @@ import { createServer } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import adminUsers from './dist/api/admin-users.js';
+import chatbot from './dist/api/chatbot.js';
 import googleMapsLocation from './dist/api/google-maps-location.js';
 import passwordRecoveryV2 from './dist/api/password-recovery-v2.js';
 import pushConfig from './dist/api/push-config.js';
 import pushNotifications from './dist/api/push-notifications.js';
+import reminders from './dist/api/reminders.js';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const staticRoot = join(root, 'client', 'dist');
@@ -15,10 +17,12 @@ const port = Number(process.env.PORT || 8080);
 
 const apiHandlers = new Map([
   ['/api/admin-users', adminUsers],
+  ['/api/chatbot', chatbot],
   ['/api/google-maps-location', googleMapsLocation],
   ['/api/password-recovery-v2', passwordRecoveryV2],
   ['/api/push-config', pushConfig],
   ['/api/push-notifications', pushNotifications],
+  ['/api/reminders', reminders],
 ]);
 
 const contentTypes = new Map([
@@ -232,6 +236,36 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY || !process.env.
 server.listen(port, '0.0.0.0', () => {
   console.log(`HRM server listening on port ${port}`);
 });
+
+// Nhắc nhở tự động: tự chạy theo chu kỳ khi có CRON_SECRET. Trên Vercel việc này
+// do Vercel Cron đảm nhiệm (vercel.json); ở Docker không có cron nên server tự gọi
+// handler, không đi qua mạng. Đặt REMINDER_INTERVAL_MINUTES=0 để tắt vòng lặp.
+const reminderMinutes = Number(process.env.REMINDER_INTERVAL_MINUTES ?? 5);
+if (process.env.CRON_SECRET && reminderMinutes > 0) {
+  let running = false;
+  const tick = async () => {
+    if (running) return;
+    running = true;
+    try {
+      await reminders(
+        { method: 'POST', headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } },
+        {
+          status() { return this; },
+          setHeader() {},
+          json(body) {
+            if (body.error) console.error('[reminders]', body.error);
+          },
+        },
+      );
+    } catch (error) {
+      console.error('[reminders] tick failed', error);
+    } finally {
+      running = false;
+    }
+  };
+  setTimeout(tick, 30_000).unref();
+  setInterval(tick, reminderMinutes * 60_000).unref();
+}
 
 server.requestTimeout = 30_000;
 server.headersTimeout = 35_000;

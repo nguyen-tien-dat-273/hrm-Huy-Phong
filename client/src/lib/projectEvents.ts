@@ -1,7 +1,7 @@
 // ============================================================================
 // Lịch họp & nhắc nhở dự án — đọc/ghi bảng `project_events`.
 // ----------------------------------------------------------------------------
-// RLS scoped theo dự án (migration 20260811250000): trưởng nhóm tạo/sửa/xoá
+// RLS scoped theo dự án (migration 20261031100000): trưởng nhóm tạo/sửa/xoá
 // sự kiện của dự án mình lead, thành viên dự án xem được. Khi tạo, trigger ở
 // database tự bắn thông báo cho thành viên — client KHÔNG cần notify tay.
 // ============================================================================

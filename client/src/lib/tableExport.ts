@@ -24,6 +24,8 @@ export interface ExportOptions<T> {
   subtitle?: string;
   columns: ExportColumn<T>[];
   rows: readonly T[];
+  /** Các dòng chữ ở cuối sheet (Excel) — vd. chữ ký điện tử của chứng từ lương. */
+  footerLines?: string[];
 }
 
 export async function exportExcel<T>(options: ExportOptions<T>): Promise<void> {
@@ -59,6 +61,10 @@ export async function exportExcel<T>(options: ExportOptions<T>): Promise<void> {
   for (const row of rawBody) {
     sheetRows.push(row);
   }
+  if (options.footerLines?.length) {
+    sheetRows.push([]);
+    for (const line of options.footerLines) sheetRows.push([line]);
+  }
 
   const worksheet = XLSX.utils.aoa_to_sheet(sheetRows);
 
@@ -72,6 +78,10 @@ export async function exportExcel<T>(options: ExportOptions<T>): Promise<void> {
   if (options.subtitle) {
     merges.push({ s: { r: rIdx, c: 0 }, e: { r: rIdx, c: numCols - 1 } });
     rIdx++;
+  }
+  if (options.footerLines?.length) {
+    const first = sheetRows.length - options.footerLines.length;
+    for (let r = first; r < sheetRows.length; r++) merges.push({ s: { r, c: 0 }, e: { r, c: numCols - 1 } });
   }
   if (merges.length > 0) {
     worksheet['!merges'] = merges;
