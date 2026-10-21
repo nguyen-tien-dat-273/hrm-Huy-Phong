@@ -130,7 +130,8 @@ export function AttendanceFileImport({ deviceId, profiles, mappings, onImported 
           if (!current || (current.check_in_time && item.check_in_time >= current.check_in_time)) continue;
           const updateRes = await supabase.from('attendance').update({
             check_in_time: item.check_in_time,
-            approved_by_lead: false,
+            check_in_method: 'DEVICE',
+            approved_by_lead: !!current.check_out_time,
           }).eq('id', current.id);
           if (updateRes.error) throw updateRes.error;
           updated += 1;

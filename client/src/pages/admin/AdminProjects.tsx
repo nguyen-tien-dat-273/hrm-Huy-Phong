@@ -210,13 +210,13 @@ export function AdminProjects() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Tìm dự án..."
-              className="w-full h-10 pl-10 pr-3.5 rounded-lg border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              className="w-full h-10 pl-10 pr-3.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
           <select
             value={leadFilter}
             onChange={(e) => setLeadFilter(e.target.value)}
-            className="h-10 px-3 rounded-lg border border-slate-200 text-sm text-slate-700 bg-white focus:outline-none focus:border-blue-500"
+            className="h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none focus:border-blue-500"
           >
             <option value="all">Tất cả trưởng nhóm</option>
             {staffList.map(s => (
@@ -262,11 +262,11 @@ export function AdminProjects() {
               return (
 <div
               key={project.id}
-              className="bg-white rounded-2xl border border-slate-200/80 shadow-card p-5 hover:shadow-lifted hover:-translate-y-0.5 transition-all duration-300 group"
+              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-card p-5 hover:shadow-lifted hover:-translate-y-0.5 transition-all duration-300 group"
             >
               <div>
                 <div className="flex items-start justify-between mb-3">
-                  <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center transition-colors group-hover:bg-indigo-100">
+                  <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 border border-indigo-100 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center transition-colors group-hover:bg-indigo-100 dark:group-hover:bg-indigo-500/25">
                     <FolderKanban className="w-5 h-5" />
                   </div>
                   <div className="flex items-center gap-1">
@@ -275,9 +275,9 @@ export function AdminProjects() {
                     </Badge>
                   </div>
                 </div>
-                <h3 className="font-display text-base font-bold text-slate-800 mb-1 group-hover:text-blue-700 transition-colors">{project.name}</h3>
-                <p className="text-sm text-slate-500 line-clamp-2 mb-4">{project.description || 'Không có mô tả'}</p>
-                <div className="space-y-2 text-xs text-slate-500">
+                <h3 className="font-display text-base font-bold text-slate-800 dark:text-slate-100 mb-1 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">{project.name}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">{project.description || 'Không có mô tả'}</p>
+                <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
                   <div className="flex items-center gap-2">
                     <Calendar className="w-3.5 h-3.5" />
                     {formatDate(project.start_date)} — {formatDate(project.end_date)}
@@ -287,45 +287,45 @@ export function AdminProjects() {
                     {project.client || 'Không có khách hàng'}
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-600">{formatVND(project.budget)}</span>
+                    <span className="font-medium text-slate-600 dark:text-slate-300">{formatVND(project.budget)}</span>
                   </div>
                 </div>
-                <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                <div className="mt-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/50 p-3">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-slate-700">Tiến độ tác vụ</span>
-                    <span className="font-bold text-indigo-700">{progress}% <span className="font-normal text-slate-500">({completed}/{projectTasks.length})</span></span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">Tiến độ tác vụ</span>
+                    <span className="font-bold text-indigo-700 dark:text-indigo-400">{progress}% <span className="font-normal text-slate-500 dark:text-slate-400">({completed}/{projectTasks.length})</span></span>
                   </div>
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                     <div className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all" style={{ width: `${progress}%` }} />
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {TASK_STATUSES.map((status) => {
                       const count = projectTasks.filter((task) => task.status === status.value).length;
-                      return <span key={status.value} className="rounded-full bg-white px-2 py-0.5 text-[10px] text-slate-500">{status.label}: {count}</span>;
+                      return <span key={status.value} className="rounded-full bg-white dark:bg-slate-800 px-2 py-0.5 text-[10px] text-slate-500 dark:text-slate-400">{status.label}: {count}</span>;
                     })}
                   </div>
                 </div>
                 <div className="mt-3">
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-                    <Clock3 className="h-3.5 w-3.5 text-indigo-500" />Lịch trình tác vụ
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    <Clock3 className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />Lịch trình tác vụ
                   </div>
                   {scheduleTasks.length ? <div className="space-y-1.5">
-                    {scheduleTasks.map((task) => <div key={task.id} className="flex items-center gap-2 rounded-lg border border-slate-100 bg-white px-2.5 py-2">
+                    {scheduleTasks.map((task) => <div key={task.id} className="flex items-center gap-2 rounded-lg border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-800/60 px-2.5 py-2">
                       <span className={`h-2 w-2 shrink-0 rounded-full ${task.status === 'done' ? 'bg-emerald-500' : task.status === 'in_review' ? 'bg-amber-500' : task.status === 'in_progress' ? 'bg-blue-500' : 'bg-slate-400'}`} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium text-slate-700">{task.title}</p>
+                        <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-200">{task.title}</p>
                         <p className="mt-0.5 truncate text-[10px] text-slate-400">{assigneeNames.get(task.assignee_id || '') || 'Chưa phân công'}</p>
                       </div>
                       <div className="shrink-0 text-right">
-                        <span className="block text-[10px] leading-4 text-slate-500">{task.start_date ? formatDate(task.start_date) : '—'} → {task.due_date ? formatDate(task.due_date) : '—'}</span>
-                        <span className="text-[9px] font-semibold text-indigo-600">{TASK_STATUSES.find((status) => status.value === task.status)?.label || 'Cần làm'}</span>
+                        <span className="block text-[10px] leading-4 text-slate-500 dark:text-slate-400">{task.start_date ? formatDate(task.start_date) : '—'} → {task.due_date ? formatDate(task.due_date) : '—'}</span>
+                        <span className="text-[9px] font-semibold text-indigo-600 dark:text-indigo-400">{TASK_STATUSES.find((status) => status.value === task.status)?.label || 'Cần làm'}</span>
                       </div>
                     </div>)}
                     {projectTasks.filter((task) => task.start_date || task.due_date).length > scheduleTasks.length && <p className="text-right text-[10px] text-slate-400">+{projectTasks.filter((task) => task.start_date || task.due_date).length - scheduleTasks.length} mốc khác</p>}
-                  </div> : <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">Chưa có tác vụ được xếp lịch.</p>}
+                  </div> : <p className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-xs text-slate-400">Chưa có tác vụ được xếp lịch.</p>}
                 </div>
                 {/* Actions */}
-                <div className="flex items-center gap-1.5 pt-4 mt-4 border-t border-slate-100">
+                <div className="flex items-center gap-1.5 pt-4 mt-4 border-t border-slate-100 dark:border-slate-800">
                   <Button
                     size="sm"
                     variant="outline"
@@ -338,14 +338,14 @@ export function AdminProjects() {
                   {portfolioManager && <button
                     onClick={() => openEdit(project)}
                     title="Sửa dự án"
-                    className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
                   >
                     <Edit3 className="w-4 h-4" />
                   </button>}
                   {portfolioManager && <button
                     onClick={() => handleDelete(project)}
                     title="Xóa dự án"
-                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>}

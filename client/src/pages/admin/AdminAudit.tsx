@@ -14,7 +14,6 @@ import {
   ClipboardList, Coins, Search, ShieldAlert, ShieldCheck, SlidersHorizontal, UserCog, UserX,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
-import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -54,19 +53,23 @@ const ACTION_CONFIG: Record<string, { label: string; color: string; icon: React.
   'salary.params_create':           { label: 'Lưu tham số lương',     color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
   'salary.params_update':           { label: 'Sửa tham số lương',     color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
   'salary.params_delete':           { label: 'Xoá tham số lương',     color: 'bg-red-100 text-red-700',         icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
-  'salary.template_create':         { label: 'Tạo mẫu bảng lương',    color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
-  'salary.template_update':         { label: 'Sửa mẫu bảng lương',    color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
-  'salary.template_item_save':      { label: 'Khai công thức khối',   color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
-  'salary.template_item_end':       { label: 'Bỏ khoản khỏi mẫu',     color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
-  'salary.template_assign':         { label: 'Gán mẫu cho khối',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
-  'salary.template_seed':           { label: 'Nạp gợi ý BR-PAY',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.template_create':         { label: 'Tạo cơ chế lương',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.template_update':         { label: 'Sửa cơ chế lương',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.template_delete':         { label: 'Xoá cơ chế lương',      color: 'bg-red-100 text-red-700',         icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.template_item_save':      { label: 'Khai dòng cơ chế',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.template_item_end':       { label: 'Bỏ dòng khỏi cơ chế',   color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.template_assign':         { label: 'Gán cơ chế cho đơn vị', color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.template_seed':           { label: 'Nạp cơ chế gợi ý',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.mechanism_save':          { label: 'Lưu cơ chế lương',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
+  'salary.mechanism_seed':          { label: 'Nạp cơ chế gợi ý',      color: 'bg-blue-100 text-blue-700',       icon: <SlidersHorizontal className="w-3.5 h-3.5" /> },
   'salary.scheme_submit':           { label: 'Trình cơ chế lương',    color: 'bg-amber-100 text-amber-700',     icon: <Coins className="w-3.5 h-3.5" /> },
-  'salary.scheme_approve':          { label: 'BGĐ duyệt cơ chế',      color: 'bg-emerald-100 text-emerald-700', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
-  'salary.scheme_reject':           { label: 'BGĐ từ chối cơ chế',    color: 'bg-red-100 text-red-700',         icon: <ShieldAlert className="w-3.5 h-3.5" /> },
+  'salary.scheme_approve':          { label: 'Duyệt cơ chế',      color: 'bg-emerald-100 text-emerald-700', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+  'salary.scheme_apply':            { label: 'Áp dụng cơ chế lương',  color: 'bg-emerald-100 text-emerald-700', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+  'salary.scheme_reject':           { label: 'Từ chối cơ chế',    color: 'bg-red-100 text-red-700',         icon: <ShieldAlert className="w-3.5 h-3.5" /> },
   'salary.run_lock':                { label: 'Khoá kỳ lương (2FA)',   color: 'bg-violet-100 text-violet-700',   icon: <ShieldCheck className="w-3.5 h-3.5" /> },
   'salary.run_withdraw':            { label: 'Rút lại kỳ lương',      color: 'bg-orange-100 text-orange-700',   icon: <Coins className="w-3.5 h-3.5" /> },
-  'salary.run_approve':             { label: 'BGĐ duyệt chi lương',   color: 'bg-emerald-100 text-emerald-700', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
-  'salary.run_reject':              { label: 'BGĐ từ chối chi lương', color: 'bg-red-100 text-red-700',         icon: <ShieldAlert className="w-3.5 h-3.5" /> },
+  'salary.run_approve':             { label: 'Duyệt chi lương',   color: 'bg-emerald-100 text-emerald-700', icon: <ShieldCheck className="w-3.5 h-3.5" /> },
+  'salary.run_reject':              { label: 'Từ chối chi lương', color: 'bg-red-100 text-red-700',         icon: <ShieldAlert className="w-3.5 h-3.5" /> },
   'salary.run_paid':                { label: 'Chi trả & phát hành',   color: 'bg-emerald-100 text-emerald-700', icon: <Coins className="w-3.5 h-3.5" /> },
   'salary.bank_export':             { label: 'Xuất file ngân hàng',   color: 'bg-blue-100 text-blue-700',       icon: <Coins className="w-3.5 h-3.5" /> },
   'salary.bank_account_insert':     { label: 'Khai tài khoản lương',  color: 'bg-amber-100 text-amber-700',     icon: <UserCog className="w-3.5 h-3.5" /> },
@@ -213,23 +216,22 @@ export function AdminAudit() {
                   icon: <ClipboardList className="w-3.5 h-3.5" />,
                 };
                 return (
-                  <div key={log.id} className="flex flex-wrap items-start gap-3 px-5 py-4 hover:bg-slate-50/70 transition-colors">
-                    <Avatar name={log.actor_name || '?'} size="sm" />
+                  <div key={log.id} className="flex flex-wrap items-start gap-2.5 px-3 py-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors text-xs">
                     <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <Badge className={cfg.color}>
+                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                        <Badge className={`${cfg.color} text-[10px] px-1.5 py-0`}>
                           <span className="inline-flex items-center gap-1">{cfg.icon}{cfg.label}</span>
                         </Badge>
-                        <span className="text-sm font-medium text-slate-800">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                           {log.actor_name || 'Không rõ'}
                         </span>
                         {log.target_name && log.target_user_id !== log.actor_id && (
-                          <span className="text-xs text-slate-400">→ {log.target_name}</span>
+                          <span className="text-[11px] text-slate-400">→ {log.target_name}</span>
                         )}
                       </div>
-                      <p className="text-sm text-slate-600 break-words">{log.summary}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 break-words">{log.summary}</p>
                     </div>
-                    <span className="text-xs text-slate-400 whitespace-nowrap">
+                    <span className="text-[11px] text-slate-400 whitespace-nowrap">
                       {formatDateTime(log.created_at)}
                     </span>
                   </div>

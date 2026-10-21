@@ -6,6 +6,7 @@ import { ToastProvider } from '@/contexts/ToastContext';
 import { ConfirmProvider } from '@/contexts/ConfirmContext';
 import { ViewModeProvider } from '@/contexts/ViewModeContext';
 import { SettingsProvider } from '@/contexts/SettingsContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { CommandPalette } from '@/components/CommandPalette';
 import { InstallPrompt } from '@/components/InstallPrompt';
@@ -14,6 +15,7 @@ import { hasAdminFunction, hasAnyAdminPermission, hasPermission, type AdminFunct
 import { AdminLayout } from '@/components/layouts/AdminLayout';
 import { StaffLayout } from '@/components/layouts/StaffLayout';
 import { ADMIN_NAV_ITEMS } from '@/config/navigation';
+import { KPI_SECTION_FUNCTIONS } from '@/lib/kpiAccess';
 
 // Mỗi module được tải khi người dùng thực sự mở tới. Việc này giữ lần tải đầu
 // nhẹ dù hệ thống tiếp tục mở rộng thêm nghiệp vụ và vai trò.
@@ -31,6 +33,7 @@ const AdminReports = lazyRoute('AdminReports', () => import('@/pages/admin/Admin
 const AdminAttendance = lazyRoute('AdminAttendance', () => import('@/pages/admin/AdminAttendance').then((m) => ({ default: m.AdminAttendance })));
 const AdminAttendanceDevices = lazyRoute('AdminAttendanceDevices', () => import('@/pages/admin/AdminAttendanceDevices').then((m) => ({ default: m.AdminAttendanceDevices })));
 const AdminTimesheet = lazyRoute('AdminTimesheet', () => import('@/pages/admin/AdminTimesheet').then((m) => ({ default: m.AdminTimesheet })));
+const AdminAttendanceReports = lazyRoute('AdminAttendanceReports', () => import('@/pages/admin/AdminAttendanceReports').then((m) => ({ default: m.AdminAttendanceReports })));
 const AdminPayroll = lazyRoute('AdminPayroll', () => import('@/pages/admin/AdminPayroll').then((m) => ({ default: m.AdminPayroll })));
 const AdminAssignments = lazyRoute('AdminAssignments', () => import('@/pages/admin/AdminAssignments').then((m) => ({ default: m.AdminAssignments })));
 const AdminWorklog = lazyRoute('AdminWorklog', () => import('@/pages/admin/AdminWorklog').then((m) => ({ default: m.AdminWorklog })));
@@ -43,6 +46,7 @@ const AdminTraining = lazyRoute('AdminTraining', () => import('@/pages/admin/Adm
 const AdminRecruitment = lazyRoute('AdminRecruitment', () => import('@/pages/admin/AdminRecruitment').then((m) => ({ default: m.AdminRecruitment })));
 const AdminWorkforceCenter = lazyRoute('AdminWorkforceCenter', () => import('@/pages/admin/AdminWorkforceCenter').then((m) => ({ default: m.AdminWorkforceCenter })));
 const AdminDocumentRepository = lazyRoute('AdminDocumentRepository', () => import('@/pages/admin/AdminDocumentRepository').then((m) => ({ default: m.AdminDocumentRepository })));
+const AdminKpi = lazyRoute('AdminKpi', () => import('@/pages/admin/AdminKpi').then((m) => ({ default: m.AdminKpi })));
 const AdminNexusCenter = lazyRoute('AdminNexusCenter', () => import('@/pages/admin/AdminNexusCenter').then((m) => ({ default: m.AdminNexusCenter })));
 const ProfilePage = lazyRoute('ProfilePage', () => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
 const StaffDashboard = lazyRoute('StaffDashboard', () => import('@/pages/staff/StaffDashboard').then((m) => ({ default: m.StaffDashboard })));
@@ -63,8 +67,8 @@ function AppLoading() {
       <div className="flex flex-col items-center gap-4 text-center">
         <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-indigo-100 border-t-indigo-600" />
         <div>
-          <p className="font-display text-sm font-bold text-slate-800">Đang mở không gian làm việc</p>
-          <p className="mt-1 text-xs text-slate-500">HRM Huy Phong đang chuẩn bị dữ liệu cho bạn…</p>
+          <p className="font-display text-sm font-bold text-slate-800 dark:text-slate-100">Đang mở không gian làm việc</p>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">HRM Huy Phong đang chuẩn bị dữ liệu cho bạn…</p>
         </div>
       </div>
     </div>
@@ -123,7 +127,7 @@ function PublicRoute({ children }: { children: ReactNode }) {
 function admin(
   permission: AdminPermission,
   page: ReactNode,
-  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode; denyTeamlead?: boolean; teamleadEmployeeDocuments?: boolean } = {},
+  options: { fullAdminOnly?: boolean; functionCode?: AdminFunctionCode | readonly AdminFunctionCode[]; denyTeamlead?: boolean; teamleadEmployeeDocuments?: boolean } = {},
 ) {
   return <ProtectedRoute permission={permission} {...options}><AdminLayout>{page}</AdminLayout></ProtectedRoute>;
 }
@@ -165,6 +169,12 @@ function AdminHomeRedirect() {
   return <Navigate to={target ? target.to : '/staff/dashboard'} replace />;
 }
 
+/** Đường dẫn cũ → đường dẫn mới, giữ nguyên ?month=…&user=… */
+function RedirectKeepQuery({ to }: { to: string }) {
+  const location = useLocation();
+  return <Navigate to={`${to}${location.search}`} replace />;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -194,18 +204,26 @@ function AppRoutes() {
       <Route path="/admin/attendance" element={admin('attendance', <AdminAttendance />)} />
       <Route path="/admin/attendance-devices" element={admin('attendance', <AdminAttendanceDevices />, { fullAdminOnly: true })} />
       <Route path="/admin/timesheet" element={admin('attendance', <AdminTimesheet />, { denyTeamlead: true })} />
+      <Route path="/admin/attendance/reports" element={adminAny(['attendance', 'reports'], <AdminAttendanceReports />)} />
+      <Route path="/admin/attendance-reports" element={<Navigate to="/admin/attendance/reports" replace />} />
       <Route path="/admin/attendance-settings" element={admin('attendance', <AdminAttendanceSettings />, { denyTeamlead: true })} />
       <Route path="/admin/work-locations" element={<Navigate to="/admin/attendance-devices" replace />} />
       {/* Lương gắn route theo quyền attendance kèm MÃ CHỨC NĂNG riêng từng mục
           (lead có quyền chấm công vẫn không vào được). RLS và RPC phía
           database mới là hàng rào thật. */}
       <Route path="/admin/payroll" element={admin('attendance', <AdminPayroll section="register" />, { functionCode: 'admin.payroll' })} />
-      <Route path="/admin/payroll/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: 'admin.payroll_schemes' })} />
-      <Route path="/admin/payroll/inputs" element={admin('attendance', <AdminPayroll section="inputs" />, { functionCode: 'admin.payroll_inputs' })} />
+      <Route path="/admin/payroll/setup" element={<RedirectKeepQuery to="/admin/payroll/setup/params" />} />
+      <Route path="/admin/payroll/setup/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] })} />
+      <Route path="/admin/payroll/setup/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
+      <Route path="/admin/payroll/setup/timesheet" element={admin('attendance', <AdminPayroll section="timesheet" />, { functionCode: 'admin.payroll_settings' })} />
+      <Route path="/admin/payroll/setup/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
+      <Route path="/admin/payroll/schemes" element={<RedirectKeepQuery to="/admin/payroll/setup/schemes" />} />
       <Route path="/admin/payroll/adjustments" element={admin('attendance', <AdminPayroll section="adjustments" />, { functionCode: 'admin.payroll_adjustments' })} />
-      <Route path="/admin/payroll/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
-      <Route path="/admin/payroll/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
-      <Route path="/admin/payroll/formulas" element={admin('attendance', <AdminPayroll section="formulas" />, { functionCode: 'admin.payroll_settings' })} />
+      <Route path="/admin/payroll/components" element={<RedirectKeepQuery to="/admin/payroll/setup/components" />} />
+      <Route path="/admin/payroll/params" element={<RedirectKeepQuery to="/admin/payroll/setup/params" />} />
+      {/* Trang cũ "Công thức theo khối" đã gộp vào Cơ chế lương. */}
+      <Route path="/admin/payroll/formulas" element={<Navigate to="/admin/payroll/setup/schemes" replace />} />
+      <Route path="/admin/payroll/reports" element={admin('attendance', <AdminPayroll section="reports" />, { functionCode: 'admin.payroll' })} />
       <Route path="/admin/payroll/approvals" element={admin('attendance', <AdminPayroll section="approvals" />, { functionCode: 'admin.payroll_approve' })} />
       <Route path="/admin/leave" element={adminAny(['leave', 'attendance', 'users'], <AdminLeave />)} />
       <Route path="/admin/training" element={admin('training', <AdminTraining />)} />
@@ -215,11 +233,12 @@ function AppRoutes() {
       <Route path="/admin/worker-documents" element={admin('users', <AdminDocumentRepository />, { functionCode: 'admin.worker_documents', teamleadEmployeeDocuments: true })} />
       <Route path="/admin/employee-lifecycle" element={admin('users', <AdminNexusCenter section="lifecycle" />, { functionCode: 'admin.employee_lifecycle' })} />
       <Route path="/admin/employee-lifecycle/offboarding" element={admin('users', <AdminNexusCenter section="offboarding" />, { functionCode: 'admin.employee_lifecycle' })} />
-      <Route path="/admin/performance" element={admin('reports', <AdminNexusCenter section="performance" />, { functionCode: 'admin.performance_manage' })} />
-      {/* Dia chi cu cua "Gan KPI": gio nam ngay trong man bo KPI nhan su. */}
+      <Route path="/admin/performance" element={admin('reports', <AdminKpi section="sets" />, { functionCode: KPI_SECTION_FUNCTIONS.sets })} />
       <Route path="/admin/performance/schemes" element={<Navigate to="/admin/performance" replace />} />
-      <Route path="/admin/performance/review" element={admin('reports', <AdminNexusCenter section="kpiReview" />, { functionCode: 'admin.performance_manage' })} />
-      <Route path="/admin/performance/report" element={admin('reports', <AdminNexusCenter section="kpiReport" />, { functionCode: 'admin.performance_manage' })} />
+      <Route path="/admin/performance/review" element={admin('reports', <AdminKpi section="sheets" />, { functionCode: KPI_SECTION_FUNCTIONS.sheets })} />
+      <Route path="/admin/performance/sales" element={admin('reports', <AdminKpi section="sales" />, { functionCode: KPI_SECTION_FUNCTIONS.sales })} />
+      <Route path="/admin/performance/report" element={admin('reports', <AdminKpi section="report" />, { functionCode: KPI_SECTION_FUNCTIONS.report })} />
+      <Route path="/admin/performance/settings" element={admin('reports', <AdminKpi section="settings" />, { functionCode: KPI_SECTION_FUNCTIONS.settings })} />
       {/* Cờ GPS được quản lý ngay trong Địa điểm chấm công. Các cờ kỹ thuật
           cũ không còn là module người dùng độc lập. */}
       <Route path="/admin/feature-flags" element={<Navigate to="/admin/settings" replace />} />
@@ -259,27 +278,29 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <ToastProvider>
-        <ConfirmProvider>
-          <AuthProvider>
-            {/* Trong AuthProvider: RLS đòi đăng nhập mới đọc được app_settings. */}
-            <SettingsProvider>
-              <ViewModeProvider>
-                <Suspense fallback={<AppLoading />}>
-                  <AppRoutes />
-                </Suspense>
-                {/* Ctrl/⌘+K — tự ẩn khi chưa đăng nhập. */}
-                <CommandPalette />
-                {/* Dải mời cài app — chỉ hiện khi trình duyệt thực sự cài được. */}
-                <InstallPrompt />
-                {/* Xin quyền bằng thao tác rõ ràng của người dùng; trình duyệt
-                    không cho phép hệ thống tự bật thông báo. */}
-                <PhoneNotificationPrompt />
-              </ViewModeProvider>
-            </SettingsProvider>
-          </AuthProvider>
-        </ConfirmProvider>
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <AuthProvider>
+              {/* Trong AuthProvider: RLS đòi đăng nhập mới đọc được app_settings. */}
+              <SettingsProvider>
+                <ViewModeProvider>
+                  <Suspense fallback={<AppLoading />}>
+                    <AppRoutes />
+                  </Suspense>
+                  {/* Ctrl/⌘+K — tự ẩn khi chưa đăng nhập. */}
+                  <CommandPalette />
+                  {/* Dải mời cài app — chỉ hiện khi trình duyệt thực sự cài được. */}
+                  <InstallPrompt />
+                  {/* Xin quyền bằng thao tác rõ ràng của người dùng; trình duyệt
+                      không cho phép hệ thống tự bật thông báo. */}
+                  <PhoneNotificationPrompt />
+                </ViewModeProvider>
+              </SettingsProvider>
+            </AuthProvider>
+          </ConfirmProvider>
+        </ToastProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

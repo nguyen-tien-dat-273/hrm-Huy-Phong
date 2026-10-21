@@ -288,11 +288,11 @@ const mList = (memberships || []) as { project_id: string }[];
                       </div>
                       <div>
                         <p className="text-sm font-medium text-slate-700">{formatDate(a.date)}</p>
-                        <p className="text-xs text-slate-400">{formatTime(a.check_in_time)} → {formatTime(a.check_out_time)}</p>
+                        <p className="text-xs text-slate-400">{!a.check_in_time && a.check_out_time ? `Chưa vào → ${formatTime(a.check_out_time)}` : `${formatTime(a.check_in_time)} → ${formatTime(a.check_out_time)}`}</p>
                       </div>
                     </div>
-                    <Badge className={a.check_out_time ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
-                      {a.check_out_time ? 'Đã checkout' : 'Chưa checkout'}
+                    <Badge className={!a.check_in_time && a.check_out_time ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300' : a.check_out_time ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
+                      {!a.check_in_time && a.check_out_time ? 'Chưa check-in' : a.check_out_time ? 'Đã checkout' : 'Chưa checkout'}
                     </Badge>
                   </div>
                 ))}

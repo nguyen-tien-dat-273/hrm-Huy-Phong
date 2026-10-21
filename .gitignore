@@ -123,5 +123,19 @@ patches/
 
 # Goi cai bridge - chua token that, khong day len git
 dist-bridge/
+.local-pg/
+
+# Tai lieu dac ta, du lieu mau va file tam
+*.docx
+*.xlsx
+*.xls
+*.pdf
+~$*
+doc_kpi_text.txt
+bao_cao_extracted.txt
+HP HRM/
+
+# Script chay tay tam thoi tren Supabase SQL Editor
+supabase/paste-*.sql
 .env.recruitment
 .env.migration

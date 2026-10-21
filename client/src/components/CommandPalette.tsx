@@ -27,7 +27,7 @@ interface Command {
   anyPermissions?: AdminPermission[];
   /** Trang nhạy cảm không mở theo quyền lẻ (vd: Tính lương) — chỉ admin/CEO. */
   fullAdminOnly?: boolean;
-  functionCode?: AdminFunctionCode;
+  functionCode?: AdminFunctionCode | readonly AdminFunctionCode[];
   hideForTeamlead?: boolean;
   teamleadEmployeeDocuments?: boolean;
   run: () => void;

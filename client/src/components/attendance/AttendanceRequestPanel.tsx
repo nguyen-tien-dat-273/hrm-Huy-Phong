@@ -16,6 +16,9 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Check, Clock3, Plus, TriangleAlert, X } from 'lucide-react';
+import { ITEMS_PER_PAGE, Pager, clampPage } from '@/components/payroll/Pager';
+import { Dropdown } from '@/components/ui/Dropdown';
+import { departmentOptions, passesPeopleFilter, personOptions } from '@/lib/peopleFilter';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -50,6 +53,8 @@ const TYPE_LABEL: Record<RequestType, string> = {
   OVERTIME: 'Làm thêm giờ',
 };
 
+const REQUEST_TYPES: RequestType[] = ['LATE_ARRIVAL', 'EARLY_LEAVE', 'OVERTIME'];
+
 const STATUS_STYLE: Record<RequestStatus, { label: string; color: string }> = {
   PENDING: { label: 'Chờ duyệt', color: 'bg-amber-50 text-amber-700' },
   APPROVED: { label: 'Đã duyệt', color: 'bg-emerald-50 text-emerald-700' },
@@ -60,7 +65,9 @@ const STATUS_STYLE: Record<RequestStatus, { label: string; color: string }> = {
 /** Hai loại đơn này tiêu hạn mức tháng; đơn OT thì không. */
 const QUOTA_TYPES: RequestType[] = ['LATE_ARRIVAL', 'EARLY_LEAVE'];
 
-export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
+/** `square`: kiểu vuông góc của khu Lương & Đãi ngộ — màn duyệt ở Trung tâm đơn từ dùng; màn nhân viên giữ nguyên. */
+export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' | 'review'; square?: boolean }) {
+  const sq = square ? '!rounded-none' : '';
   const { profile, users } = useAuth();
   const { toast } = useToast();
 
@@ -72,6 +79,13 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
   const [formOpen, setFormOpen] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<AttendanceRequest | null>(null);
   const [rejectNote, setRejectNote] = useState('');
+  // Chỉ dùng ở chế độ `square` (màn duyệt): ô lọc dạng Dropdown và phân trang.
+  const [deptFilter, setDeptFilter] = useState('');
+  const [personFilter, setPersonFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [deptFilter, personFilter, typeFilter, statusFilter]);
 
   const [draft, setDraft] = useState({
     request_type: 'LATE_ARRIVAL' as RequestType,
@@ -216,14 +230,22 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
   if (loading) return <Skeleton className="h-40" />;
 
   const pending = rows.filter((row) => row.status === 'PENDING');
-  const visible = mode === 'review' ? [...pending, ...rows.filter((r) => r.status !== 'PENDING')] : rows;
+  const ordered = mode === 'review' ? [...pending, ...rows.filter((r) => r.status !== 'PENDING')] : rows;
+  const personOf = (userId: string) => users.find((user) => user.id === userId);
+  const rowPeople = ordered.map((row) => personOf(row.user_id));
+  const visible = !square ? ordered : ordered.filter((row) =>
+    passesPeopleFilter(personOf(row.user_id), row.user_id, deptFilter, personFilter)
+    && (!typeFilter || row.request_type === typeFilter)
+    && (!statusFilter || row.status === statusFilter));
+  const currentPage = clampPage(page, visible.length, ITEMS_PER_PAGE);
+  const shown = square ? visible.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE) : visible;
 
   return (
-    <Card>
+    <Card className={sq}>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-bold text-slate-800">
+            <h3 className={square ? 'text-base font-bold text-slate-800' : 'text-sm font-bold text-slate-800'}>
               {mode === 'mine' ? 'Đơn đi muộn, về sớm, làm thêm giờ' : 'Đơn từ chờ duyệt'}
             </h3>
             <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
@@ -247,39 +269,115 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
           )}
         </div>
 
-        {visible.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-8 text-center">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
-              <CalendarClock className="h-5 w-5" />
-            </span>
-            <p className="text-sm font-semibold text-slate-600">
-              {mode === 'mine' ? 'Chưa gửi đơn nào' : 'Không có đơn nào'}
-            </p>
+        {square && (
+          <div className="flex flex-wrap items-center gap-3">
+            {([
+              ['Lọc theo phòng ban', deptFilter, departmentOptions(rowPeople), (value: string) => { setDeptFilter(value); setPersonFilter(''); }],
+              ['Lọc theo nhân sự', personFilter, personOptions(rowPeople, deptFilter), setPersonFilter],
+              ['Lọc theo loại đơn', typeFilter, [{ value: '', label: 'Tất cả loại đơn' }, ...REQUEST_TYPES.map((value) => ({ value, label: TYPE_LABEL[value] }))], setTypeFilter],
+              ['Lọc theo trạng thái', statusFilter, [{ value: '', label: 'Mọi trạng thái' }, ...(Object.keys(STATUS_STYLE) as RequestStatus[]).map((value) => ({ value, label: STATUS_STYLE[value].label }))], setStatusFilter],
+            ] as const).map(([label, value, options, onChange]) => (
+              <div key={label} className="w-full sm:w-52">
+                <Dropdown aria-label={label} searchable value={value} options={options} onChange={onChange} />
+              </div>
+            ))}
           </div>
+        )}
+
+        {visible.length === 0 ? (
+          square ? (
+            <p className="py-10 text-center text-sm font-semibold text-slate-400">
+              {ordered.length === 0 ? 'Không có đơn nào.' : 'Không có đơn nào khớp bộ lọc.'}
+            </p>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+                <CalendarClock className="h-5 w-5" />
+              </span>
+              <p className="text-sm font-bold text-slate-600">
+                {mode === 'mine' ? 'Chưa gửi đơn nào' : 'Không có đơn nào'}
+              </p>
+            </div>
+          )
+        ) : square ? (
+          <>
+            <div className="overflow-x-auto rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+              <table className="w-full min-w-[900px] text-sm border-collapse">
+                <thead>
+                  <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
+                    <th className="px-4 py-3 min-w-[170px]"><div className="min-w-[170px] line-clamp-3">Nhân sự</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 min-w-[120px]"><div className="min-w-[120px] line-clamp-3">Loại đơn</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 min-w-[95px]"><div className="min-w-[95px] line-clamp-3">Ngày</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[110px]"><div className="min-w-[110px] text-center line-clamp-3">Thời lượng</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 min-w-[160px]"><div className="min-w-[160px] line-clamp-3">Lý do</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[100px]"><div className="min-w-[100px] text-center line-clamp-3">Trạng thái</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[95px]"><div className="min-w-[95px] text-center line-clamp-3">Thao tác</div></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
+                  {shown.map((row) => {
+                    const status = STATUS_STYLE[row.status];
+                    return (
+                      <tr key={row.id} className="align-top hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors">
+                        <td className="px-4 py-3 text-sm font-black text-slate-900 dark:text-slate-100">{nameOf(row.user_id)}</td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3 text-sm font-bold text-slate-700 dark:text-slate-300">{TYPE_LABEL[row.request_type]}</td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 whitespace-nowrap px-3 py-3 text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-300">{formatDate(row.work_date)}</td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 whitespace-nowrap px-3 py-3 text-center text-sm font-black tabular-nums text-slate-900 dark:text-slate-100">
+                          {row.minutes != null ? `${row.minutes} phút` : row.hours != null ? `${Number(row.hours)} giờ` : '—'}
+                        </td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 max-w-[260px] px-3 py-3 text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                          {row.reason}
+                          {row.review_note && <span className="mt-1 block font-bold text-red-600">Phản hồi: {row.review_note}</span>}
+                        </td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3 text-center">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-black ${status.color}`}>{status.label}</span>
+                        </td>
+                        <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3">
+                          {row.status === 'PENDING' ? (
+                            <div className="flex justify-center gap-2">
+                              <Button size="sm" variant="success" disabled={busy} onClick={() => void decide(row, 'APPROVED')}>
+                                <Check className="h-3.5 w-3.5" /> Duyệt
+                              </Button>
+                              <Button size="sm" variant="danger" disabled={busy} onClick={() => { setRejectTarget(row); setRejectNote(''); }}>
+                                <X className="h-3.5 w-3.5" /> Từ chối
+                              </Button>
+                            </div>
+                          ) : <span className="block text-center text-xs text-slate-400 font-bold">—</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <Pager page={currentPage} total={visible.length} noun="đơn" onPage={setPage} />
+          </>
         ) : (
-          <ul className="divide-y divide-slate-50">
-            {visible.map((row) => {
+          <ul className="divide-y divide-slate-300 dark:divide-slate-700">
+            {shown.map((row) => {
               const status = STATUS_STYLE[row.status];
               return (
-                <li key={row.id} className="flex flex-wrap items-center gap-3 py-3">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500">
+                <li key={row.id} className="flex flex-wrap items-center gap-3 py-3.5">
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 ${square ? 'rounded-none' : 'rounded-lg'}`}>
                     <Clock3 className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800">
-                      {mode === 'review' && <span className="text-slate-500">{nameOf(row.user_id)} · </span>}
+                    <p className="text-sm font-black text-slate-900 dark:text-slate-100">
+                      {mode === 'review' && <span className="text-slate-600 dark:text-slate-400">{nameOf(row.user_id)} · </span>}
                       {TYPE_LABEL[row.request_type]}
                       {row.minutes != null && ` ${row.minutes} phút`}
                       {row.hours != null && ` ${Number(row.hours)} giờ`}
                     </p>
-                    <p className="truncate text-xs text-slate-500">
+                    <p className="truncate text-sm font-medium text-slate-600 dark:text-slate-400">
                       {formatDate(row.work_date)} · {row.reason}
                     </p>
                     {row.review_note && (
-                      <p className="mt-1 text-xs text-red-600">Phản hồi: {row.review_note}</p>
+                      <p className="mt-1 text-xs font-bold text-red-600">Phản hồi: {row.review_note}</p>
                     )}
                   </div>
-                  <Badge className={status.color}>{status.label}</Badge>
+                  {square
+                    ? <span className={`rounded-full px-2.5 py-1 text-xs font-black ${status.color}`}>{status.label}</span>
+                    : <Badge className={`${status.color} font-black`}>{status.label}</Badge>}
 
                   {mode === 'review' && row.status === 'PENDING' && (
                     <div className="flex gap-1">
@@ -301,7 +399,7 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
         )}
       </CardContent>
 
-      <Modal open={formOpen} onClose={() => setFormOpen(false)} title="Gửi đơn" size="md">
+      <Modal square={square} open={formOpen} onClose={() => setFormOpen(false)} title="Gửi đơn" size="md">
         <div className="space-y-4">
           <Select
             label="Loại đơn"
@@ -362,6 +460,7 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
       </Modal>
 
       <Modal
+        square={square}
         open={!!rejectTarget}
         onClose={() => { if (!busy) setRejectTarget(null); }}
         title="Từ chối đơn"
@@ -372,6 +471,7 @@ export function AttendanceRequestPanel({ mode }: { mode: 'mine' | 'review' }) {
             Nhân viên sẽ nhận được lý do này để biết cần bổ sung hoặc điều chỉnh gì.
           </p>
           <Textarea
+            className={sq}
             label="Lý do từ chối"
             value={rejectNote}
             onChange={(event) => setRejectNote(event.target.value)}

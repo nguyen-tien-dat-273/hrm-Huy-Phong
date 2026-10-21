@@ -15,8 +15,8 @@ interface ProtectedRouteProps {
   anyPermission?: AdminPermission[];
   /** Trang dữ liệu nhạy cảm chỉ dành cho Admin/CEO, kể cả khi có quyền lẻ. */
   fullAdminOnly?: boolean;
-  /** Chức năng nhạy cảm được cấp riêng cho vai trò/vị trí. */
-  functionCode?: AdminFunctionCode;
+  /** Chức năng nhạy cảm được cấp riêng cho vai trò/vị trí (mảng = một trong các chức năng). */
+  functionCode?: AdminFunctionCode | readonly AdminFunctionCode[];
   /** Loại trừ vai trò trưởng nhóm khỏi màn hình tổng hợp toàn công ty. */
   denyTeamlead?: boolean;
   /** Cho phép trưởng nhóm vào đúng không gian hồ sơ nhân viên được giới hạn. */

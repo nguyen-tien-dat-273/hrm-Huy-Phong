@@ -3,22 +3,23 @@
 // Chung một chỗ vì cùng một tính chất: sai thì KHÔNG có gì báo ra màn hình,
 // chỉ có một con số lặng lẽ khác đi.
 //
-//   1. Bộ giải "người này dùng bộ KPI nào" — phải khớp đúng bốn lớp của
-//      `public.kpi_scheme_for` (migration 20261001140000). Lệch một lớp là có
-//      người đứng ngoài kỳ chấm mà không ai thấy, nên mỗi lớp có một ca chứng
-//      minh nó thắng lớp dưới và một ca chứng minh nó nhường lớp trên.
-//   2. Thang điểm KPI — lỗ hổng ở ranh giới hai mức.
+//   1. Chuỗi đơn vị cha — cơ chế lương thừa hưởng theo đúng chuỗi này.
+//   2. Dải quy đổi KPI — ranh giới hai dải.
 //   3. Đếm ngày nghỉ phép theo lịch làm việc và ngày lễ.
+//   4. Ô công thức dạng thẻ — chuyển qua lại giữa TÊN người dùng thấy và MÃ
+//      được lưu; lệch một chiều là bấm Lưu đổi luôn công thức thật.
 //
 // (Engine lương có bộ kiểm riêng: `npm run check:payroll`.)
-import { kpiSchemeFor, unitLineage, type KpiSchemeData, type ResolvableUnit } from '../kpiSchemeFor';
-import { describeLevelIssues, scoreFromLevels } from '../kpiScoring';
+import { unitLineage, type ResolvableUnit } from '../orgUnits';
+import { scoreFromValue, setProblems, type KpiCriterion } from '../kpi';
 import { countWorkingDays } from '../leave';
 import { evaluateFormula } from '../payrollFormula';
 import {
-  buildPayFormula, isDayCount, parsePayFormula,
-  DEFAULT_GUIDED, type GuidedPayFormula,
-} from '../payItemFormula';
+  OP_DISPLAY, describeFormula, formulaIssueOf, groupEntries, parseLooseFormula, parseLooseNumber, previewFormula,
+  referencedCodes, referencedFunctions, renderFormulaWithValues, searchEntries, serializeFormula, serializeWithOffsets,
+  tokenIndexAt, tokenizeFormula, type FormulaEntry,
+} from '../formulaTokens';
+import { RESERVED_FORMULA_NAMES } from '../payrollVariables';
 
 let failures = 0;
 function check(label: string, actual: unknown, expected: unknown) {
@@ -35,18 +36,6 @@ const units: ResolvableUnit[] = [
 ];
 const unitById = new Map(units.map((u) => [u.id, u]));
 
-const tpl = (id: string, extra: Partial<KpiSchemeData['templates'][number]> = {}) => ({
-  id, name: `Bộ ${id}`, is_active: true, unit_id: null, position_id: null, created_at: null, ...extra,
-});
-
-const person = { id: 'u1', unit_id: 'phong', position_id: 'vi-tri-1' };
-
-const base = (over: Partial<KpiSchemeData> = {}): KpiSchemeData => ({
-  personalSchemes: [], unitSchemes: [], templates: [], unitById, ...over,
-});
-
-const TODAY = '2026-10-05';
-
 // --- Chuỗi đơn vị -----------------------------------------------------------
 check('chuỗi đơn vị đi từ gần tới xa',
   unitLineage('phong', unitById).map((u) => u.id), ['phong', 'khoi', 'cong-ty']);
@@ -59,152 +48,20 @@ const loopUnits = new Map<string, ResolvableUnit>([
 ]);
 check('vòng cha-con vẫn dừng', unitLineage('a', loopUnits).map((u) => u.id), ['a', 'b']);
 
-// --- Lớp 4: mẫu theo vị trí -------------------------------------------------
-check('lớp 4 — mẫu khớp vị trí',
-  kpiSchemeFor(person, base({ templates: [tpl('t-vitri', { position_id: 'vi-tri-1' })] }), TODAY).templateId,
-  't-vitri');
-
-check('mẫu vị trí đã tắt thì không dùng',
-  kpiSchemeFor(person, base({ templates: [tpl('t-vitri', { position_id: 'vi-tri-1', is_active: false })] }), TODAY).templateId,
-  null);
-
-// --- Lớp 3: bộ khai thẳng cho đơn vị ----------------------------------------
-check('lớp 3 thắng lớp 4',
-  kpiSchemeFor(person, base({
-    templates: [tpl('t-vitri', { position_id: 'vi-tri-1' }), tpl('t-phong', { unit_id: 'phong' })],
-  }), TODAY).templateId,
-  't-phong');
-
-check('lớp 3 đi ngược lên cấp trên khi phòng chưa khai',
-  kpiSchemeFor(person, base({ templates: [tpl('t-khoi', { unit_id: 'khoi' })] }), TODAY).templateId,
-  't-khoi');
-
-check('lớp 3 — đơn vị GẦN nhất thắng cấp trên',
-  kpiSchemeFor(person, base({
-    templates: [tpl('t-khoi', { unit_id: 'khoi' }), tpl('t-phong', { unit_id: 'phong' })],
-  }), TODAY).templateId,
-  't-phong');
-
-// --- Lớp 2: bản gán cho đơn vị ----------------------------------------------
-check('lớp 2 thắng lớp 3',
-  kpiSchemeFor(person, base({
-    unitSchemes: [{ unit_id: 'phong', template_id: 't-gan-phong', effective_from: '2026-01-01' }],
-    templates: [tpl('t-gan-phong'), tpl('t-phong', { unit_id: 'phong' })],
-  }), TODAY).templateId,
-  't-gan-phong');
-
-check('lớp 2 đi ngược lên cấp trên',
-  kpiSchemeFor(person, base({
-    unitSchemes: [{ unit_id: 'cong-ty', template_id: 't-cong-ty', effective_from: '2026-01-01' }],
-    templates: [tpl('t-cong-ty')],
-  }), TODAY).label,
-  'Theo phòng Huy Phong Group');
-
-check('lớp 2 — đơn vị gần nhất thắng',
-  kpiSchemeFor(person, base({
-    unitSchemes: [
-      { unit_id: 'cong-ty', template_id: 't-cong-ty', effective_from: '2026-01-01' },
-      { unit_id: 'khoi', template_id: 't-khoi', effective_from: '2026-01-01' },
-    ],
-    templates: [tpl('t-cong-ty'), tpl('t-khoi')],
-  }), TODAY).templateId,
-  't-khoi');
-
-// --- Lớp 1: gán riêng -------------------------------------------------------
-check('lớp 1 thắng tất cả',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u1', template_id: 't-rieng', effective_from: '2026-01-01' }],
-    unitSchemes: [{ unit_id: 'phong', template_id: 't-gan-phong', effective_from: '2026-01-01' }],
-    templates: [tpl('t-rieng'), tpl('t-gan-phong'), tpl('t-vitri', { position_id: 'vi-tri-1' })],
-  }), TODAY).templateId,
-  't-rieng');
-
-check('gán riêng của người KHÁC không ảnh hưởng',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u2', template_id: 't-rieng', effective_from: '2026-01-01' }],
-    templates: [tpl('t-rieng')],
-  }), TODAY).templateId,
-  null);
-
-// --- Ngày hiệu lực ----------------------------------------------------------
-// Database lọc `effective_from <= p_on`. Bỏ qua vế này thì một bản gán hẹn
-// tháng sau trông như đã có hiệu lực hôm nay, và màn hình hứa một bộ KPI mà
-// phiếu chấm không dùng.
-check('bản gán hẹn ngày trong TƯƠNG LAI chưa có hiệu lực',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u1', template_id: 't-sau', effective_from: '2026-12-01' }],
-    templates: [tpl('t-sau')],
-  }), TODAY).templateId,
-  null);
-
-check('hai bản gán riêng thì bản hiệu lực GẦN nhất thắng',
-  kpiSchemeFor(person, base({
-    personalSchemes: [
-      { user_id: 'u1', template_id: 't-cu', effective_from: '2026-01-01' },
-      { user_id: 'u1', template_id: 't-moi', effective_from: '2026-09-01' },
-    ],
-    templates: [tpl('t-cu'), tpl('t-moi')],
-  }), TODAY).templateId,
-  't-moi');
-
-check('bản gán tương lai không che bản đang có hiệu lực',
-  kpiSchemeFor(person, base({
-    personalSchemes: [
-      { user_id: 'u1', template_id: 't-dang-dung', effective_from: '2026-01-01' },
-      { user_id: 'u1', template_id: 't-thang-sau', effective_from: '2026-12-01' },
-    ],
-    templates: [tpl('t-dang-dung'), tpl('t-thang-sau')],
-  }), TODAY).templateId,
-  't-dang-dung');
-
-// --- Dữ liệu hỏng -----------------------------------------------------------
-// Bản gán trỏ tới một bộ đã bị xoá: phải thấy được là CÓ gán mà bộ mất, không
-// được im lặng coi như chưa gán — hai thứ đó cần hai cách xử lý khác nhau.
-const orphan = kpiSchemeFor(person, base({
-  personalSchemes: [{ user_id: 'u1', template_id: 't-da-xoa', effective_from: '2026-01-01' }],
-  templates: [],
-}), TODAY);
-check('bản gán trỏ tới bộ đã xoá — vẫn báo có gán', orphan.templateId, 't-da-xoa');
-check('bản gán trỏ tới bộ đã xoá — không dựng được bộ', orphan.template, null);
-
-// Gán riêng trỏ tới bộ đã TẮT vẫn thắng: database không lọc is_active ở lớp 1,
-// nên lọc thêm ở client sẽ cho ra bộ khác với bộ phiếu chấm thật sự dùng.
-check('gán riêng tới bộ đã tắt vẫn thắng mẫu vị trí',
-  kpiSchemeFor(person, base({
-    personalSchemes: [{ user_id: 'u1', template_id: 't-tat', effective_from: '2026-01-01' }],
-    templates: [tpl('t-tat', { is_active: false }), tpl('t-vitri', { position_id: 'vi-tri-1' })],
-  }), TODAY).templateId,
-  't-tat');
-
-// --- Người chưa gán đơn vị --------------------------------------------------
-check('người chưa gán đơn vị bỏ qua lớp 2 và 3',
-  kpiSchemeFor({ id: 'u1', unit_id: null, position_id: 'vi-tri-1' }, base({
-    unitSchemes: [{ unit_id: 'phong', template_id: 't-gan-phong', effective_from: '2026-01-01' }],
-    templates: [tpl('t-gan-phong'), tpl('t-vitri', { position_id: 'vi-tri-1' })],
-  }), TODAY).templateId,
-  't-vitri');
-
-// --- Thang điểm: hai mức chạm nhau ở một điểm -------------------------------
+// --- Dải quy đổi: hai dải chạm nhau ---------------------------------------
 //
-// Đúng MỘT đầu mở là liền mạch: 105 thuộc mức dưới. CẢ HAI đầu cùng mở thì 105
-// không thuộc mức nào và `scoreFromLevels` trả null. Lỗ hổng rộng đúng một
-// điểm nên nhánh "hở khoảng" của bộ kiểm không thấy — mà 105 lại chính là con
-// số hay bị gõ nhất, vì nó là ranh giới hai mức. Bảng KPI thật của công ty
-// viết "Từ 90 - 105%" ngay cạnh "Trên 105%".
-const chamNhau = (haiDauMo: boolean) => [
-  { score: 3, min: 90, max: 105, max_exclusive: haiDauMo },
-  { score: 4, min: 105, min_exclusive: true },
-];
-check('chạm nhau, một đầu mở — liền mạch, không báo gì',
-  describeLevelIssues(chamNhau(false)).length, 0);
-check('chạm nhau, một đầu mở — số ranh giới vẫn ra điểm',
-  scoreFromLevels(chamNhau(false), 105), 3);
-check('chạm nhau, CẢ HAI đầu mở — phải báo lỗ hổng',
-  describeLevelIssues(chamNhau(true)).length, 1);
-check('chạm nhau, cả hai đầu mở — số ranh giới đúng là không ra điểm',
-  scoreFromLevels(chamNhau(true), 105), null);
-check('hai mức cùng phủ ranh giới thì vẫn báo chồng lấn',
-  describeLevelIssues([{ score: 3, min: 90, max: 105 }, { score: 4, min: 105 }]).length, 1);
+// Dải là [từ, dưới): 105 thuộc dải trên. Bảng KPI thật viết "Từ 90 - 105%"
+// ngay cạnh "Trên 105%" — 105 là con số hay gõ nhất.
+const chamNhau = [{ min: 90, max: 105, score: 3 }, { min: 105, max: null, score: 4 }];
+check('chạm nhau — số ranh giới thuộc dải trên', scoreFromValue(chamNhau, 105), 4);
+check('chạm nhau — ngay dưới ranh giới thuộc dải dưới', scoreFromValue(chamNhau, 104.99), 3);
+const dai = (ranges: KpiCriterion['ranges']): KpiCriterion => ({
+  category: 'A', name: 'x', measure: null, group_code: 'QUANT', weight: 100, standard_score: 4, method: 'RANGE',
+  levels: [], ranges, value_unit: '%', penalty_pct: null, allow_over: false, source: null,
+});
+check('chạm nhau không bị báo chồng', setProblems([dai(chamNhau)]), []);
+check('hai dải cùng phủ một đoạn thì báo chồng',
+  setProblems([dai([{ min: 90, max: 106, score: 3 }, { min: 105, max: null, score: 4 }])]).length, 1);
 
 // --- Ngày nghỉ phép đếm theo lịch làm việc ----------------------------------
 //
@@ -231,232 +88,109 @@ check('chủ nhật không tính',
 check('ngày kết thúc trước ngày bắt đầu trả 0',
   countWorkingDays('2026-02-06', '2026-02-02'), 0);
 
-// --- Công thức một khoản lương, khai bằng ô chọn ----------------------------
+// --- Ô công thức dạng thẻ -----------------------------------------------------
 //
-// Hình dạng: [vế tiền] × [số liệu] × [hệ số], chia 100 nếu khai theo %.
-//
-// `parsePayFormula` phải là chiều ngược ĐÚNG của `buildPayFormula`: mở lại một
-// cơ chế đã khai mà các ô chọn hiện sai thì bấm Lưu một cái là ghi đè mất công
-// thức thật của người ta.
-const MA_KHOAN = ['LUONG_CB', 'PC_XANG'];
-/** Mã số liệu tháng đã khai ở `input_code` của khoản nào đó trong danh mục. */
-const MA_SO_LIEU = [
-  'SO_CHUYEN', 'DOANH_SO', 'OT_NGAY_THUONG', 'OT_NGAY_LE', 'OT_NGAY_SAU_22H',
-  'SO_TINH_CONG_TAC', 'THUONG', 'PHAT',
+// Công thức LƯU bằng mã (`LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS`), người
+// dùng thấy và gõ bằng TÊN. Hai chiều phải khớp tuyệt đối: mở lại một cơ chế
+// mà thẻ ghép ra chuỗi khác, bấm Lưu một cái là đổi công thức thật của người ta.
+const ENTRIES: FormulaEntry[] = [
+  { code: 'LUONG_CO_BAN', name: 'Lương cơ bản', group: 'ROW' },
+  { code: 'DAILY_RATE', name: 'Đơn giá ngày', group: 'ROW' },
+  { code: 'BASE_WORK', name: 'Lương thời gian', group: 'ROW' },
+  { code: 'TY_LE_BHXH_NLD', name: 'Tỷ lệ BHXH người lao động', group: 'PARAM', section: 'Bảo hiểm' },
+  { code: 'LUONG_CO_SO', name: 'Lương cơ sở', group: 'PARAM' },
+  { code: 'STANDARD_DAYS', name: 'Công chuẩn của tháng', group: 'SYSTEM' },
+  { code: 'WORK_DAYS', name: 'Ngày công thực tế', group: 'SYSTEM' },
+  { code: 'KPI_PCT', name: 'Điểm KPI (dạng số)', group: 'SYSTEM', hidden: true },
+  { code: 'MUC_RIENG', name: 'Mức riêng', group: 'SYSTEM', hidden: true },
+  { code: 'THUE_LUY_TIEN', name: 'Biểu thuế lũy tiến', group: 'TIER', isFunction: true },
+  { code: 'MIN', name: 'Nhỏ nhất', group: 'FUNCTION', isFunction: true },
+  { code: 'IF', name: 'Nếu', group: 'FUNCTION', isFunction: true },
+  { code: 'PHU_CAP_KHAC', name: 'Phụ cấp khác', group: 'CATALOG', componentId: 'c1' },
 ];
-const doc = (formula: string) => parsePayFormula(formula, MA_KHOAN, MA_SO_LIEU);
-const dung = (patch: Partial<GuidedPayFormula>) =>
-  buildPayFormula({ ...DEFAULT_GUIDED, ...patch });
+const tenCua = (code: string) => ENTRIES.find((entry) => entry.code === code)?.name;
+const giuNguyen = (formula: string) => serializeFormula(tokenizeFormula(formula));
 
-check('cố định: trả nguyên mức khai riêng', dung({}), 'MUC_RIENG');
-check('cố định: trả nguyên một khoản khác',
-  dung({ source: { kind: 'CODE', code: 'PC_XANG' } }), 'PC_XANG');
-check('mức riêng × số liệu tháng',
-  dung({ variable: 'SO_CHUYEN' }), 'MUC_RIENG * SO_CHUYEN');
-check('lấy vế tiền từ khoản khác',
-  dung({ source: { kind: 'CODE', code: 'LUONG_CB' }, variable: 'WORK_HOURS' }),
-  'LUONG_CB * WORK_HOURS');
-check('chia công chuẩn rồi nhân ngày công thực tế',
-  dung({ source: { kind: 'CODE', code: 'LUONG_CB' }, variable: 'PAID_DAYS', prorate: true }),
-  '(LUONG_CB / STANDARD_DAYS) * PAID_DAYS');
-check('hệ số nhân thêm',
-  dung({ variable: 'OT_NGAY_LE', coefficient: '2' }), 'MUC_RIENG * OT_NGAY_LE * 2');
-check('khai theo phần trăm',
-  dung({ variable: 'DOANH_SO', percent: true }), 'MUC_RIENG * DOANH_SO / 100');
-check('tổng nhiều khoản',
-  dung({ source: { kind: 'SUM', codes: ['LUONG_CB', 'PC_XANG'] }, coefficient: '0.01' }),
-  '(LUONG_CB + PC_XANG) * 0.01');
-check('tổng một khoản thì bỏ ngoặc',
-  dung({ source: { kind: 'SUM', codes: ['LUONG_CB'] } }), 'LUONG_CB');
-check('không có vế tiền: cả khoản là con số quản lý nhập',
-  dung({ source: { kind: 'NONE' }, variable: 'THUONG' }), 'THUONG');
-
-// Đi vòng tròn build -> parse -> build cho mọi tổ hợp của năm ô.
-for (const source of [
-  { kind: 'FIXED' as const },
-  { kind: 'CODE' as const, code: 'PC_XANG' },
-  { kind: 'SUM' as const, codes: ['LUONG_CB', 'PC_XANG'] },
-  { kind: 'NONE' as const },
+check('tách thẻ: đầu mục, phép tính, dữ liệu',
+  tokenizeFormula('LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS').map((token) => token.kind), ['ref', 'op', 'ref', 'op', 'ref']);
+for (const formula of [
+  'LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS',
+  'MIN(LUONG_CO_BAN, 46800000) * (TY_LE_BHXH_NLD + 0.015)',
+  'IF(DOANH_SO_KHOAN > 0, DOANH_SO * HH_BL02(DOANH_SO / DOANH_SO_KHOAN * 100), 0)',
+  'MAX(0, THU_NHAP_CHIU_THUE - INS_EMPLOYEE - GIAM_TRU_BAN_THAN - DEPENDENTS * GIAM_TRU_NPT)',
+  'IF(DOANH_SO_KHOAN > 0 && DOANH_SO / DOANH_SO_KHOAN > NGUONG_THUONG_VUOT, MUC_THUONG_VUOT, 0)',
+  'TONG_THU_NHAP - (MIN(ALLOW_MEAL, 730000) + ROUND(OT_WEEKDAY * (1.5 - 1) / 1.5))',
 ]) {
-  for (const variable of [null, 'PAID_DAYS', 'WORK_HOURS', 'SO_CHUYEN']) {
-    for (const coefficient of [null, '2', '0.01']) {
-      for (const percent of [false, true]) {
-        for (const prorate of [false, true]) {
-          const sinh = dung({ source, variable, coefficient, percent, prorate });
-          if (sinh === '') continue;   // không khai gì cả, không phải công thức
-          const lai = doc(sinh);
-          check(`đi vòng tròn: ${sinh}`, lai ? buildPayFormula(lai) : null, sinh);
-        }
-      }
-    }
-  }
+  check(`tách rồi ghép giữ nguyên chuỗi: ${formula}`, giuNguyen(formula), formula);
+}
+check('viết liền, chữ thường, số có gạch dưới vẫn về đúng dạng chuẩn',
+  giuNguyen('luong_co_ban/STANDARD_DAYS*work_days+1_000_000'), 'LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS + 1000000');
+check('ký tự lạ thành thẻ lỗi, không ném lỗi', tokenizeFormula('LUONG_CO_BAN # 2').map((token) => token.kind), ['ref', 'unknown', 'num']);
+check('mã đọc tới: không trùng, không gồm tên hàm',
+  referencedCodes('MIN(LUONG_CO_BAN, TRAN) * TY_LE + LUONG_CO_BAN'), ['LUONG_CO_BAN', 'TRAN', 'TY_LE']);
+check('hàm đọc tới', referencedFunctions('MIN(A, THUE_LUY_TIEN(B))'), ['MIN', 'THUE_LUY_TIEN']);
+const viTriThe = serializeWithOffsets(tokenizeFormula('A + BB'));
+check('vị trí ký tự → thẻ chứa nó', tokenIndexAt(viTriThe.offsets, 5), 2);
+check('vị trí rơi vào khoảng trắng → thẻ ngay sau', tokenIndexAt(viTriThe.offsets, 1), 1);
+
+// --- Gợi ý khi gõ: không dấu, đầu từ, chữ cái đầu ---------------------------
+check('gõ không dấu ra đúng đầu mục', searchEntries(ENTRIES, 'luong co ban')[0]?.code, 'LUONG_CO_BAN');
+check('gõ chữ cái đầu "lcb"', searchEntries(ENTRIES, 'lcb')[0]?.code, 'LUONG_CO_BAN');
+check('gõ giữa tên "co ban"', searchEntries(ENTRIES, 'co ban')[0]?.code, 'LUONG_CO_BAN');
+check('gõ một phần tên "bhxh"', searchEntries(ENTRIES, 'bhxh')[0]?.code, 'TY_LE_BHXH_NLD');
+check('gõ mã cũng ra', searchEntries(ENTRIES, 'daily_rate')[0]?.code, 'DAILY_RATE');
+check('dữ liệu ẩn không gợi ý (chỉ để hiện tên công thức cũ)', searchEntries(ENTRIES, 'muc rieng'), []);
+check('chưa gõ gì thì gợi ý mọi thứ trừ dữ liệu ẩn', searchEntries(ENTRIES, '').length, ENTRIES.length - 2);
+check('gợi ý xếp nhóm theo thứ tự cố định',
+  groupEntries(searchEntries(ENTRIES, '')).map((block) => block.group), ['ROW', 'PARAM', 'SYSTEM', 'TIER', 'FUNCTION', 'CATALOG']);
+
+// --- Đọc chữ dán vào / "Dạng chữ" --------------------------------------------
+check('số kiểu Việt: dấu chấm hàng nghìn', parseLooseNumber('1.000.000'), '1000000');
+check('số kiểu Việt: dấu phẩy thập phân', parseLooseNumber('1,5'), '1.5');
+check('có cả chấm và phẩy', parseLooseNumber('1.234,5'), '1234.5');
+check('0.015 là số thập phân, không phải 15', parseLooseNumber('0.015'), '0.015');
+check('1.5 là số thập phân', parseLooseNumber('1.5'), '1.5');
+check('10% thành 0,1', parseLooseNumber('10%'), '0.1');
+check('không phải số thì null', parseLooseNumber('abc'), null);
+const doc = (text: string) => serializeFormula(parseLooseFormula(text, ENTRIES));
+check('đọc theo tên và dấu × ÷', doc('Lương cơ bản ÷ Công chuẩn của tháng × Ngày công thực tế'),
+  'LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS');
+check('đọc "x" và ":" như nhân chia', doc('luong co ban x 2 : 26'), 'LUONG_CO_BAN * 2 / 26');
+check('đọc hàm theo tên, dấu ";" ngăn đối số', doc('Nhỏ nhất(Lương cơ bản; 46.800.000)'), 'MIN(LUONG_CO_BAN, 46800000)');
+check('đọc phần trăm và dấu phẩy thập phân', doc('10% × Lương cơ bản + 1,5'), '0.1 * LUONG_CO_BAN + 1.5');
+check('đọc được tên của dữ liệu ẩn khi gõ đúng tên', doc('Mức riêng × 2'), 'MUC_RIENG * 2');
+check('đoạn không khớp gì thành thẻ lỗi', parseLooseFormula('Lương cơ bản + abc xyz', ENTRIES).map((token) => token.kind),
+  ['ref', 'op', 'unknown']);
+for (const formula of [
+  'LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS',
+  'MIN(LUONG_CO_BAN, 46800000) * (TY_LE_BHXH_NLD + 0.015)',
+  'IF(WORK_DAYS > 20, MUC_RIENG * 1.234, 0)',
+  'THUE_LUY_TIEN(LUONG_CO_SO * 2.5)',
+]) {
+  check(`chuyển qua "Dạng chữ" rồi về không đổi công thức: ${formula}`, doc(describeFormula(formula, tenCua)), formula);
 }
 
-// Không khớp hình dạng thì phải trả null để màn hình giữ nguyên ô công thức tự
-// do — đoán bừa rồi ghi đè là mất công thức người dùng đã viết tay.
-for (const [vi_sao, la] of [
-  ['có lời gọi hàm', 'IF(WORK_DAYS > 20, MUC_RIENG, 0)'],
-  ['có hàm MIN', 'MIN(KPI_TARGET * KPI_PCT / 100, KPI_TARGET * 1.2)'],
-  ['mã khoản không có thật', 'KHONG_CO * PAID_DAYS'],
-  ['số liệu không có thật làm số nhân', 'MUC_RIENG * KHONG_CO'],
-  ['hai khoản tiền nhân nhau', 'LUONG_CB * PC_XANG'],
-  ['hai mức hệ thống nhân nhau', 'HOURLY_RATE * DAILY_RATE'],
-  ['cộng ở ngoài ngoặc', 'BASE_WORK + LUONG_CB'],
-  ['có phép trừ', 'MUC_RIENG - PHAT'],
-  ['chia cho biến khác ngày công chuẩn', 'MUC_RIENG / WORK_DAYS'],
-  ['cộng lẫn tiền với ngày', '(LUONG_CB + PAID_DAYS) * 0.01'],
-  ['ngày công làm vế tiền', 'PAID_DAYS * SO_CHUYEN'],
-  ['ngoặc lệch', '(MUC_RIENG * 2'],
-  ['rỗng', ''],
-] as const) {
-  check(`giữ ô tự do khi ${vi_sao}`, doc(la), null);
-}
-
-check('khoảng trắng thừa vẫn đọc được', doc('  MUC_RIENG  *  SO_CHUYEN  ')?.variable, 'SO_CHUYEN');
-check('thiếu ngoặc vẫn đọc được dạng chia công chuẩn',
-  doc('LUONG_CB / STANDARD_DAYS * PAID_DAYS')?.prorate, true);
-// Mức hệ thống làm vế tiền: CÓ CHỦ ĐÍCH nhận, khác bản đầu. Làm thêm giờ của
-// công ty tính trên `HOURLY_RATE`, chặn thì cả nhóm đó không khai được.
-check('mức hệ thống làm vế tiền thì nhận',
-  doc('GROSS * PAID_DAYS')?.source, { kind: 'CODE', code: 'GROSS' });
-
-// Ví dụ thật: lương cơ bản 8tr, đi 22/24,5 công.
-//
-// Hai cách hiểu lệch nhau 24,5 lần, mà khác biệt chỉ là một lựa chọn. Màn
-// hình bày cả hai con số ra cạnh nhau chính vì ca này.
-const LUONG = { LUONG_CB: 8_000_000, PAID_DAYS: 22, STANDARD_DAYS: 24.5 };
-const tinh = (prorate: boolean) => evaluateFormula(buildPayFormula({
-  source: { kind: 'CODE', code: 'LUONG_CB' },
-  variable: 'PAID_DAYS', coefficient: null, percent: false, prorate,
-}), LUONG).value;
-check('coi 8tr là đơn giá NGÀY thì ra 176 triệu', tinh(false), 176_000_000);
-check('coi 8tr là lương THÁNG thì ra đúng ~7,18 triệu',
-  Math.round(tinh(true)), 7_183_673);
-
-// Chia công chuẩn chỉ có nghĩa với biến đếm NGÀY công.
-check('ngày hưởng lương là số đếm ngày', isDayCount('PAID_DAYS'), true);
-check('giờ làm KHÔNG phải số đếm ngày', isDayCount('WORK_HOURS'), false);
-check('KPI% KHÔNG phải số đếm ngày', isDayCount('KPI_PCT'), false);
-check('số liệu tự đặt KHÔNG phải số đếm ngày', isDayCount('SO_CHUYEN'), false);
-
-// --- Tham số lương dùng được trong công thức --------------------------------
-//
-// Đặc tả phân hệ Lương mục 5: "Danh mục khoản lương + Tham số lương + Dữ liệu
-// đầu vào -> Công thức". Mục 8 viết tiền làm thêm giờ là ba vế:
-//
-//     Tiền OT = Đơn giá giờ x Hệ số OT (150/200/300%) x Số giờ OT
-//
-// Không nhận mã tham số ở ô hệ số thì cả nhóm làm thêm giờ phải gõ cứng 1.5 /
-// 2 / 3 vào từng công thức của từng người, và đổi chính sách là sửa lại tay
-// từng chỗ — đúng thứ UC-PAY-02 cấm ("tuyệt đối không hard-code").
-const THAM_SO = ['HE_SO_OT_THUONG', 'HE_SO_OT_LE', 'TY_LE_QUY_1PT'];
-/**
- * Danh sách khoản RIÊNG cho khối này, không dùng chung `DANH_MUC_THAT`.
- *
- * `DANH_MUC_THAT` khai ở dưới, nên truyền nó lên đây là đối số thành
- * `undefined` và rơi về mặc định `[]` của `parsePayFormula` — kiểm chứng vẫn
- * chạy, chỉ là chạy với danh mục rỗng. Tham số mặc định che mất lỗi thứ tự,
- * nên khai tại chỗ để không phụ thuộc vào vị trí trong file.
- */
-const KHOAN_OT = ['LUONG_DOANH_SO', 'LUONG_VAN_CHUYEN'];
-const docOT = (formula: string) =>
-  parsePayFormula(formula, KHOAN_OT, ['SO_GIO_OT'], THAM_SO);
-
-const ot = docOT('HOURLY_RATE * SO_GIO_OT * HE_SO_OT_THUONG');
-check('tiền OT theo đặc tả: đọc được', !!ot, true);
-check('tiền OT: vế tiền là đơn giá giờ', ot?.source, { kind: 'CODE', code: 'HOURLY_RATE' });
-check('tiền OT: số liệu là số giờ', ot?.variable, 'SO_GIO_OT');
-check('tiền OT: hệ số là THAM SỐ chứ không phải số gõ cứng',
-  ot?.coefficient, 'HE_SO_OT_THUONG');
-check('tiền OT: dựng lại ra đúng chuỗi cũ',
-  ot ? buildPayFormula(ot) : null, 'HOURLY_RATE * SO_GIO_OT * HE_SO_OT_THUONG');
-
-// Tham số thay con số, và tính ra đúng tiền: 50.000đ/giờ x 10 giờ x 1,5.
-check('tiền OT: ra đúng số tiền',
-  evaluateFormula('HOURLY_RATE * SO_GIO_OT * HE_SO_OT_THUONG',
-    { HOURLY_RATE: 50_000, SO_GIO_OT: 10, HE_SO_OT_THUONG: 1.5 }).value,
-  750_000);
-
-// Quỹ 1% của Huy Phong, khai bằng tham số thay vì gõ 0.01.
-//
-// Tham số đứng ở ô số liệu hay ô hệ số đều cho ra CÙNG một chuỗi, nên kiểm
-// chuỗi dựng lại chứ không kiểm nó rơi vào ô nào — ô nào không đổi tiền.
-const quy = '(BASE_WORK + LUONG_DOANH_SO) * TY_LE_QUY_1PT / 100';
-check('trích quỹ theo tham số: đọc rồi dựng lại y nguyên',
-  docOT(quy) ? buildPayFormula(docOT(quy)!) : null, quy);
-check('trích quỹ theo tham số: ra đúng 1% của 20 triệu',
-  evaluateFormula(quy,
-    { BASE_WORK: 15_000_000, LUONG_DOANH_SO: 5_000_000, TY_LE_QUY_1PT: 1 }).value,
-  200_000);
-
-// Mã lạ vẫn phải bị chặn — nới cho tham số không được nới cho mã gõ sai.
-check('mã không nằm trong tham số đã khai thì vẫn trả null',
-  docOT('HOURLY_RATE * SO_GIO_OT * HE_SO_KHONG_CO'), null);
-
-// --- Ô chọn phải diễn tả được công thức THẬT của công ty --------------------
-//
-// Kiểm chứng quan trọng nhất của màn Cơ chế lương. Bản đầu của bộ ô chọn chỉ
-// nhận `tiền × số liệu`; đem 14 công thức đang gieo trong database chạy qua thì
-// CHỈ 2 CÁI đọc được — nghĩa là trên thực tế không ai khai được bằng ô chọn,
-// tất cả rơi về ô viết tay. Thiếu đúng bốn thứ: thứ tự hai vế đảo được, hệ số
-// (`× 2` của làm thêm giờ), chia 100, và tổng nhiều khoản (phí công đoàn).
-//
-// Mỗi dòng dưới đây là công thức LẤY NGUYÊN từ migration. Hai điều phải đúng:
-//
-//   1. `parsePayFormula` đọc được — nếu không thì ô chọn vô dụng với chính
-//      danh mục của công ty.
-//   2. Đọc rồi DỰNG LẠI ra ĐÚNG CÙNG MỘT SỐ TIỀN. Chuỗi được phép khác (thứ tự
-//      hai vế đảo, `* 2 * 2` gộp thành `* 4`) nhưng tiền thì không được lệch
-//      một đồng: mở một cơ chế ra rồi bấm Lưu là ghi lại chuỗi mới, nên lệch ở
-//      đây là âm thầm trả sai lương.
-const DANH_MUC_THAT = [
-  'LUONG_VAN_CHUYEN', 'LUONG_DOANH_SO', 'LUONG_OT_THUONG', 'LUONG_OT_LE',
-  'CONG_THEM_DEM', 'PC_VAN_PHONG', 'PC_VAN_CHUYEN', 'PC_CONG_TAC_TINH',
-  'THUONG_THANG', 'PHAT_THANG', 'PHI_CONG_DOAN', 'QUY_CONG_DOAN', 'LUONG_KPI',
-];
-
-// Số lẻ, khác nhau từng biến: hai công thức khác nghĩa mà tình cờ ra cùng một
-// số thì kiểm chứng này sẽ không bắt được.
-const SO_MAU: Record<string, number> = {
-  MUC_RIENG: 37_000, SO_CHUYEN: 13, DOANH_SO: 417_000_000,
-  HOURLY_RATE: 41_322, DAILY_RATE: 330_578,
-  OT_NGAY_THUONG: 7, OT_NGAY_LE: 3, OT_NGAY_SAU_22H: 4,
-  WORK_DAYS: 21, SO_TINH_CONG_TAC: 6, PAID_DAYS: 22, STANDARD_DAYS: 24.5,
-  THUONG: 1_750_000, PHAT: 220_000,
-  BASE_WORK: 7_900_000, LUONG_VAN_CHUYEN: 481_000, LUONG_DOANH_SO: 6_255_000,
-  KPI_TARGET: 3_300_000, KPI_PCT: 93.5,
-};
-
-for (const [ten, goc] of [
-  ['Lương vận chuyển', 'SO_CHUYEN * MUC_RIENG'],
-  ['Lương doanh số', 'DOANH_SO * MUC_RIENG / 100'],
-  ['Làm thêm ngày thường', 'HOURLY_RATE * OT_NGAY_THUONG * 2'],
-  ['Làm thêm ngày lễ', 'HOURLY_RATE * OT_NGAY_LE * 2 * 2'],
-  ['Cộng thêm sau 22h', 'DAILY_RATE * OT_NGAY_SAU_22H'],
-  ['Phụ cấp vận chuyển', 'MUC_RIENG * WORK_DAYS'],
-  ['Phụ cấp công tác tỉnh', 'MUC_RIENG * SO_TINH_CONG_TAC'],
-  ['Thưởng', 'THUONG'],
-  ['Phạt', 'PHAT'],
-  ['Phí công đoàn', '(BASE_WORK + LUONG_VAN_CHUYEN + LUONG_DOANH_SO) * 0.01'],
-  ['Quỹ công đoàn (bản đầu)', 'BASE_WORK * 0.01'],
-  ['Lương KPI', 'KPI_TARGET * KPI_PCT / 100'],
-  ['Lương KPI (bản cũ)', 'MUC_RIENG * KPI_PCT / 100'],
-  ['Khoản cố định', 'MUC_RIENG'],
-] as const) {
-  const guided = parsePayFormula(goc, DANH_MUC_THAT, [
-    'SO_CHUYEN', 'DOANH_SO', 'OT_NGAY_THUONG', 'OT_NGAY_LE', 'OT_NGAY_SAU_22H',
-    'SO_TINH_CONG_TAC', 'THUONG', 'PHAT',
-  ]);
-  if (!guided) {
-    check(`ô chọn đọc được công thức thật: ${ten}`, null, goc);
-    continue;
-  }
-  const dungLai = buildPayFormula(guided);
-  // Nhân 100 rồi làm tròn: so tiền tới hàng xu, bỏ qua nhiễu dấu phẩy động.
-  check(`${ten}: dựng lại ra đúng tiền cũ (${goc} => ${dungLai})`,
-    Math.round(evaluateFormula(dungLai, SO_MAU).value * 100),
-    Math.round(evaluateFormula(goc, SO_MAU).value * 100));
-}
+// --- Kiểm tra và diễn giải ---------------------------------------------------
+const phamVi = { LUONG_CO_BAN: 12_000_000, STANDARD_DAYS: 24, WORK_DAYS: 22, TY_LE_BHXH_NLD: 0.08, MUC_RIENG: 1 };
+const loi = (formula: string) => formulaIssueOf(tokenizeFormula(formula), phamVi, {}, tenCua);
+check('công thức đúng thì không lỗi', loi('LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS'), null);
+check('thẻ lạ báo lỗi đúng thẻ', loi('LUONG_CO_BAN # 2')?.tokenIndex, 1);
+check('đầu mục chưa có trong cơ chế: nói bằng TÊN, chỉ đúng thẻ',
+  loi('LUONG_CO_BAN + PHU_CAP_KHAC'), { message: '“Phụ cấp khác” chưa có trong cơ chế này.', tokenIndex: 2 });
+check('thiếu ngoặc đóng hàm: nói bằng tên hàm', loi('MIN(LUONG_CO_BAN, 2')?.message.includes('Nhỏ nhất'), true);
+check('diễn giải bằng tên', describeFormula('LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS', tenCua),
+  'Lương cơ bản ÷ Công chuẩn của tháng × Ngày công thực tế');
+check('diễn giải hàm và đối số', describeFormula('MIN(LUONG_CO_BAN, 46800000)', tenCua), 'Nhỏ nhất(Lương cơ bản; 46.800.000)');
+check('số lẻ trong công thức giữ đủ chữ số', describeFormula('LUONG_CO_BAN * 0.015', tenCua), 'Lương cơ bản × 0,015');
+check('thay số cho cột "Cách tính"', renderFormulaWithValues('LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS', phamVi, tenCua),
+  '12.000.000 ÷ 24 × 22');
+check('tính thử', previewFormula(tokenizeFormula('LUONG_CO_BAN / STANDARD_DAYS * WORK_DAYS'), phamVi, {}), 11_000_000);
+check('tính thử công thức có thẻ lỗi thì không ra số', previewFormula(tokenizeFormula('LUONG_CO_BAN # 2'), phamVi, {}), null);
+check('dấu hiển thị dễ đọc', [OP_DISPLAY['*'], OP_DISPLAY['/'], OP_DISPLAY['-'], OP_DISPLAY['>=']], ['×', '÷', '−', '≥']);
+check('mức riêng của dòng tính được trong công thức cũ',
+  evaluateFormula('MUC_RIENG * WORK_DAYS', { MUC_RIENG: 50_000, WORK_DAYS: 22 }).value, 1_100_000);
+check('tên dành riêng gồm dữ liệu tự động, mức riêng và hàm',
+  ['WORK_DAYS', 'TONG_THU_NHAP', 'MUC_RIENG', 'MIN'].every((code) => RESERVED_FORMULA_NAMES.includes(code)), true);
 
 console.log(failures === 0 ? '\nTất cả kiểm chứng đều đạt.' : `\n${failures} kiểm chứng KHÔNG đạt.`);
 process.exit(failures === 0 ? 0 : 1);
