@@ -911,7 +911,7 @@ export type ProjectEventType = 'meeting' | 'reminder';
 
 /**
  * Lịch họp / nhắc nhở gắn với một dự án. Trưởng nhóm tạo cho dự án mình lead;
- * thành viên dự án xem được và nhận thông báo. Xem migration 20260811250000.
+ * thành viên dự án xem được và nhận thông báo. Xem migration 20261031100000.
  */
 export interface ProjectEvent {
   id: string;

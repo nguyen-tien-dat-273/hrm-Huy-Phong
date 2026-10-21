@@ -176,7 +176,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
       <div className="space-y-4">
         <AdminWorkforceReports
           defaultReport="movement"
-          allowedTabs={['movement', 'insurance']}
+          allowedTabs={['movement', 'annual', 'insurance']}
         />
       </div>
     );

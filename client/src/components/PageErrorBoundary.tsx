@@ -83,6 +83,26 @@ class Boundary extends Component<Props, State> {
   }
 }
 
+/**
+ * Lưới cho phần nằm NGOÀI layout (widget nổi, bảng lệnh…). Lỗi ở đó chỉ làm
+ * mất chính widget, không được kéo sập cả app thành màn hình trắng.
+ */
+export class IsolatedBoundary extends Component<Props, State> {
+  state: State = { error: null };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[IsolatedBoundary]', error, info.componentStack);
+  }
+
+  render() {
+    return this.state.error ? null : this.props.children;
+  }
+}
+
 export function PageErrorBoundary({ children }: Props) {
   const { pathname } = useLocation();
   // `key` đổi theo đường dẫn: chuyển trang là boundary được dựng lại, trạng

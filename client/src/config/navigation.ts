@@ -3,8 +3,8 @@ import {
   BarChart3, BookOpen, Briefcase, Calculator, ClipboardCheck,
   ClipboardList, Clock, ContactRound, FileWarning, FolderKanban, LayoutDashboard,
   LayoutGrid, Network, NotebookPen, Rocket, Settings, Table,
-  Target, UserSearch, Users, Wallet, Cpu,
-  FileBarChart, Fingerprint, WalletCards, TrendingUp, SlidersHorizontal,
+  Target, UserSearch, Users, Wallet, Cpu, Link2,
+  FileBarChart, Fingerprint, WalletCards, TrendingUp, SlidersHorizontal, MessageCircleQuestion,
 } from 'lucide-react';
 import type { AdminFunctionCode, AdminPermission } from '@/lib/permissions';
 
@@ -35,12 +35,14 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { to: '/admin/organization', label: 'Cơ cấu tổ chức', description: 'Đơn vị, vị trí và tuyến quản lý', icon: Network, permission: 'users', group: 'Nhân sự', keywords: 'co cau don vi phong ban chi nhanh vi tri tuyen quan ly' },
   { to: '/admin/users', label: 'Hồ sơ nhân sự', description: 'Thông tin cá nhân, tình trạng làm việc và giấy tờ nhân viên', icon: Users, permission: 'users', group: 'Nhân sự', keywords: 'ho so nhan su danh ba nhan vien tai khoan' },
 
+  { to: '/admin/onboarding', label: 'Khai báo hồ sơ qua link', description: 'Đường dẫn cho nhân viên mới tự khai báo, duyệt và cấp tài khoản', icon: Link2, permission: 'users', group: 'Nhân sự', keywords: 'khai bao ho so link form nhan vien moi cap tai khoan duyet' },
+
   { to: '/admin/recruitment', label: 'Tuyển dụng nội bộ', description: 'Đề xuất, BGĐ phê duyệt, tuyển chọn và thông báo kết quả', icon: UserSearch, permission: 'users', anyPermissions: ['users', 'projects'], group: 'Tuyển dụng', keywords: 'de xuat tuyen bgd phe duyet ung vien phong van ket qua noi bo' },
   { to: '/admin/workforce', label: 'Hồ sơ người lao động', description: 'Thông tin và tiến trình tuyển chọn của người lao động', icon: ContactRound, permission: 'users', group: 'Tuyển dụng', keywords: 'ung vien nguoi lao dong xuat khau', functionCode: 'admin.workforce' },
   { to: '/admin/worker-documents', label: 'Hồ sơ giấy tờ', description: 'Theo dõi hợp đồng, visa và tài liệu lao động', icon: FileWarning, permission: 'users', group: 'Tuyển dụng', keywords: 'hop dong visa tai lieu giay to', functionCode: 'admin.worker_documents' },
 
   { to: '/admin/projects', label: 'Dự án', description: 'Dự án, thành viên, mốc và tác vụ', icon: FolderKanban, permission: 'projects', group: 'Dự án', keywords: 'project tac vu' },
-  { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Dự án', keywords: 'giao viec phan cong xac nhan' },
+  { to: '/admin/assignments', label: 'Giao việc hằng ngày', description: 'Phân công và xác nhận kết quả công việc trong ngày', icon: ClipboardList, permission: 'attendance', group: 'Giao việc', keywords: 'giao viec phan cong xac nhan' },
   { to: '/admin/worklog', label: 'Nhật ký giờ', description: 'Đối chiếu thời gian thực tế theo người và tác vụ', icon: NotebookPen, permission: 'reports', group: 'Dự án', keywords: 'gio cong worklog timesheet' },
 
   { to: '/admin/timesheet', label: 'Bảng công tháng', description: 'Tổng hợp ngày công đã duyệt và xuất Excel', icon: Table, permission: 'attendance', group: 'Công', keywords: 'bang cong xuat excel timesheet', hideForTeamlead: true },
@@ -71,6 +73,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
 
   { to: '/admin/settings', label: 'Cấu hình hệ thống', description: 'Thiết lập vận hành dùng chung toàn tổ chức', icon: Settings, permission: 'settings', group: 'Hệ thống', keywords: 'cau hinh thiet lap' },
   { to: '/admin/audit', label: 'Nhật ký hệ thống', description: 'Truy vết thay đổi dữ liệu và thao tác quản trị', icon: ClipboardCheck, permission: 'settings', group: 'Hệ thống', keywords: 'audit log lich su truy vet', functionCode: 'admin.audit' },
+  { to: '/admin/chatbot-logs', label: 'Trợ lý hỏi đáp', description: 'Câu hỏi người dùng gửi trợ lý và văn bản quy chế cho trợ lý tra cứu', icon: MessageCircleQuestion, permission: 'settings', group: 'Hệ thống', keywords: 'chatbot tro ly ai hoi dap cau hoi gemini quy che noi quy kien thuc' },
 ];
 
 export interface StaffNavItem {
@@ -90,7 +93,7 @@ export const STAFF_NAV_ITEMS: StaffNavItem[] = [
   { to: '/staff/dashboard', label: 'Trang chủ', description: 'Tổng quan công việc và lịch cá nhân hôm nay', icon: LayoutDashboard, group: 'Tổng quan', keywords: 'trang chu tong quan hom nay' },
   { to: '/staff/reports', label: 'Báo cáo cá nhân', description: 'Ngày công, thời gian và kết quả của bạn', icon: FileBarChart, group: 'Tổng quan', keywords: 'bao cao ngay cong thoi gian ket qua' },
 
-  { to: '/staff/assignments', label: 'Việc được giao', description: 'Việc quản lý giao theo ngày, gửi lại khi xong', icon: ClipboardList, group: 'Công việc', keywords: 'giao viec phan cong nhiem vu' },
+  { to: '/staff/assignments', label: 'Việc được giao', description: 'Việc quản lý giao theo ngày, gửi lại khi xong', icon: ClipboardList, group: 'Giao việc', keywords: 'giao viec phan cong nhiem vu' },
   { to: '/staff/projects', label: 'Dự án của tôi', description: 'Các dự án và thành viên đang cộng tác', icon: Briefcase, group: 'Công việc', keywords: 'du an project cong tac' },
   { to: '/staff/worklog', label: 'Nhật ký giờ', description: 'Ghi nhận thời gian thực tế cho từng công việc', icon: NotebookPen, group: 'Công việc', keywords: 'ghi gio worklog timesheet' },
 
@@ -201,7 +204,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     chip: 'bg-violet-600 text-white shadow-sm shadow-violet-600/30 hover:bg-violet-700',
   },
   {
-    name: 'Dự án', icon: FolderKanban, hint: 'Dự án, giao việc và nhật ký giờ',
+    name: 'Dự án', icon: FolderKanban, hint: 'Dự án, thành viên và nhật ký giờ',
     // Cam chu khong phai tim: tim nam ngay canh indigo cua "Tong quan" nen
     // hai o dau bang luoi nhin gan nhu cung mot mau. Cam la mau am duy nhat
     // o khu vuc do, va trong luoi no o goc doi dien voi amber cua "Thoi gian"
@@ -209,6 +212,14 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     iconIdle: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400', iconOn: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30',
     tileOn: 'bg-orange-50 dark:bg-orange-500/15', textOn: 'text-orange-700 dark:text-orange-300',
     chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
+  },
+  {
+    // Lime: cam la cua "Du an", tim/indigo da co o "Tong quan" - lime la sac
+    // lanh con trong, khong dung voi cum nao canh no.
+    name: 'Giao việc', icon: ClipboardList, hint: 'Phân công và xác nhận việc hằng ngày',
+    iconIdle: 'bg-lime-50 text-lime-700 dark:bg-lime-500/15 dark:text-lime-400', iconOn: 'bg-lime-600 text-white shadow-sm shadow-lime-600/30',
+    tileOn: 'bg-lime-50 dark:bg-lime-500/15', textOn: 'text-lime-700 dark:text-lime-300',
+    chip: 'bg-lime-600 text-white shadow-sm shadow-lime-600/30 hover:bg-lime-700',
   },
   {
     name: 'Công', icon: Clock, hint: 'Chấm công, bảng công và mọi loại đơn',

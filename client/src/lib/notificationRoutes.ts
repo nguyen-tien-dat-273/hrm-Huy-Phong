@@ -55,6 +55,59 @@ export function notificationRoute(type: string): string {
     case 'kpi_returned':
     case 'kpi_approved':
       return '/staff/kpi';
+    case 'reminder_att_checkin':
+    case 'reminder_att_checkin_late':
+    case 'reminder_att_checkout':
+    case 'reminder_att_missing_checkout':
+      return '/staff/attendance';
+    case 'reminder_att_approval':
+      return '/admin/attendance';
+    case 'reminder_att_request_pending':
+    case 'reminder_leave_pending':
+      return '/admin/leave';
+    case 'reminder_leave_upcoming':
+      return '/staff/leave';
+    case 'reminder_assign_today':
+      return '/staff/assignments';
+    case 'reminder_assign_review':
+      return '/admin/assignments';
+    case 'reminder_task_due':
+      return '/staff/kanban';
+    case 'reminder_task_review':
+    case 'reminder_task_request_pending':
+    case 'reminder_worklog_review':
+    case 'reminder_project_event':
+      return '/staff/projects';
+    case 'reminder_worklog_submit':
+      return '/staff/worklog';
+    case 'reminder_kpi_open':
+    case 'reminder_kpi_self':
+    case 'reminder_kpi_manager':
+      return '/staff/kpi';
+    case 'reminder_kpi_board':
+    case 'reminder_kpi_lock':
+    case 'reminder_kpi_reopen':
+      return '/admin/performance/review';
+    case 'reminder_kpi_sales_target':
+      return '/admin/performance/sales';
+    case 'reminder_payroll_timesheet':
+      return '/admin/timesheet';
+    case 'reminder_payroll_run':
+      return '/admin/payroll';
+    case 'reminder_payroll_scheme_pending':
+      return '/admin/payroll/approvals';
+    case 'reminder_training_deadline':
+      return '/staff/training';
+    case 'reminder_lifecycle_task':
+      return '/staff/growth';
+    case 'reminder_recruit_sla':
+    case 'reminder_recruit_interview':
+    case 'reminder_recruit_offer':
+      return '/admin/recruitment';
+    case 'reminder_document_expiry':
+      return '/profile';
+    case 'reminder_worker_document_expiry':
+      return '/admin/worker-documents';
     case 'push_test':
       return '/profile';
     default:

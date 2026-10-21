@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  CheckCircle2, CircleAlert, FileSpreadsheet, History, Paperclip, Save, Send, Undo2, X,
+  CheckCircle2, CircleAlert, FileSpreadsheet, History, Printer, Paperclip, Save, Send, Undo2, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Dropdown } from '@/components/ui/Dropdown';
@@ -24,7 +24,8 @@ import {
   approveSheet, loadLogs, loadSheet, loadSheetItems, openKpiFile, returnSheet, saveReview, saveSelf, submitSheet,
   uploadKpiFile,
 } from '@/lib/kpiData';
-import { exportExcel } from '@/lib/tableExport';
+import { exportExcel, type ExportOptions } from '@/lib/tableExport';
+import { printTable } from '@/lib/tablePrint';
 import { notifyUsers } from '@/lib/assignments';
 import { supabase } from '@/lib/supabase';
 import { fetchWorkSchedules, measurePunctuality } from '@/lib/workSchedule';
@@ -269,7 +270,7 @@ export function KpiSheetView({
     setSelf(index, { filePath: path, fileName: file.name });
   };
 
-  const exportSheet = () => exportExcel({
+  const sheetExport = (): ExportOptions<KpiSheetItem> => ({
     filename: `phieu-kpi-${personName}-${sheet.period_month.slice(0, 7)}`,
     sheetName: 'Phiếu KPI',
     title: `PHIẾU ĐÁNH GIÁ KPI THÁNG ${monthLabelOf(sheet.period_month)} — ${personName.toUpperCase()}`,
@@ -289,6 +290,8 @@ export function KpiSheetView({
     ],
     rows: items,
   });
+  const exportSheet = () => exportExcel(sheetExport());
+  const printSheet = () => printTable(sheetExport());
 
   const groups = groupCriteria(items);
   const eff = mgrEditable || showMgr ? mgrPreview.eff : selfPreview.eff;
@@ -447,6 +450,9 @@ export function KpiSheetView({
           </Button>
           <Button variant="ghost" size="sm" onClick={() => void exportSheet()}>
             <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => void printSheet()}>
+            <Printer className="h-3.5 w-3.5" /> In
           </Button>
           {sheet.approved_at && (
             <span className="text-[11px] text-slate-500">Duyệt {formatDateTime(sheet.approved_at)} · {nameOf(sheet.approved_by)}</span>
