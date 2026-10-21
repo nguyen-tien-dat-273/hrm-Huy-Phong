@@ -218,6 +218,7 @@ function AppRoutes() {
       <Route path="/admin/payroll/setup" element={<RedirectKeepQuery to="/admin/payroll/setup/params" />} />
       <Route path="/admin/payroll/setup/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] })} />
       <Route path="/admin/payroll/setup/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
+      <Route path="/admin/payroll/setup/timesheet" element={admin('attendance', <AdminPayroll section="timesheet" />, { functionCode: 'admin.payroll_settings' })} />
       <Route path="/admin/payroll/setup/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
       <Route path="/admin/payroll/schemes" element={<RedirectKeepQuery to="/admin/payroll/setup/schemes" />} />
       <Route path="/admin/payroll/adjustments" element={admin('attendance', <AdminPayroll section="adjustments" />, { functionCode: 'admin.payroll_adjustments' })} />

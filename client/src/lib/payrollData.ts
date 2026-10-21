@@ -27,12 +27,13 @@ import type {
   PayrollInput,
   PayrollRun,
   PayrollSchemeRequest,
+  PayScheme,
+  PaySchemeItem,
   Payslip,
   PayslipLayout,
   PayslipLine,
   Profile,
   SchemePayloadItem,
-  UnitPayItem,
 } from '@/types';
 import type { ComputedPayslip, PayrollAdjustment } from './payroll';
 import { otherDeductionsOf } from './payrollReportTags';
@@ -61,10 +62,11 @@ export interface PayrollWorkspace {
   categories: PayComponentCategory[];
   components: PayComponent[];
   paramVersions: PayrollParamVersion[];
-  /** Khai riêng của từng người — thay / thêm dòng so với cơ chế chung. */
+  /** Cơ chế của từng người — mọi phiên bản, mỗi dòng đủ cách lấy số + công thức. */
   items: EmployeePayItem[];
-  /** Cơ chế chung của đơn vị — người trong đơn vị (và đơn vị con) thừa hưởng. */
-  unitItems: UnitPayItem[];
+  /** Bộ cơ chế mẫu — để sao chép cho người khác. */
+  schemes: PayScheme[];
+  schemeItems: PaySchemeItem[];
   /** Mẫu phiếu lương theo đơn vị — chỉ để trình bày phiếu. */
   payslipLayouts: PayslipLayout[];
   inputs: PayrollInput[];
@@ -87,6 +89,8 @@ export interface PayrollWorkspace {
   readiness: LockReadiness | null;
   /** Mã số liệu tháng do KPI tự điền khi khoá sổ — Bảng lương không cho gõ tay. */
   kpiCodes: string[];
+  /** Mã số liệu tháng do Bảng công tự điền khi khoá kỳ công — cũng không gõ tay. */
+  timesheetCodes: string[];
   timesheetLocked: boolean;
   /** Migration chưa chạy — UI hiện hướng dẫn thay vì báo lỗi khó hiểu. */
   engineReady: boolean;
@@ -108,16 +112,16 @@ export async function loadPayrollWorkspace(
 ): Promise<PayrollWorkspace> {
   const empty: PayrollWorkspace = {
     profiles: [], units: [], categories: [], components: [], paramVersions: [],
-    items: [], unitItems: [], payslipLayouts: [], inputs: [],
+    items: [], schemes: [], schemeItems: [], payslipLayouts: [], inputs: [],
     attendance: [], leaves: [], attendanceRequests: [], holidays: [], schedules: EMPTY_SCHEDULES,
     adjustments: [], schemeRequests: [], run: null, runEvents: [], payslips: [], payslipLines: [],
-    readiness: null, kpiCodes: [], timesheetLocked: false, engineReady: false, specReady: false, error: null,
+    readiness: null, kpiCodes: [], timesheetCodes: [], timesheetLocked: false, engineReady: false, specReady: false, error: null,
   };
   if (!supabase) return { ...empty, error: 'Chưa kết nối Supabase.' };
 
   const [
     versions, schedules,
-    profilesRes, unitsRes, categoriesRes, componentsRes, itemsRes, unitItemsRes, inputsRes,
+    profilesRes, unitsRes, categoriesRes, componentsRes, itemsRes, schemesRes, schemeItemsRes, inputsRes,
     attendanceRes, leavesRes, attendanceRequestsRes, runRes, periodRes, requestsRes, holidaysRes, adjustmentsRes,
     layoutsRes,
   ] = await Promise.all([
@@ -130,9 +134,9 @@ export async function loadPayrollWorkspace(
     supabase.from('payroll_components').select('*').order('sort_order'),
     // Nạp mọi phiên bản (cả tháng sau): cơ chế sửa được từ một tháng muộn hơn tháng đang xem.
     supabase.from('employee_pay_items').select('*'),
-    // Chọn cột tường minh: cột `mode` chưa có (migration chưa chạy) thì báo lỗi thay vì đọc sai.
-    supabase.from('unit_pay_items')
-      .select('id, unit_id, component_id, mode, amount, formula, sort_order, effective_from, effective_to, note, created_by, created_at, updated_at'),
+    // Bộ cơ chế mẫu: bảng chưa có (migration chưa chạy) thì báo lỗi thay vì đọc sai.
+    supabase.from('payroll_schemes').select('id, name, created_at, updated_at').order('name'),
+    supabase.from('payroll_scheme_items').select('id, scheme_id, component_id, mode, amount, formula, sort_order'),
     supabase.from('payroll_inputs').select('*').eq('month_start', monthStartStr),
     supabase
       .from('attendance')
@@ -171,7 +175,7 @@ export async function loadPayrollWorkspace(
   // Bảng của bộ máy lương chưa tồn tại nghĩa là migration chưa chạy. Đây là
   // tình huống cấu hình, không phải lỗi dữ liệu — báo riêng để UI hướng dẫn.
   const engineReady = !componentsRes.error;
-  const specReady = versions.supported && !unitItemsRes.error && !requestsRes.error && !categoriesRes.error;
+  const specReady = versions.supported && !schemesRes.error && !schemeItemsRes.error && !requestsRes.error && !categoriesRes.error;
 
   const blockingError =
     profilesRes.error ?? attendanceRes.error ?? leavesRes.error ?? null;
@@ -199,11 +203,15 @@ export async function loadPayrollWorkspace(
     }
   }
 
-  const [readiness, kpiLinks] = await Promise.all([
+  const [readiness, kpiLinks, timesheetLinks] = await Promise.all([
     fetchLockReadiness(monthStartStr),
     // Bảng có thể chưa có (migration KPI chưa chạy) — khi đó chỉ KPI_PCT là mã tự điền.
     supabase.from('kpi_payroll_links').select('component_code'),
+    supabase.from('timesheet_payroll_links').select('component_code'),
   ]);
+  const timesheetCodes = ((timesheetLinks.data || []) as Array<{ component_code: string | null }>)
+    .map((link) => link.component_code?.toUpperCase())
+    .filter((code): code is string => !!code);
   const kpiCodes = ['KPI_PCT', ...((kpiLinks.data || []) as Array<{ component_code: string | null }>)
     .map((link) => link.component_code?.toUpperCase())
     .filter((code): code is string => !!code)];
@@ -215,7 +223,8 @@ export async function loadPayrollWorkspace(
     components: (componentsRes.data || []) as PayComponent[],
     paramVersions: versions.versions,
     items: (itemsRes.data || []) as EmployeePayItem[],
-    unitItems: unitItemsRes.error ? [] : (unitItemsRes.data || []) as UnitPayItem[],
+    schemes: schemesRes.error ? [] : (schemesRes.data || []) as PayScheme[],
+    schemeItems: schemeItemsRes.error ? [] : (schemeItemsRes.data || []) as PaySchemeItem[],
     payslipLayouts: layoutsRes.error ? [] : (layoutsRes.data || []) as PayslipLayout[],
     inputs: (inputsRes.data || []) as PayrollInput[],
     attendance: (attendanceRes.data || []) as Attendance[],
@@ -234,6 +243,7 @@ export async function loadPayrollWorkspace(
     payslipLines,
     readiness,
     kpiCodes,
+    timesheetCodes,
     schedules,
     timesheetLocked: periodRes.data?.status === 'LOCKED',
     engineReady,
@@ -375,13 +385,34 @@ export async function seedStandardCatalog(): Promise<{ inserted: number; error: 
 }
 
 // ---------------------------------------------------------------------------
-// Cơ chế lương: cơ chế chung của đơn vị + khai riêng của người
+// Cơ chế lương: cơ chế của từng người + bộ cơ chế mẫu để sao chép
 // ---------------------------------------------------------------------------
 
 /**
- * Lưu và áp dụng ngay cơ chế chung của một đơn vị, hoặc khai riêng của một
- * người, hiệu lực từ một tháng. `items` là TOÀN BỘ dòng của đối tượng từ tháng
- * đó; các tháng trước giữ nguyên.
+ * Lưu bộ cơ chế mẫu (id rỗng là tạo mới). `items` là TOÀN BỘ dòng của bộ mẫu.
+ * Bộ mẫu không có tháng hiệu lực — chỉ là nơi để sao chép dòng sang người.
+ */
+export async function saveSchemeTemplate(
+  id: string | null,
+  name: string,
+  items: SchemePayloadItem[],
+): Promise<{ id: string | null; error: string | null }> {
+  if (!supabase) return { id: null, error: 'Chưa kết nối Supabase.' };
+  const { data, error } = await rpcError(supabase.rpc('save_payroll_scheme_template', {
+    p_id: id, p_name: name, p_items: items,
+  }));
+  return { id: (data as string | null) ?? null, error };
+}
+
+export async function deleteSchemeTemplate(id: string): Promise<string | null> {
+  if (!supabase) return 'Chưa kết nối Supabase.';
+  const { error } = await rpcError(supabase.rpc('delete_payroll_scheme_template', { p_id: id }));
+  return error;
+}
+
+/**
+ * Lưu và áp dụng ngay cơ chế của một người, hiệu lực từ một tháng. `items` là
+ * TOÀN BỘ dòng của người từ tháng đó; các tháng trước giữ nguyên.
  */
 export async function saveScheme(args: {
   targetType: 'USER' | 'UNIT';

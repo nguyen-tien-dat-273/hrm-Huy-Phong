@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'r
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
-  BookOpenCheck, Calculator, Check, CheckCircle2, CircleAlert, CircleCheck, FileSpreadsheet, History,
+  BookOpenCheck, Calculator, Check, CheckCircle2, CircleAlert, CircleCheck, Columns3, FileSpreadsheet, History,
   Lock, Pencil, Plus, Save, Search, Settings, SlidersHorizontal, TriangleAlert, Unlock, X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -33,7 +33,6 @@ import { PersonAdjustmentModal } from '@/components/payroll/PersonAdjustmentModa
 import { RowAdjustmentConfirmModal, type RowChangedItem } from '@/components/payroll/RowAdjustmentConfirmModal';
 import { PersonSchemeForm } from '@/components/payroll/PersonSchemeForm';
 import { CellFormulaModal } from '@/components/payroll/CellFormulaModal';
-import { AddPayrollColumnModal } from '@/components/payroll/AddPayrollColumnModal';
 import { PayrollFilterModal, type ItemColumn } from '@/components/payroll/PayrollFilterModal';
 import { PayrollOperationsModal } from '@/components/payroll/PayrollOperationsModal';
 import {
@@ -150,9 +149,11 @@ export function PayrollRegister({
   const canAdjust = hasAdminFunction(profile, 'admin.payroll_adjustments');
   const canEnter = hasAdminFunction(profile, 'admin.payroll_inputs');
   const canOpenSchemes = hasAdminFunction(profile, 'admin.payroll_schemes') || hasAdminFunction(profile, 'admin.payroll_settings');
+  const canApprove = hasAdminFunction(profile, 'admin.payroll_approve');
 
   const [unitFilter, setUnitFilter] = useState('');
   const [personFilter, setPersonFilter] = useState('');
+  const [columnSearch, setColumnSearch] = useState('');
   const [hideIntermediate, setHideIntermediate] = useState(false);
   const [filterModalOpen, setFilterModalOpen] = useState(false);
   const [operationsOpen, setOperationsOpen] = useState(false);
@@ -233,7 +234,6 @@ export function PayrollRegister({
     items: RowChangedItem[];
   } | null>(null);
   const [inspectCell, setInspectCell] = useState<{ row: PayrollRow; column: ItemColumn } | null>(null);
-  const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [accounts, setAccounts] = useState<EmployeeBankAccount[]>([]);
 
   const reloadAccounts = () => { void fetchBankAccounts().then(setAccounts); };
@@ -270,7 +270,10 @@ export function PayrollRegister({
   }, [closed, data, monthStart, monthStartStr, monthEndStr, params]);
 
   /** Đầu mục "thay đổi theo tháng" của từng người — chỉ những ô này gõ được. Số KPI do hệ thống tự điền khi khoá sổ KPI. */
-  const kpiCodes = useMemo(() => new Set(data.kpiCodes.map((code) => code.toUpperCase())), [data.kpiCodes]);
+  const kpiCodes = useMemo(
+    () => new Set([...data.kpiCodes, ...data.timesheetCodes].map((code) => code.toUpperCase())),
+    [data.kpiCodes, data.timesheetCodes],
+  );
   const neededByPerson = useMemo(() => {
     const map = new Map<string, Set<string>>();
     if (closed) return map;
@@ -390,12 +393,22 @@ export function PayrollRegister({
     return [...seen.values()];
   }, [data.components, rows]);
 
+  const categoryNameMap = useMemo(() => new Map<string, string>(data.categories.map((c) => [c.code, c.name])), [data.categories]);
+
   /** Mỗi đầu mục một cột, theo thứ tự xuất hiện trên phiếu. */
   const columns = useMemo<ItemColumn[]>(() => {
+    const categoryByCode = new Map(data.components.map((c) => [c.code, c.category_code]));
     const seen = new Map<string, ItemColumn>();
     for (const row of sorted) {
       for (const line of row.computed.lines) {
-        if (!seen.has(line.code)) seen.set(line.code, { code: line.code, name: line.name, kind: line.kind });
+        if (!seen.has(line.code)) {
+          seen.set(line.code, {
+            code: line.code,
+            name: line.name,
+            kind: line.kind,
+            categoryCode: categoryByCode.get(line.code) ?? null,
+          });
+        }
       }
     }
     let all = [...seen.values()];
@@ -408,8 +421,15 @@ export function PayrollRegister({
     if (hiddenColumnCodes.size > 0) {
       all = all.filter((column) => !hiddenColumnCodes.has(column.code));
     }
+    if (columnSearch.trim()) {
+      const q = normalizeText(columnSearch.trim());
+      all = all.filter((column) => {
+        const cat = column.categoryCode ? (categoryNameMap.get(column.categoryCode) ?? '') : '';
+        return normalizeText(`${column.name} ${column.code} ${cat}`).includes(q);
+      });
+    }
     return all;
-  }, [hiddenColumnCodes, hideIntermediate, shownInputCodes, sorted]);
+  }, [categoryNameMap, columnSearch, data.components, hiddenColumnCodes, hideIntermediate, shownInputCodes, sorted]);
 
   const activeFilterCount = (unitFilter ? 1 : 0) + (hideIntermediate ? 1 : 0) + (hiddenColumnCodes.size > 0 ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
@@ -467,7 +487,16 @@ export function PayrollRegister({
     { ok: !!readiness?.timesheetLocked, blocking: true, label: 'Kỳ công tháng đã khoá', hint: 'Khoá ở Bảng công trước.' },
     { ok: (readiness?.openKpiReviews ?? 0) === 0, blocking: true, label: 'Kỳ KPI tháng đã khoá sổ', hint: 'Khoá sổ ở Phiếu KPI tháng — kết quả KPI tự điền vào lương.' },
     { ok: missingInputCount === 0, blocking: true, label: 'Đã nhập đủ số liệu theo tháng', hint: `Còn ${missingInputCount} ô số liệu tháng chưa nhập.` },
-    { ok: runStatus === 'CALCULATED' && staleCount === 0, blocking: true, label: 'Bộ phiếu đã tính khớp số liệu hiện tại', hint: runStatus === 'CALCULATED' ? `${staleCount} phiếu đã đổi — bấm Tính lại.` : 'Chưa tính lương.' },
+    {
+      ok: closed || (runStatus === 'CALCULATED' && staleCount === 0),
+      blocking: true,
+      label: 'Bộ phiếu đã tính khớp số liệu hiện tại',
+      hint: closed
+        ? 'Đã tính và chốt số liệu khi khoá kỳ.'
+        : runStatus === 'CALCULATED'
+        ? `${staleCount} phiếu đã đổi — bấm Tính lại.`
+        : 'Chưa tính lương.',
+    },
     { ok: missingSchemeCount === 0, blocking: false, label: 'Mọi người có công đều có cơ chế lương', hint: `${missingSchemeCount} người có công nhưng chưa có cơ chế.` },
     { ok: pendingSchemes === 0, blocking: false, label: 'Không còn đề xuất cơ chế chờ duyệt cho tháng này', hint: `${pendingSchemes} đề xuất chờ duyệt — duyệt xong phải tính lại.` },
     { ok: allWarnings.length === 0, blocking: false, label: 'Không có cảnh báo tính toán', hint: `${allWarnings.length} cảnh báo — bấm nút Cảnh báo để xem từng dòng.` },
@@ -776,23 +805,24 @@ export function PayrollRegister({
       {selectedUserId && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-indigo-200 bg-indigo-50 px-4 py-3">
           <p className="text-sm font-bold text-indigo-900">Đang lọc theo một nhân sự được chọn từ Danh bạ.</p>
-          <Button variant="outline" size="sm" onClick={() => setSearchParams({})}>Xem toàn bộ bảng lương</Button>
+          <Button variant="outline" size="xs" square onClick={() => setSearchParams({})} className="!min-h-0 !h-8 px-2.5 text-xs">Xem toàn bộ bảng lương</Button>
         </div>
       )}
 
       <FullscreenPanel full={full} onExit={exitFull}>
       <TableShell full={full}>
-          <div className="flex flex-wrap items-center gap-2.5 border-b border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900 px-4 py-3 no-print">
-            {full && <p className="w-full text-sm font-bold text-slate-800 dark:text-slate-200 sm:w-auto">Bảng lương tháng {monthLabel}</p>}
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900 px-4 py-2.5 no-print">
+            {full && <p className="w-full text-xs font-bold text-slate-800 dark:text-slate-200 sm:w-auto">Bảng lương tháng {monthLabel}</p>}
 
             {/* CTA Trạng thái kỳ lương — chỉ hiện trạng thái, bấm vào để chỉnh sửa / vận hành */}
             <Button
-              size="sm"
+              size="xs"
+              square
               variant="outline"
               onClick={() => setOperationsOpen(true)}
               title={`Trạng thái: ${RUN_STATUS_LABEL[runStatus]} — Bấm để chỉnh sửa / vận hành kỳ lương`}
               aria-label={`Trạng thái: ${RUN_STATUS_LABEL[runStatus]} — Bấm để chỉnh sửa`}
-              className={`h-10 gap-2 font-bold px-3.5 shadow-xs border transition ${
+              className={`!min-h-0 !h-8 gap-1.5 font-bold px-2.5 text-xs shadow-xs border transition ${
                 runStatus === 'LOCKED'
                   ? 'border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-200'
                   : runStatus === 'APPROVED' || runStatus === 'PAID'
@@ -803,31 +833,63 @@ export function PayrollRegister({
               }`}
             >
               {runStatus === 'LOCKED' ? (
-                <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <Lock className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
               ) : runStatus === 'APPROVED' || runStatus === 'PAID' ? (
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
               ) : runStatus === 'CALCULATED' ? (
-                <Calculator className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <Calculator className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               ) : (
-                <Unlock className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                <Unlock className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
               )}
               <span>{RUN_STATUS_LABEL[runStatus]}</span>
             </Button>
 
             {/* Tìm kiếm theo tên nhân sự */}
-            <div className="relative w-full sm:w-56">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <div className="relative w-full sm:w-44">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
               <input
                 value={personFilter}
                 onChange={(event) => { setPersonFilter(event.target.value); setPage(0); }}
-                placeholder="Lọc theo tên nhân viên…"
+                placeholder="Lọc nhân viên…"
                 aria-label="Lọc theo tên nhân viên"
-                className="h-10 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                className="!min-h-0 h-8 w-full !rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-7 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
               />
+              {personFilter && (
+                <button
+                  type="button"
+                  onClick={() => { setPersonFilter(''); setPage(0); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  title="Xoá tìm nhân viên"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Tìm kiếm đầu mục cho bảng lương */}
+            <div className="relative w-full sm:w-44">
+              <Columns3 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                value={columnSearch}
+                onChange={(event) => setColumnSearch(event.target.value)}
+                placeholder="Tìm đầu mục lương…"
+                aria-label="Tìm đầu mục cho bảng lương"
+                className="!min-h-0 h-8 w-full !rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-7 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+              />
+              {columnSearch && (
+                <button
+                  type="button"
+                  onClick={() => setColumnSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  title="Xoá tìm đầu mục"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
             {unitFilter && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
+              <span className="inline-flex items-center gap-1.5 rounded-none border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
                 Phòng ban: {unitNames.get(unitFilter) ?? 'Đang chọn'}
                 <button
                   type="button"
@@ -840,7 +902,7 @@ export function PayrollRegister({
               </span>
             )}
             {hideIntermediate && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+              <span className="inline-flex items-center gap-1.5 rounded-none border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
                 Đã ẩn trung gian
                 <button
                   type="button"
@@ -853,7 +915,7 @@ export function PayrollRegister({
               </span>
             )}
             {hiddenColumnCodes.size > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1.5 rounded-none border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                 Ẩn {hiddenColumnCodes.size} đầu mục
                 <button
                   type="button"
@@ -865,44 +927,60 @@ export function PayrollRegister({
                 </button>
               </span>
             )}
+            {columnSearch.trim() && (
+              <span className="inline-flex items-center gap-1.5 rounded-none border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
+                Đầu mục: {columnSearch.trim()} ({columns.length})
+                <button
+                  type="button"
+                  onClick={() => setColumnSearch('')}
+                  className="hover:text-indigo-900 dark:hover:text-indigo-100"
+                  title="Bỏ tìm kiếm đầu mục"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
             {canEnter && !closed && inputOptions.length > 0 && (
               <Button
-                size="sm"
+                size="xs"
+                square
                 variant={inputMode ? 'primary' : 'outline'}
                 aria-pressed={inputMode}
                 onClick={() => { setInputMode((value) => !value); setPage(0); }}
-                className="h-10 border-slate-300 dark:border-slate-700"
+                className="!min-h-0 !h-8 px-2.5 text-xs border-slate-300 dark:border-slate-700 gap-1.5"
               >
-                <SlidersHorizontal className="h-4 w-4" /> Số liệu theo tháng
+                <SlidersHorizontal className="h-3.5 w-3.5" /> Số liệu theo tháng
               </Button>
             )}
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-1.5">
               {onMonthChange && (
-                <MonthNav value={monthStart} onChange={onMonthChange} compact />
+                <MonthNav value={monthStart} onChange={onMonthChange} compact square />
               )}
-              <ExportButtons options={exportOptions} disabled={sorted.length === 0} />
+              <ExportButtons options={exportOptions} disabled={sorted.length === 0} square />
               <Button
                 variant="outline"
-                size="sm"
+                size="xs"
+                square
                 onClick={() => void handleExportJournal()}
                 disabled={!!busy || !approved || filtered.length === 0}
                 title={approved ? undefined : 'Duyệt chi xong mới xuất bút toán kết chuyển'}
-                className="h-10 border-slate-300 dark:border-slate-700 gap-1.5 hidden md:inline-flex"
+                className="!min-h-0 !h-8 px-2.5 text-xs border-slate-300 dark:border-slate-700 gap-1.5 hidden md:inline-flex"
               >
                 <BookOpenCheck className="h-3.5 w-3.5" /> Bút toán
               </Button>
-              <FullscreenToggle full={full} onToggle={() => setFull((value) => !value)} />
+              <FullscreenToggle full={full} onToggle={() => setFull((value) => !value)} square />
               <Button
-                size="sm"
+                size="xs"
+                square
                 variant={hasActiveFilters ? 'primary' : 'outline'}
                 onClick={() => setFilterModalOpen(true)}
                 title="Tùy chỉnh cột & bộ lọc"
                 aria-label="Tùy chỉnh cột và bộ lọc"
-                className="h-10 w-10 p-0 relative shrink-0 border-slate-300 dark:border-slate-700"
+                className="!min-h-0 !h-8 !w-8 p-0 relative shrink-0 border-slate-300 dark:border-slate-700"
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="h-3.5 w-3.5" />
                 {activeFilterCount > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-full bg-indigo-600 text-white dark:bg-indigo-400 dark:text-slate-900 text-[10px] font-black h-4 min-w-[16px] px-1 shadow-xs">
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-none bg-indigo-600 text-white dark:bg-indigo-400 dark:text-slate-900 text-[9px] font-black h-3.5 min-w-[14px] px-0.5 shadow-xs">
                     {activeFilterCount}
                   </span>
                 )}
@@ -921,44 +999,30 @@ export function PayrollRegister({
               <table className="w-full whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
                 <thead>
                   <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black text-[#5c0f16] dark:text-[#fde8ea]">
-                    <th className="sticky left-0 top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[46px] min-w-[46px] max-w-[46px] bg-[#fdf2f4] dark:bg-[#201114] px-1 py-1.5 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                    <th className="sticky left-0 top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[46px] min-w-[46px] max-w-[46px] bg-[#fdf2f4] dark:bg-[#201114] px-1 py-1 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
                       STT
                     </th>
-                    <th className="sticky left-[46px] top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[84px] min-w-[84px] max-w-[84px] bg-[#fdf2f4] dark:bg-[#201114] px-1.5 py-1.5 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                    <th className="sticky left-[46px] top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[84px] min-w-[84px] max-w-[84px] bg-[#fdf2f4] dark:bg-[#201114] px-1.5 py-1 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
                       Mã NV
                     </th>
-                    <th className="sticky left-[130px] top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[150px] min-w-[150px] max-w-[150px] bg-[#fdf2f4] dark:bg-[#201114] px-2.5 py-1.5 text-left border-r-2 border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                    <th className="sticky left-[130px] top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[150px] min-w-[150px] max-w-[150px] bg-[#fdf2f4] dark:bg-[#201114] px-2.5 py-1 text-left border-r-2 border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
                       Nhân sự
                     </th>
-                    <th className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[50px] px-1.5 py-1.5 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
+                    <th className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[50px] px-1.5 py-1 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
                       <div className="min-w-[50px] text-center line-clamp-1 leading-snug">Công</div>
                     </th>
                     {columns.map((column) => (
-                      <th key={column.code} className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[76px] max-w-[110px] px-1.5 py-1.5 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black text-[#5c0f16] dark:text-[#fde8ea]">
-                        <div className="w-full min-w-[76px] max-w-[110px] mx-auto flex flex-col items-center justify-center gap-0.5">
-                          <span className="font-black text-[#5c0f16] dark:text-[#fde8ea] text-xs line-clamp-2 text-center leading-tight whitespace-normal break-words" title={column.name}>
+                      <th key={column.code} className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[76px] max-w-[110px] px-1.5 py-1 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black text-[#5c0f16] dark:text-[#fde8ea]">
+                        <div className="w-full min-w-[76px] max-w-[110px] mx-auto flex items-center justify-center">
+                          <span
+                            className="font-black text-[#5c0f16] dark:text-[#fde8ea] text-xs line-clamp-2 text-center leading-tight whitespace-normal break-words"
+                            title={column.kind === 'INFO' ? `${column.name} (Dòng trung gian)` : column.name}
+                          >
                             {column.name}
                           </span>
-                          {column.kind === 'INFO' && (
-                            <span className="text-[9px] font-black text-rose-800 dark:text-rose-300 bg-rose-100 dark:bg-rose-950/80 border border-rose-300 dark:border-rose-700 px-1 py-0 rounded shadow-xs shrink-0" title="Dòng trung gian">
-                              TG
-                            </span>
-                          )}
                         </div>
                       </th>
                     ))}
-                    {canManage && !closed && (
-                      <th className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] px-1.5 py-1.5 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center no-print">
-                        <button
-                          type="button"
-                          onClick={() => setAddColumnOpen(true)}
-                          title="Thêm danh mục / cột mới"
-                          className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 dark:text-rose-400 hover:text-rose-900 dark:hover:text-rose-300 hover:bg-rose-100/80 dark:hover:bg-rose-950/60 border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded shadow-xs transition"
-                        >
-                          <Plus className="h-3 w-3" /> Cột
-                        </button>
-                      </th>
-                    )}
                     <th className="sticky top-0 z-20 bg-[#f9e5e7] dark:bg-[#2c1519] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[80px] max-w-[100px] px-1.5 py-1.5 border-l-2 border-[#bf1f2b] dark:border-[#e66a76] text-center font-black uppercase tracking-wider text-[#6f151c] dark:text-[#fcd6da]">
                       <div className="w-full min-w-[80px] text-center line-clamp-2 leading-tight">
                         Tổng cộng
@@ -1188,9 +1252,6 @@ export function PayrollRegister({
                             </td>
                           );
                         })}
-                        {canManage && !closed && (
-                          <td className="px-1 py-1 border-l border-slate-300 dark:border-slate-700 text-center no-print bg-slate-50/40 dark:bg-slate-800/20" />
-                        )}
                         {(() => {
                           let gross = row.computed.gross;
                           let deductions = row.computed.totalDeductions;
@@ -1306,9 +1367,6 @@ export function PayrollRegister({
                         {column.kind === 'INFO' ? '' : formatFormulaNumber(sum((row) => amountOf(row, column.code) ?? 0))}
                       </td>
                     ))}
-                    {canManage && !closed && (
-                      <td className="bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] border-l border-slate-300 dark:border-slate-700 no-print" />
-                    )}
                     <td className="bg-slate-200/80 dark:bg-slate-800 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] px-1.5 py-1.5 border-l-2 border-slate-400 dark:border-slate-600 text-center font-black text-slate-900 dark:text-slate-100 text-xs">
                       {formatFormulaNumber(totals.gross)}
                     </td>
@@ -1329,8 +1387,8 @@ export function PayrollRegister({
             <div className="flex items-center justify-between border-t border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900 px-4 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 no-print">
               <span>Trang {currentPage + 1}/{pageCount}</span>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Trước</Button>
-                <Button size="sm" variant="outline" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)}>Sau</Button>
+                <Button size="xs" square variant="outline" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="!min-h-0 !h-8 px-2.5 text-xs">Trước</Button>
+                <Button size="xs" square variant="outline" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)} className="!min-h-0 !h-8 px-2.5 text-xs">Sau</Button>
               </div>
             </div>
           )}
@@ -1353,9 +1411,9 @@ export function PayrollRegister({
               <Save className="h-4 w-4" /> {dirtyCount} ô số liệu tháng chưa lưu
             </p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setEdits({})} disabled={savingInputs}>Huỷ thay đổi</Button>
-              <Button onClick={() => void handleSaveInputs()} disabled={savingInputs}>
-                <Save className="h-4 w-4" /> {savingInputs ? 'Đang lưu…' : `Lưu ${dirtyCount} thay đổi`}
+              <Button size="xs" square variant="secondary" onClick={() => setEdits({})} disabled={savingInputs} className="!min-h-0 !h-8 px-3 text-xs">Huỷ thay đổi</Button>
+              <Button size="xs" square onClick={() => void handleSaveInputs()} disabled={savingInputs} className="!min-h-0 !h-8 px-3 text-xs">
+                <Save className="h-3.5 w-3.5" /> {savingInputs ? 'Đang lưu…' : `Lưu ${dirtyCount} thay đổi`}
               </Button>
             </div>
           </div>
@@ -1648,18 +1706,6 @@ export function PayrollRegister({
         onChanged={onChanged}
       />
 
-      <AddPayrollColumnModal
-        open={addColumnOpen}
-        onClose={() => setAddColumnOpen(false)}
-        data={data}
-        params={params}
-        monthStartStr={monthStartStr}
-        monthEndStr={monthEndStr}
-        monthLabel={monthLabel}
-        currentUnitId={unitFilter || undefined}
-        onChanged={onChanged}
-      />
-
       <PayrollFilterModal
         open={filterModalOpen}
         onClose={() => setFilterModalOpen(false)}
@@ -1688,9 +1734,11 @@ export function PayrollRegister({
         monthLabel={monthLabel}
         monthStartStr={monthStartStr}
         canManage={canManage}
+        canApprove={canApprove}
         closed={closed}
         approved={approved}
         busy={busy}
+        onChanged={onChanged}
         liveRowsCount={liveRows.length}
         missingInputCount={missingInputCount}
         canLock={canLock}

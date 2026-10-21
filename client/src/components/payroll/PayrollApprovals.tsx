@@ -25,7 +25,7 @@ import { paramsOf, versionForMonth } from '@/lib/payrollSettings';
 import { describeFormula, formatFormulaNumber } from '@/lib/formulaTokens';
 import { nameResolver } from '@/lib/payrollRun';
 import {
-  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, diffSchemeItems, personalItemsAt, unitItemsAt,
+  SCHEME_STATUS_LABEL, SCHEME_STATUS_TONE, diffSchemeItems, personalItemsAt,
 } from '@/lib/payrollScheme';
 import { stripVietnamese } from '@/lib/tableExport';
 import {
@@ -391,7 +391,7 @@ function SchemeChanges({ request, data, componentById }: {
   const nameOf = nameResolver(data.components, null);
   const before = request.target_type === 'USER' && request.user_id
     ? personalItemsAt(data.items, request.user_id, month, monthEnd)
-    : request.unit_id ? unitItemsAt(data.unitItems, request.unit_id, month, monthEnd) : [];
+    : [];
   const changes = diffSchemeItems(before, request.payload.items).filter((change) => change.kind !== 'SAME');
 
   // Kiểm tra mức sàn của bộ tham số (nếu có khai), để BGĐ thấy trước khi ký.

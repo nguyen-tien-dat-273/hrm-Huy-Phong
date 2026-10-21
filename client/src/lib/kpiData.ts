@@ -306,9 +306,9 @@ export async function openKpiFile(path: string): Promise<string | null> {
   return null;
 }
 
-/** Cách tính của các đầu mục trong cơ chế chung — để báo đầu mục nhận số KPI chưa để "Thay đổi theo tháng". */
+/** Cách tính của các đầu mục trong cơ chế của nhân sự — để báo đầu mục nhận số KPI chưa để "Thay đổi theo tháng". */
 export async function loadComponentModes(): Promise<Map<string, Set<string>>> {
-  const { data } = await supabase.from('unit_pay_items').select('component_id, mode');
+  const { data } = await supabase.from('employee_pay_items').select('component_id, mode').is('effective_to', null);
   const map = new Map<string, Set<string>>();
   for (const row of (data || []) as Array<{ component_id: string; mode: string }>) {
     map.set(row.component_id, (map.get(row.component_id) ?? new Set()).add(row.mode));

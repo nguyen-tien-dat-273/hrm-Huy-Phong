@@ -5,8 +5,8 @@
 // đúng thứ tự cần làm:
 //
 //   ① Thông số chung       bộ tham số hiệu lực của tháng (công chuẩn, BH, thuế…)
-//   ② Cơ chế chung          dòng lương từng đơn vị cùng theo
-//   ③ Mức riêng từng người  bậc lương, mức trách nhiệm… (bảng dán từ Excel)
+//   ② Bộ cơ chế mẫu         danh sách dòng đặt tên sẵn để copy cho nhiều người
+//   ③ Cơ chế từng người     mỗi người một danh sách dòng riêng
 //   ④ Chạy thử              xem phiếu của một người trước khi tính lương
 //
 // Mỗi bước tự kiểm tra trạng thái từ dữ liệu đã nạp nên kế toán biết ngay còn
@@ -28,7 +28,8 @@ export const SETUP_BASE = '/admin/payroll/setup';
 
 const STEP_LINKS = [
   { to: `${SETUP_BASE}/params`, label: '① Thông số chung', end: false },
-  { to: `${SETUP_BASE}/schemes`, label: '② Cơ chế & mức riêng', end: false },
+  { to: `${SETUP_BASE}/schemes`, label: '② Cơ chế lương', end: false },
+  { to: `${SETUP_BASE}/timesheet`, label: 'Liên kết Bảng công', end: false },
   { to: `${SETUP_BASE}/components`, label: 'Danh mục đầu mục', end: false },
 ] as const;
 
@@ -94,18 +95,20 @@ export function PayrollSetupOverview({ data, monthStart, monthEnd, onDryRun }: P
       to: `${SETUP_BASE}/params?month=${month}`,
     },
     {
-      title: 'Cơ chế chung của đơn vị',
-      detail: 'Các dòng trên phiếu lương mà cả đơn vị cùng theo; đơn vị con tự thừa hưởng.',
-      ok: noScheme.length === 0,
-      status: noScheme.length === 0 ? 'Mọi người đều đã có cơ chế' : `${noScheme.length} người thuộc đơn vị chưa có cơ chế — phiếu sẽ ra 0đ`,
-      to: `${SETUP_BASE}/schemes?month=${month}`,
+      title: 'Bộ cơ chế mẫu',
+      detail: 'Danh sách dòng đặt tên sẵn, copy cho từng người rồi chỉnh riêng.',
+      ok: data.schemes.length > 0,
+      status: data.schemes.length > 0 ? `${data.schemes.length} bộ mẫu` : 'Chưa có bộ mẫu nào — có thể copy từ người khác',
+      to: `${SETUP_BASE}/schemes?month=${month}&tab=templates`,
     },
     {
-      title: 'Mức riêng từng người',
-      detail: 'Bậc lương, mức trách nhiệm… điền trong một bảng, dán thẳng từ Excel.',
-      ok: lacking.length === 0,
-      status: lacking.length === 0 ? 'Không còn ô bắt buộc nào trống' : `${lacking.length} người còn trống ${missingCells} ô bắt buộc`,
-      to: `${SETUP_BASE}/schemes?month=${month}&tab=amounts`,
+      title: 'Cơ chế từng người',
+      detail: 'Mỗi người một danh sách dòng lương riêng của mình.',
+      ok: gaps.length === 0,
+      status: gaps.length === 0
+        ? 'Mọi người đều đã có cơ chế'
+        : `${noScheme.length > 0 ? `${noScheme.length} người chưa có cơ chế — phiếu sẽ ra 0đ` : ''}${noScheme.length > 0 && lacking.length > 0 ? ' · ' : ''}${lacking.length > 0 ? `${lacking.length} người còn thiếu ${missingCells} giá trị` : ''}`,
+      to: `${SETUP_BASE}/schemes?month=${month}`,
     },
   ];
 

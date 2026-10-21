@@ -23,6 +23,7 @@ import { describeDbError, describeDbErrorOrNull } from '@/lib/dbError';
 import { formatTime, toDateString } from '@/lib/utils';
 import { hasAdminFunction, isTeamlead } from '@/lib/permissions';
 import { fetchPayrollMonthClosed } from '@/lib/payrollData';
+import { fetchTimesheetMetrics, type TimesheetMetrics } from '@/lib/timesheetPayroll';
 import type { Attendance, AttendanceSession, DailyAssignment, LeaveRequest, Profile } from '@/types';
 
 /** Một ô ngày trên bảng công. */
@@ -52,6 +53,8 @@ interface EmployeeRow {
   leaveDays: number;
   asgTotal: number;
   asgDone: number;
+  /** Số liệu đối chiếu với bảng lương; null khi database chưa có phần liên kết lương. */
+  metrics: TimesheetMetrics | null;
 }
 
 /** Bản ghi chấm công chưa vào bảng công chính thức: đang làm, thiếu checkout hoặc chưa được duyệt. */
@@ -118,8 +121,23 @@ async function fetchSessionsForAttendance(attendanceIds: string[]): Promise<Atte
   return results.flatMap((res) => (res.data || []) as AttendanceSession[]);
 }
 
+/** Cột đối chiếu với bảng lương — cùng số database sẽ điền sang lương khi khoá kỳ công. */
+const PAYROLL_COLUMNS: ReadonlyArray<{ key: Exclude<keyof TimesheetMetrics, 'user_id' | 'late_penalty_days' | 'leave_balance'>; label: string; title: string }> = [
+  { key: 'ot_weekday', label: 'OT thường', title: 'Giờ làm thêm ngày thường (đơn làm thêm đã duyệt)' },
+  { key: 'ot_weekend', label: 'OT nghỉ', title: 'Giờ làm thêm Chủ nhật / ngày nghỉ (đơn làm thêm đã duyệt)' },
+  { key: 'ot_holiday', label: 'OT lễ', title: 'Giờ làm thêm ngày lễ (đơn làm thêm đã duyệt)' },
+  { key: 'night_days', label: 'Sau 22h', title: 'Công làm thêm sau 22h' },
+  { key: 'late_count', label: 'Muộn', title: 'Số lần đi muộn, đã bỏ ngày có đơn đi muộn được duyệt' },
+  { key: 'leave_deduct', label: 'Trừ phép', title: 'Phép năm bị trừ do đi muộn quá số lần' },
+  { key: 'pay_deduct', label: 'Trừ công', title: 'Công bị trừ trong lương do đi muộn quá số lần (sau khi trừ phép)' },
+  { key: 'holiday_days', label: 'Lễ', title: 'Ngày nghỉ lễ được hưởng lương — cơ sở của Lương nghỉ lễ' },
+];
+
+const metricText = (value: number | undefined) => (value ? String(Math.round(value * 100) / 100) : '—');
+
 interface TimesheetRowProps {
   row: EmployeeRow;
+  showMetrics: boolean;
   visibleDays: number[];
   weekendFlags: boolean[];
   todayIdx: number;
@@ -134,7 +152,7 @@ interface TimesheetRowProps {
  * làm trang vẽ lại nhưng dòng nào dữ liệu không đổi thì React bỏ qua, không dựng lại hàng nghìn ô.
  */
 const TimesheetRow = memo(function TimesheetRow({
-  row: r, visibleDays, weekendFlags, todayIdx, standardHours, canEdit, canManage = canEdit, onEditCell,
+  row: r, showMetrics, visibleDays, weekendFlags, todayIdx, standardHours, canEdit, canManage = canEdit, onEditCell,
 }: TimesheetRowProps) {
   return (
     <tr className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
@@ -186,6 +204,12 @@ const TimesheetRow = memo(function TimesheetRow({
           <span className="text-slate-400 dark:text-slate-600">—</span>
         )}
       </td>
+      {showMetrics && PAYROLL_COLUMNS.map((column) => (
+        <td key={column.key} title={column.title}
+          className="border-l border-slate-300 dark:border-slate-700 px-1 py-1 text-center font-black text-xs text-slate-900 dark:text-slate-100">
+          {metricText(r.metrics?.[column.key])}
+        </td>
+      ))}
     </tr>
   );
 });
@@ -201,6 +225,7 @@ export function AdminTimesheet() {
   const [sessions, setSessions] = useState<AttendanceSession[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [assignments, setAssignments] = useState<DailyAssignment[]>([]);
+  const [metrics, setMetrics] = useState<Map<string, TimesheetMetrics> | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -237,7 +262,7 @@ export function AdminTimesheet() {
     const seq = ++loadSeq.current;
     if (!silent) setLoading(true);
 
-    const [profRes, attRes, leaveRes, asgRes, periodRes, exceptionRes] = await Promise.all([
+    const [profRes, attRes, leaveRes, asgRes, periodRes, exceptionRes, metricMap] = await Promise.all([
       supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       // Bảng công chính thức dùng cùng tập dữ liệu với Payroll.
       fetchAllRows<Attendance>((from, to) => supabase
@@ -259,6 +284,7 @@ export function AdminTimesheet() {
         .lte('work_date', monthEndStr),
       supabase.from('timesheet_periods').select('id, month_start, status, locked_at').eq('month_start', monthStartStr).maybeSingle(),
       supabase.from('attendance').select('id, user_id, date, status, approved_by_lead, check_in_time, check_out_time').gte('date', monthStartStr).lte('date', monthEndStr).or('status.eq.active,approved_by_lead.eq.false,check_out_time.is.null'),
+      fetchTimesheetMetrics(monthStartStr),
     ]);
 
     if (seq !== loadSeq.current) return;
@@ -283,6 +309,7 @@ export function AdminTimesheet() {
     setPeriod((periodRes.data as TimesheetPeriod | null) ?? null);
     setPeriodSupported(!periodRes.error);
     setPending((exceptionRes.data || []) as PendingRecord[]);
+    setMetrics(metricMap);
     setLoading(false);
   };
 
@@ -294,7 +321,7 @@ export function AdminTimesheet() {
   }, [monthStartStr]);
 
   useRealtimeSync(
-    [{ table: 'attendance' }, { table: 'leave_requests' }, { table: 'daily_assignments' }, { table: 'timesheet_periods' }],
+    [{ table: 'attendance' }, { table: 'attendance_requests' }, { table: 'leave_requests' }, { table: 'daily_assignments' }, { table: 'timesheet_periods' }],
     () => loadData(true),
     { channelKey: 'timesheet', delayMs: 1500 },
   );
@@ -429,9 +456,10 @@ export function AdminTimesheet() {
         leaveDays: days.reduce((s, d) => s + (d.onLeave ? (d.halfLeave ? 0.5 : 1) : 0), 0),
         asgTotal: myAsg.total,
         asgDone: myAsg.done,
+        metrics: metrics?.get(profile.id) ?? null,
       };
     });
-  }, [profiles, attendance, pending, sessionsByAttendance, leaves, assignments, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [profiles, attendance, pending, sessionsByAttendance, leaves, assignments, metrics, daysInMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const departments = useMemo(
     () => [...new Set(profiles.map((person) => person.department?.trim()).filter((name): name is string => !!name))]
@@ -854,6 +882,11 @@ export function AdminTimesheet() {
                       <th className={`${thBase} min-w-[38px] max-w-[48px] px-1 py-1 text-center`}><div className="min-w-[36px] text-center line-clamp-1">Giờ</div></th>
                       <th className={`${thBase} min-w-[38px] max-w-[48px] px-1 py-1 text-center`}><div className="min-w-[36px] text-center line-clamp-1">Phép</div></th>
                       <th className={`${thBase} min-w-[38px] max-w-[48px] px-1 py-1 text-center`}><div className="min-w-[36px] text-center line-clamp-1">Việc</div></th>
+                      {metrics && PAYROLL_COLUMNS.map((column) => (
+                        <th key={column.key} title={column.title} className={`${thBase} min-w-[44px] px-1 py-1 text-center`}>
+                          <div className="min-w-[40px] text-center">{column.label}</div>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
@@ -861,6 +894,7 @@ export function AdminTimesheet() {
                       <TimesheetRow
                         key={r.profile.id}
                         row={r}
+                        showMetrics={!!metrics}
                         visibleDays={visibleDays}
                         weekendFlags={weekendFlags}
                         todayIdx={todayIdx}
@@ -881,6 +915,11 @@ export function AdminTimesheet() {
                       <td className={`${tfBase} px-1 py-1.5 text-center font-black text-xs text-slate-900 dark:text-slate-100`}>{totals.totalHours}</td>
                       <td className={`${tfBase} px-1 py-1.5 text-center font-black text-xs text-violet-700 dark:text-violet-400`}>{totals.leaveDays || '—'}</td>
                       <td className={`${tfBase} px-1.5 py-1.5 text-center font-black text-xs text-slate-900 dark:text-slate-100`}>{totals.asgTotal > 0 ? `${totals.asgDone}/${totals.asgTotal}` : '—'}</td>
+                      {metrics && PAYROLL_COLUMNS.map((column) => (
+                        <td key={column.key} className={`${tfBase} px-1 py-1.5 text-center font-black text-xs text-slate-900 dark:text-slate-100`}>
+                          {metricText(filtered.reduce((sum, row) => sum + (row.metrics?.[column.key] ?? 0), 0))}
+                        </td>
+                      ))}
                     </tr>
                   </tfoot>
                 </table>
@@ -895,6 +934,7 @@ export function AdminTimesheet() {
             <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-amber-100 text-[11px] font-black text-amber-800">!</span> thiếu checkout</span>
             <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-violet-100 text-[11px] font-black text-violet-800">P</span> nghỉ phép</span>
             <span className="flex items-center gap-1.5"><span className="h-4 w-4 border border-slate-300 bg-slate-100 dark:bg-slate-800" /> cuối tuần</span>
+            {metrics && <span className="text-slate-500 dark:text-slate-400">Các cột từ “OT thường” đến “Lễ” là số sẽ tự điền sang bảng lương khi khoá kỳ công.</span>}
           </div>
           {pageCount > 1 && (
             <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 px-4 py-2 text-xs text-slate-500 dark:text-slate-400 no-print">

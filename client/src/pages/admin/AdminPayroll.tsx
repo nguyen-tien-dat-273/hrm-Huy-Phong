@@ -24,6 +24,7 @@ import { MonthNav } from '@/components/ui/MonthNav';
 import { PayrollSectionSkeleton } from '@/components/payroll/PayrollSkeletons';
 import { ComponentCatalog } from '@/components/payroll/ComponentCatalog';
 import { PayrollParamsTab } from '@/components/payroll/PayrollParamsTab';
+import { TimesheetLinksBoard } from '@/components/payroll/TimesheetLinksBoard';
 import { PayrollDryRunModal } from '@/components/payroll/PayrollDryRunModal';
 import { PaySchemeTree } from '@/components/payroll/PaySchemeTree';
 import { PayrollSetupSteps } from '@/components/payroll/PayrollSetupOverview';
@@ -39,10 +40,10 @@ import { toDateString } from '@/lib/utils';
 import { loadPayrollWorkspace, type PayrollWorkspace } from '@/lib/payrollData';
 import { paramsForMonth } from '@/lib/payrollRun';
 
-type Tab = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'approvals' | 'reports';
+type Tab = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'timesheet' | 'approvals' | 'reports';
 
 /** Các mục thuộc "Thiết lập lương" — chung một thanh bước trên đầu trang. */
-const SETUP_TABS: readonly Tab[] = ['params', 'schemes', 'catalog'];
+const SETUP_TABS: readonly Tab[] = ['params', 'schemes', 'timesheet', 'catalog'];
 
 /**
  * Mỗi mục là một ROUTE riêng, đã hiện thành module con trên sidebar — trang
@@ -61,6 +62,11 @@ const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: bool
   },
   params: {
     title: 'Tham số lương',
+    hint: '',
+    monthScoped: false, fn: ['admin.payroll_settings'],
+  },
+  timesheet: {
+    title: 'Liên kết Bảng công',
     hint: '',
     monthScoped: false, fn: ['admin.payroll_settings'],
   },
@@ -128,7 +134,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
   useRealtimeSync(
     [
       { table: 'attendance' }, { table: 'leave_requests' }, { table: 'timesheet_periods' },
-      { table: 'employee_pay_profiles' }, { table: 'employee_pay_items' }, { table: 'unit_pay_items' },
+      { table: 'employee_pay_profiles' }, { table: 'employee_pay_items' }, { table: 'payroll_schemes' }, { table: 'payroll_scheme_items' },
       { table: 'payroll_components' }, { table: 'payroll_inputs' }, { table: 'payroll_adjustments' },
       { table: 'payroll_runs' }, { table: 'payroll_scheme_requests' }, { table: 'payroll_param_versions' },
     ],
@@ -260,6 +266,14 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
         />
       )}
 
+      {tab === 'timesheet' && (
+        <TimesheetLinksBoard
+          data={data}
+          canManage={can('admin.payroll_settings')}
+          onChanged={reload}
+        />
+      )}
+
       {tab === 'schemes' && (
         <PaySchemeTree
           data={data}
@@ -268,7 +282,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           lastClosedMonth={lastClosedMonth}
           canManage={canManageSchemes}
           focusUserId={searchParams.get('user')}
-          initialTab={searchParams.get('tab') === 'amounts' ? 'amounts' : undefined}
+          initialTab={searchParams.get('tab') === 'templates' ? 'templates' : undefined}
           onChanged={reload}
           onDryRun={(personId) => setDryRun({ personId })}
         />
