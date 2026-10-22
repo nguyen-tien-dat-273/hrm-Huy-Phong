@@ -297,7 +297,7 @@ export function AdminAttendanceDevices() {
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Serial</span><span className="text-slate-700">{selected.serial_number || '—'}</span></div>
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Bridge báo danh</span><BridgeHeartbeat lastSeenAt={selected.last_seen_at} /></div>
                   </div>
-                  <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP và Comm Key chỉ lưu trên máy tính đó.</p>
+                  <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau.</p>
                   {selected.sync_requested_at && (
                     <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
                       <Activity className="mt-0.5 h-4 w-4 shrink-0 animate-pulse" />
@@ -465,7 +465,7 @@ export function AdminAttendanceDevices() {
             <Input label="Model" value={deviceForm.model} onChange={(event) => setDeviceForm({ ...deviceForm, model: event.target.value })} placeholder="ZMM510_TFT" />
             <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
           </div>
-          <p className="text-xs leading-5 text-slate-500">Các thông tin này dùng để quản lý và đối chiếu. Bridge vẫn đọc IP, Port và Comm Key từ file cấu hình trên máy tính chạy bridge.</p>
+          <p className="text-xs leading-5 text-slate-500">Bridge tự lấy IP, Port, kiểu kết nối và Comm Key từ đây ở mỗi lần đồng bộ (ô nào để trống thì dùng file cấu hình trên máy chạy bridge). Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng đồng bộ máy này.</p>
           <div className="flex justify-end gap-2"><Button variant="outline" onClick={closeDeviceModal}>Hủy</Button><Button onClick={saveDevice} disabled={busy || !deviceForm.name.trim()}>{editingId ? 'Lưu' : 'Tạo thiết bị'}</Button></div>
         </div>
       </Modal>

@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { ZkDevice } from 'zkteco-protocol';
+import { applyRemoteConfig, fetchRemoteConfig } from './device-remote-config.mjs';
 
 function required(name, fallback) {
   const value = process.env[name] || fallback;
@@ -31,7 +32,8 @@ function codeSet(name, fallback) {
 }
 
 const config = {
-  host: required('RJ_DEVICE_IP'),
+  // IP không còn bắt buộc trong .env: khai trên HRM cũng được (xem syncOnce).
+  host: process.env.RJ_DEVICE_IP,
   port: integer('RJ_DEVICE_PORT', 4370),
   transport: (process.env.RJ_TRANSPORT || 'tcp').toLowerCase(),
   commKey: integer('RJ_COMM_KEY', 0),
@@ -96,11 +98,15 @@ function toEvent(log) {
   const local = log.timestamp?.local;
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(local || '')) return null;
   const punchedAt = `${local}${config.utcOffset}`;
-  const direction = config.outCodes.has(log.status)
-    ? 'OUT'
-    : config.inCodes.has(log.status)
-      ? 'IN'
-      : 'AUTO';
+  // Máy khai riêng là máy "Vào" hoặc "Ra" (HRM > Sửa thông tin) thì mọi lần quét
+  // đều là hướng đó, bất kể mã status; máy Vào/Ra mới dựa vào mã status.
+  const direction = config.direction === 'IN' || config.direction === 'OUT'
+    ? config.direction
+    : config.outCodes.has(log.status)
+      ? 'OUT'
+      : config.inCodes.has(log.status)
+        ? 'IN'
+        : 'AUTO';
   const identity = [log.userId, local, log.status, log.verifyMode, log.raw].join('|');
   return {
     external_id: sha256(identity),
@@ -144,8 +150,25 @@ async function push(events) {
   return { inserted, processed, unmapped };
 }
 
+// Lấy lại cấu hình mỗi vòng để đổi IP/Comm Key trên HRM có hiệu lực ngay vòng sau.
+// Mất mạng khi hỏi HRM thì dùng giá trị vòng trước; chưa từng lấy được thì dùng .env.
+let remoteLogged = '';
+async function refreshRemoteConfig() {
+  const remote = await fetchRemoteConfig(supabase, config.bridgeToken);
+  const applied = applyRemoteConfig(config, remote);
+  const summary = applied.join(', ');
+  if (summary !== remoteLogged) {
+    remoteLogged = summary;
+    console.log(summary ? `Cấu hình lấy từ HRM: ${summary}.` : 'HRM chưa khai thông tin kết nối; dùng cấu hình trong .env.');
+  }
+  if (!config.host) {
+    throw new Error('Chưa có IP máy chấm công: khai trong HRM > Máy chấm công > Sửa thông tin, hoặc đặt RJ_DEVICE_IP trong .env.');
+  }
+}
+
 async function syncOnce() {
   const started = new Date();
+  await refreshRemoteConfig();
   const device = new ZkDevice({
     host: config.host,
     port: config.port,
@@ -159,6 +182,12 @@ async function syncOnce() {
     // cũ không trả nhầm response khi nhiều lệnh đi cùng lúc.
     const identity = await device.getIdentity();
     const info = await device.getInfo();
+    // Token gắn với một máy trên HRM; nếu IP bị trỏ nhầm sang máy khác thì log của
+    // máy kia sẽ đổ vào nhầm thiết bị. Dừng lại thay vì nạp.
+    if (config.expectedSerial && identity.serialNumber
+      && config.expectedSerial.toLowerCase() !== String(identity.serialNumber).trim().toLowerCase()) {
+      throw new Error(`Serial máy đọc được (${identity.serialNumber}) khác serial khai trên HRM (${config.expectedSerial}). Kiểm tra lại IP.`);
+    }
     const since = backfillSince();
     const logs = await device.getAttendanceLogs(since ? { since } : undefined);
     const events = logs.map(toEvent).filter(Boolean);
