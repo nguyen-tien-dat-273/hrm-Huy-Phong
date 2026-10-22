@@ -12,6 +12,7 @@ import { Buffer } from 'node:buffer';
 import net from 'node:net';
 import { createClient } from '@supabase/supabase-js';
 import { ZkAuthError, ZkConnectionError, ZkDevice, ZkTimeoutError } from 'zkteco-protocol';
+import { applyRemoteConfig, fetchRemoteConfig } from './device-remote-config.mjs';
 
 const args = process.argv.slice(2);
 const wantUsers = args.includes('--users');
@@ -59,8 +60,22 @@ const env = {
   bridgeToken: process.env.ATTENDANCE_BRIDGE_TOKEN,
 };
 
+// Cung nguon voi bridge: IP/Port/Comm Key khai tren HRM thang .env.
+let remoteSerial;
+if (!skipSupabase && env.supabaseUrl && env.supabaseAnonKey && env.bridgeToken && env.bridgeToken.length >= 20 && !env.bridgeToken.startsWith('rj_replace')) {
+  try {
+    const remoteClient = createClient(env.supabaseUrl, env.supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+    const remote = await fetchRemoteConfig(remoteClient, env.bridgeToken);
+    const applied = applyRemoteConfig(env, remote);
+    if (applied.length) info(`Lay tu HRM: ${applied.join(', ')} (de trong tren HRM thi dung .env).`);
+    remoteSerial = env.expectedSerial;
+  } catch (error) {
+    warn(`Chua doc duoc cau hinh may tren HRM: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
 if (!env.host) {
-  fail('RJ_DEVICE_IP con trong.', 'Xem IP ngay tren may cham cong: Menu > Comm > Ethernet.');
+  fail('Chua co IP may cham cong.', 'Khai trong HRM > May cham cong > Sua thong tin, hoac dat RJ_DEVICE_IP. IP xem tren may: Menu > Comm > Ethernet.');
 } else if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(env.host)) {
   warn(`RJ_DEVICE_IP = ${env.host} (khong phai IPv4; chap nhan neu day la ten may trong LAN).`);
 } else {
@@ -160,7 +175,13 @@ try {
   info(`Serial      : ${identity.serialNumber ?? '(may tu choi tra loi)'}`);
   info(`Firmware    : ${identity.firmwareVersion ?? '(may tu choi tra loi)'}`);
   info(`Platform/OS : ${identity.platform ?? '?'} / ${identity.os ?? '?'}`);
-  if (identity.serialNumber) info('-> Dan serial nay vao HRM > May cham cong cho khop thiet bi.');
+  if (remoteSerial && identity.serialNumber && remoteSerial.toLowerCase() !== String(identity.serialNumber).trim().toLowerCase()) {
+    fail(`Serial may (${identity.serialNumber}) khac serial khai tren HRM (${remoteSerial}).`, 'Kiem tra lai IP, hoac sua serial trong HRM > May cham cong.');
+  } else if (remoteSerial) {
+    ok('Serial khop voi thiet bi khai tren HRM.');
+  } else if (identity.serialNumber) {
+    info('-> Dan serial nay vao HRM > May cham cong > Sua thong tin cho khop thiet bi.');
+  }
 
   const deviceInfo = await device.getInfo();
   ok(`May dang giu ${deviceInfo.recordCount}/${deviceInfo.recordCapacity} ban ghi, ${deviceInfo.userCount} nguoi dung.`);
