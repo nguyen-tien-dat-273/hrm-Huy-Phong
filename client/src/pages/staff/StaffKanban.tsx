@@ -22,6 +22,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
+import { uploadContentType } from '@/lib/documents';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { notifyUser } from '@/lib/assignments';
 import { TaskCompletionReviewModal } from '@/components/TaskCompletionReviewModal';
@@ -377,10 +378,13 @@ export function StaffKanban() {
     setWorkflowSaving(true);
     let evidenceFilePath: string | null = null;
     if (workflowKind === 'COMPLETION' && workflowEvidenceFile) {
-      const safeFileName = workflowEvidenceFile.name.replace(/[^\p{L}\p{N}._-]+/gu, '-').slice(-120) || 'minh-chung';
+      // Storage chỉ nhận key ASCII: bỏ dấu tiếng Việt, tên gốc vẫn lưu ở target_evidence_file_name.
+      const safeFileName = workflowEvidenceFile.name
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/gi, 'd')
+        .replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/-+/g, '-').slice(-120) || 'minh-chung';
       evidenceFilePath = `${workflowTarget.project_id}/${workflowTarget.id}/${profile?.id}/${crypto.randomUUID()}-${safeFileName}`;
       const { error: uploadError } = await supabase.storage.from('task-evidence').upload(evidenceFilePath, workflowEvidenceFile, {
-        contentType: workflowEvidenceFile.type || 'application/octet-stream',
+        contentType: uploadContentType(workflowEvidenceFile.name),
       });
       if (uploadError) {
         setWorkflowSaving(false);
