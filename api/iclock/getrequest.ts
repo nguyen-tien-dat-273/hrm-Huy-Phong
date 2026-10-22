@@ -29,11 +29,24 @@ const env = (...names: string[]) => names.map((name) => process.env[name]).find(
 
 async function reportAlive(serial: string) {
   const supabaseUrl = env('SUPABASE_URL', 'VITE_SUPABASE_URL');
-  const supabaseKey = env('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY');
-  const bridgeToken = env('ATTENDANCE_BRIDGE_TOKEN');
-  if (!supabaseUrl || !supabaseKey || !bridgeToken) return;
-  const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data, error } = await supabase.rpc('touch_attendance_device', { bridge_token: bridgeToken });
+  const anonKey = env('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY');
+  const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY');
+  const bridgeToken = env('ATTENDANCE_BRIDGE_TOKEN').trim();
+  const options = { auth: { persistSession: false, autoRefreshToken: false } };
+
+  if (supabaseUrl && serviceKey) {
+    const { data, error } = await createClient(supabaseUrl, serviceKey, options)
+      .rpc('touch_attendance_device_by_serial', { device_serial: serial });
+    if (!error) {
+      if ((data as { ok?: boolean } | null)?.ok === false) console.warn(`[iclock] ${serial}: sê-ri chưa khai (hoặc đang tắt) trong HRM`);
+      return;
+    }
+    // Chưa chạy migration thì thử cách token bên dưới, nếu có.
+    console.warn(`[iclock] ${serial}: không ghi được báo danh theo sê-ri — ${error.message}`);
+  }
+  if (!supabaseUrl || !anonKey || !bridgeToken) return;
+  const { data, error } = await createClient(supabaseUrl, anonKey, options)
+    .rpc('touch_attendance_device', { bridge_token: bridgeToken });
   if (error) console.warn(`[iclock] ${serial}: không ghi được báo danh — ${error.message}`);
   else if ((data as { ok?: boolean } | null)?.ok === false) console.warn(`[iclock] ${serial}: báo danh bị từ chối — token sai hoặc đã thu hồi`);
 }
