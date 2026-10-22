@@ -821,6 +821,18 @@ export interface AttendanceDevice {
   location_id: string | null;
   timezone: string;
   is_active: boolean;
+  device_code: string | null;
+  device_number: number | null;
+  ip_address: string | null;
+  port: number;
+  connection_type: 'TCP' | 'UDP' | 'SERIAL';
+  baud_rate: number;
+  comm_password: string | null;
+  direction: 'IN' | 'OUT' | 'BOTH';
+  use_web_address: boolean;
+  web_address: string | null;
+  registration_number: string | null;
+  license: string | null;
   last_seen_at: string | null;
   last_sync_at: string | null;
   last_sync_status: 'SUCCESS' | 'PARTIAL' | 'ERROR' | null;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Activity, CheckCircle2, Clipboard, Cpu, KeyRound, Link2, Plus, RefreshCw, Trash2, TriangleAlert, Wifi, Zap } from 'lucide-react';
+import { Activity, CheckCircle2, Clipboard, Cpu, KeyRound, Link2, Pencil, Plus, RefreshCw, Trash2, TriangleAlert, Wifi, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -18,7 +18,39 @@ import { AttendanceImportHistory } from '@/components/attendance/AttendanceImpor
 
 type WorkLocation = { id: string; name: string; address: string | null };
 
-const EMPTY_DEVICE = { name: '', model: '', serial_number: '', location_id: '', timezone: 'Asia/Ho_Chi_Minh' };
+const EMPTY_DEVICE = {
+  name: '', model: '', serial_number: '', location_id: '', timezone: 'Asia/Ho_Chi_Minh',
+  device_code: '', device_number: '', ip_address: '', port: '4370', connection_type: 'TCP',
+  baud_rate: '115200', comm_password: '', direction: 'BOTH', use_web_address: false,
+  web_address: '', registration_number: '', license: '', is_active: true,
+};
+type DeviceForm = typeof EMPTY_DEVICE;
+
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+const DIRECTION_LABEL: Record<string, string> = { IN: 'Vào', OUT: 'Ra', BOTH: 'Vào/Ra' };
+
+const toForm = (device: AttendanceDevice): DeviceForm => ({
+  name: device.name,
+  model: device.model ?? '',
+  serial_number: device.serial_number ?? '',
+  location_id: device.location_id ?? '',
+  timezone: device.timezone,
+  device_code: device.device_code ?? '',
+  device_number: device.device_number == null ? '' : String(device.device_number),
+  ip_address: device.ip_address ?? '',
+  port: String(device.port ?? 4370),
+  connection_type: device.connection_type ?? 'TCP',
+  baud_rate: String(device.baud_rate ?? 115200),
+  comm_password: device.comm_password ?? '',
+  direction: device.direction ?? 'BOTH',
+  use_web_address: !!device.use_web_address,
+  web_address: device.web_address ?? '',
+  registration_number: device.registration_number ?? '',
+  license: device.license ?? '',
+  is_active: device.is_active,
+});
+
+const blankToNull = (value: string) => value.trim() || null;
 
 export function AdminAttendanceDevices() {
   const toast = useToast().toast;
@@ -34,7 +66,8 @@ export function AdminAttendanceDevices() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deviceModal, setDeviceModal] = useState(false);
-  const [deviceForm, setDeviceForm] = useState(EMPTY_DEVICE);
+  const [deviceForm, setDeviceForm] = useState<DeviceForm>(EMPTY_DEVICE);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [mappingUserId, setMappingUserId] = useState('');
   const [mappingProfileId, setMappingProfileId] = useState('');
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
@@ -78,21 +111,73 @@ export function AdminAttendanceDevices() {
 
   useEffect(() => { loadData(); }, []);
 
-  const createDevice = async () => {
+  const openCreate = () => {
+    setEditingId(null);
+    setDeviceForm(EMPTY_DEVICE);
+    setDeviceModal(true);
+  };
+
+  const openEdit = () => {
+    if (!selected) return;
+    setEditingId(selected.id);
+    setDeviceForm(toForm(selected));
+    setDeviceModal(true);
+  };
+
+  const closeDeviceModal = () => {
+    setDeviceModal(false);
+    setEditingId(null);
+  };
+
+  const formError = (): string | null => {
+    const ip = deviceForm.ip_address.trim();
+    if (ip && !IPV4.test(ip) && deviceForm.connection_type !== 'SERIAL') return 'Địa chỉ IP phải có dạng 192.168.1.201.';
+    const port = Number(deviceForm.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return 'Port phải là số từ 1 đến 65535.';
+    const baud = Number(deviceForm.baud_rate);
+    if (!Number.isInteger(baud) || baud <= 0) return 'Tốc độ truyền phải là số nguyên dương.';
+    if (deviceForm.device_number.trim() && !/^\d+$/.test(deviceForm.device_number.trim())) return 'ID máy phải là số.';
+    return null;
+  };
+
+  const saveDevice = async () => {
     if (!deviceForm.name.trim()) return;
+    const invalid = formError();
+    if (invalid) return toast(invalid, 'error');
     setBusy(true);
-    const { data, error: createError } = await supabase.from('attendance_devices').insert({
+    const payload = {
       name: deviceForm.name.trim(),
-      model: deviceForm.model.trim() || null,
-      serial_number: deviceForm.serial_number.trim() || null,
+      model: blankToNull(deviceForm.model),
+      serial_number: blankToNull(deviceForm.serial_number),
       location_id: deviceForm.location_id || null,
       timezone: deviceForm.timezone,
-    }).select().single();
+      device_code: blankToNull(deviceForm.device_code),
+      device_number: deviceForm.device_number.trim() ? Number(deviceForm.device_number) : null,
+      ip_address: blankToNull(deviceForm.ip_address),
+      port: Number(deviceForm.port),
+      connection_type: deviceForm.connection_type,
+      baud_rate: Number(deviceForm.baud_rate),
+      comm_password: blankToNull(deviceForm.comm_password),
+      direction: deviceForm.direction,
+      use_web_address: deviceForm.use_web_address,
+      web_address: deviceForm.use_web_address ? blankToNull(deviceForm.web_address) : null,
+      registration_number: blankToNull(deviceForm.registration_number),
+      license: blankToNull(deviceForm.license),
+      is_active: deviceForm.is_active,
+    };
+    const query = editingId
+      ? supabase.from('attendance_devices').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId)
+      : supabase.from('attendance_devices').insert(payload);
+    const { data, error: saveError } = await query.select().single();
     setBusy(false);
-    if (createError) return toast(`Không tạo được thiết bị: ${describeDbError(createError)}`, 'error');
-    setDeviceModal(false);
+    if (saveError) {
+      return toast(/column .* does not exist|schema cache/i.test(saveError.message || '')
+        ? 'Chưa cập nhật cơ sở dữ liệu. Chạy supabase/paste-thong-tin-ket-noi-may.sql trên Supabase.'
+        : `Không lưu được thiết bị: ${describeDbError(saveError)}`, 'error');
+    }
+    closeDeviceModal();
     setDeviceForm(EMPTY_DEVICE);
-    toast('Đã tạo máy chấm công.', 'success');
+    toast(editingId ? 'Đã lưu thông tin máy chấm công.' : 'Đã tạo máy chấm công.', 'success');
     await loadData();
     setSelectedId(data.id);
   };
@@ -184,7 +269,7 @@ export function AdminAttendanceDevices() {
         <div className="flex gap-2">
           <AttendanceFileImport deviceId={selected?.id || ''} profiles={profiles} mappings={mappings} onImported={loadData} />
           <Button variant="outline" onClick={loadData}><RefreshCw className="h-4 w-4" />Làm mới</Button>
-          <Button onClick={() => setDeviceModal(true)}><Plus className="h-4 w-4" />Thêm máy</Button>
+          <Button onClick={openCreate}><Plus className="h-4 w-4" />Thêm máy</Button>
         </div>
       </div>
 
@@ -223,8 +308,31 @@ export function AdminAttendanceDevices() {
                     <Button onClick={requestSync} disabled={busy}><Zap className="h-4 w-4" />Đồng bộ ngay</Button>
                     <Button variant="outline" onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />Tạo token bridge</Button>
                     <Button variant="outline" onClick={revokeTokens}>Thu hồi token</Button>
+                    <Button variant="outline" onClick={openEdit}><Pencil className="h-4 w-4" />Sửa thông tin</Button>
                     <Button variant="danger" onClick={deleteDevice}><Trash2 className="h-4 w-4" />Xóa máy</Button>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Cpu className="h-5 w-5 text-indigo-600" />Thông tin kết nối</CardTitle></CardHeader>
+                <CardContent>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                    <InfoRow label="Mã máy" value={selected.device_code} />
+                    <InfoRow label="ID máy" value={selected.device_number} />
+                    <InfoRow label="Địa chỉ IP" value={selected.ip_address} />
+                    <InfoRow label="Port" value={selected.port} />
+                    <InfoRow label="Kiểu kết nối" value={selected.connection_type === 'SERIAL' ? 'Cổng COM' : selected.connection_type === 'UDP' ? 'UDP' : 'TCP/IP'} />
+                    <InfoRow label="Tốc độ truyền" value={selected.baud_rate} />
+                    <InfoRow label="Mật khẩu kết nối" value={selected.comm_password ? '••••••' : null} />
+                    <InfoRow label="Trạng thái máy" value={DIRECTION_LABEL[selected.direction]} />
+                    <InfoRow label="Model" value={selected.model} />
+                    <InfoRow label="Serial" value={selected.serial_number} />
+                    <InfoRow label="Số đăng ký" value={selected.registration_number} />
+                    <InfoRow label="License" value={selected.license} />
+                    <InfoRow label="Địa chỉ web" value={selected.use_web_address ? selected.web_address : null} />
+                    <InfoRow label="Cho phép sử dụng" value={selected.is_active ? 'Có' : 'Không'} />
+                  </dl>
                 </CardContent>
               </Card>
 
@@ -311,12 +419,54 @@ export function AdminAttendanceDevices() {
           dòng. Tự ẩn khi chưa chạy migration hoặc chưa có lô nào. */}
       <AttendanceImportHistory profiles={profiles} />
 
-      <Modal open={deviceModal} onClose={() => setDeviceModal(false)} title="Thêm máy chấm công">
-        <div className="space-y-4">
-          <Input label="Tên thiết bị" required value={deviceForm.name} onChange={(event) => setDeviceForm({ ...deviceForm, name: event.target.value })} placeholder="Máy cửa chính" />
-          <div className="grid gap-4 sm:grid-cols-2"><Input label="Model" value={deviceForm.model} onChange={(event) => setDeviceForm({ ...deviceForm, model: event.target.value })} placeholder="X628-C" /><Input label="Serial (nếu có)" value={deviceForm.serial_number} onChange={(event) => setDeviceForm({ ...deviceForm, serial_number: event.target.value })} /></div>
-          <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDeviceModal(false)}>Hủy</Button><Button onClick={createDevice} disabled={busy || !deviceForm.name.trim()}>Tạo thiết bị</Button></div>
+      <Modal open={deviceModal} onClose={closeDeviceModal} title={editingId ? 'Sửa máy chấm công' : 'Thêm máy chấm công'} size="xl">
+        <div className="space-y-5">
+          <fieldset className="rounded-xl border border-slate-300 p-4 dark:border-slate-700">
+            <legend className="px-2 text-sm font-bold text-slate-700 dark:text-slate-300">Thông tin kết nối</legend>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-4">
+                <Input label="Mã máy" value={deviceForm.device_code} onChange={(event) => setDeviceForm({ ...deviceForm, device_code: event.target.value })} placeholder="MCC00001" />
+                <Input label="ID máy" inputMode="numeric" value={deviceForm.device_number} onChange={(event) => setDeviceForm({ ...deviceForm, device_number: event.target.value })} placeholder="1" />
+                <Input label="Địa chỉ IP" value={deviceForm.ip_address} onChange={(event) => setDeviceForm({ ...deviceForm, ip_address: event.target.value })} placeholder="192.168.1.201" />
+                <Input label="Mật khẩu kết nối (Comm Key)" type="password" autoComplete="new-password" value={deviceForm.comm_password} onChange={(event) => setDeviceForm({ ...deviceForm, comm_password: event.target.value })} placeholder="0" />
+                <Select label="Trạng thái máy" value={deviceForm.direction} onChange={(event) => setDeviceForm({ ...deviceForm, direction: event.target.value })}>
+                  <option value="BOTH">Vào/Ra</option>
+                  <option value="IN">Vào</option>
+                  <option value="OUT">Ra</option>
+                </Select>
+                <Input label="Địa chỉ web" disabled={!deviceForm.use_web_address} value={deviceForm.web_address} onChange={(event) => setDeviceForm({ ...deviceForm, web_address: event.target.value })} placeholder="example.com.vn" />
+                <Input label="Serial" value={deviceForm.serial_number} onChange={(event) => setDeviceForm({ ...deviceForm, serial_number: event.target.value })} placeholder="1313245000324" />
+                <Input label="Số đăng ký" value={deviceForm.registration_number} onChange={(event) => setDeviceForm({ ...deviceForm, registration_number: event.target.value })} />
+              </div>
+              <div className="space-y-4">
+                <Input label="Tên máy" required value={deviceForm.name} onChange={(event) => setDeviceForm({ ...deviceForm, name: event.target.value })} placeholder="Máy cửa chính" />
+                <Select label="Kiểu kết nối" value={deviceForm.connection_type} onChange={(event) => setDeviceForm({ ...deviceForm, connection_type: event.target.value })}>
+                  <option value="TCP">TCP/IP</option>
+                  <option value="UDP">UDP</option>
+                  <option value="SERIAL">Cổng COM</option>
+                </Select>
+                <Input label="Port" inputMode="numeric" value={deviceForm.port} onChange={(event) => setDeviceForm({ ...deviceForm, port: event.target.value })} placeholder="4370" />
+                <Select label="Tốc độ truyền" value={deviceForm.baud_rate} onChange={(event) => setDeviceForm({ ...deviceForm, baud_rate: event.target.value })}>
+                  {['9600', '19200', '38400', '57600', '115200'].map((rate) => <option key={rate} value={rate}>{rate}</option>)}
+                </Select>
+                <Input label="License" value={deviceForm.license} onChange={(event) => setDeviceForm({ ...deviceForm, license: event.target.value })} placeholder="1437" />
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={deviceForm.use_web_address} onChange={(event) => setDeviceForm({ ...deviceForm, use_web_address: event.target.checked })} />
+                  Sử dụng địa chỉ web
+                </label>
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={deviceForm.is_active} onChange={(event) => setDeviceForm({ ...deviceForm, is_active: event.target.checked })} />
+                  Cho phép sử dụng
+                </label>
+              </div>
+            </div>
+          </fieldset>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input label="Model" value={deviceForm.model} onChange={(event) => setDeviceForm({ ...deviceForm, model: event.target.value })} placeholder="ZMM510_TFT" />
+            <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
+          </div>
+          <p className="text-xs leading-5 text-slate-500">Các thông tin này dùng để quản lý và đối chiếu. Bridge vẫn đọc IP, Port và Comm Key từ file cấu hình trên máy tính chạy bridge.</p>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={closeDeviceModal}>Hủy</Button><Button onClick={saveDevice} disabled={busy || !deviceForm.name.trim()}>{editingId ? 'Lưu' : 'Tạo thiết bị'}</Button></div>
         </div>
       </Modal>
 
@@ -339,6 +489,15 @@ function BridgeHeartbeat({ lastSeenAt }: { lastSeenAt: string | null }) {
   if (minutes <= 2) return <span className="font-semibold text-emerald-700">Đang chạy</span>;
   if (minutes < 60) return <span className="font-semibold text-amber-700">{minutes} phút trước</span>;
   return <span className="font-semibold text-red-700">{formatDateTime(lastSeenAt)}</span>;
+}
+
+function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
+  return (
+    <>
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="break-words text-right font-semibold text-slate-800 dark:text-slate-200">{value === null || value === undefined || value === '' ? '—' : value}</dd>
+    </>
+  );
 }
 
 function StatusBadge({ status }: { status: AttendanceDevice['last_sync_status'] }) {
