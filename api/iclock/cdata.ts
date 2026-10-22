@@ -186,33 +186,51 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   if (skipped > 0) console.warn(`[iclock] ${serial}: bỏ qua ${skipped}/${lines.length} dòng sai khuôn`);
   if (events.length === 0) return text(response, 200, 'OK: 0');
 
+  // Hai cách xác thực với Supabase, ưu tiên cách không cần token:
+  //   1. SUPABASE_SERVICE_ROLE_KEY có → tra máy theo sê-ri (hàm chỉ service role gọi được).
+  //   2. Không có → dùng ATTENDANCE_BRIDGE_TOKEN như bridge.
   const supabaseUrl = env('SUPABASE_URL', 'VITE_SUPABASE_URL');
-  const supabaseKey = env('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY');
-  const bridgeToken = env('ATTENDANCE_BRIDGE_TOKEN');
-  if (!supabaseUrl || !supabaseKey || !bridgeToken) {
-    console.error('[iclock] thiếu biến môi trường Supabase hoặc ATTENDANCE_BRIDGE_TOKEN');
+  const anonKey = env('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY');
+  const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY');
+  const bridgeToken = env('ATTENDANCE_BRIDGE_TOKEN').trim();
+  if (!supabaseUrl || !(serviceKey || (anonKey && bridgeToken))) {
+    console.error('[iclock] thiếu SUPABASE_URL và (SUPABASE_SERVICE_ROLE_KEY hoặc ATTENDANCE_BRIDGE_TOKEN + anon key)');
     return text(response, 500, 'ERROR: server chua cau hinh');
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey, {
+  const supabase = createClient(supabaseUrl, serviceKey || anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  let bySerial = Boolean(serviceKey);
 
   // Chia lô như bridge: một lần quét cả ngày của 46 người vẫn gọn, nhưng lần
   // đẩy bù sau nhiều ngày mất kết nối thì có thể hàng nghìn dòng.
   let inserted = 0;
   for (let offset = 0; offset < events.length; offset += 500) {
-    const { data, error } = await supabase.rpc('ingest_attendance_device_events', {
-      bridge_token: bridgeToken,
-      events: events.slice(offset, offset + 500),
-    });
+    const batch = events.slice(offset, offset + 500);
+    let { data, error } = bySerial
+      ? await supabase.rpc('ingest_attendance_device_events_by_serial', { device_serial: serial, events: batch })
+      : await supabase.rpc('ingest_attendance_device_events', { bridge_token: bridgeToken, events: batch });
+
+    // Chưa chạy migration theo sê-ri thì lùi về token nếu có, thay vì chặn đứng.
+    if (bySerial && error && /does not exist|schema cache/i.test(error.message || '') && bridgeToken && anonKey) {
+      console.warn(`[iclock] ${serial}: chưa có hàm theo sê-ri, dùng token`);
+      bySerial = false;
+      ({ data, error } = await createClient(supabaseUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } })
+        .rpc('ingest_attendance_device_events', { bridge_token: bridgeToken, events: batch }));
+    }
     if (error) {
       console.error(`[iclock] ${serial}: Supabase từ chối — ${error.message}`);
       // Trả lỗi để máy GIỮ LẠI dữ liệu và đẩy lại sau. Trả OK ở đây là đồng ý
       // nhận rồi vứt đi: máy đánh dấu đã gửi và không bao giờ gửi lại nữa.
       return text(response, 500, 'ERROR: khong nap duoc');
     }
-    if ((data as { ok?: boolean; code?: string } | null)?.code === 'AUTH_FAILED') {
+    const code = (data as { code?: string } | null)?.code;
+    if (code === 'UNKNOWN_DEVICE') {
+      console.error(`[iclock] ${serial}: sê-ri này chưa khai (hoặc đang tắt) trong HRM > Máy chấm công`);
+      return text(response, 500, 'ERROR: may chua khai trong HRM');
+    }
+    if (code === 'AUTH_FAILED') {
       console.error(`[iclock] ${serial}: ATTENDANCE_BRIDGE_TOKEN sai hoặc đã thu hồi`);
       return text(response, 500, 'ERROR: token');
     }

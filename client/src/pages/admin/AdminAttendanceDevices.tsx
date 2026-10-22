@@ -221,7 +221,7 @@ export function AdminAttendanceDevices() {
     setBusy(true);
     const { data, error: tokenError } = await supabase.rpc('issue_attendance_device_token', {
       target_device: selected.id,
-      token_label: `${adms ? 'ADMS' : 'Bridge'} ${selected.name}`,
+      token_label: `Bridge ${selected.name}`,
     });
     setBusy(false);
     if (tokenError) return toast(`Không tạo được token: ${describeDbError(tokenError)}`, 'error');
@@ -230,14 +230,7 @@ export function AdminAttendanceDevices() {
 
   const revokeTokens = async () => {
     if (!selected) return;
-    const ok = await confirm({
-      title: 'Thu hồi mọi token?',
-      message: adms
-        ? 'Máy sẽ ngừng đẩy được dữ liệu lên HRM cho tới khi bạn tạo token mới, đặt vào biến ATTENDANCE_BRIDGE_TOKEN trên máy chủ rồi triển khai lại. Dữ liệu vẫn nằm trong máy và sẽ gửi bù sau.'
-        : 'Bridge đang chạy sẽ ngừng đồng bộ cho tới khi bạn tạo và cấu hình token mới.',
-      confirmLabel: 'Thu hồi',
-      danger: true,
-    });
+    const ok = await confirm({ title: 'Thu hồi mọi token?', message: 'Bridge đang chạy sẽ ngừng đồng bộ cho tới khi bạn tạo và cấu hình token mới.', confirmLabel: 'Thu hồi', danger: true });
     if (!ok) return;
     const { data, error: revokeError } = await supabase.rpc('revoke_attendance_device_tokens', { target_device: selected.id });
     if (revokeError) return toast(`Thu hồi thất bại: ${describeDbError(revokeError)}`, 'error');
@@ -308,7 +301,7 @@ export function AdminAttendanceDevices() {
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">{adms ? 'Máy báo danh' : 'Bridge báo danh'}</span><DeviceHeartbeat lastSeenAt={selected.last_seen_at} adms={adms} /></div>
                   </div>
                   {adms ? (
-                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{window.location.hostname}</code>, cổng <code className="rounded bg-slate-100 px-1">443</code>, bật tên miền. Serial của máy phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
+                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{window.location.hostname}</code>, cổng <code className="rounded bg-slate-100 px-1">443</code>, bật tên miền. Không cần token: HRM nhận máy theo <strong>Serial</strong>, nên Serial ở trên phải đúng và có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Muốn ngừng nhận dữ liệu thì bỏ tích “Cho phép sử dụng”. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
                   ) : (
                     <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau.</p>
                   )}
@@ -320,8 +313,8 @@ export function AdminAttendanceDevices() {
                   )}
                   <div className="flex flex-wrap gap-2">
                     {!adms && <Button onClick={requestSync} disabled={busy}><Zap className="h-4 w-4" />Đồng bộ ngay</Button>}
-                    <Button variant="outline" onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />{adms ? 'Tạo token' : 'Tạo token bridge'}</Button>
-                    <Button variant="outline" onClick={revokeTokens}>Thu hồi token</Button>
+                    {!adms && <Button variant="outline" onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />Tạo token bridge</Button>}
+                    {!adms && <Button variant="outline" onClick={revokeTokens}>Thu hồi token</Button>}
                     <Button variant="outline" onClick={openEdit}><Pencil className="h-4 w-4" />Sửa thông tin</Button>
                     <Button variant="danger" onClick={deleteDevice}><Trash2 className="h-4 w-4" />Xóa máy</Button>
                   </div>
@@ -494,13 +487,9 @@ export function AdminAttendanceDevices() {
         </div>
       </Modal>
 
-      <Modal open={!!issuedToken} onClose={() => setIssuedToken(null)} title={adms ? 'Token — chỉ hiển thị một lần' : 'Token bridge — chỉ hiển thị một lần'}>
+      <Modal open={!!issuedToken} onClose={() => setIssuedToken(null)} title="Token bridge — chỉ hiển thị một lần">
         <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><p className="text-sm text-emerald-900">
-            {adms
-              ? <>Đặt token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> của môi trường Production trên máy chủ web rồi triển khai lại — biến chỉ có hiệu lực ở bản triển khai mới. </>
-              : <>Sao chép token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> trên máy tính bridge. </>}
-            Token mới hết hạn sau 90 ngày; token cũ còn hiệu lực tối đa 7 ngày để chuyển cấu hình. HRM không thể hiển thị lại token này.</p></div>
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><p className="text-sm text-emerald-900">Sao chép token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> trên máy tính bridge. Token mới hết hạn sau 90 ngày; token cũ còn hiệu lực tối đa 7 ngày để chuyển cấu hình. HRM không thể hiển thị lại token này.</p></div>
           <div className="flex items-center gap-2 rounded-xl bg-slate-950 p-3"><code className="min-w-0 flex-1 break-all text-xs text-emerald-300">{issuedToken}</code><button onClick={() => { navigator.clipboard.writeText(issuedToken || ''); toast('Đã sao chép token.', 'success'); }} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><Clipboard className="h-4 w-4" /></button></div>
           <Button className="w-full" onClick={() => setIssuedToken(null)}>Tôi đã lưu token</Button>
         </div>
