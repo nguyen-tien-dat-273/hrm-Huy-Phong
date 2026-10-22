@@ -833,6 +833,8 @@ export interface AttendanceDevice {
   web_address: string | null;
   registration_number: string | null;
   license: string | null;
+  /** BRIDGE = máy tính trong LAN đọc máy; ADMS = máy tự đẩy dữ liệu lên HRM. Thiếu cột = BRIDGE. */
+  sync_mode?: 'BRIDGE' | 'ADMS';
   last_seen_at: string | null;
   last_sync_at: string | null;
   last_sync_status: 'SUCCESS' | 'PARTIAL' | 'ERROR' | null;

@@ -22,7 +22,7 @@ const EMPTY_DEVICE = {
   name: '', model: '', serial_number: '', location_id: '', timezone: 'Asia/Ho_Chi_Minh',
   device_code: '', device_number: '', ip_address: '', port: '4370', connection_type: 'TCP',
   baud_rate: '115200', comm_password: '', direction: 'BOTH', use_web_address: false,
-  web_address: '', registration_number: '', license: '', is_active: true,
+  web_address: '', registration_number: '', license: '', is_active: true, sync_mode: 'ADMS',
 };
 type DeviceForm = typeof EMPTY_DEVICE;
 
@@ -48,6 +48,7 @@ const toForm = (device: AttendanceDevice): DeviceForm => ({
   registration_number: device.registration_number ?? '',
   license: device.license ?? '',
   is_active: device.is_active,
+  sync_mode: device.sync_mode ?? 'BRIDGE',
 });
 
 const blankToNull = (value: string) => value.trim() || null;
@@ -73,6 +74,7 @@ export function AdminAttendanceDevices() {
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
 
   const selected = devices.find((item) => item.id === selectedId) || devices[0];
+  const adms = selected?.sync_mode === 'ADMS';
   const profileById = new Map(profiles.map((item) => [item.id, item]));
   const selectedMappings = mappings
     .filter((item) => item.device_id === selected?.id)
@@ -164,6 +166,7 @@ export function AdminAttendanceDevices() {
       registration_number: blankToNull(deviceForm.registration_number),
       license: blankToNull(deviceForm.license),
       is_active: deviceForm.is_active,
+      sync_mode: deviceForm.sync_mode,
     };
     const query = editingId
       ? supabase.from('attendance_devices').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', editingId)
@@ -172,7 +175,7 @@ export function AdminAttendanceDevices() {
     setBusy(false);
     if (saveError) {
       return toast(/column .* does not exist|schema cache/i.test(saveError.message || '')
-        ? 'Chưa cập nhật cơ sở dữ liệu. Chạy supabase/paste-thong-tin-ket-noi-may.sql trên Supabase.'
+        ? 'Chưa cập nhật cơ sở dữ liệu. Chạy supabase/paste-thong-tin-ket-noi-may.sql và supabase/paste-che-do-adms.sql trên Supabase.'
         : `Không lưu được thiết bị: ${describeDbError(saveError)}`, 'error');
     }
     closeDeviceModal();
@@ -218,7 +221,7 @@ export function AdminAttendanceDevices() {
     setBusy(true);
     const { data, error: tokenError } = await supabase.rpc('issue_attendance_device_token', {
       target_device: selected.id,
-      token_label: `Bridge ${selected.name}`,
+      token_label: `${adms ? 'ADMS' : 'Bridge'} ${selected.name}`,
     });
     setBusy(false);
     if (tokenError) return toast(`Không tạo được token: ${describeDbError(tokenError)}`, 'error');
@@ -227,7 +230,14 @@ export function AdminAttendanceDevices() {
 
   const revokeTokens = async () => {
     if (!selected) return;
-    const ok = await confirm({ title: 'Thu hồi mọi token?', message: 'Bridge đang chạy sẽ ngừng đồng bộ cho tới khi bạn tạo và cấu hình token mới.', confirmLabel: 'Thu hồi', danger: true });
+    const ok = await confirm({
+      title: 'Thu hồi mọi token?',
+      message: adms
+        ? 'Máy sẽ ngừng đẩy được dữ liệu lên HRM cho tới khi bạn tạo token mới, đặt vào biến ATTENDANCE_BRIDGE_TOKEN trên máy chủ rồi triển khai lại. Dữ liệu vẫn nằm trong máy và sẽ gửi bù sau.'
+        : 'Bridge đang chạy sẽ ngừng đồng bộ cho tới khi bạn tạo và cấu hình token mới.',
+      confirmLabel: 'Thu hồi',
+      danger: true,
+    });
     if (!ok) return;
     const { data, error: revokeError } = await supabase.rpc('revoke_attendance_device_tokens', { target_device: selected.id });
     if (revokeError) return toast(`Thu hồi thất bại: ${describeDbError(revokeError)}`, 'error');
@@ -264,7 +274,7 @@ export function AdminAttendanceDevices() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="font-display text-2xl font-bold text-slate-900">Máy chấm công</h1>
-          <p className="mt-1 text-sm text-slate-500">Ronald Jack/ZKTeco · bridge nội bộ · đồng bộ an toàn qua HTTPS</p>
+          <p className="mt-1 text-sm text-slate-500">Ronald Jack/ZKTeco · máy tự đẩy dữ liệu lên HRM, hoặc bridge nội bộ · qua HTTPS</p>
         </div>
         <div className="flex gap-2">
           <AttendanceFileImport deviceId={selected?.id || ''} profiles={profiles} mappings={mappings} onImported={loadData} />
@@ -274,7 +284,7 @@ export function AdminAttendanceDevices() {
       </div>
 
       {devices.length === 0 ? (
-        <Card><CardContent className="py-12"><EmptyState icon={<Cpu className="h-9 w-9" />} title="Chưa có máy chấm công" description="Thêm máy Ronald Jack đầu tiên để tạo token cho bridge trong mạng LAN." /></CardContent></Card>
+        <Card><CardContent className="py-12"><EmptyState icon={<Cpu className="h-9 w-9" />} title="Chưa có máy chấm công" description="Thêm máy Ronald Jack đầu tiên rồi tạo token để máy đẩy dữ liệu lên HRM." /></CardContent></Card>
       ) : (
         <>
           <div className="flex gap-2 overflow-x-auto pb-1">
@@ -289,24 +299,28 @@ export function AdminAttendanceDevices() {
           {selected && <div className="grid gap-5 xl:grid-cols-[1.05fr_1.4fr]">
             <div className="space-y-5">
               <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><Wifi className="h-5 w-5 text-indigo-600" />Trạng thái bridge</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Wifi className="h-5 w-5 text-indigo-600" />{adms ? 'Trạng thái kết nối' : 'Trạng thái bridge'}</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="rounded-xl bg-slate-50 p-4 text-sm">
                     <div className="flex items-center justify-between"><span className="text-slate-500">Đồng bộ gần nhất</span><strong className="text-slate-800">{selected.last_sync_at ? formatDateTime(selected.last_sync_at) : 'Chưa đồng bộ'}</strong></div>
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Thông báo</span><span className="max-w-64 text-right text-slate-700">{selected.last_sync_message || '—'}</span></div>
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Serial</span><span className="text-slate-700">{selected.serial_number || '—'}</span></div>
-                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Bridge báo danh</span><BridgeHeartbeat lastSeenAt={selected.last_seen_at} /></div>
+                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">{adms ? 'Máy báo danh' : 'Bridge báo danh'}</span><DeviceHeartbeat lastSeenAt={selected.last_seen_at} adms={adms} /></div>
                   </div>
-                  <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau.</p>
-                  {selected.sync_requested_at && (
+                  {adms ? (
+                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{window.location.hostname}</code>, cổng <code className="rounded bg-slate-100 px-1">443</code>, bật tên miền. Serial của máy phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
+                  ) : (
+                    <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau.</p>
+                  )}
+                  {!adms && selected.sync_requested_at && (
                     <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
                       <Activity className="mt-0.5 h-4 w-4 shrink-0 animate-pulse" />
                       <span>Đã gửi lệnh lúc {formatDateTime(selected.sync_requested_at)} — đang chờ bridge nhận. Bridge hỏi lệnh mỗi 20 giây.</span>
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={requestSync} disabled={busy}><Zap className="h-4 w-4" />Đồng bộ ngay</Button>
-                    <Button variant="outline" onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />Tạo token bridge</Button>
+                    {!adms && <Button onClick={requestSync} disabled={busy}><Zap className="h-4 w-4" />Đồng bộ ngay</Button>}
+                    <Button variant="outline" onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />{adms ? 'Tạo token' : 'Tạo token bridge'}</Button>
                     <Button variant="outline" onClick={revokeTokens}>Thu hồi token</Button>
                     <Button variant="outline" onClick={openEdit}><Pencil className="h-4 w-4" />Sửa thông tin</Button>
                     <Button variant="danger" onClick={deleteDevice}><Trash2 className="h-4 w-4" />Xóa máy</Button>
@@ -347,7 +361,9 @@ export function AdminAttendanceDevices() {
                 <CardHeader><CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-indigo-600" />Lịch sử đồng bộ</CardTitle></CardHeader>
                 <CardContent>
                   {selectedRuns.length === 0 ? (
-                    <p className="text-sm text-slate-500">Bridge chưa đồng bộ lần nào. Bấm “Đồng bộ ngay”, hoặc chạy <code className="rounded bg-slate-100 px-1">pnpm attendance:sync</code> trên máy chạy bridge.</p>
+                    adms
+                      ? <p className="text-sm text-slate-500">Chưa nhận dữ liệu lần nào từ máy. Chấm công một lần trên máy rồi bấm “Làm mới”; mã không có trong danh sách nhân viên sẽ hiện ở “Mã chưa ánh xạ”.</p>
+                      : <p className="text-sm text-slate-500">Bridge chưa đồng bộ lần nào. Bấm “Đồng bộ ngay”, hoặc chạy <code className="rounded bg-slate-100 px-1">pnpm attendance:sync</code> trên máy chạy bridge.</p>
                   ) : (
                     <ul className="space-y-2">
                       {selectedRuns.slice(0, 8).map((run) => (
@@ -464,15 +480,27 @@ export function AdminAttendanceDevices() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Input label="Model" value={deviceForm.model} onChange={(event) => setDeviceForm({ ...deviceForm, model: event.target.value })} placeholder="ZMM510_TFT" />
             <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
+            <Select label="Cách kết nối" value={deviceForm.sync_mode} onChange={(event) => setDeviceForm({ ...deviceForm, sync_mode: event.target.value })}>
+              <option value="ADMS">Máy tự đẩy dữ liệu lên HRM (không cần máy tính trung gian)</option>
+              <option value="BRIDGE">Bridge: máy tính trong mạng LAN đọc máy</option>
+            </Select>
           </div>
-          <p className="text-xs leading-5 text-slate-500">Bridge tự lấy IP, Port, kiểu kết nối và Comm Key từ đây ở mỗi lần đồng bộ (ô nào để trống thì dùng file cấu hình trên máy chạy bridge). Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng đồng bộ máy này.</p>
+          {deviceForm.sync_mode === 'ADMS' ? (
+            <p className="text-xs leading-5 text-slate-500">Với cách này, IP, Port, Comm Key và tốc độ truyền chỉ để ghi chú, HRM không dùng chúng để kết nối. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
+          ) : (
+            <p className="text-xs leading-5 text-slate-500">Bridge tự lấy IP, Port, kiểu kết nối và Comm Key từ đây ở mỗi lần đồng bộ (ô nào để trống thì dùng file cấu hình trên máy chạy bridge). Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng đồng bộ máy này.</p>
+          )}
           <div className="flex justify-end gap-2"><Button variant="outline" onClick={closeDeviceModal}>Hủy</Button><Button onClick={saveDevice} disabled={busy || !deviceForm.name.trim()}>{editingId ? 'Lưu' : 'Tạo thiết bị'}</Button></div>
         </div>
       </Modal>
 
-      <Modal open={!!issuedToken} onClose={() => setIssuedToken(null)} title="Token bridge — chỉ hiển thị một lần">
+      <Modal open={!!issuedToken} onClose={() => setIssuedToken(null)} title={adms ? 'Token — chỉ hiển thị một lần' : 'Token bridge — chỉ hiển thị một lần'}>
         <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><p className="text-sm text-emerald-900">Sao chép token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> trên máy tính bridge. Token mới hết hạn sau 90 ngày; token cũ còn hiệu lực tối đa 7 ngày để chuyển cấu hình. HRM không thể hiển thị lại token này.</p></div>
+          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><p className="text-sm text-emerald-900">
+            {adms
+              ? <>Đặt token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> của môi trường Production trên máy chủ web rồi triển khai lại — biến chỉ có hiệu lực ở bản triển khai mới. </>
+              : <>Sao chép token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> trên máy tính bridge. </>}
+            Token mới hết hạn sau 90 ngày; token cũ còn hiệu lực tối đa 7 ngày để chuyển cấu hình. HRM không thể hiển thị lại token này.</p></div>
           <div className="flex items-center gap-2 rounded-xl bg-slate-950 p-3"><code className="min-w-0 flex-1 break-all text-xs text-emerald-300">{issuedToken}</code><button onClick={() => { navigator.clipboard.writeText(issuedToken || ''); toast('Đã sao chép token.', 'success'); }} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><Clipboard className="h-4 w-4" /></button></div>
           <Button className="w-full" onClick={() => setIssuedToken(null)}>Tôi đã lưu token</Button>
         </div>
@@ -483,10 +511,11 @@ export function AdminAttendanceDevices() {
 
 // Bridge chet va may cham cong tat la hai chuyen khac nhau, truoc day nhin
 // giong het nhau tren man hinh. Moc bao danh nay tach duoc hai truong hop.
-function BridgeHeartbeat({ lastSeenAt }: { lastSeenAt: string | null }) {
-  if (!lastSeenAt) return <span className="text-slate-500">Chưa thấy bridge</span>;
+// May ADMS bao danh ~60 giay mot lan nen cung nguong 2 phut la du chac.
+function DeviceHeartbeat({ lastSeenAt, adms }: { lastSeenAt: string | null; adms: boolean }) {
+  if (!lastSeenAt) return <span className="text-slate-500">{adms ? 'Chưa thấy máy' : 'Chưa thấy bridge'}</span>;
   const minutes = Math.round((Date.now() - new Date(lastSeenAt).getTime()) / 60_000);
-  if (minutes <= 2) return <span className="font-semibold text-emerald-700">Đang chạy</span>;
+  if (minutes <= 2) return <span className="font-semibold text-emerald-700">{adms ? 'Đang kết nối' : 'Đang chạy'}</span>;
   if (minutes < 60) return <span className="font-semibold text-amber-700">{minutes} phút trước</span>;
   return <span className="font-semibold text-red-700">{formatDateTime(lastSeenAt)}</span>;
 }
