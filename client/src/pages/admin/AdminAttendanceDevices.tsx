@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, CheckCircle2, Clipboard, Cpu, KeyRound, Link2, Pencil, Plus, RefreshCw, Trash2, TriangleAlert, Wifi, Zap } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, CheckCircle2, Clipboard, Cpu, KeyRound, Link2, Pencil, Plus, Radio, RefreshCw, Trash2, TriangleAlert, Wifi, XCircle, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -53,6 +53,23 @@ const toForm = (device: AttendanceDevice): DeviceForm => ({
 
 const blankToNull = (value: string) => value.trim() || null;
 
+// Máy ADMS báo danh mỗi ~60 giây, nên 120 giây là đủ cho ít nhất hai lượt.
+const TEST_WINDOW_SECONDS = 120;
+const TEST_POLL_SECONDS = 5;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// `lastSeen` chỉ để phân biệt "máy chưa từng báo danh" với "máy từng báo danh rồi im lặng":
+// hai trường hợp này cách sửa khác nhau.
+type ConnectionTest = {
+  deviceId: string;
+  phase: 'waiting' | 'ok' | 'failed';
+  seconds: number;
+  seenAt?: string;
+  message?: string;
+  lastSeen?: string | null;
+  checklist?: boolean;
+};
+
 export function AdminAttendanceDevices() {
   const toast = useToast().toast;
   const confirm = useConfirm();
@@ -72,8 +89,12 @@ export function AdminAttendanceDevices() {
   const [mappingUserId, setMappingUserId] = useState('');
   const [mappingProfileId, setMappingProfileId] = useState('');
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [connTest, setConnTest] = useState<ConnectionTest | null>(null);
+  // Mỗi lần thử có một số hiệu; đổi máy, thử lại hoặc rời trang thì tăng số này
+  // để vòng chờ cũ tự dừng thay vì ghi đè kết quả của lần sau.
+  const testRun = useRef(0);
 
-  const selected = devices.find((item) => item.id === selectedId) || devices[0];
+  const selected =devices.find((item) => item.id === selectedId) || devices[0];
   const adms = selected?.sync_mode === 'ADMS';
   const profileById = new Map(profiles.map((item) => [item.id, item]));
   const selectedMappings = mappings
@@ -112,6 +133,51 @@ export function AdminAttendanceDevices() {
   };
 
   useEffect(() => { loadData(); }, []);
+
+  useEffect(() => {
+    setConnTest(null);
+    return () => { testRun.current += 1; };
+  }, [selected?.id]);
+
+  // Không có nút "ping" nào gọi xuống máy được: máy chấm công ở IP nội bộ, Vercel
+  // không với tới. Cách duy nhất là chờ máy tự gọi lên rồi xem mốc báo danh đổi.
+  const testConnection = async () => {
+    if (!selected) return;
+    const runId = ++testRun.current;
+    const deviceId = selected.id;
+    const fail = (message: string, extra: Partial<ConnectionTest> = {}) => {
+      setConnTest({ deviceId, phase: 'failed', seconds: 0, message, ...extra });
+      toast('Không kết nối được tới máy chấm công.', 'error');
+    };
+    if (!selected.serial_number) return fail('Chưa khai Serial cho máy này. Bấm “Sửa thông tin”, nhập Serial rồi thử lại.');
+    if (!selected.is_active) return fail('Máy đang bị tắt (“Cho phép sử dụng”) nên HRM không ghi nhận báo danh. Bật lại rồi thử lại.');
+
+    const readSeen = async () => {
+      const { data, error: readError } = await supabase.from('attendance_devices').select('last_seen_at').eq('id', deviceId).single();
+      return readError ? undefined : ((data?.last_seen_at as string | null) ?? null);
+    };
+
+    const baseline = await readSeen();
+    if (testRun.current !== runId) return;
+    if (baseline === undefined) return fail('Không đọc được trạng thái máy từ cơ sở dữ liệu. Thử lại sau.');
+    if (baseline && Date.now() - new Date(baseline).getTime() <= 2 * 60_000) {
+      return setConnTest({ deviceId, phase: 'ok', seconds: 0, seenAt: baseline });
+    }
+
+    for (let seconds = 0; seconds < TEST_WINDOW_SECONDS; seconds += TEST_POLL_SECONDS) {
+      setConnTest({ deviceId, phase: 'waiting', seconds });
+      await sleep(TEST_POLL_SECONDS * 1000);
+      if (testRun.current !== runId) return;
+      const seen = await readSeen();
+      if (testRun.current !== runId) return;
+      if (seen && seen !== baseline) {
+        setConnTest({ deviceId, phase: 'ok', seconds, seenAt: seen });
+        loadData();
+        return;
+      }
+    }
+    fail(`Sau ${TEST_WINDOW_SECONDS} giây vẫn không thấy máy báo danh.`, { seconds: TEST_WINDOW_SECONDS, lastSeen: baseline, checklist: true });
+  };
 
   const openCreate = () => {
     setEditingId(null);
@@ -301,7 +367,7 @@ export function AdminAttendanceDevices() {
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">{adms ? 'Máy báo danh' : 'Bridge báo danh'}</span><DeviceHeartbeat lastSeenAt={selected.last_seen_at} adms={adms} /></div>
                   </div>
                   {adms ? (
-                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{window.location.hostname}</code>, cổng <code className="rounded bg-slate-100 px-1">443</code>, bật tên miền. Không cần token: HRM nhận máy theo <strong>Serial</strong>, nên Serial ở trên phải đúng và có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Muốn ngừng nhận dữ liệu thì bỏ tích “Cho phép sử dụng”. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
+                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{window.location.hostname}</code>, cổng <code className="rounded bg-slate-100 px-1">443</code> (không dùng cổng 8080/8081 mặc định của máy), bật tên miền, bật HTTPS nếu máy có ô đó. Không cần token: HRM nhận máy theo <strong>Serial</strong>, nên Serial ở trên phải đúng và có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Muốn ngừng nhận dữ liệu thì bỏ tích “Cho phép sử dụng”. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
                   ) : (
                     <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau.</p>
                   )}
@@ -311,7 +377,9 @@ export function AdminAttendanceDevices() {
                       <span>Đã gửi lệnh lúc {formatDateTime(selected.sync_requested_at)} — đang chờ bridge nhận. Bridge hỏi lệnh mỗi 20 giây.</span>
                     </div>
                   )}
+                  {adms && connTest?.deviceId === selected.id && <ConnectionTestResult test={connTest} hostname={window.location.hostname} />}
                   <div className="flex flex-wrap gap-2">
+                    {adms && <Button onClick={testConnection} disabled={connTest?.phase === 'waiting'}><Radio className="h-4 w-4" />Kiểm tra kết nối</Button>}
                     {!adms && <Button onClick={requestSync} disabled={busy}><Zap className="h-4 w-4" />Đồng bộ ngay</Button>}
                     {!adms && <Button variant="outline" onClick={issueToken} disabled={busy}><KeyRound className="h-4 w-4" />Tạo token bridge</Button>}
                     {!adms && <Button variant="outline" onClick={revokeTokens}>Thu hồi token</Button>}
@@ -474,12 +542,12 @@ export function AdminAttendanceDevices() {
             <Input label="Model" value={deviceForm.model} onChange={(event) => setDeviceForm({ ...deviceForm, model: event.target.value })} placeholder="ZMM510_TFT" />
             <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
             <Select label="Cách kết nối" value={deviceForm.sync_mode} onChange={(event) => setDeviceForm({ ...deviceForm, sync_mode: event.target.value })}>
-              <option value="ADMS">Máy tự đẩy dữ liệu lên HRM (không cần máy tính trung gian)</option>
+              <option value="ADMS">Cloud (ADMS): máy tự đẩy dữ liệu lên HRM, không cần máy tính trung gian</option>
               <option value="BRIDGE">Bridge: máy tính trong mạng LAN đọc máy</option>
             </Select>
           </div>
           {deviceForm.sync_mode === 'ADMS' ? (
-            <p className="text-xs leading-5 text-slate-500">Với cách này, IP, Port, Comm Key và tốc độ truyền chỉ để ghi chú, HRM không dùng chúng để kết nối. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
+            <p className="text-xs leading-5 text-slate-500">Với cách này, IP, Port, Comm Key và tốc độ truyền chỉ để ghi chú, HRM không dùng chúng để kết nối. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Trên máy chấm công, mục Cài đặt máy chủ đám mây dùng cổng <strong>443</strong>, không dùng cổng 8080/8081 mặc định. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
           ) : (
             <p className="text-xs leading-5 text-slate-500">Bridge tự lấy IP, Port, kiểu kết nối và Comm Key từ đây ở mỗi lần đồng bộ (ô nào để trống thì dùng file cấu hình trên máy chạy bridge). Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng đồng bộ máy này.</p>
           )}
@@ -507,6 +575,39 @@ function DeviceHeartbeat({ lastSeenAt, adms }: { lastSeenAt: string | null; adms
   if (minutes <= 2) return <span className="font-semibold text-emerald-700">{adms ? 'Đang kết nối' : 'Đang chạy'}</span>;
   if (minutes < 60) return <span className="font-semibold text-amber-700">{minutes} phút trước</span>;
   return <span className="font-semibold text-red-700">{formatDateTime(lastSeenAt)}</span>;
+}
+
+function ConnectionTestResult({ test, hostname }: { test: ConnectionTest; hostname: string }) {
+  if (test.phase === 'waiting') {
+    return (
+      <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+        <Activity className="mt-0.5 h-4 w-4 shrink-0 animate-pulse" />
+        <span>Đang chờ máy báo danh ({test.seconds}/{TEST_WINDOW_SECONDS} giây). Lưu cấu hình máy chủ đám mây trên máy chấm công (khởi động lại máy nếu máy yêu cầu), máy sẽ báo danh trong vòng 1 phút.</span>
+      </div>
+    );
+  }
+  if (test.phase === 'ok') {
+    return (
+      <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+        <span>Máy đã kết nối: báo danh lúc {test.seenAt ? formatDateTime(test.seenAt) : '—'}. Quét thử một lần rồi bấm “Làm mới” để xem lần quét về “Lịch sử đồng bộ”.</span>
+      </div>
+    );
+  }
+  return (
+    <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+      <p className="flex items-start gap-2 font-semibold"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />Không kết nối được</p>
+      <p className="mt-1 pl-6">{test.message}{test.checklist && (test.lastSeen
+        ? ` Lần cuối thấy máy: ${formatDateTime(test.lastSeen)} — máy từng kết nối nhưng nay im lặng.`
+        : ' Máy chưa từng báo danh với HRM.')}</p>
+      {test.checklist && <ol className="mt-2 list-decimal space-y-1 pl-9 text-xs leading-5">
+        <li>Trên máy: Thiết lập liên kết › Cài đặt máy chủ đám mây, địa chỉ <code className="rounded bg-white/70 px-1">{hostname}</code>, cổng <strong>443</strong>, bật tên miền. Cổng 8080/8081 không dùng được vì máy chủ web chỉ nhận cổng 443.</li>
+        <li>Nếu màn hình đó có ô HTTPS hoặc SSL thì phải bật.</li>
+        <li>Serial khai ở đây phải trùng Serial thật của máy, và máy chủ phải có Serial đó trong biến ATTENDANCE_DEVICE_SERIALS (đổi biến xong cần triển khai lại).</li>
+        <li>Đã đủ ba điều trên mà vẫn im lặng thì nhiều khả năng máy không bắt tay được HTTPS với máy chủ này. Chuyển “Cách kết nối” sang Bridge.</li>
+      </ol>}
+    </div>
+  );
 }
 
 function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
