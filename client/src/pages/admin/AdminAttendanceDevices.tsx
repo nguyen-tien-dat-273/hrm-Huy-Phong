@@ -53,6 +53,22 @@ const toForm = (device: AttendanceDevice): DeviceForm => ({
 
 const blankToNull = (value: string) => value.trim() || null;
 
+// "Cloud (ADMS)" và "TCP/IP" là hai cách nối khác hẳn nhau nên gom vào MỘT ô chọn
+// "Kiểu kết nối", đúng chỗ người ta tìm. Trong DB vẫn là hai cột: `sync_mode` quyết
+// định ai chủ động gọi, `connection_type` chỉ có ý nghĩa khi bridge đọc máy.
+const LINK_KINDS = [
+  { value: 'ADMS', label: 'Cloud (ADMS): máy tự đẩy dữ liệu lên HRM qua Internet' },
+  { value: 'TCP', label: 'TCP/IP: bridge trong mạng LAN đọc máy theo IP' },
+  { value: 'UDP', label: 'UDP: bridge trong mạng LAN đọc máy theo IP' },
+  { value: 'SERIAL', label: 'Cổng COM: bridge đọc máy qua cáp' },
+] as const;
+
+const linkKindOf = (device: Pick<DeviceForm, 'sync_mode' | 'connection_type'>) =>
+  device.sync_mode === 'ADMS' ? 'ADMS' : device.connection_type;
+
+const linkKindLabel = (device: Pick<AttendanceDevice, 'sync_mode' | 'connection_type'>) =>
+  device.sync_mode === 'ADMS' ? 'Cloud (ADMS)' : device.connection_type === 'SERIAL' ? 'Cổng COM' : device.connection_type === 'UDP' ? 'UDP' : 'TCP/IP';
+
 // Máy ADMS báo danh mỗi ~60 giây, nên 120 giây là đủ cho ít nhất hai lượt.
 const TEST_WINDOW_SECONDS = 120;
 const TEST_POLL_SECONDS = 5;
@@ -96,6 +112,7 @@ export function AdminAttendanceDevices() {
 
   const selected =devices.find((item) => item.id === selectedId) || devices[0];
   const adms = selected?.sync_mode === 'ADMS';
+  const formAdms = deviceForm.sync_mode === 'ADMS';
   const profileById = new Map(profiles.map((item) => [item.id, item]));
   const selectedMappings = mappings
     .filter((item) => item.device_id === selected?.id)
@@ -198,6 +215,11 @@ export function AdminAttendanceDevices() {
   };
 
   const formError = (): string | null => {
+    // Máy Cloud tự gọi lên HRM, nên IP/Port/tốc độ truyền không được dùng và cũng không hiện ra để sửa.
+    if (deviceForm.sync_mode === 'ADMS') {
+      if (!deviceForm.serial_number.trim()) return 'Máy Cloud (ADMS) được nhận theo Serial, hãy nhập Serial của máy.';
+      return deviceForm.device_number.trim() && !/^\d+$/.test(deviceForm.device_number.trim()) ? 'ID máy phải là số.' : null;
+    }
     const ip = deviceForm.ip_address.trim();
     if (ip && !IPV4.test(ip) && deviceForm.connection_type !== 'SERIAL') return 'Địa chỉ IP phải có dạng 192.168.1.201.';
     const port = Number(deviceForm.port);
@@ -350,7 +372,7 @@ export function AdminAttendanceDevices() {
             {devices.map((device) => (
               <button key={device.id} onClick={() => setSelectedId(device.id)} className={`min-w-56 rounded-xl border p-3 text-left transition ${selected?.id === device.id ? 'border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
                 <div className="flex items-center justify-between gap-2"><span className="font-semibold text-slate-900">{device.name}</span><StatusBadge status={device.last_sync_status} /></div>
-                <p className="mt-1 text-xs text-slate-500">{device.model || 'Chưa khai báo model'} · {device.location?.name || 'Chưa gắn địa điểm'}</p>
+                <p className="mt-1 text-xs text-slate-500">{device.model || 'Chưa khai báo model'} · {device.location?.name || 'Chưa gắn địa điểm'} · {linkKindLabel(device)}</p>
               </button>
             ))}
           </div>
@@ -369,7 +391,7 @@ export function AdminAttendanceDevices() {
                   {adms ? (
                     <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{window.location.hostname}</code>, cổng <code className="rounded bg-slate-100 px-1">443</code> (không dùng cổng 8080/8081 mặc định của máy), bật tên miền, bật HTTPS nếu máy có ô đó. Không cần token: HRM nhận máy theo <strong>Serial</strong>, nên Serial ở trên phải đúng và có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Muốn ngừng nhận dữ liệu thì bỏ tích “Cho phép sử dụng”. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
                   ) : (
-                    <p className="text-xs leading-5 text-slate-500">Bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau.</p>
+                    <p className="text-xs leading-5 text-slate-500">Máy này đang nối kiểu <strong>{linkKindLabel(selected)}</strong>: bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công, vì HRM nằm trên Internet nên không tự nối vào IP nội bộ được. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau. Muốn bỏ máy tính trung gian, bấm “Sửa thông tin” và chọn Kiểu kết nối <strong>Cloud (ADMS)</strong>.</p>
                   )}
                   {!adms && selected.sync_requested_at && (
                     <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
@@ -395,11 +417,13 @@ export function AdminAttendanceDevices() {
                   <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
                     <InfoRow label="Mã máy" value={selected.device_code} />
                     <InfoRow label="ID máy" value={selected.device_number} />
-                    <InfoRow label="Địa chỉ IP" value={selected.ip_address} />
-                    <InfoRow label="Port" value={selected.port} />
-                    <InfoRow label="Kiểu kết nối" value={selected.connection_type === 'SERIAL' ? 'Cổng COM' : selected.connection_type === 'UDP' ? 'UDP' : 'TCP/IP'} />
-                    <InfoRow label="Tốc độ truyền" value={selected.baud_rate} />
-                    <InfoRow label="Mật khẩu kết nối" value={selected.comm_password ? '••••••' : null} />
+                    <InfoRow label="Kiểu kết nối" value={linkKindLabel(selected)} />
+                    {!adms && <>
+                      <InfoRow label="Địa chỉ IP" value={selected.ip_address} />
+                      <InfoRow label="Port" value={selected.port} />
+                      <InfoRow label="Tốc độ truyền" value={selected.baud_rate} />
+                      <InfoRow label="Mật khẩu kết nối" value={selected.comm_password ? '••••••' : null} />
+                    </>}
                     <InfoRow label="Trạng thái máy" value={DIRECTION_LABEL[selected.direction]} />
                     <InfoRow label="Model" value={selected.model} />
                     <InfoRow label="Serial" value={selected.serial_number} />
@@ -504,28 +528,31 @@ export function AdminAttendanceDevices() {
               <div className="space-y-4">
                 <Input label="Mã máy" value={deviceForm.device_code} onChange={(event) => setDeviceForm({ ...deviceForm, device_code: event.target.value })} placeholder="MCC00001" />
                 <Input label="ID máy" inputMode="numeric" value={deviceForm.device_number} onChange={(event) => setDeviceForm({ ...deviceForm, device_number: event.target.value })} placeholder="1" />
-                <Input label="Địa chỉ IP" value={deviceForm.ip_address} onChange={(event) => setDeviceForm({ ...deviceForm, ip_address: event.target.value })} placeholder="192.168.1.201" />
-                <Input label="Mật khẩu kết nối (Comm Key)" type="password" autoComplete="new-password" value={deviceForm.comm_password} onChange={(event) => setDeviceForm({ ...deviceForm, comm_password: event.target.value })} placeholder="0" />
+                {!formAdms && <Input label="Địa chỉ IP" value={deviceForm.ip_address} onChange={(event) => setDeviceForm({ ...deviceForm, ip_address: event.target.value })} placeholder="192.168.1.201" />}
+                {!formAdms && <Input label="Mật khẩu kết nối (Comm Key)" type="password" autoComplete="new-password" value={deviceForm.comm_password} onChange={(event) => setDeviceForm({ ...deviceForm, comm_password: event.target.value })} placeholder="0" />}
                 <Select label="Trạng thái máy" value={deviceForm.direction} onChange={(event) => setDeviceForm({ ...deviceForm, direction: event.target.value })}>
                   <option value="BOTH">Vào/Ra</option>
                   <option value="IN">Vào</option>
                   <option value="OUT">Ra</option>
                 </Select>
                 <Input label="Địa chỉ web" disabled={!deviceForm.use_web_address} value={deviceForm.web_address} onChange={(event) => setDeviceForm({ ...deviceForm, web_address: event.target.value })} placeholder="example.com.vn" />
-                <Input label="Serial" value={deviceForm.serial_number} onChange={(event) => setDeviceForm({ ...deviceForm, serial_number: event.target.value })} placeholder="1313245000324" />
+                <Input label="Serial" required={formAdms} value={deviceForm.serial_number} onChange={(event) => setDeviceForm({ ...deviceForm, serial_number: event.target.value })} placeholder="1313245000324" />
                 <Input label="Số đăng ký" value={deviceForm.registration_number} onChange={(event) => setDeviceForm({ ...deviceForm, registration_number: event.target.value })} />
               </div>
               <div className="space-y-4">
                 <Input label="Tên máy" required value={deviceForm.name} onChange={(event) => setDeviceForm({ ...deviceForm, name: event.target.value })} placeholder="Máy cửa chính" />
-                <Select label="Kiểu kết nối" value={deviceForm.connection_type} onChange={(event) => setDeviceForm({ ...deviceForm, connection_type: event.target.value })}>
-                  <option value="TCP">TCP/IP</option>
-                  <option value="UDP">UDP</option>
-                  <option value="SERIAL">Cổng COM</option>
+                <Select label="Kiểu kết nối" value={linkKindOf(deviceForm)} onChange={(event) => {
+                  const kind = event.target.value;
+                  setDeviceForm(kind === 'ADMS'
+                    ? { ...deviceForm, sync_mode: 'ADMS' }
+                    : { ...deviceForm, sync_mode: 'BRIDGE', connection_type: kind });
+                }}>
+                  {LINK_KINDS.map((kind) => <option key={kind.value} value={kind.value}>{kind.label}</option>)}
                 </Select>
-                <Input label="Port" inputMode="numeric" value={deviceForm.port} onChange={(event) => setDeviceForm({ ...deviceForm, port: event.target.value })} placeholder="4370" />
-                <Select label="Tốc độ truyền" value={deviceForm.baud_rate} onChange={(event) => setDeviceForm({ ...deviceForm, baud_rate: event.target.value })}>
+                {!formAdms && <Input label="Port" inputMode="numeric" value={deviceForm.port} onChange={(event) => setDeviceForm({ ...deviceForm, port: event.target.value })} placeholder="4370" />}
+                {!formAdms && <Select label="Tốc độ truyền" value={deviceForm.baud_rate} onChange={(event) => setDeviceForm({ ...deviceForm, baud_rate: event.target.value })}>
                   {['9600', '19200', '38400', '57600', '115200'].map((rate) => <option key={rate} value={rate}>{rate}</option>)}
-                </Select>
+                </Select>}
                 <Input label="License" value={deviceForm.license} onChange={(event) => setDeviceForm({ ...deviceForm, license: event.target.value })} placeholder="1437" />
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
                   <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={deviceForm.use_web_address} onChange={(event) => setDeviceForm({ ...deviceForm, use_web_address: event.target.checked })} />
@@ -541,13 +568,9 @@ export function AdminAttendanceDevices() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Input label="Model" value={deviceForm.model} onChange={(event) => setDeviceForm({ ...deviceForm, model: event.target.value })} placeholder="ZMM510_TFT" />
             <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
-            <Select label="Cách kết nối" value={deviceForm.sync_mode} onChange={(event) => setDeviceForm({ ...deviceForm, sync_mode: event.target.value })}>
-              <option value="ADMS">Cloud (ADMS): máy tự đẩy dữ liệu lên HRM, không cần máy tính trung gian</option>
-              <option value="BRIDGE">Bridge: máy tính trong mạng LAN đọc máy</option>
-            </Select>
           </div>
-          {deviceForm.sync_mode === 'ADMS' ? (
-            <p className="text-xs leading-5 text-slate-500">Với cách này, IP, Port, Comm Key và tốc độ truyền chỉ để ghi chú, HRM không dùng chúng để kết nối. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Trên máy chấm công, mục Cài đặt máy chủ đám mây dùng cổng <strong>443</strong>, không dùng cổng 8080/8081 mặc định. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
+          {formAdms ? (
+            <p className="text-xs leading-5 text-slate-500">Với cách này, HRM không nối vào máy mà chính máy gọi lên HRM, nên không cần IP, Port hay Comm Key. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Trên máy chấm công, mục Cài đặt máy chủ đám mây dùng cổng <strong>443</strong>, không dùng cổng 8080/8081 mặc định. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
           ) : (
             <p className="text-xs leading-5 text-slate-500">Bridge tự lấy IP, Port, kiểu kết nối và Comm Key từ đây ở mỗi lần đồng bộ (ô nào để trống thì dùng file cấu hình trên máy chạy bridge). Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng đồng bộ máy này.</p>
           )}
