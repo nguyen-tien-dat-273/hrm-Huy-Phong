@@ -139,3 +139,7 @@ HP HRM/
 supabase/paste-*.sql
 .env.recruitment
 .env.migration
+
+# Cloudflare Worker (cloudflare/iclock)
+.wrangler/
+.dev.vars

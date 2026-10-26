@@ -1,0 +1,14 @@
+{
+  "name": "hic",
+  "main": "worker.ts",
+  "compatibility_date": "2025-09-01",
+  // node:crypto và Buffer mà api/iclock/cdata.ts đang dùng.
+  "compatibility_flags": ["nodejs_compat"],
+  // Địa chỉ dạng hic.<tài-khoản>.workers.dev. Muốn máy gọi bằng HTTP thường thì
+  // phải dùng tên miền riêng đã nằm trên Cloudflare: bỏ chú thích "routes" bên dưới,
+  // đổi tên miền, xem README.md.
+  "workers_dev": true,
+  // Không cần địa chỉ xem trước cho từng phiên bản; máy chỉ gọi một địa chỉ cố định.
+  "preview_urls": false
+  // "routes": [{ "pattern": "adms.ten-mien-cua-ban.vn", "custom_domain": true }]
+}

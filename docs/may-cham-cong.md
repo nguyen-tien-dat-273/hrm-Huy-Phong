@@ -394,3 +394,7 @@ hạn của giao thức ZKTeco, không phải của phần cài đặt.
 **Chưa biết máy có tin chứng chỉ của Vercel không.** Firmware mang kho chứng
 chỉ gốc theo thời điểm xuất xưởng. Nếu kho đó thiếu CA mà Vercel dùng thì bắt
 tay TLS hỏng, và không sửa được từ phía server. Chỉ thử thật mới biết.
+
+## Nếu máy không gọi được lên Vercel
+
+Chuyển phần nhận `/iclock/*` sang Cloudflare Worker (nhận được HTTP thường cổng 80/8080, HRM vẫn ở Vercel). Xem `cloudflare/iclock/README.md`.
