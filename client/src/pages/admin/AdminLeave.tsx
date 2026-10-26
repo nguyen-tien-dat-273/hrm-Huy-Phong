@@ -374,7 +374,7 @@ export function AdminLeave() {
         value={tab}
         onChange={setTab}
         items={[
-          ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đi muộn · Về sớm · Làm thêm' }] : []),
+          ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đơn chấm công & làm thêm' }] : []),
           ...(canReviewLeave ? [{ key: 'requests' as const, label: 'Nghỉ phép' }] : []),
           ...(canManageLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép' }] : []),
           ...(canManageLeave ? [{ key: 'quota' as const, label: 'Quỹ phép' }] : []),

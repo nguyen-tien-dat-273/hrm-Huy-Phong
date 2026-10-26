@@ -42,7 +42,7 @@ import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from './workSch
 
 export interface AttendanceRequestForPayroll {
   user_id: string;
-  request_type: 'LATE_ARRIVAL' | 'EARLY_LEAVE' | 'OVERTIME';
+  request_type: 'LATE_ARRIVAL' | 'EARLY_LEAVE' | 'OVERTIME' | 'OT_WEEKDAY' | 'OT_WEEKEND' | 'OT_HOLIDAY' | 'NIGHT_WORK';
   work_date: string;
   minutes: number | null;
   hours: number | null;

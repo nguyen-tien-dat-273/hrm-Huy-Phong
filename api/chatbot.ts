@@ -608,7 +608,7 @@ const TOOLS: Record<string, ToolSpec> = {
         properties: {
           status: S('Trạng thái: leave = approved | pending | rejected | all; requests = approved | pending | rejected | cancelled | all; kpi = DRAFT | PENDING | REJECTED | BOARD | APPROVED.'),
           leave_type: { type: 'STRING', enum: ['annual', 'sick', 'unpaid', 'other'], description: 'Loại nghỉ (leave).' },
-          request_type: { type: 'STRING', enum: ['LATE_ARRIVAL', 'EARLY_LEAVE', 'OVERTIME'], description: 'Loại đơn (requests).' },
+          request_type: { type: 'STRING', enum: ['LATE_ARRIVAL', 'EARLY_LEAVE', 'OVERTIME', 'OT_WEEKDAY', 'OT_WEEKEND', 'OT_HOLIDAY', 'NIGHT_WORK'], description: 'Loại đơn (requests).' },
           employment_status: { type: 'STRING', enum: ['onboarding', 'probation', 'active', 'suspended'], description: 'Tình trạng làm việc (employees).' },
           grade: S('Xếp loại KPI (kpi).'),
           position: S('Tên vị trí / chức danh, dùng được cho mọi bộ dữ liệu.'),

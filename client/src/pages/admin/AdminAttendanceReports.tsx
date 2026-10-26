@@ -25,14 +25,16 @@ import {
   type EmployeeAttendanceRollup,
   type DisciplineGrade,
 } from '@/lib/attendanceReportData';
+import { AttendanceDailyReport } from '@/components/attendance/AttendanceDailyReport';
 import { EmployeeAttendanceModal } from '@/components/attendance/EmployeeAttendanceModal';
 import type { ExportOptions } from '@/lib/tableExport';
 
-type TabKey = 'charts' | 'summary';
+type TabKey = 'charts' | 'summary' | 'daily';
 
 const TAB_ITEMS: Array<{ key: TabKey; label: string; icon: any }> = [
   { key: 'charts', label: 'Biểu đồ & Phân tích', icon: TrendingUp },
   { key: 'summary', label: 'Bảng tổng hợp công', icon: Layers },
+  { key: 'daily', label: 'Báo cáo theo ngày', icon: CalendarDays },
 ];
 
 const GRADE_PILL: Record<DisciplineGrade, { label: string; class: string }> = {
@@ -270,116 +272,120 @@ export function AdminAttendanceReports() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <MonthNav value={monthStart} onChange={setMonthStart} bare />
-          <ExportButtons options={getExportOptions} disabled={data.rollups.length === 0} />
-        </div>
+        {activeTab !== 'daily' && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            <MonthNav value={monthStart} onChange={setMonthStart} bare />
+            <ExportButtons options={getExportOptions} disabled={data.rollups.length === 0} />
+          </div>
+        )}
       </div>
 
-      {/* 5 Thẻ chỉ số KPI - Style vuông vắn, clean */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {/* Thẻ 1: Tổng ngày công */}
-        <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Tổng ngày công</span>
-            <CalendarDays className="h-3.5 w-3.5 text-indigo-600" />
+      {/* 5 Thẻ chỉ số KPI của tháng - ẩn ở tab Báo cáo theo ngày */}
+      {activeTab !== 'daily' && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {/* Thẻ 1: Tổng ngày công */}
+          <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold uppercase tracking-wider text-[11px]">Tổng ngày công</span>
+              <CalendarDays className="h-3.5 w-3.5 text-indigo-600" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1 font-mono">
+              <span className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                {data.totalWorkDays}
+              </span>
+              <span className="text-xs text-slate-400">công</span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span>TB: <strong className="text-slate-700 dark:text-slate-200">{data.avgWorkDays}</strong> / {data.standardDays}d</span>
+              <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                {data.standardDays > 0 ? Math.round((data.avgWorkDays / data.standardDays) * 100) : 0}%
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Tổng giờ làm: {data.totalWorkHours}h
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1 font-mono">
-            <span className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              {data.totalWorkDays}
-            </span>
-            <span className="text-xs text-slate-400">công</span>
-          </div>
-          <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>TB: <strong className="text-slate-700 dark:text-slate-200">{data.avgWorkDays}</strong> / {data.standardDays}d</span>
-            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-              {data.standardDays > 0 ? Math.round((data.avgWorkDays / data.standardDays) * 100) : 0}%
-            </span>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-400">
-            Tổng giờ làm: {data.totalWorkHours}h
-          </div>
-        </div>
 
-        {/* Thẻ 2: Đi muộn & Về sớm */}
-        <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Đi muộn & Về sớm</span>
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+          {/* Thẻ 2: Đi muộn & Về sớm */}
+          <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold uppercase tracking-wider text-[11px]">Đi muộn & Về sớm</span>
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1 font-mono">
+              <span className={`text-xl font-bold ${data.totalLateIncidents > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                {data.totalLateIncidents}
+              </span>
+              <span className="text-xs text-slate-400">lượt ({data.totalLateMinutes}p)</span>
+            </div>
+            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              {data.lateExcusedCount} có phép · <strong className="text-red-600 dark:text-red-400">{data.lateUnexcusedCount} vi phạm</strong>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              {data.lateAfterCutoffCount > 0 ? `${data.lateAfterCutoffCount} lượt sau 9h` : '0 lượt vào sau 9h'}
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1 font-mono">
-            <span className={`text-xl font-bold ${data.totalLateIncidents > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}`}>
-              {data.totalLateIncidents}
-            </span>
-            <span className="text-xs text-slate-400">lượt ({data.totalLateMinutes}p)</span>
-          </div>
-          <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {data.lateExcusedCount} có phép · <strong className="text-red-600 dark:text-red-400">{data.lateUnexcusedCount} vi phạm</strong>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-400">
-            {data.lateAfterCutoffCount > 0 ? `${data.lateAfterCutoffCount} lượt sau 9h` : '0 lượt vào sau 9h'}
-          </div>
-        </div>
 
-        {/* Thẻ 3: Làm thêm giờ OT */}
-        <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Làm thêm giờ (OT)</span>
-            <Flame className="h-3.5 w-3.5 text-orange-600" />
+          {/* Thẻ 3: Làm thêm giờ OT */}
+          <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold uppercase tracking-wider text-[11px]">Làm thêm giờ (OT)</span>
+              <Flame className="h-3.5 w-3.5 text-orange-600" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1 font-mono">
+              <span className={`text-xl font-bold ${data.totalOtHours > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                {data.totalOtHours}
+              </span>
+              <span className="text-xs text-slate-400">giờ</span>
+            </div>
+            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              {data.employeesWithOt} nhân sự · {data.approvedOtHours}h đã duyệt
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              {data.otHoursWeekday}h ngày (150%) · {data.otHoursWeekend}h nghỉ (200%)
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1 font-mono">
-            <span className={`text-xl font-bold ${data.totalOtHours > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-900 dark:text-slate-100'}`}>
-              {data.totalOtHours}
-            </span>
-            <span className="text-xs text-slate-400">giờ</span>
-          </div>
-          <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {data.employeesWithOt} nhân sự · {data.approvedOtHours}h đã duyệt
-          </div>
-          <div className="mt-1 text-[11px] text-slate-400">
-            {data.otHoursWeekday}h ngày (150%) · {data.otHoursWeekend}h nghỉ (200%)
-          </div>
-        </div>
 
-        {/* Thẻ 4: Nghỉ phép & Vắng mặt */}
-        <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Nghỉ phép</span>
-            <Briefcase className="h-3.5 w-3.5 text-violet-600" />
+          {/* Thẻ 4: Nghỉ phép & Vắng mặt */}
+          <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold uppercase tracking-wider text-[11px]">Nghỉ phép</span>
+              <Briefcase className="h-3.5 w-3.5 text-violet-600" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1 font-mono">
+              <span className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                {data.totalLeaveDays}
+              </span>
+              <span className="text-xs text-slate-400">ngày</span>
+            </div>
+            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              {data.employeesWithLeave} người nghỉ · {data.leaveDaysAnnual} phép năm
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Ốm: {data.leaveDaysSick}d · Không lương: {data.leaveDaysUnpaid}d
+            </div>
           </div>
-          <div className="mt-2 flex items-baseline gap-1 font-mono">
-            <span className="text-xl font-bold text-slate-900 dark:text-slate-100">
-              {data.totalLeaveDays}
-            </span>
-            <span className="text-xs text-slate-400">ngày</span>
-          </div>
-          <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {data.employeesWithLeave} người nghỉ · {data.leaveDaysAnnual} phép năm
-          </div>
-          <div className="mt-1 text-[11px] text-slate-400">
-            Ốm: {data.leaveDaysSick}d · Không lương: {data.leaveDaysUnpaid}d
-          </div>
-        </div>
 
-        {/* Thẻ 5: Tỷ lệ đúng giờ */}
-        <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span className="font-semibold uppercase tracking-wider text-[11px]">Tỷ lệ đúng giờ</span>
-            <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
-          </div>
-          <div className="mt-2 flex items-baseline gap-1 font-mono">
-            <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-              {data.avgPunctualityRate}%
-            </span>
-          </div>
-          <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-            {data.countExcellent} Xuất sắc · {data.countGood} Tốt · <strong className="text-red-600 dark:text-red-400">{data.countWarning} Lưu ý</strong>
-          </div>
-          <div className="mt-1 text-[11px] text-slate-400">
-            Quên checkout: {data.totalMissingCheckouts} lần
+          {/* Thẻ 5: Tỷ lệ đúng giờ */}
+          <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold uppercase tracking-wider text-[11px]">Tỷ lệ đúng giờ</span>
+              <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-1 font-mono">
+              <span className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                {data.avgPunctualityRate}%
+              </span>
+            </div>
+            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+              {data.countExcellent} Xuất sắc · {data.countGood} Tốt · <strong className="text-red-600 dark:text-red-400">{data.countWarning} Lưu ý</strong>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-400">
+              Quên checkout: {data.totalMissingCheckouts} lần
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Tabs chuyển đổi: Biểu đồ trước, Bảng tổng hợp công sau - Style vuông vức */}
       <div className="flex border-b border-slate-200 dark:border-slate-800 no-print" role="tablist">
@@ -533,6 +539,8 @@ export function AdminAttendanceReports() {
       )}
 
       {/* TAB 2: BẢNG TỔNG HỢP CÔNG NHÂN SỰ */}
+      {activeTab === 'daily' && <AttendanceDailyReport />}
+
       {activeTab === 'summary' && (
         <div className="space-y-3">
           {/* Thanh công cụ lọc - Vuông vức, clean */}

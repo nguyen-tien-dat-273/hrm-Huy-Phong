@@ -324,15 +324,15 @@ export function StaffLeave() {
           onClick={() => setSection('attendance')}
           className={`rounded-2xl border-2 p-4 text-left transition-all ${section === 'attendance' ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-200 dark:border-blue-500 dark:bg-blue-950/40' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600'}`}
         >
-          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Đi muộn · Về sớm · Làm thêm</span>
-          <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Báo thời gian phát sinh và theo dõi kết quả duyệt.</span>
+          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Đơn chấm công & làm thêm</span>
+          <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Đi muộn, về sớm, OT ngày thường / nghỉ / lễ, ca đêm — duyệt xong tự vào công và lương.</span>
         </button>
         <button
           type="button"
           onClick={() => setSection('leave')}
           className={`rounded-2xl border-2 p-4 text-left transition-all ${section === 'leave' ? 'border-emerald-400 bg-emerald-50/80 ring-2 ring-emerald-200 dark:border-emerald-500 dark:bg-emerald-950/40' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600'}`}
         >
-          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Nghỉ phép · Hủy phép</span>
+          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Đơn nghỉ phép</span>
           <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Xem quỹ phép, gửi đơn nghỉ hoặc xin hủy lịch đã duyệt.</span>
         </button>
       </div>

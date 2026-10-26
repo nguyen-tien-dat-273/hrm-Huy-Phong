@@ -688,6 +688,13 @@ check('chưa khai ca nào thì lùi về quy ước T7+CN',
 check('đơn không phải tăng ca thì bỏ qua',
   splitOvertimeHours([{ request_type: 'LATE_ARRIVAL', work_date: '2026-08-07', hours: 9 }], caThuBayLam, new Set()),
   { weekday: 0, weekend: 0, holiday: 0 });
+check('đơn chọn đúng loại OT thì theo loại đã chọn, không đoán theo ngày; ca đêm không cộng vào giờ OT',
+  splitOvertimeHours([
+    { request_type: 'OT_WEEKDAY', work_date: '2026-08-09', hours: 1 },
+    { request_type: 'OT_WEEKEND', work_date: '2026-08-07', hours: 2 },
+    { request_type: 'OT_HOLIDAY', work_date: '2026-08-07', hours: 3 },
+    { request_type: 'NIGHT_WORK', work_date: '2026-08-07', hours: 4 },
+  ], caThuBayLam, new Set()), { weekday: 1, weekend: 2, holiday: 3 });
 check('giờ âm hoặc rỗng không được cộng vào',
   splitOvertimeHours([
     { request_type: 'OVERTIME', work_date: '2026-08-07', hours: -3 },
