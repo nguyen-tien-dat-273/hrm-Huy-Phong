@@ -42,7 +42,7 @@ const navGroups: {
     chip: 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 hover:bg-indigo-700',
   },
   {
-    name: 'Công việc', icon: KanbanSquare, hint: 'Dự án và nhật ký giờ',
+    name: 'Dự án', icon: KanbanSquare, hint: 'Dự án và nhật ký giờ',
     iconIdle: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15 dark:text-orange-400', iconOn: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30',
     tileOn: 'bg-orange-50 dark:bg-orange-500/15', textOn: 'text-orange-700 dark:text-orange-300',
     chip: 'bg-orange-600 text-white shadow-sm shadow-orange-600/30 hover:bg-orange-700',
@@ -56,7 +56,7 @@ const navGroups: {
     chip: 'bg-lime-600 text-white shadow-sm shadow-lime-600/30 hover:bg-lime-700',
   },
   {
-    name: 'Thời gian & Lịch', icon: Clock, hint: 'Chấm công và các loại đơn từ',
+    name: 'Công', icon: Clock, hint: 'Chấm công và các loại đơn từ',
     iconIdle: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400', iconOn: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30',
     tileOn: 'bg-amber-50 dark:bg-amber-500/15', textOn: 'text-amber-700 dark:text-amber-300',
     chip: 'bg-amber-500 text-white shadow-sm shadow-amber-500/30 hover:bg-amber-600',
@@ -79,7 +79,7 @@ const navGroups: {
     // Teal, khong phai rose: KPI da tach ra thanh module rieng nen hai cum
     // phai nhin ra la hai thu khac nhau. Teal cung khop voi cum "Dao tao &
     // Quy trinh" ben khu quan tri.
-    name: 'Phát triển', icon: BookOpen, hint: 'Đào tạo, quy trình và lộ trình',
+    name: 'Đào tạo', icon: BookOpen, hint: 'Đào tạo, quy trình và lộ trình',
     iconIdle: 'bg-teal-50 text-teal-600 dark:bg-teal-500/15 dark:text-teal-400', iconOn: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30',
     tileOn: 'bg-teal-50 dark:bg-teal-500/15', textOn: 'text-teal-700 dark:text-teal-300',
     chip: 'bg-teal-600 text-white shadow-sm shadow-teal-600/30 hover:bg-teal-700',
