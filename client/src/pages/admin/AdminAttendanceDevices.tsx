@@ -71,6 +71,9 @@ const linkKindLabel = (device: Pick<AttendanceDevice, 'sync_mode' | 'connection_
 
 // Máy ADMS báo danh mỗi ~60 giây, nên 120 giây là đủ cho ít nhất hai lượt.
 const TEST_WINDOW_SECONDS = 120;
+// Địa chỉ máy chấm công gọi tới. Nhận /iclock/* qua Worker riêng thì đặt VITE_ATTENDANCE_ADMS_HOST;
+// không đặt thì dùng chính tên miền đang mở HRM.
+const ADMS_HOST = (import.meta.env.VITE_ATTENDANCE_ADMS_HOST as string | undefined)?.trim() || window.location.hostname;
 const TEST_POLL_SECONDS = 5;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -389,7 +392,7 @@ export function AdminAttendanceDevices() {
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">{adms ? 'Máy báo danh' : 'Bridge báo danh'}</span><DeviceHeartbeat lastSeenAt={selected.last_seen_at} adms={adms} /></div>
                   </div>
                   {adms ? (
-                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{window.location.hostname}</code>, cổng <code className="rounded bg-slate-100 px-1">443</code> (không dùng cổng 8080/8081 mặc định của máy), bật tên miền, bật HTTPS nếu máy có ô đó. Không cần token: HRM nhận máy theo <strong>Serial</strong>, nên Serial ở trên phải đúng và có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Muốn ngừng nhận dữ liệu thì bỏ tích “Cho phép sử dụng”. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
+                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{ADMS_HOST}</code>, bật tên miền. Cổng <code className="rounded bg-slate-100 px-1">443</code> khi bật HTTPS, hoặc <code className="rounded bg-slate-100 px-1">80</code> khi tắt HTTPS (không dùng cổng 8081 mặc định của máy; nếu màn hình không có dòng cổng thì máy tự chọn theo ô HTTPS). Không cần token: HRM nhận máy theo <strong>Serial</strong>, nên Serial ở trên phải đúng và có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Muốn ngừng nhận dữ liệu thì bỏ tích “Cho phép sử dụng”. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
                   ) : (
                     <p className="text-xs leading-5 text-slate-500">Máy này đang nối kiểu <strong>{linkKindLabel(selected)}</strong>: bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công, vì HRM nằm trên Internet nên không tự nối vào IP nội bộ được. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau. Muốn bỏ máy tính trung gian, bấm “Sửa thông tin” và chọn Kiểu kết nối <strong>Cloud (ADMS)</strong>.</p>
                   )}
@@ -399,7 +402,7 @@ export function AdminAttendanceDevices() {
                       <span>Đã gửi lệnh lúc {formatDateTime(selected.sync_requested_at)} — đang chờ bridge nhận. Bridge hỏi lệnh mỗi 20 giây.</span>
                     </div>
                   )}
-                  {adms && connTest?.deviceId === selected.id && <ConnectionTestResult test={connTest} hostname={window.location.hostname} />}
+                  {adms && connTest?.deviceId === selected.id && <ConnectionTestResult test={connTest} hostname={ADMS_HOST} />}
                   <div className="flex flex-wrap gap-2">
                     {adms && <Button onClick={testConnection} disabled={connTest?.phase === 'waiting'}><Radio className="h-4 w-4" />Kiểm tra kết nối</Button>}
                     {!adms && <Button onClick={requestSync} disabled={busy}><Zap className="h-4 w-4" />Đồng bộ ngay</Button>}
@@ -570,7 +573,7 @@ export function AdminAttendanceDevices() {
             <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
           </div>
           {formAdms ? (
-            <p className="text-xs leading-5 text-slate-500">Với cách này, HRM không nối vào máy mà chính máy gọi lên HRM, nên không cần IP, Port hay Comm Key. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Trên máy chấm công, mục Cài đặt máy chủ đám mây dùng cổng <strong>443</strong>, không dùng cổng 8080/8081 mặc định. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
+            <p className="text-xs leading-5 text-slate-500">Với cách này, HRM không nối vào máy mà chính máy gọi lên HRM, nên không cần IP, Port hay Comm Key. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Trên máy chấm công, mục Cài đặt máy chủ đám mây dùng cổng <strong>443</strong> (bật HTTPS) hoặc <strong>80</strong> (tắt HTTPS), không dùng cổng 8081 mặc định. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
           ) : (
             <p className="text-xs leading-5 text-slate-500">Bridge tự lấy IP, Port, kiểu kết nối và Comm Key từ đây ở mỗi lần đồng bộ (ô nào để trống thì dùng file cấu hình trên máy chạy bridge). Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng đồng bộ máy này.</p>
           )}
@@ -624,8 +627,8 @@ function ConnectionTestResult({ test, hostname }: { test: ConnectionTest; hostna
         ? ` Lần cuối thấy máy: ${formatDateTime(test.lastSeen)} — máy từng kết nối nhưng nay im lặng.`
         : ' Máy chưa từng báo danh với HRM.')}</p>
       {test.checklist && <ol className="mt-2 list-decimal space-y-1 pl-9 text-xs leading-5">
-        <li>Trên máy: Thiết lập liên kết › Cài đặt máy chủ đám mây, địa chỉ <code className="rounded bg-white/70 px-1">{hostname}</code>, cổng <strong>443</strong>, bật tên miền. Cổng 8080/8081 không dùng được vì máy chủ web chỉ nhận cổng 443.</li>
-        <li>Nếu màn hình đó có ô HTTPS hoặc SSL thì phải bật.</li>
+        <li>Trên máy: Thiết lập liên kết › Cài đặt máy chủ đám mây, địa chỉ <code className="rounded bg-white/70 px-1">{hostname}</code>, bật tên miền. Cổng <strong>443</strong> khi bật HTTPS, hoặc <strong>80</strong> khi tắt HTTPS. Cổng 8081 mặc định của máy không dùng được.</li>
+        <li>Nếu bật HTTPS mà máy im lặng, thử tắt HTTPS (cổng 80), khởi động lại máy rồi bấm kiểm tra lại.</li>
         <li>Serial khai ở đây phải trùng Serial thật của máy, và máy chủ phải có Serial đó trong biến ATTENDANCE_DEVICE_SERIALS (đổi biến xong cần triển khai lại).</li>
         <li>Đã đủ ba điều trên mà vẫn im lặng thì nhiều khả năng máy không bắt tay được HTTPS với máy chủ này. Chuyển “Cách kết nối” sang Bridge.</li>
       </ol>}
