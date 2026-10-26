@@ -1,5 +1,5 @@
 // ============================================================================
-// RC4.5 — Gửi và duyệt đơn đi muộn / về sớm / làm thêm giờ.
+// RC4.5 — Gửi và duyệt đơn đi muộn / về sớm / làm thêm (ngày thường, nghỉ, lễ, ca đêm).
 // ----------------------------------------------------------------------------
 // Một component dùng cho cả hai phía, khác nhau ở prop `mode`:
 //   'mine'   — nhân viên gửi đơn của chính mình và theo dõi trạng thái
@@ -32,7 +32,7 @@ import { describeDbError } from '@/lib/dbError';
 import { formatDate, getTodayString } from '@/lib/utils';
 import { fetchApproverIds, notifyUser, notifyUsers } from '@/lib/assignments';
 
-type RequestType = 'LATE_ARRIVAL' | 'EARLY_LEAVE' | 'OVERTIME';
+type RequestType = 'LATE_ARRIVAL' | 'EARLY_LEAVE' | 'OVERTIME' | 'OT_WEEKDAY' | 'OT_WEEKEND' | 'OT_HOLIDAY' | 'NIGHT_WORK';
 type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
 
 interface AttendanceRequest {
@@ -51,9 +51,28 @@ const TYPE_LABEL: Record<RequestType, string> = {
   LATE_ARRIVAL: 'Đi muộn',
   EARLY_LEAVE: 'Về sớm',
   OVERTIME: 'Làm thêm giờ',
+  OT_WEEKDAY: 'OT ngày thường',
+  OT_WEEKEND: 'OT Chủ nhật / ngày nghỉ',
+  OT_HOLIDAY: 'OT ngày lễ',
+  NIGHT_WORK: 'Làm thêm ca đêm',
 };
 
-const REQUEST_TYPES: RequestType[] = ['LATE_ARRIVAL', 'EARLY_LEAVE', 'OVERTIME'];
+/** Loại chọn được khi gửi đơn mới. "Làm thêm giờ" (OVERTIME) chỉ còn để hiện đơn cũ. */
+const SUBMIT_TYPES: RequestType[] = ['LATE_ARRIVAL', 'EARLY_LEAVE', 'OT_WEEKDAY', 'OT_WEEKEND', 'OT_HOLIDAY', 'NIGHT_WORK'];
+const REQUEST_TYPES: RequestType[] = [...SUBMIT_TYPES, 'OVERTIME'];
+
+/** Loại đơn đo bằng giờ (còn lại đo bằng phút). */
+const HOUR_TYPES: RequestType[] = ['OVERTIME', 'OT_WEEKDAY', 'OT_WEEKEND', 'OT_HOLIDAY', 'NIGHT_WORK'];
+
+/** Đơn được duyệt thì ghi vào đâu của công / lương. */
+const TYPE_EFFECT: Partial<Record<RequestType, string>> = {
+  LATE_ARRIVAL: 'Đơn được duyệt thì ngày đó không bị tính đi muộn.',
+  EARLY_LEAVE: 'Đơn được duyệt thì ngày đó không bị tính về sớm.',
+  OT_WEEKDAY: 'Đơn được duyệt thì số giờ tự ghi vào Bảng công và vào lương OT ngày thường.',
+  OT_WEEKEND: 'Đơn được duyệt thì số giờ tự ghi vào Bảng công và vào lương OT Chủ nhật / ngày nghỉ.',
+  OT_HOLIDAY: 'Đơn được duyệt thì số giờ tự ghi vào Bảng công và vào lương OT ngày lễ.',
+  NIGHT_WORK: 'Đơn được duyệt thì ngày đó tự cộng 1 công làm thêm ca đêm vào Bảng công và lương.',
+};
 
 const STATUS_STYLE: Record<RequestStatus, { label: string; color: string }> = {
   PENDING: { label: 'Chờ duyệt', color: 'bg-amber-50 text-amber-700' },
@@ -138,7 +157,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
     ).length;
   }, [rows, profile, draft.work_date]);
 
-  const isOvertime = draft.request_type === 'OVERTIME';
+  const isHours = HOUR_TYPES.includes(draft.request_type);
 
   const submit = async () => {
     if (!supabase || !profile) return;
@@ -152,8 +171,8 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
       user_id: profile.id,
       request_type: draft.request_type,
       work_date: draft.work_date,
-      minutes: isOvertime ? null : Number(draft.minutes),
-      hours: isOvertime ? Number(draft.hours) : null,
+      minutes: isHours ? null : Number(draft.minutes),
+      hours: isHours ? Number(draft.hours) : null,
       reason: draft.reason.trim(),
     });
     setBusy(false);
@@ -221,7 +240,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
           <TriangleAlert className="mt-0.5 h-5 w-5 flex-shrink-0" />
           Chưa chạy migration <code className="rounded bg-amber-50 px-1.5 py-0.5 font-mono text-xs">
             20260930110000_attendance_requests.sql
-          </code> nên chưa dùng được đơn đi muộn/về sớm/làm thêm giờ.
+          </code> nên chưa dùng được đơn đi muộn/về sớm/làm thêm.
         </p>
       </CardContent></Card>
     );
@@ -246,7 +265,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className={square ? 'text-base font-bold text-slate-800' : 'text-sm font-bold text-slate-800'}>
-              {mode === 'mine' ? 'Đơn đi muộn, về sớm, làm thêm giờ' : 'Đơn từ chờ duyệt'}
+              {mode === 'mine' ? 'Đơn chấm công & làm thêm' : 'Đơn từ chờ duyệt'}
             </h3>
             <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
               {mode === 'mine' ? (
@@ -255,7 +274,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
                   <strong className={usedInMonth >= quota ? 'text-red-600' : 'text-slate-700'}>
                     {usedInMonth}/{quota}
                   </strong>{' '}
-                  lượt đi muộn/về sớm. Đơn làm thêm giờ không tính vào hạn mức.
+                  lượt đi muộn/về sớm. Các đơn làm thêm không tính vào hạn mức.
                 </>
               ) : (
                 <>{pending.length} đơn đang chờ bạn duyệt.</>
@@ -406,10 +425,11 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
             value={draft.request_type}
             onChange={(e) => setDraft({ ...draft, request_type: e.target.value as RequestType })}
           >
-            <option value="LATE_ARRIVAL">Đi muộn</option>
-            <option value="EARLY_LEAVE">Về sớm</option>
-            <option value="OVERTIME">Làm thêm giờ</option>
+            {SUBMIT_TYPES.map((type) => <option key={type} value={type}>{TYPE_LABEL[type]}</option>)}
           </Select>
+          {TYPE_EFFECT[draft.request_type] && (
+            <p className="-mt-2 text-xs leading-relaxed text-slate-500">{TYPE_EFFECT[draft.request_type]}</p>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Input
@@ -418,9 +438,9 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
               value={draft.work_date}
               onChange={(e) => setDraft({ ...draft, work_date: e.target.value })}
             />
-            {isOvertime ? (
+            {isHours ? (
               <Input
-                label="Số giờ làm thêm"
+                label={draft.request_type === 'NIGHT_WORK' ? 'Số giờ làm ca đêm' : 'Số giờ làm thêm'}
                 inputMode="decimal"
                 value={draft.hours}
                 onChange={(e) => setDraft({ ...draft, hours: e.target.value.replace(/[^\d.]/g, '') })}
@@ -435,7 +455,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
             )}
           </div>
 
-          {!isOvertime && usedInMonth >= quota && (
+          {QUOTA_TYPES.includes(draft.request_type) && usedInMonth >= quota && (
             <p className="flex items-start gap-1.5 rounded-lg bg-red-50 px-3 py-2.5 text-xs leading-relaxed text-red-700">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
               Tháng {draft.work_date.slice(5, 7)} đã dùng hết {quota} lượt. Đơn này sẽ bị hệ thống

@@ -391,11 +391,6 @@ export function AdminAttendanceDevices() {
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Serial</span><span className="text-slate-700">{selected.serial_number || '—'}</span></div>
                     <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">{adms ? 'Máy báo danh' : 'Bridge báo danh'}</span><DeviceHeartbeat lastSeenAt={selected.last_seen_at} adms={adms} /></div>
                   </div>
-                  {adms ? (
-                    <p className="text-xs leading-5 text-slate-500">Máy tự gọi lên HRM qua Internet, không cần máy tính nào trong văn phòng. Trên máy: <strong>Thiết lập liên kết › Cài đặt máy chủ đám mây</strong>, địa chỉ máy chủ <code className="rounded bg-slate-100 px-1">{ADMS_HOST}</code>, bật tên miền. Cổng <code className="rounded bg-slate-100 px-1">443</code> khi bật HTTPS, hoặc <code className="rounded bg-slate-100 px-1">80</code> khi tắt HTTPS (không dùng cổng 8081 mặc định của máy; nếu màn hình không có dòng cổng thì máy tự chọn theo ô HTTPS). Không cần token: HRM nhận máy theo <strong>Serial</strong>, nên Serial ở trên phải đúng và có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Muốn ngừng nhận dữ liệu thì bỏ tích “Cho phép sử dụng”. Máy gửi mỗi lần quét ngay khi có và báo danh mỗi phút.</p>
-                  ) : (
-                    <p className="text-xs leading-5 text-slate-500">Máy này đang nối kiểu <strong>{linkKindLabel(selected)}</strong>: bridge phải chạy trên máy tính cùng mạng LAN với máy chấm công, vì HRM nằm trên Internet nên không tự nối vào IP nội bộ được. IP, Port và Comm Key lấy từ mục “Thông tin kết nối”; đổi ở đây là bridge dùng ngay vòng đồng bộ sau. Muốn bỏ máy tính trung gian, bấm “Sửa thông tin” và chọn Kiểu kết nối <strong>Cloud (ADMS)</strong>.</p>
-                  )}
                   {!adms && selected.sync_requested_at && (
                     <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
                       <Activity className="mt-0.5 h-4 w-4 shrink-0 animate-pulse" />

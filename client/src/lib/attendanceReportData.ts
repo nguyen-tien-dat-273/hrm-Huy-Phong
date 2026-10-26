@@ -17,7 +17,10 @@ import { fetchWorkSchedules, scheduleForDate, dayWeight, monthStandardDays, type
 import { toDateString } from '@/lib/utils';
 import type { Attendance, LeaveRequest, LeaveType, LeaveStatus, Profile } from '@/types';
 
-export type DisciplineGrade = 'EXCELLENT' | 'GOOD' | 'FAIR' | 'WARNING';
+/** Các loại đơn tính vào giờ làm thêm; đơn ca đêm tính theo công nên không nằm đây. */
+const OT_REQUEST_TYPES: readonly string[] = ['OVERTIME', 'OT_WEEKDAY', 'OT_WEEKEND', 'OT_HOLIDAY'];
+
+export type DisciplineGrade ='EXCELLENT' | 'GOOD' | 'FAIR' | 'WARNING';
 
 export interface EmployeeAttendanceRollup {
   profile: Profile;
@@ -311,7 +314,7 @@ export async function loadAttendanceReportWorkspace(
       }
       if (req.request_type === 'LATE_ARRIVAL') dayReq.late = req;
       else if (req.request_type === 'EARLY_LEAVE') dayReq.early = req;
-      else if (req.request_type === 'OVERTIME') dayReq.ot.push(req);
+      else if (OT_REQUEST_TYPES.includes(req.request_type)) dayReq.ot.push(req);
     }
 
     // Gom attendance theo user_id
@@ -336,7 +339,7 @@ export async function loadAttendanceReportWorkspace(
 
     // Gom dữ liệu OT
     for (const req of requests) {
-      if (req.request_type !== 'OVERTIME') continue;
+      if (!OT_REQUEST_TYPES.includes(req.request_type)) continue;
       const hours = Number(req.hours || 0);
       if (!Number.isFinite(hours) || hours <= 0) continue;
 
@@ -345,12 +348,13 @@ export async function loadAttendanceReportWorkspace(
         ? dayWeight(schedules, req.work_date, holidayDates) === 0
         : [0, 6].includes(new Date(`${req.work_date}T00:00:00`).getDay());
 
+      // Đơn chọn đúng loại thì theo loại đó; đơn "Làm thêm giờ" cũ mới đoán theo ngày.
       let otType: 'WEEKDAY' | 'WEEKEND' | 'HOLIDAY' = 'WEEKDAY';
       let otTypeRate = 150;
-      if (isHoliday) {
+      if (req.request_type === 'OT_HOLIDAY' || (req.request_type === 'OVERTIME' && isHoliday)) {
         otType = 'HOLIDAY';
         otTypeRate = 300;
-      } else if (isWeekend) {
+      } else if (req.request_type === 'OT_WEEKEND' || (req.request_type === 'OVERTIME' && isWeekend)) {
         otType = 'WEEKEND';
         otTypeRate = 200;
       }
@@ -837,4 +841,211 @@ function makeEmptyWorkspace(month: string, monthLabel: string, error: string | n
     countWarning: 0,
     error,
   };
+}
+
+// ============================================================================
+// Báo cáo công THEO NGÀY: một ngày, từng người có mặt / nghỉ / vắng, giờ vào ra,
+// đi muộn, về sớm và các đơn phát sinh trong ngày.
+// ----------------------------------------------------------------------------
+// Dùng cùng cách đo với báo cáo tháng (ca làm việc, ngày lễ, đơn đã duyệt) để số
+// liệu của một ngày cộng lại khớp với bảng tổng hợp tháng.
+// ============================================================================
+
+export type DailyPresence = 'PRESENT' | 'LEAVE' | 'ABSENT' | 'DAY_OFF';
+
+export const DAILY_PRESENCE_LABEL: Record<DailyPresence, string> = {
+  PRESENT: 'Có mặt',
+  LEAVE: 'Nghỉ phép',
+  ABSENT: 'Vắng',
+  DAY_OFF: 'Ngày nghỉ',
+};
+
+export const ATTENDANCE_REQUEST_LABEL: Record<string, string> = {
+  LATE_ARRIVAL: 'Đi muộn',
+  EARLY_LEAVE: 'Về sớm',
+  OVERTIME: 'Làm thêm giờ',
+  OT_WEEKDAY: 'OT ngày thường',
+  OT_WEEKEND: 'OT Chủ nhật / ngày nghỉ',
+  OT_HOLIDAY: 'OT ngày lễ',
+  NIGHT_WORK: 'Làm thêm ca đêm',
+};
+
+export interface DailyRequestChip {
+  type: string;
+  label: string;
+  status: string;
+  hours: number | null;
+  minutes: number | null;
+}
+
+export interface DailyAttendanceRow {
+  profile: Profile;
+  presence: DailyPresence;
+  checkIn: string | null;
+  checkOut: string | null;
+  workHours: number;
+  missingCheckout: boolean;
+  lateMinutes: number;
+  earlyMinutes: number;
+  leaveLabel: string | null;
+  requests: DailyRequestChip[];
+  /** Giờ làm thêm đã duyệt trong ngày (mọi loại OT). */
+  otApprovedHours: number;
+  /** Có đơn ca đêm đã duyệt: ngày này được cộng một công làm thêm ca đêm. */
+  nightApproved: boolean;
+}
+
+export interface DailyAttendanceReport {
+  date: string;
+  weekday: string;
+  holidayName: string | null;
+  isWorkingDay: boolean;
+  rows: DailyAttendanceRow[];
+  present: number;
+  onLeave: number;
+  absent: number;
+  late: number;
+  early: number;
+  missingCheckout: number;
+  otApprovedHours: number;
+  nightWorkers: number;
+  pendingRequests: number;
+  error: string | null;
+}
+
+const LEAVE_TYPE_LABEL: Record<string, string> = {
+  annual: 'Phép năm',
+  sick: 'Nghỉ ốm',
+  unpaid: 'Không lương',
+};
+
+export async function loadDailyAttendanceReport(dateStr: string): Promise<DailyAttendanceReport> {
+  const empty = (error: string | null): DailyAttendanceReport => ({
+    date: dateStr,
+    weekday: VI_WEEKDAYS[new Date(`${dateStr}T00:00:00`).getDay()],
+    holidayName: null,
+    isWorkingDay: true,
+    rows: [],
+    present: 0, onLeave: 0, absent: 0, late: 0, early: 0, missingCheckout: 0,
+    otApprovedHours: 0, nightWorkers: 0, pendingRequests: 0,
+    error,
+  });
+  if (!supabase) return empty('Chưa kết nối Supabase');
+
+  try {
+    const [profilesRes, schedules, holidayRes, attendanceRes, requestsRes, leavesRes] = await Promise.all([
+      supabase.from('profiles_directory').select('*').order('name'),
+      fetchWorkSchedules(true),
+      supabase.from('company_holidays').select('holiday_date, name').eq('is_active', true).eq('holiday_date', dateStr).maybeSingle(),
+      fetchAllRows<Attendance>((from, to) =>
+        supabase.from('attendance')
+          .select('id, user_id, date, check_in_time, check_out_time, status, approved_by_lead, check_in_method')
+          .eq('date', dateStr).range(from, to)),
+      fetchAllRows<any>((from, to) =>
+        supabase.from('attendance_requests').select('*').eq('work_date', dateStr).range(from, to)),
+      fetchAllRows<LeaveRequest>((from, to) =>
+        supabase.from('leave_requests').select('*').eq('status', 'approved')
+          .lte('start_date', dateStr).gte('end_date', dateStr).range(from, to)),
+    ]);
+    if (profilesRes.error) return empty(describeDbError(profilesRes.error));
+
+    const profiles = (profilesRes.data || []) as Profile[];
+    const holidayName = holidayRes.data ? String((holidayRes.data as any).name ?? 'Ngày lễ') : null;
+    const holidays = new Set<string>(holidayRes.data ? [dateStr] : []);
+    const weight = schedules.supported
+      ? dayWeight(schedules, dateStr, holidays)
+      : ([0, 6].includes(new Date(`${dateStr}T00:00:00`).getDay()) ? 0 : 1);
+    const schedule = scheduleForDate(schedules, dateStr);
+
+    const attByUser = new Map<string, Attendance[]>();
+    for (const a of attendanceRes.data) attByUser.set(a.user_id, [...(attByUser.get(a.user_id) ?? []), a]);
+    const reqByUser = new Map<string, any[]>();
+    for (const r of requestsRes.data) reqByUser.set(r.user_id, [...(reqByUser.get(r.user_id) ?? []), r]);
+    const leaveByUser = new Map<string, LeaveRequest>();
+    for (const l of leavesRes.data) leaveByUser.set(l.user_id, l);
+
+    const rows: DailyAttendanceRow[] = [];
+    for (const person of profiles) {
+      const atts = attByUser.get(person.id) ?? [];
+      const reqs = reqByUser.get(person.id) ?? [];
+      const leave = leaveByUser.get(person.id) ?? null;
+      // Người đã nghỉ việc chỉ hiện khi ngày đó họ còn phát sinh dữ liệu.
+      if (!person.is_active && atts.length === 0 && reqs.length === 0 && !leave) continue;
+
+      const ins = atts.map((a) => a.check_in_time).filter((t): t is string => !!t).sort();
+      const outs = atts.map((a) => a.check_out_time).filter((t): t is string => !!t).sort();
+      const checkIn = ins[0] ?? null;
+      const checkOut = outs.length > 0 ? outs[outs.length - 1] : null;
+
+      let workHours = 0;
+      if (checkIn && checkOut) {
+        const span = (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 3_600_000;
+        if (Number.isFinite(span) && span > 0) workHours = Math.round(Math.min(span, 24) * 10) / 10;
+      }
+
+      let lateMinutes = 0;
+      let earlyMinutes = 0;
+      if (schedule && weight > 0) {
+        if (checkIn) {
+          const diff = timeMinutes(checkIn) - clockMinutes(schedule.start_time) - (schedule.grace_minutes || 0);
+          if (diff > 0) lateMinutes = diff;
+        }
+        if (checkOut) {
+          const diff = clockMinutes(schedule.end_time) - timeMinutes(checkOut);
+          if (diff > 0) earlyMinutes = diff;
+        }
+      }
+
+      const presence: DailyPresence = checkIn ? 'PRESENT' : leave ? 'LEAVE' : weight === 0 ? 'DAY_OFF' : 'ABSENT';
+
+      const requests: DailyRequestChip[] = reqs
+        .filter((r) => r.status !== 'CANCELLED')
+        .map((r) => ({
+          type: r.request_type,
+          label: ATTENDANCE_REQUEST_LABEL[r.request_type] ?? r.request_type,
+          status: r.status,
+          hours: r.hours != null ? Number(r.hours) : null,
+          minutes: r.minutes != null ? Number(r.minutes) : null,
+        }));
+      const approved = reqs.filter((r) => r.status === 'APPROVED');
+
+      rows.push({
+        profile: person,
+        presence,
+        checkIn,
+        checkOut,
+        workHours,
+        missingCheckout: !!checkIn && !checkOut,
+        lateMinutes,
+        earlyMinutes,
+        leaveLabel: leave ? `${LEAVE_TYPE_LABEL[leave.leave_type] ?? 'Nghỉ phép'}${leave.half_day ? ' (nửa ngày)' : ''}` : null,
+        requests,
+        otApprovedHours: Math.round(approved
+          .filter((r) => OT_REQUEST_TYPES.includes(r.request_type))
+          .reduce((sum, r) => sum + Number(r.hours || 0), 0) * 10) / 10,
+        nightApproved: approved.some((r) => r.request_type === 'NIGHT_WORK'),
+      });
+    }
+
+    rows.sort((a, b) => a.profile.name.localeCompare(b.profile.name));
+    return {
+      date: dateStr,
+      weekday: VI_WEEKDAYS[new Date(`${dateStr}T00:00:00`).getDay()],
+      holidayName,
+      isWorkingDay: weight > 0,
+      rows,
+      present: rows.filter((r) => r.presence === 'PRESENT').length,
+      onLeave: rows.filter((r) => r.presence === 'LEAVE').length,
+      absent: rows.filter((r) => r.presence === 'ABSENT').length,
+      late: rows.filter((r) => r.lateMinutes > 0).length,
+      early: rows.filter((r) => r.earlyMinutes > 0).length,
+      missingCheckout: rows.filter((r) => r.missingCheckout).length,
+      otApprovedHours: Math.round(rows.reduce((s, r) => s + r.otApprovedHours, 0) * 10) / 10,
+      nightWorkers: rows.filter((r) => r.nightApproved).length,
+      pendingRequests: rows.reduce((s, r) => s + r.requests.filter((q) => q.status === 'PENDING').length, 0),
+      error: null,
+    };
+  } catch (err: any) {
+    return empty(err?.message ?? String(err));
+  }
 }

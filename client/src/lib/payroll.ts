@@ -97,9 +97,15 @@ export function splitOvertimeHours(
 ): { weekday: number; weekend: number; holiday: number } {
   const out = { weekday: 0, weekend: 0, holiday: 0 };
   for (const request of requests) {
-    if (request.request_type !== 'OVERTIME') continue;
     const hours = Number(request.hours || 0);
     if (!Number.isFinite(hours) || hours <= 0) continue;
+
+    // Đơn chọn đúng loại thì theo loại đã chọn; chỉ đơn "Làm thêm giờ" cũ mới
+    // phải đoán theo ngày. Đơn ca đêm tính theo công, không cộng vào giờ OT.
+    if (request.request_type === 'OT_WEEKDAY') { out.weekday += hours; continue; }
+    if (request.request_type === 'OT_WEEKEND') { out.weekend += hours; continue; }
+    if (request.request_type === 'OT_HOLIDAY') { out.holiday += hours; continue; }
+    if (request.request_type !== 'OVERTIME') continue;
 
     if (holidays.has(request.work_date)) {
       out.holiday += hours;
