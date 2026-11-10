@@ -222,7 +222,7 @@ const mList = (memberships || []) as { project_id: string }[];
           to="/staff/attendance"
           icon={<Fingerprint className="h-5 w-5" />}
           title="Chấm công"
-          desc="Giờ vào từ máy và checkout"
+          desc="Xem tổng quan công theo lịch tháng, giờ vào/ra từng ngày"
         />
       </div>
 
@@ -271,7 +271,12 @@ const mList = (memberships || []) as { project_id: string }[];
         {/* Attendance history */}
         <Card>
           <CardHeader>
-            <CardTitle>Lịch sử chấm công (7 ngày)</CardTitle>
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle>Lịch sử chấm công (7 ngày)</CardTitle>
+              <Link to="/staff/attendance" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
+                Xem lịch công tháng →
+              </Link>
+            </div>
           </CardHeader>
           <CardContent>
             {attendance.length === 0 ? (
