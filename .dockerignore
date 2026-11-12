@@ -13,3 +13,24 @@ coverage
 *.log
 *.tsbuildinfo
 docs
+backups
+deploy
+tmp
+client/tmp
+.local-pg
+dist-bridge
+HP HRM
+*.docx
+*.xlsx
+*.pdf
+bao_cao_extracted.txt
+doc_kpi_text.txt
+attendance-bridge.mjs
+kiem-tra.mjs
+tim-may.mjs
+chay-bridge.cmd
+cai-dat*.ps1
+HUONG-DAN.txt
+tools/staging-clone
+tools/local-pg
+cloudflare

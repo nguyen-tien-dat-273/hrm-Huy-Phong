@@ -18,7 +18,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
-import { isTeamlead } from '@/lib/permissions';
+import { isDepartmentHead, isTeamlead } from '@/lib/permissions';
 import { describeDbError, describeDbErrorOrNull } from '@/lib/dbError';
 import { PRIORITY_CONFIG, formatDate, formatTime, toDateString } from '@/lib/utils';
 import {
@@ -130,6 +130,12 @@ export function AdminAssignments() {
       const { data: teamIds } = await supabase.rpc('my_team_member_ids');
       const idSet = new Set(((teamIds as { user_id: string }[]) || []).map((r) => r.user_id));
       staffList = staffList.filter((p) => idSet.has(p.id));
+    } else if (isDepartmentHead(profile)) {
+      // Trưởng phòng giao việc cho nhân sự thuộc đơn vị mình phụ trách (cùng
+      // quy tắc `manages_employee` mà RLS dùng), cộng thêm chính mình.
+      const { data: managedIds } = await supabase.rpc('my_managed_employee_ids');
+      const idSet = new Set(((managedIds as { user_id: string }[]) || []).map((r) => r.user_id));
+      staffList = staffList.filter((p) => idSet.has(p.id) || p.id === profile?.id);
     }
     setStaff(staffList);
 

@@ -1,0 +1,29 @@
+# Reverse proxy HTTPS cho cả HRM lẫn cổng Supabase. Chạy SAU khi stack Supabase và `hrm` đã lên:
+#   docker compose -f deploy/vps/compose.caddy.yaml --env-file deploy/vps/.env.vps up -d
+# Chỉ Caddy mở cổng ra Internet (80/443). Không mở Postgres, Studio hay cổng 8080/8000.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      HRM_DOMAIN: ${HRM_DOMAIN:?Tên miền HRM, vd hrm.congty.vn}
+      API_DOMAIN: ${API_DOMAIN:?Tên miền Supabase, vd api.congty.vn}
+      SUPABASE_GATEWAY: ${SUPABASE_GATEWAY:?Địa chỉ cổng Supabase trong mạng Docker, vd kong:8000}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - supabase
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  supabase:
+    external: true
+    name: ${SUPABASE_DOCKER_NETWORK:-supabase_default}

@@ -372,7 +372,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                 quan tri - doi che do xem khong phai hoc lai cach dieu huong.
                 Re chuot vao la tu xo ra, khong can bam. */}
             <div
-              className="relative hidden md:block"
+              className="relative"
               ref={launcherRef}
               onMouseEnter={openLauncherHover}
               onMouseLeave={scheduleCloseLauncher}
@@ -397,7 +397,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                 <div
                   onMouseEnter={openLauncherHover}
                   onMouseLeave={scheduleCloseLauncher}
-                  className="absolute right-0 top-full z-50 mt-2 w-[min(32rem,calc(100vw-2rem))] rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-xl"
+                  className="fixed inset-x-4 top-[4.5rem] z-50 rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(32rem,calc(100vw-2rem))]"
                 >
                   <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
                     {groupsWithItems.map((group) => {

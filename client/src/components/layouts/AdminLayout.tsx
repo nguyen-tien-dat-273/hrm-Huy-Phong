@@ -10,7 +10,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { Avatar } from '@/components/ui/Avatar';
 import { supabase } from '@/lib/supabase';
-import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead } from '@/lib/permissions';
+import { hasAdminFunction, hasPermission, isDepartmentHead, isFullAdmin, isScopedManager, isTeamlead } from '@/lib/permissions';
 import { useAppSettings } from '@/contexts/SettingsContext';
 import type { Notification } from '@/types';
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
@@ -139,7 +139,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
         : (hasPermission(profile, item.permission) || (item.teamleadEmployeeDocuments && isTeamlead(profile)))) &&
       (!item.fullAdminOnly || isFullAdmin(profile)) &&
       (!item.functionCode || hasAdminFunction(profile, item.functionCode) || (item.teamleadEmployeeDocuments && isTeamlead(profile))) &&
-      !(item.hideForTeamlead && isTeamlead(profile)),
+      !(item.hideForTeamlead && isScopedManager(profile)),
   );
 
   /**
@@ -441,7 +441,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               </div>
               {!currentPage && (
                 <p className="hidden max-w-[560px] truncate text-xs text-slate-600 dark:text-slate-400 sm:block">
-                  {isTeamlead(profile) ? `Quản lý nhóm · ${orgName}` : `Quản trị hệ thống · ${orgName}`}
+                  {isDepartmentHead(profile)
+                    ? `Quản lý phòng · ${orgName}`
+                    : isTeamlead(profile) ? `Quản lý nhóm · ${orgName}` : `Quản trị hệ thống · ${orgName}`}
                 </p>
               )}
             </div>

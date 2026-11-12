@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 import adminUsers from './dist/api/admin-users.js';
 import chatbot from './dist/api/chatbot.js';
 import googleMapsLocation from './dist/api/google-maps-location.js';
+import iclockCdata from './dist/api/iclock/cdata.js';
+import iclockDevicecmd from './dist/api/iclock/devicecmd.js';
+import iclockGetrequest from './dist/api/iclock/getrequest.js';
 import passwordRecoveryV2 from './dist/api/password-recovery-v2.js';
 import pushConfig from './dist/api/push-config.js';
 import pushNotifications from './dist/api/push-notifications.js';
@@ -23,6 +26,14 @@ const apiHandlers = new Map([
   ['/api/push-config', pushConfig],
   ['/api/push-notifications', pushNotifications],
   ['/api/reminders', reminders],
+]);
+
+// Máy chấm công (giao thức ADMS/PUSH của ZKTeco): gọi HTTP thường, thân là văn bản
+// (không phải JSON), trả lời cũng là văn bản. Khớp với rewrite /iclock/* của vercel.json.
+const iclockHandlers = new Map([
+  ['/iclock/cdata', iclockCdata],
+  ['/iclock/getrequest', iclockGetrequest],
+  ['/iclock/devicecmd', iclockDevicecmd],
 ]);
 
 const contentTypes = new Map([
@@ -81,6 +92,21 @@ async function readJsonBody(request) {
   }
 }
 
+async function readTextBody(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > 4 * 1024 * 1024) {
+      const error = new Error('Request body exceeds 4 MiB.');
+      error.statusCode = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 function apiResponse(response) {
   return {
     status(code) {
@@ -92,6 +118,9 @@ function apiResponse(response) {
         response.setHeader('Content-Type', 'application/json; charset=utf-8');
       }
       response.end(JSON.stringify(body));
+    },
+    send(body) {
+      response.end(body);
     },
     setHeader(name, value) {
       response.setHeader(name, value);
@@ -181,6 +210,38 @@ const server = createServer(async (request, response) => {
 
   if (url.pathname === '/healthz') {
     sendJson(response, 200, { status: 'ok' });
+    return;
+  }
+
+  if (url.pathname.toLowerCase().startsWith('/iclock/')) {
+    const handler = iclockHandlers.get(url.pathname.toLowerCase().replace(/\/+$/, ''));
+    if (!handler) {
+      // Firmware đời mới còn gọi registry/push/ping...; trả OK như bản Cloudflare Worker.
+      response.statusCode = 200;
+      response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      response.end('OK');
+      return;
+    }
+    try {
+      const body = request.method === 'GET' || request.method === 'HEAD'
+        ? undefined
+        : await readTextBody(request);
+      response.setHeader('Cache-Control', 'no-store');
+      await handler(
+        { method: request.method, url: request.url, headers: request.headers, body },
+        apiResponse(response),
+      );
+      if (!response.writableEnded) response.end();
+    } catch (error) {
+      console.error('[iclock] request failed', error);
+      if (!response.headersSent) {
+        response.statusCode = error.statusCode || 500;
+        response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        response.end('ERROR');
+      } else {
+        response.destroy(error);
+      }
+    }
     return;
   }
 

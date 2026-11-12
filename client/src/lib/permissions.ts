@@ -85,6 +85,28 @@ export function isTeamlead(profile: Profile | null | undefined): boolean {
   return profile?.role === 'teamlead';
 }
 
+/** Mã vai trò nghiệp vụ của Trưởng phòng (system_access_roles.code). */
+export const DEPARTMENT_HEAD_ROLE_CODE = 'truong_phong';
+
+/**
+ * Trưởng phòng — quyền GIỚI HẠN theo đơn vị mình phụ trách (RLS dùng
+ * `manages_employee`). Khác Trưởng nhóm (phạm vi = dự án mình lead, cột `role`
+ * kỹ thuật = 'teamlead'): Trưởng phòng giữ `role = 'staff'` và nhận quyền từ
+ * vai trò nghiệp vụ `truong_phong`, nên phải nhận diện qua `access_role_code`.
+ */
+export function isDepartmentHead(profile: Profile | null | undefined): boolean {
+  return !!profile && !isFullAdmin(profile) && profile.access_role_code === DEPARTMENT_HEAD_ROLE_CODE;
+}
+
+/**
+ * Người quản lý có phạm vi hẹp (nhóm dự án hoặc phòng ban). Dùng để ẩn các màn
+ * hình tổng hợp/cấu hình toàn công ty — bảng công tháng, thiết lập giờ làm —
+ * mà dữ liệu thật đã được RLS chặn ngoài phạm vi.
+ */
+export function isScopedManager(profile: Profile | null | undefined): boolean {
+  return isTeamlead(profile) || isDepartmentHead(profile);
+}
+
 /**
  * Quyền teamlead NGẦM có, để vào đúng các trang vận hành nhóm. Khác quyền lẻ
  * của nhân viên ở chỗ: những trang này khi teamlead mở CHỈ hiện dữ liệu nhóm

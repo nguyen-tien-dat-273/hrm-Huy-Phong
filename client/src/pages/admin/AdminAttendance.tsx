@@ -13,7 +13,7 @@ import { TableSkeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { isTeamlead } from '@/lib/permissions';
+import { isScopedManager } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
@@ -56,7 +56,7 @@ export function AdminAttendance() {
   const [month, setMonth] = useState(getTodayString().slice(0, 7));
   // Trưởng nhóm duyệt được ngày công của phạm vi mình quản lý nhưng không đổi
   // quy tắc giờ làm dùng chung toàn công ty — khớp với guard của route cài đặt.
-  const canConfigureAttendance = !isTeamlead(profile);
+  const canConfigureAttendance = !isScopedManager(profile);
 
   useEffect(() => {
     loadAttendance();

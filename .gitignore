@@ -143,3 +143,9 @@ supabase/paste-*.sql
 # Cloudflare Worker (cloudflare/iclock)
 .wrangler/
 .dev.vars
+
+# Sao lưu Supabase + gói triển khai VPS (chứa dữ liệu thật / bí mật)
+backups/
+.env.backup
+.env.vps
+hrm-vps-bundle-*.tgz

@@ -1,0 +1,27 @@
+# Caddy: tự xin & gia hạn chứng chỉ HTTPS (Let's Encrypt). Cần DNS của cả hai tên miền đã trỏ về IP VPS.
+# Biến lấy từ file .env.vps (xem .env.vps.example).
+
+{$HRM_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy hrm:8080
+}
+
+# Máy chấm công chỉ nói HTTP thường, cổng 80, và không theo chuyển hướng 308 →
+# riêng đường /iclock/* phải được trả lời ngay trên HTTP, còn lại chuyển sang HTTPS.
+http://{$HRM_DOMAIN} {
+	@iclock path /iclock/*
+	handle @iclock {
+		reverse_proxy hrm:8080
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
+
+# Cổng Supabase (Auth / REST / Storage / Realtime) mà trình duyệt gọi vào.
+{$API_DOMAIN} {
+	request_body {
+		max_size 60MB
+	}
+	reverse_proxy {$SUPABASE_GATEWAY}
+}
