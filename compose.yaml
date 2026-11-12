@@ -30,6 +30,13 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-}
       REVERSE_GEOCODING_URL: ${REVERSE_GEOCODING_URL:-https://nominatim.openstreetmap.org}
       APP_USER_AGENT: "${APP_USER_AGENT:-HuyPhongHRM/1.0 (mailto:admin@example.com)}"
+      # Máy chấm công đẩy trực tiếp vào /iclock/* (không cần Cloudflare Worker).
+      # Rỗng = chặn mọi máy. Nhiều máy thì ngăn cách bằng dấu phẩy.
+      ATTENDANCE_DEVICE_SERIALS: ${ATTENDANCE_DEVICE_SERIALS:-}
+      ATTENDANCE_UTC_OFFSET: ${ATTENDANCE_UTC_OFFSET:-+07:00}
+      RJ_IN_STATUS_CODES: ${RJ_IN_STATUS_CODES:-}
+      RJ_OUT_STATUS_CODES: ${RJ_OUT_STATUS_CODES:-}
+      CHATBOT_ALIAS_SECRET: ${CHATBOT_ALIAS_SECRET:-}
     ports:
       - "${HRM_BIND_ADDRESS:-127.0.0.1}:${HRM_PORT:-8080}:8080"
     healthcheck:
