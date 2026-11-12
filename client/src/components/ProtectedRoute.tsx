@@ -2,7 +2,7 @@ import { type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
+import { hasAdminFunction, hasPermission, isFullAdmin, isScopedManager, isTeamlead, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -80,7 +80,7 @@ export function ProtectedRoute({
     return <Navigate to="/admin" replace />;
   }
 
-  if (denyTeamlead && isTeamlead(profile)) {
+  if (denyTeamlead && isScopedManager(profile)) {
     return <Navigate to="/admin" replace />;
   }
 

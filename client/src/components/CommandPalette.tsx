@@ -4,7 +4,7 @@ import {
   Search, KeyRound, LogOut, CornerDownLeft, ArrowUp, ArrowDown, UserCircle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
+import { hasAdminFunction, hasPermission, isFullAdmin, isScopedManager, isTeamlead, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import { ADMIN_NAV_ITEMS, STAFF_NAV_ITEMS } from '@/config/navigation';
 
 // ============================================================================
@@ -106,7 +106,7 @@ export function CommandPalette() {
         return allowed
           && (!c.fullAdminOnly || isFullAdmin(profile))
           && (!c.functionCode || hasAdminFunction(profile, c.functionCode) || (c.teamleadEmployeeDocuments && isTeamlead(profile)))
-          && (!c.hideForTeamlead || !isTeamlead(profile));
+          && (!c.hideForTeamlead || !isScopedManager(profile));
       },
     );
     if (!query.trim()) return allowed;

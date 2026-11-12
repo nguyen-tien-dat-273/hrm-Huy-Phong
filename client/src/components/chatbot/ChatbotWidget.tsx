@@ -11,7 +11,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Bot, Eraser, Loader2, MessageCircleQuestion, SendHorizontal, X } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ADMIN_NAV_ITEMS, STAFF_NAV_ITEMS } from '@/config/navigation';
-import { hasAdminFunction, hasPermission, isFullAdmin, isTeamlead } from '@/lib/permissions';
+import { hasAdminFunction, hasPermission, isFullAdmin, isScopedManager } from '@/lib/permissions';
 import { askChatbot, revealNames, type ChatCard, type ChatMessage, type ChatPage } from '@/lib/chatbot';
 import { PayslipChatCard } from './PayslipChatCard';
 
@@ -82,7 +82,7 @@ export function ChatbotWidget() {
       return allowed
         && (!item.fullAdminOnly || isFullAdmin(profile))
         && (!item.functionCode || hasAdminFunction(profile, item.functionCode))
-        && (!item.hideForTeamlead || !isTeamlead(profile));
+        && (!item.hideForTeamlead || !isScopedManager(profile));
     });
     return [...STAFF_NAV_ITEMS, ...admin, { to: '/profile', label: 'Hồ sơ cá nhân', description: 'Thông tin cá nhân, ảnh đại diện, số điện thoại' }]
       .map((item) => ({ to: item.to, label: item.label, description: item.description }));

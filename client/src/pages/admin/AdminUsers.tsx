@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { PERMISSION_FUNCTIONS } from '@/config/permissionCoverage';
 import {
   ADMIN_PERMISSIONS,
+  DEPARTMENT_HEAD_ROLE_CODE,
   PERMISSION_LABELS,
   isFullAdmin,
   type AdminPermission,
@@ -36,6 +37,7 @@ const employmentStatusOptions: Record<EmploymentStatus, string> = {
 const fallbackAccessRoles: AccessRole[] = [
   { code: 'staff', name: 'Nhân viên', description: null, permissions: [], function_permissions: [], is_system: true, is_active: true, sort_order: 10 },
   { code: 'teamlead', name: 'Trưởng nhóm', description: null, permissions: ['projects', 'attendance', 'leave'], function_permissions: [], is_system: true, is_active: true, sort_order: 20 },
+  { code: 'truong_phong', name: 'Trưởng phòng', description: null, permissions: ['attendance', 'leave'], function_permissions: [], is_system: true, is_active: true, sort_order: 25 },
   { code: 'admin', name: 'Admin', description: null, permissions: [...ADMIN_PERMISSIONS], function_permissions: [], is_system: true, is_active: true, sort_order: 30 },
   { code: 'ceo', name: 'CEO', description: null, permissions: [...ADMIN_PERMISSIONS], function_permissions: [], is_system: true, is_active: true, sort_order: 40 },
 ];
@@ -787,6 +789,16 @@ export function AdminUsers() {
                   <strong>Trưởng nhóm</strong> quản lý thành viên, giao việc và theo dõi nghỉ phép
                   phép / ca — <strong>chỉ trong dự án được giao làm lead</strong>. Sau khi tạo, hãy vào
                   trang <strong>Quản lý Dự án</strong> để chỉ định họ làm trưởng nhóm của dự án.
+                </span>
+              </div>
+            ) : form.access_role_code === DEPARTMENT_HEAD_ROLE_CODE ? (
+              <div className="flex items-start gap-3 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-sm leading-relaxed">
+                <ShieldCheck className="w-4.5 h-4.5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <span>
+                  <strong>Trưởng phòng</strong> duyệt ngày công, đơn từ và giao việc —{' '}
+                  <strong>chỉ cho nhân sự thuộc đơn vị mình phụ trách</strong> (và các đơn vị trực thuộc).
+                  Sau khi tạo, hãy vào <strong>Cơ cấu tổ chức</strong> để chỉ định họ làm người phụ trách
+                  của phòng; chưa chỉ định thì họ chưa thấy nhân sự nào.
                 </span>
               </div>
             ) : selectedAccessRole && form.access_role_code !== 'staff' ? (
