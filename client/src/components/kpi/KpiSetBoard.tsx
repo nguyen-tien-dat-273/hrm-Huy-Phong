@@ -38,10 +38,11 @@ import {
 } from '@/lib/kpi';
 import { setExempt, setSetActive, type KpiWorkspace } from '@/lib/kpiData';
 import type { Profile } from '@/types';
+import { Tabs } from '@/components/ui/Tabs';
 
 const NO_UNIT = '__none__';
 const TEMPLATES = '__templates__';
-const PEOPLE_PER_PAGE = 15;
+const PEOPLE_PER_PAGE = 20;
 
 interface EditorState {
   target: KpiSetTarget;
@@ -129,7 +130,7 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
   };
 
   const statusOf = (row: Profile, resolved: ResolvedKpiSet | null) => {
-    if (exempt.has(row.id)) return { label: 'Không áp dụng', tone: 'bg-slate-100 text-slate-500' };
+    if (exempt.has(row.id)) return { label: 'Không áp dụng', tone: 'bg-slate-100 text-slate-600' };
     if (!resolved) return { label: 'Chưa có KPI', tone: 'bg-red-50 text-red-600' };
     const total = weightTotals(itemsBySet.get(resolved.set.id) ?? []).total;
     if (Math.abs(total - 100) > 0.01) return { label: `Tổng ${fmtNum(total)}%`, tone: 'bg-amber-50 text-amber-700' };
@@ -209,7 +210,7 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
             <Avatar name={person.name} url={person.avatar_url} size="sm" />
             <div className="min-w-0 flex-1">
               <CardTitle className="truncate">{person.name}</CardTitle>
-              <p className="truncate text-xs text-slate-500">
+              <p className="truncate text-xs text-slate-600">
                 {person.employee_code ?? '—'} · {person.unit_id ? unitById.get(person.unit_id)?.name ?? '—' : 'Chưa gán đơn vị'}
               </p>
             </div>
@@ -254,8 +255,7 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
         <Card className="!rounded-none">
           <CardHeader className="flex flex-wrap items-center gap-3">
             <div className="min-w-0 flex-1">
-              <CardTitle className="flex items-center gap-2"><FileStack className="h-4 w-4 text-slate-400" /> Bộ mẫu</CardTitle>
-              <p className="mt-0.5 text-xs text-slate-500">Không tự áp cho ai — dùng làm điểm xuất phát khi khai KPI chung hoặc bộ riêng.</p>
+              <CardTitle className="flex items-center gap-2"><FileStack className="h-4 w-4 text-slate-600" /> Bộ mẫu</CardTitle>
             </div>
             <Button size="sm" onClick={() => setEditor({ target: targetOf({ user_id: null, position_id: null, unit_id: null } as KpiSet), set: null, copyFrom: null })}>
               <Plus className="h-3.5 w-3.5" /> Thêm bộ mẫu
@@ -263,7 +263,7 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
           </CardHeader>
           <CardContent>
             {templates.length === 0
-              ? <p className="border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">Chưa có bộ mẫu.</p>
+              ? <p className="border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">Chưa có bộ mẫu.</p>
               : <SetList sets={templates} itemsBySet={itemsBySet} appliedId={null} onEdit={editSet} onToggle={toggleSet} />}
           </CardContent>
         </Card>
@@ -276,7 +276,7 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
         <CardHeader className="flex flex-wrap items-center gap-3">
           <div className="min-w-0 flex-1">
             <CardTitle className="flex items-center gap-2">
-              {query.trim() ? <Search className="h-4 w-4 text-slate-400" /> : <Building2 className="h-4 w-4 text-slate-400" />}
+              {query.trim() ? <Search className="h-4 w-4 text-slate-600" /> : <Building2 className="h-4 w-4 text-slate-600" />}
               {title}
             </CardTitle>
           </div>
@@ -290,14 +290,7 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
         </CardHeader>
         <CardContent className="space-y-3">
           {unit && !query.trim() && (
-            <div className="inline-flex rounded-none bg-slate-100 p-1 no-print" role="tablist" aria-label="Đơn vị">
-              {([['people', 'Nhân sự'], ['shared', 'KPI chung']] as const).map(([value, label]) => (
-                <button key={value} type="button" role="tab" aria-selected={tab === value} onClick={() => setTab(value)}
-                  className={`rounded-none px-3.5 py-1.5 text-sm font-semibold transition ${tab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <Tabs label="Đơn vị" items={[{ key: 'people', label: 'Nhân sự' }, { key: 'shared', label: 'KPI chung' }] as const} value={tab} onChange={setTab} />
           )}
 
           {unit && !query.trim() && tab === 'shared' ? (
@@ -319,11 +312,11 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
               onSaved={onChanged}
             />
           ) : people.length === 0 ? (
-            <p className="border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+            <p className="border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">
               {query.trim() ? 'Không có nhân viên nào khớp.' : 'Đơn vị này chưa có nhân sự.'}
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-xl border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
               <table className="w-full min-w-[460px] text-xs border-collapse">
                 <thead>
                   <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
@@ -342,7 +335,7 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
                         <td className="py-1 px-2.5">
                           <div className="min-w-0">
                             <p className="truncate font-black text-xs text-slate-900 dark:text-slate-100">{row.name}</p>
-                            <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
+                            <p className="truncate text-[11px] font-medium text-slate-600 dark:text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
                           </div>
                         </td>
                         <td className="border-l border-slate-300 dark:border-slate-700 py-1 px-2">
@@ -351,12 +344,12 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
                               <p className="max-w-[220px] truncate text-xs font-bold text-slate-900 dark:text-slate-100">{resolved.set.name}</p>
                               <SourceChip resolved={resolved} text={sourceText(resolved)} />
                             </div>
-                          ) : <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500">—</span>}
+                          ) : <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">—</span>}
                         </td>
                         <td className="border-l border-slate-300 dark:border-slate-700 py-1 px-2">
                           <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${status.tone}`}>{status.label}</span>
                         </td>
-                        <td className="py-1 px-2 text-right text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
+                        <td className="py-1 px-2 text-right text-slate-600 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
                       </tr>
                     );
                   })}
@@ -375,12 +368,12 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
       <div className="lg:self-start">
         <div className="pb-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
             <input
               value={query}
               onChange={(event) => { setQuery(event.target.value); setPersonId(null); setEditor(null); }}
               placeholder="Tìm nhân viên theo tên / mã..."
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
             />
           </div>
         </div>
@@ -391,14 +384,14 @@ export function KpiSetBoard({ data, onChanged }: { data: KpiWorkspace; onChanged
             onSelect={(selected) => selectUnit(selected.id)}
             meta={(row) => `${data.profiles.filter((p) => p.unit_id === row.id).length} người`}
             badge={(row) => (unitHasShared(row.id)
-              ? <span className="shrink-0 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">KPI chung</span>
+              ? <span className="shrink-0 bg-indigo-50 px-1.5 py-0.5 text-[11px] font-bold text-indigo-700">KPI chung</span>
               : null)}
           />
           {unassignedCount > 0 && (
-            <TreeExtra icon={<Users className="h-4 w-4 text-slate-400" />} label="Chưa gán đơn vị" meta={`${unassignedCount} người`}
+            <TreeExtra icon={<Users className="h-4 w-4 text-slate-600" />} label="Chưa gán đơn vị" meta={`${unassignedCount} người`}
               selected={unitId === NO_UNIT && !query} onClick={() => selectUnit(NO_UNIT)} />
           )}
-          <TreeExtra icon={<FileStack className="h-4 w-4 text-slate-400" />} label="Bộ mẫu" meta={`${templates.length} bộ`}
+          <TreeExtra icon={<FileStack className="h-4 w-4 text-slate-600" />} label="Bộ mẫu" meta={`${templates.length} bộ`}
             selected={unitId === TEMPLATES && !query} onClick={() => selectUnit(TEMPLATES)} />
         </div>
       </div>
@@ -505,13 +498,13 @@ function SetList({ title, sets, itemsBySet, appliedId, subtitle, action, onEdit,
                 <button type="button" onClick={() => onEdit(set)} className="text-left text-sm font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-700 dark:hover:text-indigo-400">
                   {set.name}
                 </button>
-                {set.id === appliedId && <span className="ml-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 text-xs font-bold text-emerald-800 dark:text-emerald-300 rounded">Đang theo</span>}
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">
+                {set.id === appliedId && <span className="ml-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 px-1.5 py-0.5 text-xs font-bold text-emerald-800 dark:text-emerald-300 rounded-none">Đang theo</span>}
+                <p className="text-xs text-slate-600 dark:text-slate-400 font-medium mt-0.5">
                   {subtitle ? `${subtitle(set)} · ` : ''}{set.code} · {BLOCK_LABEL[set.block]} · {count} tiêu chí · từ {monthText(set.effective_from)}
                   {set.board_review ? ' · BGĐ duyệt cuối' : ''}
                 </p>
               </div>
-              <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${set.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500'}`}>
+              <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${set.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600'}`}>
                 <span className={`h-2 w-2 rounded-full ${set.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                 {set.is_active ? 'Đang áp dụng' : 'Đã khoá'}
               </span>
@@ -533,7 +526,7 @@ function SourceChip({ resolved, text }: { resolved: ResolvedKpiSet; text: string
   const tone = resolved.level === 'PERSON'
     ? 'bg-indigo-50 text-indigo-700'
     : resolved.level === 'POSITION' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600';
-  return <span className={`inline-block max-w-[260px] truncate px-1.5 py-0.5 align-middle text-[10px] font-bold ${tone}`}>{text}</span>;
+  return <span className={`inline-block max-w-[260px] truncate px-1.5 py-0.5 align-middle text-[11px] font-bold ${tone}`}>{text}</span>;
 }
 
 function TreeExtra({ icon, label, meta, selected, onClick }: {
@@ -549,7 +542,7 @@ function TreeExtra({ icon, label, meta, selected, onClick }: {
     >
       {icon}
       <span className="flex-1">{label}</span>
-      <span className="text-[11px] text-slate-400">{meta}</span>
+      <span className="text-[11px] text-slate-600">{meta}</span>
     </button>
   );
 }

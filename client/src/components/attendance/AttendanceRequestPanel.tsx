@@ -15,7 +15,8 @@
 // ============================================================================
 
 import { useEffect, useMemo, useState } from 'react';
-import { CalendarClock, Check, Clock3, Plus, TriangleAlert, X } from 'lucide-react';
+import { CalendarClock, Check, Clock3, Eye, Plus, TriangleAlert, X } from 'lucide-react';
+import { RequestDetailModal, type RequestDetail } from '@/components/ui/RequestDetailModal';
 import { ITEMS_PER_PAGE, Pager, clampPage } from '@/components/payroll/Pager';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { departmentOptions, passesPeopleFilter, personOptions } from '@/lib/peopleFilter';
@@ -78,7 +79,7 @@ const STATUS_STYLE: Record<RequestStatus, { label: string; color: string }> = {
   PENDING: { label: 'Chờ duyệt', color: 'bg-amber-50 text-amber-700' },
   APPROVED: { label: 'Đã duyệt', color: 'bg-emerald-50 text-emerald-700' },
   REJECTED: { label: 'Từ chối', color: 'bg-red-50 text-red-600' },
-  CANCELLED: { label: 'Đã huỷ', color: 'bg-slate-100 text-slate-500' },
+  CANCELLED: { label: 'Đã huỷ', color: 'bg-slate-100 text-slate-600' },
 };
 
 /** Hai loại đơn này tiêu hạn mức tháng; đơn OT thì không. */
@@ -104,6 +105,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [detail, setDetail] = useState<RequestDetail | null>(null);
   useEffect(() => { setPage(1); }, [deptFilter, personFilter, typeFilter, statusFilter]);
 
   const [draft, setDraft] = useState({
@@ -238,7 +240,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
       <Card><CardContent>
         <p className="flex items-start gap-2.5 text-sm leading-relaxed text-amber-800">
           <TriangleAlert className="mt-0.5 h-5 w-5 flex-shrink-0" />
-          Chưa chạy migration <code className="rounded bg-amber-50 px-1.5 py-0.5 font-mono text-xs">
+          Chưa chạy migration <code className="rounded-none bg-amber-50 px-1.5 py-0.5 font-mono text-xs">
             20260930110000_attendance_requests.sql
           </code> nên chưa dùng được đơn đi muộn/về sớm/làm thêm.
         </p>
@@ -251,6 +253,24 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
   const pending = rows.filter((row) => row.status === 'PENDING');
   const ordered = mode === 'review' ? [...pending, ...rows.filter((r) => r.status !== 'PENDING')] : rows;
   const personOf = (userId: string) => users.find((user) => user.id === userId);
+  const openDetail = (row: AttendanceRequest) => {
+    const person = personOf(row.user_id) ?? (row.user_id === profile?.id ? profile : undefined);
+    const applicant = person?.name ?? 'Nhân sự đã xoá';
+    setDetail({
+      title: `Đơn ${TYPE_LABEL[row.request_type].toLowerCase()}`,
+      applicant,
+      status: STATUS_STYLE[row.status].label,
+      fields: [
+        { label: 'Nhân sự', value: applicant },
+        { label: 'Phòng ban', value: person?.department ?? '' },
+        { label: 'Loại đơn', value: TYPE_LABEL[row.request_type] },
+        { label: 'Ngày', value: formatDate(row.work_date) },
+        { label: 'Thời lượng', value: row.minutes != null ? `${row.minutes} phút` : row.hours != null ? `${Number(row.hours)} giờ` : '' },
+        { label: 'Lý do', value: row.reason },
+        ...(row.review_note ? [{ label: 'Phản hồi', value: row.review_note }] : []),
+      ],
+    });
+  };
   const rowPeople = ordered.map((row) => personOf(row.user_id));
   const visible = !square ? ordered : ordered.filter((row) =>
     passesPeopleFilter(personOf(row.user_id), row.user_id, deptFilter, personFilter)
@@ -267,7 +287,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
             <h3 className={square ? 'text-base font-bold text-slate-800' : 'text-sm font-bold text-slate-800'}>
               {mode === 'mine' ? 'Đơn chấm công & làm thêm' : 'Đơn từ chờ duyệt'}
             </h3>
-            <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
               {mode === 'mine' ? (
                 <>
                   Tháng {draft.work_date.slice(5, 7)} đã dùng{' '}
@@ -305,12 +325,12 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
 
         {visible.length === 0 ? (
           square ? (
-            <p className="py-10 text-center text-sm font-semibold text-slate-400">
+            <p className="py-10 text-center text-sm font-semibold text-slate-600">
               {ordered.length === 0 ? 'Không có đơn nào.' : 'Không có đơn nào khớp bộ lọc.'}
             </p>
           ) : (
             <div className="flex flex-col items-center gap-2 py-8 text-center">
-              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+              <span className="flex h-11 w-11 items-center justify-center rounded-none bg-slate-50 text-slate-600">
                 <CalendarClock className="h-5 w-5" />
               </span>
               <p className="text-sm font-bold text-slate-600">
@@ -330,7 +350,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
                     <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[110px]"><div className="min-w-[110px] text-center line-clamp-3">Thời lượng</div></th>
                     <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 min-w-[160px]"><div className="min-w-[160px] line-clamp-3">Lý do</div></th>
                     <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[100px]"><div className="min-w-[100px] text-center line-clamp-3">Trạng thái</div></th>
-                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[95px]"><div className="min-w-[95px] text-center line-clamp-3">Thao tác</div></th>
+                    <th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-3 text-center min-w-[230px]"><div className="min-w-[230px] text-center line-clamp-3">Thao tác</div></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
@@ -352,16 +372,21 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
                           <span className={`rounded-full px-2.5 py-1 text-xs font-black ${status.color}`}>{status.label}</span>
                         </td>
                         <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3">
-                          {row.status === 'PENDING' ? (
-                            <div className="flex justify-center gap-2">
-                              <Button size="sm" variant="success" disabled={busy} onClick={() => void decide(row, 'APPROVED')}>
-                                <Check className="h-3.5 w-3.5" /> Duyệt
-                              </Button>
-                              <Button size="sm" variant="danger" disabled={busy} onClick={() => { setRejectTarget(row); setRejectNote(''); }}>
-                                <X className="h-3.5 w-3.5" /> Từ chối
-                              </Button>
-                            </div>
-                          ) : <span className="block text-center text-xs text-slate-400 font-bold">—</span>}
+                          <div className="flex justify-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openDetail(row)}>
+                              <Eye className="h-3.5 w-3.5" /> Chi tiết
+                            </Button>
+                            {row.status === 'PENDING' && (
+                              <>
+                                <Button size="sm" variant="success" disabled={busy} onClick={() => void decide(row, 'APPROVED')}>
+                                  <Check className="h-3.5 w-3.5" /> Duyệt
+                                </Button>
+                                <Button size="sm" variant="danger" disabled={busy} onClick={() => { setRejectTarget(row); setRejectNote(''); }}>
+                                  <X className="h-3.5 w-3.5" /> Từ chối
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -377,7 +402,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
               const status = STATUS_STYLE[row.status];
               return (
                 <li key={row.id} className="flex flex-wrap items-center gap-3 py-3.5">
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 ${square ? 'rounded-none' : 'rounded-lg'}`}>
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 ${square ? 'rounded-none' : 'rounded-none'}`}>
                     <Clock3 className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -398,6 +423,9 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
                     ? <span className={`rounded-full px-2.5 py-1 text-xs font-black ${status.color}`}>{status.label}</span>
                     : <Badge className={`${status.color} font-black`}>{status.label}</Badge>}
 
+                  <Button size="sm" variant="outline" onClick={() => openDetail(row)}>
+                    <Eye className="h-3.5 w-3.5" /> Chi tiết
+                  </Button>
                   {mode === 'review' && row.status === 'PENDING' && (
                     <div className="flex gap-1">
                       <Button size="sm" variant="success" disabled={busy} onClick={() => void decide(row, 'APPROVED')}>
@@ -418,6 +446,8 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
         )}
       </CardContent>
 
+      <RequestDetailModal detail={detail} onClose={() => setDetail(null)} />
+
       <Modal square={square} open={formOpen} onClose={() => setFormOpen(false)} title="Gửi đơn" size="md">
         <div className="space-y-4">
           <Select
@@ -428,7 +458,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
             {SUBMIT_TYPES.map((type) => <option key={type} value={type}>{TYPE_LABEL[type]}</option>)}
           </Select>
           {TYPE_EFFECT[draft.request_type] && (
-            <p className="-mt-2 text-xs leading-relaxed text-slate-500">{TYPE_EFFECT[draft.request_type]}</p>
+            <p className="-mt-2 text-xs leading-relaxed text-slate-600">{TYPE_EFFECT[draft.request_type]}</p>
           )}
 
           <div className="grid gap-3 sm:grid-cols-2">
@@ -456,7 +486,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
           </div>
 
           {QUOTA_TYPES.includes(draft.request_type) && usedInMonth >= quota && (
-            <p className="flex items-start gap-1.5 rounded-lg bg-red-50 px-3 py-2.5 text-xs leading-relaxed text-red-700">
+            <p className="flex items-start gap-1.5 rounded-none bg-red-50 px-3 py-2.5 text-xs leading-relaxed text-red-700">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
               Tháng {draft.work_date.slice(5, 7)} đã dùng hết {quota} lượt. Đơn này sẽ bị hệ thống
               từ chối khi gửi.
@@ -487,9 +517,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
         size="sm"
       >
         <div className="space-y-4">
-          <p className="text-sm leading-relaxed text-slate-600">
-            Nhân viên sẽ nhận được lý do này để biết cần bổ sung hoặc điều chỉnh gì.
-          </p>
+
           <Textarea
             className={sq}
             label="Lý do từ chối"

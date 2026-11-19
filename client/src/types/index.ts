@@ -395,9 +395,9 @@ export type TaxMode = 'PROGRESSIVE' | 'FLAT' | 'NONE';
  */
 export type PayrollRunStatus = 'DRAFT' | 'CALCULATED' | 'LOCKED' | 'APPROVED' | 'PAID';
 
-/** Năm nhóm của danh mục khoản lương. Dòng trung gian không thuộc nhóm nào. */
-export type PayComponentCategoryCode =
-  | 'THU_NHAP_CO_DINH' | 'THU_NHAP_BIEN_DOI' | 'LAM_THEM_GIO' | 'THUONG_PHAT_SINH' | 'KHAU_TRU_PHAT';
+/** Nhóm của danh mục khoản lương = tiêu đề cột gộp của bảng lương. Đầu mục có thể không thuộc nhóm nào. */
+/** Mã nhóm đầu mục — nhóm do dữ liệu quyết định (tiêu đề cột gộp của bảng lương). */
+export type PayComponentCategoryCode = string;
 
 export interface PayComponentCategory {
   code: PayComponentCategoryCode;
@@ -439,7 +439,7 @@ export interface PayComponent {
    * một khoản lương nên không có số tiền nào thuộc về nó.
    */
   group_name: string | null;
-  /** Nhóm trong danh mục — không ảnh hưởng cách tính. Dòng trung gian có thể không thuộc nhóm nào. */
+  /** Nhóm trong danh mục — không ảnh hưởng cách tính. Có thể để trống (cột đơn của bảng lương). */
   category_code: PayComponentCategoryCode | null;
   /** Dòng trung gian có hiện trên phiếu lương của nhân viên không. */
   show_on_payslip?: boolean;

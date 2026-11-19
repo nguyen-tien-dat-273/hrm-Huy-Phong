@@ -20,6 +20,7 @@ import {
 } from '@/lib/kpi';
 import { loadSheetsRange, loadYearReviews, saveYearReviews, type KpiWorkspace } from '@/lib/kpiData';
 import { supabase } from '@/lib/supabase';
+import { Tabs } from '@/components/ui/Tabs';
 
 type Tab = 'year' | 'progress' | 'month' | 'reward';
 
@@ -168,27 +169,20 @@ export function KpiReportBoard({ data, month, settings, viewer }: {
         </div>
       )}
       <div className="relative w-full sm:w-56">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm nhân viên…" aria-label="Tìm nhân viên"
-          className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+          className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15" />
       </div>
     </div>
   );
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-200 no-print" role="tablist" aria-label="Loại báo cáo">
-        {TABS.filter(([key]) => key !== 'reward' || viewer.isBoard || viewer.canClose || viewer.canManage).map(([key, text]) => (
-          <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
-            className={`-mb-px shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition ${tab === key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800'}`}>
-            {text}
-          </button>
-        ))}
-      </div>
+      <Tabs label="Loại báo cáo" items={TABS.filter(([key]) => key !== 'reward' || viewer.isBoard || viewer.canClose || viewer.canManage).map(([key, label]) => ({ key, label }))} value={tab} onChange={setTab} />
 
       {tab === 'progress' && <Progress data={data} month={month} label={label} settings={settings} filters={filters} matches={matches} nameOf={nameOf} unitName={unitName} toast={toast} />}
       {tab === 'month' && <MonthResult data={data} label={label} month={month} grades={grades} gradeFilter={gradeFilter} filters={filters} matches={matches} nameOf={nameOf} unitName={unitName} />}
-      {(tab === 'year' || tab === 'reward') && !yearSheets && <p className="py-10 text-center text-sm text-slate-400">Đang tổng hợp năm {year}…</p>}
+      {(tab === 'year' || tab === 'reward') && !yearSheets && <p className="py-10 text-center text-sm text-slate-600">Đang tổng hợp năm {year}…</p>}
       {tab === 'year' && yearSheets && (
         <YearSummary year={year} sheets={yearSheets} lockedMonths={lockedMonths} grades={grades} filters={filters} matches={matches} nameOf={nameOf} unitName={unitName} />
       )}
@@ -256,7 +250,7 @@ function Progress({ data, month, label, settings, filters, matches, nameOf, unit
       <div className="grid grid-cols-2 gap-px border-b border-slate-100 bg-slate-100 sm:grid-cols-3 lg:grid-cols-6">
         {tiles.map(([text, value, tone]) => (
           <div key={text} className="bg-white px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{text}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{text}</p>
             <p className={`text-2xl font-bold tabular-nums ${tone}`}>{value}</p>
           </div>
         ))}
@@ -267,7 +261,7 @@ function Progress({ data, month, label, settings, filters, matches, nameOf, unit
         <div className="border-b border-slate-100 p-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Tiến độ hoàn thành KPI theo phòng ban
+              Tiến độ theo phòng ban
             </h4>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 text-slate-600">
@@ -308,8 +302,8 @@ function Progress({ data, month, label, settings, filters, matches, nameOf, unit
       )}
 
       <div className="flex items-center justify-between gap-2 px-4 py-2">
-        <p className="text-xs text-slate-500">{sheets.length} phiếu</p>
-        <Button size="sm" variant="outline" className="rounded-md shadow-2xs" onClick={() => void remind()} disabled={sheets.every((sheet) => sheet.status === 'APPROVED' || sheet.status === 'BOARD')}>
+        <p className="text-xs text-slate-600">{sheets.length} phiếu</p>
+        <Button size="sm" variant="outline" className="rounded-none shadow-2xs" onClick={() => void remind()} disabled={sheets.every((sheet) => sheet.status === 'APPROVED' || sheet.status === 'BOARD')}>
           <BellRing className="h-3.5 w-3.5" /> Nhắc người chưa xong
         </Button>
       </div>
@@ -391,7 +385,7 @@ function MonthResult({ data, label, month, grades, gradeFilter, filters, matches
   });
 
   if (data.period?.status !== 'LOCKED' && approved.length === 0) {
-    return <Card className="!rounded-none">{filters}<p className="px-6 py-12 text-center text-sm text-slate-500">Chưa có dữ liệu kỳ đã khoá.</p></Card>;
+    return <Card className="!rounded-none">{filters}<p className="px-6 py-12 text-center text-sm text-slate-600">Chưa có dữ liệu kỳ đã khoá.</p></Card>;
   }
 
   return (
@@ -406,10 +400,10 @@ function MonthResult({ data, label, month, grades, gradeFilter, filters, matches
 
       {/* 2 Biểu đồ: Phân bổ xếp loại KPI & Điểm KPI theo phòng ban */}
       <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2 border-b border-slate-100">
-        {/* Biểu đồ 1: Cơ cấu phân bổ xếp loại KPI */}
+        {/* Biểu đồ 1: Phân bổ xếp loại */}
         <div className="border border-slate-200 bg-white p-3.5">
           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 pb-2.5 border-b border-slate-100">
-            Cơ cấu phân bổ xếp loại KPI
+            Phân bổ xếp loại
           </h4>
           <div className="mt-3 h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -430,7 +424,7 @@ function MonthResult({ data, label, month, grades, gradeFilter, filters, matches
         {/* Biểu đồ 2: Điểm KPI trung bình theo phòng ban */}
         <div className="border border-slate-200 bg-white p-3.5">
           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 pb-2.5 border-b border-slate-100">
-            Điểm KPI trung bình theo phòng ban (%)
+            KPI trung bình theo phòng ban
           </h4>
           <div className="mt-3 h-56 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -492,7 +486,7 @@ function MonthResult({ data, label, month, grades, gradeFilter, filters, matches
 function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="bg-white px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">{label}</p>
       <p className={`text-2xl font-bold tabular-nums ${tone ?? 'text-slate-900'}`}>{value}</p>
     </div>
   );
@@ -580,7 +574,7 @@ function YearSummary({ year, sheets, lockedMonths, grades, filters, matches, nam
     <Card className="!rounded-none">
       {filters}
       <div className="flex items-center justify-between px-4 py-2">
-        <p className="text-xs text-slate-500">Chỉ tính phiếu đã duyệt của kỳ đã khoá sổ.</p>
+        <p className="text-xs text-slate-600">Chỉ tính phiếu đã duyệt của kỳ đã khoá sổ.</p>
         <ExportButtons options={exportOptions} disabled={rows.length === 0} />
       </div>
 
@@ -593,9 +587,7 @@ function YearSummary({ year, sheets, lockedMonths, grades, filters, matches, nam
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
                   Xu hướng điểm KPI & mức độ đạt Khá - Giỏi 12 tháng năm {year} (%)
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  Đường sóng thể hiện điểm KPI bình quân (%) và tỷ lệ % nhân sự đạt từ mức Khá trở lên
-                </p>
+
               </div>
               <div className="flex items-center gap-3 text-xs">
                 <span className="flex items-center gap-1.5 text-slate-600">
@@ -604,7 +596,7 @@ function YearSummary({ year, sheets, lockedMonths, grades, filters, matches, nam
                 <span className="flex items-center gap-1.5 text-slate-600">
                   <span className="h-2.5 w-2.5 rounded-full inline-block" style={{ backgroundColor: '#10B981' }} /> % Đạt Khá - Giỏi
                 </span>
-                <span className="flex items-center gap-1.5 text-slate-500">
+                <span className="flex items-center gap-1.5 text-slate-600">
                   <span className="w-4 border-b border-dashed border-rose-500 inline-block" /> Mốc 100%
                 </span>
               </div>
@@ -648,7 +640,7 @@ function YearSummary({ year, sheets, lockedMonths, grades, filters, matches, nam
       )}
 
       {rows.length === 0 ? (
-        <p className="px-6 py-12 text-center text-sm text-slate-500">Chưa có dữ liệu kỳ đã khoá trong năm {year}.</p>
+        <p className="px-6 py-12 text-center text-sm text-slate-600">Chưa có dữ liệu kỳ đã khoá trong năm {year}.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1100px] whitespace-nowrap text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
@@ -760,7 +752,7 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
     void load();
   };
 
-  const cell = 'h-8 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-center text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20';
+  const cell = 'h-8 w-full rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-center text-sm font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20';
 
   return (
     <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
@@ -770,14 +762,14 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
           <p className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">Khung theo xếp loại</p>
           <div className="flex flex-wrap items-end gap-2">
             {grades.map((grade) => (
-              <div key={grade.code} className="flex items-center gap-1 border border-slate-300 dark:border-slate-700 rounded-md px-2 py-1 bg-white dark:bg-slate-800">
+              <div key={grade.code} className="flex items-center gap-1 border border-slate-300 dark:border-slate-700 rounded-none px-2 py-1 bg-white dark:bg-slate-800">
                 <span className={`w-7 text-xs font-bold ${GRADE_TONE[grade.code] ?? ''}`}>{grade.code}</span>
                 <input placeholder="Thưởng" aria-label={`Thưởng loại ${grade.code}`} value={frame[grade.code]?.bonus ?? ''}
                   onChange={(event) => setFrame((current) => ({ ...current, [grade.code]: { raise: current[grade.code]?.raise ?? '', bonus: event.target.value.replace(/[^\d.,]/g, '') } }))}
-                  className="h-8 w-28 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500" />
+                  className="h-8 w-28 rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500" />
                 <input placeholder="% tăng" aria-label={`Tăng lương loại ${grade.code}`} value={frame[grade.code]?.raise ?? ''}
                   onChange={(event) => setFrame((current) => ({ ...current, [grade.code]: { bonus: current[grade.code]?.bonus ?? '', raise: event.target.value.replace(/[^\d.,]/g, '') } }))}
-                  className="h-8 w-16 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500" />
+                  className="h-8 w-16 rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 text-xs font-bold tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:border-indigo-500" />
               </div>
             ))}
             <Button size="sm" variant="outline" onClick={applyFrame}>Áp khung</Button>
@@ -785,7 +777,7 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
         </CardContent>
       )}
       {people.length === 0 ? (
-        <p className="px-6 py-12 text-center text-sm font-semibold text-slate-500">Chưa có dữ liệu kỳ đã khoá trong năm {year}.</p>
+        <p className="px-6 py-12 text-center text-sm font-semibold text-slate-600">Chưa có dữ liệu kỳ đã khoá trong năm {year}.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] whitespace-nowrap text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
@@ -811,7 +803,7 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
                 const editable = canApprove && !done;
                 return (
                   <tr key={person.userId} className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
-                    <td className="px-4 py-2 font-black text-sm text-slate-900 dark:text-slate-100 min-w-[170px]">{nameOf(person.userId)}<span className="ml-1 text-xs font-normal text-slate-500 dark:text-slate-400">{person.counted} tháng</span></td>
+                    <td className="px-4 py-2 font-black text-sm text-slate-900 dark:text-slate-100 min-w-[170px]">{nameOf(person.userId)}<span className="ml-1 text-xs font-normal text-slate-600 dark:text-slate-400">{person.counted} tháng</span></td>
                     <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold min-w-[90px]">{fmtPct(person.year)}</td>
                     <td className={`border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center font-bold min-w-[75px] ${GRADE_TONE[grade?.code ?? ''] ?? ''}`}>{grade?.code ?? '—'}</td>
                     <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 min-w-[130px]">{editable ? <input value={draft.late} onChange={(e) => patch(person.userId, { late: e.target.value.replace(/\D/g, '') })} className={cell} aria-label="Số lần đi muộn về sớm" /> : <span className="block text-center font-bold">{record?.late_count ?? '—'}</span>}</td>
@@ -823,7 +815,7 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
                     <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 min-w-[115px]">{editable ? <input value={draft.raise} inputMode="decimal" disabled={draft.discipline} onChange={(e) => patch(person.userId, { raise: e.target.value.replace(/[^\d.,]/g, '') })} className={`${cell} disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:opacity-50`} aria-label="Tăng lương %" /> : <span className="block text-center font-bold">{record?.raise_pct == null ? '—' : fmtPct(record.raise_pct)}</span>}</td>
                     <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 min-w-[170px]">{editable ? <input value={draft.reason} onChange={(e) => patch(person.userId, { reason: e.target.value })} className={`${cell} !text-left`} aria-label="Ghi chú quyết định" /> : <span className="text-slate-700 dark:text-slate-300 font-medium text-xs">{record?.decision_reason ?? ''}</span>}</td>
                     <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2 text-center min-w-[100px]">
-                      {done ? <span className="font-bold text-emerald-700 dark:text-emerald-400">Đã duyệt</span> : record ? <span className="font-semibold text-slate-600 dark:text-slate-300">Đề xuất</span> : <span className="text-slate-400">—</span>}
+                      {done ? <span className="font-bold text-emerald-700 dark:text-emerald-400">Đã duyệt</span> : record ? <span className="font-semibold text-slate-600 dark:text-slate-300">Đề xuất</span> : <span className="text-slate-600">—</span>}
                     </td>
                   </tr>
                 );
@@ -837,7 +829,7 @@ function Reward({ year, sheets, lockedMonths, grades, filters, matches, nameOf, 
           <label className="flex items-center gap-2 text-xs font-semibold text-slate-600">
             Chi thưởng vào lương tháng
             <input type="month" value={payout} onChange={(event) => setPayout(event.target.value)}
-              className="h-9 rounded-none border border-slate-200 px-2 text-sm outline-none focus:border-indigo-500" />
+              className="h-9 rounded-none border border-slate-300 px-2 text-sm outline-none focus:border-indigo-500" />
           </label>
           <Button size="sm" variant="outline" onClick={() => void submit(false)} disabled={busy}><Save className="h-3.5 w-3.5" /> Lưu đề xuất</Button>
           <Button size="sm" variant="success" onClick={() => void submit(true)} disabled={busy}><CheckCircle2 className="h-3.5 w-3.5" /> Phê duyệt</Button>

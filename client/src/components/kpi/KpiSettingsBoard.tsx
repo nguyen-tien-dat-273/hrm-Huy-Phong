@@ -137,10 +137,10 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
                 <div key={source} className="grid grid-cols-[1fr_1.2fr] border-b border-slate-300 dark:border-slate-700 last:border-b-0">
                   <div className="px-3 py-2.5" title={hint}>
                     <p className="text-sm font-black text-slate-900 dark:text-slate-100">{label}</p>
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{unit}</p>
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">{unit}</p>
                   </div>
                   <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5">
-                    <Dropdown compact square searchable aria-label={`Đầu mục nhận ${label}`} value={links[source] ?? ''}
+                    <Dropdown compact searchable aria-label={`Đầu mục nhận ${label}`} value={links[source] ?? ''}
                       options={componentOptions}
                       onChange={(value) => setLinks((current) => ({ ...current, [source as KpiLinkSource]: value }))} />
                     {warning && (
@@ -153,7 +153,7 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
               );
             })}
           </div>
-          <p className="text-xs font-medium text-slate-500">Tỷ lệ KPI chốt luôn có sẵn trong công thức lương với tên “Tỷ lệ KPI”.</p>
+
           <div className="flex justify-end">
             <Button size="sm" onClick={() => void handleSaveLinks()} disabled={saving}><Save className="h-3.5 w-3.5" /> Lưu liên kết</Button>
           </div>
@@ -184,7 +184,7 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
           </div>
 
           <div>
-            <p className="mb-1 text-xs font-bold text-slate-700 dark:text-slate-300">Xếp loại <span className="font-normal text-slate-400">(KPI% từ mức này trở lên)</span></p>
+            <p className="mb-1 text-xs font-bold text-slate-700 dark:text-slate-300">Xếp loại <span className="font-normal text-slate-600">(KPI% từ mức này trở lên)</span></p>
             <div className="border-2 border-slate-400 dark:border-slate-600 shadow-sm">
               {form.grades.map((grade, index) => (
                 <div key={index} className="grid grid-cols-[64px_1fr_96px_36px] border-b border-slate-300 dark:border-slate-700 last:border-b-0">
@@ -197,7 +197,7 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
                   <input value={grade.min} inputMode="decimal" aria-label="Từ %"
                     onChange={(event) => set({ grades: form.grades.map((row, i) => (i === index ? { ...row, min: event.target.value } : row)) })}
                     className="h-9 border-0 border-r border-slate-300 dark:border-slate-700 px-2 text-center text-sm font-black tabular-nums text-slate-900 dark:text-slate-100 outline-none focus:bg-indigo-50/40" />
-                  <button type="button" aria-label="Bỏ loại" className="flex items-center justify-center text-slate-400 hover:text-red-600 transition-colors"
+                  <button type="button" aria-label="Bỏ loại" className="flex items-center justify-center text-slate-600 hover:text-red-600 transition-colors"
                     onClick={() => set({ grades: form.grades.filter((_, i) => i !== index) })}>
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -236,7 +236,7 @@ export function KpiSettingsBoard({ data, month, onChanged }: { data: KpiWorkspac
                       Từ {row.effective_from.slice(5, 7)}/{row.effective_from.slice(0, 4)} · trần {fmtNum(row.cap_pct)}% · thưởng tối đa {fmtNum(row.bonus_max_pct)}%
                     </button>
                     {row.id !== current?.id && (
-                      <button type="button" aria-label="Xoá" className="text-slate-400 hover:text-red-600" onClick={() => void handleDeleteVersion(row)}>
+                      <button type="button" aria-label="Xoá" className="text-slate-600 hover:text-red-600" onClick={() => void handleDeleteVersion(row)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     )}
@@ -259,10 +259,10 @@ function DayField({ label, day, time, onDay, onTime }: {
       <span>{label}</span>
       <span className="flex items-center gap-1">
         <input value={day} inputMode="numeric" aria-label={`${label} — ngày`} onChange={(event) => onDay(event.target.value.replace(/\D/g, ''))}
-          className="h-8 w-12 rounded-none border border-slate-200 px-1 text-center tabular-nums outline-none focus:border-indigo-500" />
+          className="h-8 w-12 rounded-none border border-slate-300 px-1 text-center tabular-nums outline-none focus:border-indigo-500" />
         {onTime && (
           <input type="time" value={time} aria-label={`${label} — giờ`} onChange={(event) => onTime(event.target.value)}
-            className="h-8 rounded-none border border-slate-200 px-1 tabular-nums outline-none focus:border-indigo-500" />
+            className="h-8 rounded-none border border-slate-300 px-1 tabular-nums outline-none focus:border-indigo-500" />
         )}
       </span>
     </label>

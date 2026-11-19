@@ -16,6 +16,8 @@ import type { Notification } from '@/types';
 import { ADMIN_NAV_GROUPS, ADMIN_NAV_ITEMS } from '@/config/navigation';
 import { notificationRoute } from '@/lib/notificationRoutes';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useNavBadges } from '@/contexts/NavBadgeContext';
+import { CountBadge } from '@/components/ui/CountBadge';
 
 /**
  * Menu đã vượt 12 mục — chia 3 cụm theo mạch công việc để quét mắt nhanh:
@@ -58,8 +60,8 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  /** Số công việc nhân viên đã gửi, đang chờ xác nhận — hiện cạnh mục "Giao việc". */
-  const [pendingAssignments, setPendingAssignments] = useState(0);
+  /** Số việc mới / chờ xử lý của từng trang — hiện ở sidebar, ô module và nút bảng module. */
+  const { countFor, countForAll } = useNavBadges();
   const notifRef = useRef<HTMLDivElement>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
   /** Bảng lưới module ở header. Bấm vẫn mở/đóng được (cảm ứng, bàn phím);
@@ -74,8 +76,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   const scheduleCloseLauncher = () => {
     launcherCloseTimer.current = window.setTimeout(() => setLauncherOpen(false), 150);
   };
-
-  const canReviewAssignments = hasPermission(profile, 'attendance');
 
   const loadNotifications = async () => {
     if (!profile) return;
@@ -94,27 +94,6 @@ export function AdminLayout({ children }: { children: ReactNode }) {
     profile ? [{ table: 'notifications', filter: `user_id=eq.${profile.id}` }] : [],
     loadNotifications,
     { enabled: !!profile, channelKey: `admin-notifications-${profile?.id ?? 'anonymous'}` },
-  );
-
-  const loadPendingAssignments = async () => {
-    const { count } = await supabase
-      .from('daily_assignments')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'submitted');
-    setPendingAssignments(count ?? 0);
-  };
-
-  useEffect(() => {
-    if (canReviewAssignments) loadPendingAssignments();
-  }, [canReviewAssignments]);
-
-  // Nhân viên bấm "Gửi duyệt" ở bất cứ đâu là con số trên sidebar nhảy ngay.
-  // channelKey bắt buộc: trang Giao việc cũng nghe bảng này, trùng tên kênh
-  // là supabase-js ném lỗi và trang trắng.
-  useRealtimeSync(
-    [{ table: 'daily_assignments' }],
-    loadPendingAssignments,
-    { enabled: canReviewAssignments, channelKey: 'layout-badge' },
   );
 
   // Close dropdowns on outside click
@@ -178,6 +157,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
   }, [groupOfCurrentPath]);
 
   const activeGroup = groupsWithItems.find((group) => group.name === openGroup) ?? null;
+  const launcherTotal = countForAll(navItems.map((item) => item.to));
 
   /**
    * Bam mot module tren thanh ngang thi vao luon chuc nang DAU TIEN cua no.
@@ -260,16 +240,11 @@ export function AdminLayout({ children }: { children: ReactNode }) {
       <a href="#main-content" className="skip-link">Bỏ qua điều hướng</a>
 
       {/* ================================================================
-          Sidebar gọn trên desktop — vẫn là danh sách CHỨC NĂNG của module
-          đang mở (như cũ). Mặc định chỉ hiện icon; rê chuột vào BẤT KỲ đâu
-          trong thanh là cả thanh xổ rộng ra (kiểu Supabase) và hiện tên từng
-          trang, không cần hover từng ô.
-
-          Thuần CSS, không giữ state JS: nhãn chữ LUÔN render, `overflow-hidden`
-          ở thanh (lúc hẹp) tự cắt phần tràn ra ngoài 4.75rem; `hover:w-60` nới
-          rộng ra thì chữ lộ ra, không cần JS bật/tắt hay đo kích thước.
+          Sidebar trên desktop — danh sách CHỨC NĂNG của module đang mở.
+          Luôn mở rộng, hiện đủ icon + tên trang + chấm số việc mới; không
+          còn kiểu thu gọn rồi rê chuột mới xổ ra.
           ================================================================ */}
-      <aside className="app-sidebar hidden md:flex sticky top-0 z-40 h-screen w-14 hover:w-60 flex-col overflow-hidden border-r border-slate-200 dark:border-slate-800 px-2 py-3 transition-[width] duration-200 ease-out">
+      <aside className="app-sidebar hidden md:flex sticky top-0 z-40 h-screen w-60 flex-shrink-0 flex-col overflow-hidden border-r border-slate-200 dark:border-slate-800 px-2 py-3">
         <NavLink
           to="/admin/overview"
           aria-label={orgName || 'HRM Huy Phong'}
@@ -292,23 +267,17 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   end={exactMatchPaths.has(item.to.split(/[?#]/, 1)[0])}
                   aria-label={item.label}
                   className={`relative flex h-10 flex-shrink-0 items-center gap-3 rounded-none px-2.5 transition-colors duration-150 ${
-                    isActive ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30' : 'text-slate-500 hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-400'
+                    isActive ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30' : 'text-slate-600 hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-400'
                   }`}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
                   <span className="truncate text-sm font-semibold">{item.label}</span>
-                  {item.to === '/admin/assignments' && pendingAssignments > 0 && (
-                    <span className={`ml-auto flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-                      isActive ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
-                    }`}>
-                      {pendingAssignments}
-                    </span>
-                  )}
+                  <CountBadge count={countFor(item.to)} inverted={isActive} className="ml-auto" />
                 </NavLink>
               );
             })
           ) : (
-            <p className="px-2.5 py-6 text-xs leading-relaxed text-slate-400 dark:text-slate-500">
+            <p className="px-2.5 py-6 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
               Chọn module ở nút lưới trên đầu trang
             </p>
           )}
@@ -318,7 +287,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
           <Avatar name={profile?.name || ''} url={profile?.avatar_url} size="sm" />
           <span className="min-w-0 flex-1 truncate">
             <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{profile?.name}</span>
-            <span className="block truncate text-xs capitalize text-slate-500 dark:text-slate-400">{profile?.role}</span>
+            <span className="block truncate text-xs capitalize text-slate-600 dark:text-slate-400">{profile?.role}</span>
           </span>
         </div>
       </aside>
@@ -338,10 +307,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{orgName || 'HRM Huy Phong'}</p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Hệ thống quản lý nhân sự</p>
             </div>
           </div>
-          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Đóng menu điều hướng" className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Đóng menu điều hướng" className="ml-auto flex h-11 w-11 items-center justify-center rounded-none text-slate-600 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -352,12 +320,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               {/* Nhac lai dang dung trong module nao: thanh ngang o tren co the
                   bi cuon khuat, va man hinh hep thi no xuong dong. */}
               <div className="mb-3 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 px-3 pb-3">
-                <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${activeGroup.iconOn}`}>
+                <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-none ${activeGroup.iconOn}`}>
                   <activeGroup.icon className="h-5 w-5" />
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[15px] font-bold leading-snug text-slate-900 dark:text-slate-100">{activeGroup.name}</span>
-                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">
+                  <span className="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">
                     {activeGroup.items.length} chức năng
                   </span>
                 </span>
@@ -372,7 +340,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     to={item.to}
                     onClick={() => setSidebarOpen(false)}
                     end={exactMatchPaths.has(item.to.split(/[?#]/, 1)[0])}
-                    className={`group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors duration-200 ${
+                    className={`group flex items-start gap-3 rounded-none px-3 py-2.5 transition-colors duration-200 ${
                       isActive
                         ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30'
                         : 'hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -390,30 +358,20 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                         {item.label}
                       </span>
                     </span>
-                    {item.to === '/admin/assignments' && pendingAssignments > 0 && (
-                      <span className={`mt-0.5 flex h-5 min-w-5 flex-shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-                        isActive ? 'bg-white/25 text-white' : 'bg-amber-500 text-white'
-                      }`}>
-                        {pendingAssignments}
-                      </span>
-                    )}
+                    <CountBadge count={countFor(item.to)} inverted={isActive} className="mt-0.5" />
                   </NavLink>
                 );
               })}
             </div>
-          ) : (
-            <p className="px-3 py-6 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              Chọn một module ở nút lưới trên đầu trang để xem các chức năng bên trong.
-            </p>
-          )}
+          ) : null}
         </nav>
 
         <div className="border-t border-slate-200 dark:border-slate-800 p-3">
-          <div className="flex items-center gap-3 rounded-xl bg-slate-50 dark:bg-slate-800 px-3 py-2">
+          <div className="flex items-center gap-3 rounded-none bg-slate-50 dark:bg-slate-800 px-3 py-2">
             <Avatar name={profile?.name || ''} url={profile?.avatar_url} size="sm" />
             <div className="flex-1 min-w-0">
               <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">{profile?.name}</p>
-              <p className="text-xs capitalize text-slate-500 dark:text-slate-400">{profile?.role}</p>
+              <p className="text-xs capitalize text-slate-600 dark:text-slate-400">{profile?.role}</p>
             </div>
           </div>
         </div>
@@ -430,13 +388,13 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               cha khong co thi phep co khong bao gio truyen xuong - header
               phinh ra 751px trong khung 553px va day ca trang tran ngang. */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
-            <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở menu điều hướng" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
+            <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở menu điều hướng" className="flex h-11 w-11 items-center justify-center rounded-none text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex min-w-0 flex-col">
               <div className="flex items-center gap-2">
-                {currentPage?.group && <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">{currentPage.group}</span>}
-                {currentPage?.group && <span className="hidden sm:inline text-slate-300 dark:text-slate-600">/</span>}
+                {currentPage?.group && <span className="hidden sm:inline text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">{currentPage.group}</span>}
+                {currentPage?.group && <span className="hidden sm:inline text-slate-600 dark:text-slate-400">/</span>}
                 <h1 className="font-display truncate text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">{currentPage?.label || 'Khu quản trị'}</h1>
               </div>
               {!currentPage && (
@@ -462,7 +420,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               <button
                 onClick={() => setLauncherOpen(!launcherOpen)}
                 onFocus={openLauncherHover}
-                className={`flex h-11 items-center gap-2 rounded-none px-3 text-sm font-bold transition-colors ${
+                className={`relative flex h-11 items-center gap-2 rounded-none px-3 text-sm font-bold transition-colors ${
                   activeGroup
                     ? activeGroup.chip
                     : 'bg-slate-800 text-white hover:bg-slate-900'
@@ -475,6 +433,9 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   {activeGroup?.name ?? 'Chọn module'}
                 </span>
                 <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${launcherOpen ? 'rotate-180' : ''}`} />
+                {/* Tổng việc mới của MỌI module — sidebar chỉ liệt kê module
+                    đang mở, nên việc ở module khác phải báo ra từ đây. */}
+                <CountBadge count={launcherTotal} className="absolute -right-2 -top-2 ring-2 ring-white dark:ring-slate-900" />
               </button>
 
               {/* Tren dien thoai bang neo vao MAN HINH chu khong vao nut.
@@ -491,8 +452,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                     {groupsWithItems.map((group) => {
                       const Icon = group.icon;
                       const isActive = group.name === openGroup;
-                      const pending = group.items.some((item) => item.to === '/admin/assignments')
-                        ? pendingAssignments : 0;
+                      const pending = countForAll(group.items.map((item) => item.to));
                       return (
                         <button
                           key={group.name}
@@ -506,21 +466,20 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                           {/* Mau rieng tung module: 8 o cung mau xam thi phai
                               doc ten moi phan biet, con khac mau thi nho duoc
                               bang vi tri va mau sau vai lan dung. */}
-                          <span className={`flex h-11 w-11 items-center justify-center rounded-none transition-colors ${
+                          <span className={`flex h-14 w-14 items-center justify-center rounded-none transition-colors ${
                             isActive ? group.iconOn : group.iconIdle
                           }`}>
-                            <Icon className="h-5 w-5" />
+                            <Icon className="h-7 w-7" strokeWidth={2.25} />
                           </span>
-                          <span className={`text-xs font-semibold leading-tight ${
-                            isActive ? group.textOn : 'text-slate-700 dark:text-slate-300'
+                          <span className={`text-sm font-bold leading-tight ${
+                            isActive ? group.textOn : 'text-slate-900 dark:text-slate-100'
                           }`}>
                             {group.name}
                           </span>
-                          {pending > 0 && (
-                            <span className="absolute right-2 top-2 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-                              {pending}
-                            </span>
-                          )}
+                          <span className={`text-xs font-medium ${isActive ? group.textOn : 'text-slate-700 dark:text-slate-300'}`}>
+                            {group.items.length} chức năng
+                          </span>
+                          <CountBadge count={pending} className="absolute right-2 top-2" />
                         </button>
                       );
                     })}
@@ -534,12 +493,12 @@ export function AdminLayout({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))}
-              className="hidden h-11 items-center gap-2 rounded-none border border-slate-200 dark:border-slate-700 pl-3 pr-2 text-slate-400 dark:text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-600 dark:hover:border-slate-600 dark:hover:text-slate-300 md:flex"
+              className="hidden h-11 items-center gap-2 rounded-none border border-slate-200 dark:border-slate-700 pl-3 pr-2 text-slate-600 dark:text-slate-400 transition-colors hover:border-slate-300 hover:text-slate-600 dark:hover:border-slate-600 dark:hover:text-slate-300 md:flex"
               aria-label="Mở tìm nhanh"
             >
               <Search className="w-4 h-4" />
               <span className="text-sm">Tìm nhanh</span>
-              <kbd className="text-[11px] font-medium bg-slate-100 dark:bg-slate-800 rounded-md px-1.5 py-0.5">Ctrl K</kbd>
+              <kbd className="text-[11px] font-medium bg-slate-100 dark:bg-slate-800 rounded-none px-1.5 py-0.5">Ctrl K</kbd>
             </button>
 
             {/* Chuyển sáng/tối */}
@@ -562,13 +521,13 @@ export function AdminLayout({ children }: { children: ReactNode }) {
               >
                 <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-gradient-to-br from-red-500 to-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-gradient-to-br from-red-500 to-rose-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
                     {unreadCount}
                   </span>
                 )}
               </button>
               {notifOpen && (
-                <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-800 rounded-2xl shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in overflow-hidden">
+                <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-800 rounded-none shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
                     <span className="font-display font-semibold text-sm text-slate-800 dark:text-slate-100">Thông báo</span>
                     {unreadCount > 0 && (
@@ -577,7 +536,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {unreadNotifications.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-10">Không có thông báo mới</p>
+                      <p className="text-sm text-slate-600 text-center py-10">Không có thông báo mới</p>
                     ) : (
                       unreadNotifications.map((n) => (
                         <button type="button" key={n.id} onClick={() => void openNotification(n)} className="block w-full px-4 py-3 border-b border-slate-50 dark:border-slate-700/60 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors bg-indigo-50/40 dark:bg-indigo-500/10">
@@ -585,7 +544,7 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                             {!n.is_read && <span className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />}
                             <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{n.title}</p>
                           </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 ml-4">{n.message}</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 ml-4">{n.message}</p>
                         </button>
                       ))
                     )}
@@ -603,40 +562,40 @@ export function AdminLayout({ children }: { children: ReactNode }) {
                 aria-expanded={avatarOpen}
               >
                 <Avatar name={profile?.name || ''} url={profile?.avatar_url} size="sm" />
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${avatarOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform duration-200 ${avatarOpen ? 'rotate-180' : ''}`} />
               </button>
               {avatarOpen && (
-                <div className="absolute right-0 top-12 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in py-1.5 overflow-hidden">
+                <div className="absolute right-0 top-12 w-56 bg-white dark:bg-slate-800 rounded-none shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in py-1.5 overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
                     <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{profile?.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{profile?.email}</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 truncate">{profile?.email}</p>
                   </div>
                   <button
                     onClick={() => { setAvatarOpen(false); navigate('/profile'); }}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center"><UserCircle className="w-4 h-4 text-slate-600 dark:text-slate-300" /></span>
+                    <span className="w-7 h-7 rounded-none bg-slate-100 dark:bg-slate-700 flex items-center justify-center"><UserCircle className="w-4 h-4 text-slate-600 dark:text-slate-300" /></span>
                     Hồ sơ cá nhân
                   </button>
                   <button
                     onClick={handleSwitchToStaff}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center"><Eye className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /></span>
-                    {isFullAdmin(profile) ? 'Xem với tư cách Nhân viên' : 'Về khu nhân viên'}
+                    <span className="w-7 h-7 rounded-none bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center"><Eye className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /></span>
+                    Nhân Viên - Admin
                   </button>
                   <button
                     onClick={() => { setAvatarOpen(false); navigate('/change-password'); }}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-violet-50 dark:bg-violet-500/15 flex items-center justify-center"><KeyRound className="w-4 h-4 text-violet-600 dark:text-violet-400" /></span>
+                    <span className="w-7 h-7 rounded-none bg-violet-50 dark:bg-violet-500/15 flex items-center justify-center"><KeyRound className="w-4 h-4 text-violet-600 dark:text-violet-400" /></span>
                     Đổi mật khẩu
                   </button>
                   <button
                     onClick={handleSignOut}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-500/15 flex items-center justify-center"><LogOut className="w-4 h-4" /></span>
+                    <span className="w-7 h-7 rounded-none bg-red-50 dark:bg-red-500/15 flex items-center justify-center"><LogOut className="w-4 h-4" /></span>
                     Đăng xuất
                   </button>
                 </div>

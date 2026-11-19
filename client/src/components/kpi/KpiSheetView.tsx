@@ -167,7 +167,7 @@ export function KpiSheetView({
   const mgrPreview = useMemo(() => previewSheet(items, mgrInputs), [items, mgrInputs]);
 
   if (loadError) return <p className="py-10 text-center text-sm text-red-600">{loadError}</p>;
-  if (!sheet) return <p className="py-10 text-center text-sm text-slate-400">Đang mở phiếu…</p>;
+  if (!sheet) return <p className="py-10 text-center text-sm text-slate-600">Đang mở phiếu…</p>;
 
   const cap = settings?.cap_pct ?? 120;
   const bonusMax = settings?.bonus_max_pct ?? 10;
@@ -297,7 +297,7 @@ export function KpiSheetView({
   const eff = mgrEditable || showMgr ? mgrPreview.eff : selfPreview.eff;
 
   const statusChip = (
-    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>
+    <span className={`inline-flex items-center rounded-none px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>
       {SHEET_STATUS_LABEL[sheet.status]}
     </span>
   );
@@ -310,9 +310,9 @@ export function KpiSheetView({
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-bold text-slate-900">{personName}</h3>
             {statusChip}
-            {sheet.version > 1 && <span className="text-[11px] font-semibold text-slate-400">Lần {sheet.version}</span>}
+            {sheet.version > 1 && <span className="text-[11px] font-semibold text-slate-600">Lần {sheet.version}</span>}
           </div>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-slate-600">
             {sheet.set_name} · Tháng {monthLabelOf(sheet.period_month)}
             {sheet.reviewer_id ? ` · Quản lý: ${nameOf(sheet.reviewer_id)}` : ''}
             {sheet.board_review ? ' · BGĐ duyệt cuối' : ''}
@@ -364,7 +364,7 @@ export function KpiSheetView({
                     {(category.items.length > 1 || category.items[0].item.name !== category.name) && (
                       <div className="border-b border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
                         {category.name}
-                        <span className="ml-1.5 font-normal text-slate-500">{fmtNum(category.items.reduce((s, { item }) => s + item.weight, 0))}%</span>
+                        <span className="ml-1.5 font-normal text-slate-600">{fmtNum(category.items.reduce((s, { item }) => s + item.weight, 0))}%</span>
                       </div>
                     )}
                     {category.items.map(({ item, index }) => (
@@ -407,14 +407,14 @@ export function KpiSheetView({
                 onChange={(event) => { setExplanation(event.target.value); setDirty(true); }}
                 rows={2}
                 placeholder="Tóm tắt kết quả tháng, việc chưa đạt và lý do"
-                className="w-full rounded-none border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
+                className="w-full rounded-none border border-slate-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"
               />
             ) : <p className="whitespace-pre-line text-sm text-slate-700">{sheet.explanation}</p>}
           </div>
         )}
         {(mgrEditable || sheet.bonus_pct > 0) && (
           <div>
-            <p className="mb-1.5 text-xs font-semibold text-slate-700">Thưởng trọng điểm <span className="font-normal text-slate-400">(tối đa {fmtNum(bonusMax)}%)</span></p>
+            <p className="mb-1.5 text-xs font-semibold text-slate-700">Thưởng trọng điểm <span className="font-normal text-slate-600">(tối đa {fmtNum(bonusMax)}%)</span></p>
             {mgrEditable ? (
               <div className="flex gap-2">
                 <div className="relative w-24 shrink-0">
@@ -422,16 +422,16 @@ export function KpiSheetView({
                     value={bonus}
                     inputMode="decimal"
                     onChange={(event) => { setBonus(event.target.value.replace(/[^\d.,]/g, '')); setDirty(true); }}
-                    className="h-10 w-full rounded-none border border-slate-200 pl-3 pr-6 text-sm tabular-nums outline-none focus:border-indigo-500"
+                    className="h-11 w-full rounded-none border border-slate-300 pl-3 pr-6 text-sm tabular-nums outline-none focus:border-indigo-500"
                     aria-label="Thưởng trọng điểm %"
                   />
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-600">%</span>
                 </div>
                 <input
                   value={bonusNote}
                   onChange={(event) => { setBonusNote(event.target.value); setDirty(true); }}
                   placeholder="Công việc trọng điểm"
-                  className="h-10 min-w-0 flex-1 rounded-none border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500"
+                  className="h-11 min-w-0 flex-1 rounded-none border border-slate-300 px-3 text-sm outline-none focus:border-indigo-500"
                 />
               </div>
             ) : (
@@ -455,7 +455,7 @@ export function KpiSheetView({
             <Printer className="h-3.5 w-3.5" /> In
           </Button>
           {sheet.approved_at && (
-            <span className="text-[11px] text-slate-500">Duyệt {formatDateTime(sheet.approved_at)} · {nameOf(sheet.approved_by)}</span>
+            <span className="text-[11px] text-slate-600">Duyệt {formatDateTime(sheet.approved_at)} · {nameOf(sheet.approved_by)}</span>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -491,12 +491,12 @@ export function KpiSheetView({
 
       {logs && (
         <ol className="space-y-1.5 border-l-2 border-slate-200 pl-3 text-xs">
-          {logs.length === 0 && <li className="text-slate-400">Chưa có thao tác.</li>}
+          {logs.length === 0 && <li className="text-slate-600">Chưa có thao tác.</li>}
           {logs.map((log) => (
             <li key={log.id} className="text-slate-600">
               <span className="font-semibold text-slate-800">{LOG_ACTION_LABEL[log.action] ?? log.action}</span>
               {' · '}{nameOf(log.actor_id)} · {formatDateTime(log.created_at)}
-              {log.reason && <span className="text-slate-500"> — {log.reason}</span>}
+              {log.reason && <span className="text-slate-600"> — {log.reason}</span>}
             </li>
           ))}
         </ol>
@@ -519,7 +519,7 @@ export function KpiSheetView({
 function Tile({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
     <div className="min-w-[84px] bg-white dark:bg-slate-900 px-3 py-1.5 border border-slate-300 dark:border-slate-700">
-      <p className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
+      <p className="text-[11px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400">{label}</p>
       <p className={`tabular-nums ${strong ? 'text-lg sm:text-xl font-black text-indigo-700 dark:text-indigo-400' : 'text-base font-black text-slate-900 dark:text-slate-100'}`}>{value}</p>
     </div>
   );
@@ -557,8 +557,8 @@ function CriterionRow({
     <div className="grid grid-cols-[minmax(220px,1.6fr)_70px_minmax(150px,1fr)_minmax(150px,1fr)_minmax(170px,1fr)] border-b border-slate-300 dark:border-slate-700 last:border-b-0 hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
       <div className="px-3 py-2" title={rule}>
         <p className="font-bold text-sm text-slate-900 dark:text-slate-100">{item.name}</p>
-        {item.measure && <p className="mt-0.5 text-xs leading-snug text-slate-500 dark:text-slate-400">{item.measure}</p>}
-        <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+        {item.measure && <p className="mt-0.5 text-xs leading-snug text-slate-600 dark:text-slate-400">{item.measure}</p>}
+        <p className="mt-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-400">
           {METHOD_LABEL[item.method]} · chuẩn {fmtNum(item.standard_score)}{item.allow_over ? ' · được vượt chuẩn' : ''}
           {item.source ? ` · ${SOURCE_LABEL[item.source]}` : ''}
         </p>
@@ -566,7 +566,7 @@ function CriterionRow({
       <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2 text-center tabular-nums text-sm font-bold text-slate-900 dark:text-slate-100">
         {weightChanged ? (
           <span title="Tỷ trọng sau khi chia lại phần không phát sinh">
-            <span className="text-slate-400 line-through text-xs">{fmtNum(item.weight)}</span>{' '}
+            <span className="text-slate-600 line-through text-xs">{fmtNum(item.weight)}</span>{' '}
             <span className="font-black text-slate-900 dark:text-slate-100">{fmtNum(Math.round(eff * 100) / 100)}</span>
           </span>
         ) : `${fmtNum(item.weight)}%`}
@@ -591,15 +591,15 @@ function CriterionRow({
               className="h-8 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 text-sm font-semibold outline-none focus:border-indigo-500"
             />
             <div className="flex items-center gap-1.5">
-              <label className={`inline-flex cursor-pointer items-center gap-1 text-xs font-bold ${uploading ? 'text-slate-400' : 'text-indigo-600 hover:text-indigo-700 dark:text-indigo-400'}`}>
+              <label className={`inline-flex cursor-pointer items-center gap-1 text-xs font-bold ${uploading ? 'text-slate-600' : 'text-indigo-600 hover:text-indigo-700 dark:text-indigo-400'}`}>
                 <Paperclip className="h-3 w-3" /> {uploading ? 'Đang tải…' : self.fileName ? 'Đổi tệp' : 'Đính tệp'}
                 <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.doc,.docx,.xls,.xlsx"
                   onChange={(event) => { const file = event.target.files?.[0]; if (file) onAttach(file); event.target.value = ''; }} />
               </label>
               {self.fileName && (
-                <span className="flex min-w-0 items-center gap-1 text-xs text-slate-500">
+                <span className="flex min-w-0 items-center gap-1 text-xs text-slate-600">
                   <span className="truncate">{self.fileName}</span>
-                  <button type="button" onClick={() => onSelf({ filePath: null, fileName: null })} aria-label="Bỏ tệp" className="text-slate-400 hover:text-red-600">
+                  <button type="button" onClick={() => onSelf({ filePath: null, fileName: null })} aria-label="Bỏ tệp" className="text-slate-600 hover:text-red-600">
                     <X className="h-3 w-3" />
                   </button>
                 </span>
@@ -617,7 +617,7 @@ function CriterionRow({
                 <Paperclip className="h-3 w-3" /> {item.evidence_name ?? 'Tệp đính kèm'}
               </button>
             )}
-            {!item.self_note && !item.evidence_url && !item.evidence_path && <span className="text-slate-400 dark:text-slate-600 font-bold">—</span>}
+            {!item.self_note && !item.evidence_url && !item.evidence_path && <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>}
           </div>
         )}
       </div>
@@ -641,7 +641,7 @@ function CriterionRow({
             <ScoreText item={item} value={item.mgr_value} score={item.mgr_score} na={item.mgr_na} />
             {item.mgr_reason && <p className="mt-0.5 text-xs font-bold text-amber-700 dark:text-amber-400">{item.mgr_reason}</p>}
           </div>
-        ) : <span className="text-slate-400 dark:text-slate-600 font-bold">—</span>}
+        ) : <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>}
         {showMgr && <Points value={mgrPoints} />}
       </div>
     </div>
@@ -650,12 +650,12 @@ function CriterionRow({
 
 function Points({ value }: { value: number | null }) {
   if (value == null) return null;
-  return <p className="mt-0.5 text-right text-xs font-bold tabular-nums text-slate-500 dark:text-slate-400">= {fmtNum(Math.round(value * 100) / 100)}%</p>;
+  return <p className="mt-0.5 text-right text-xs font-bold tabular-nums text-slate-600 dark:text-slate-400">= {fmtNum(Math.round(value * 100) / 100)}%</p>;
 }
 
 function ScoreText({ item, value, score, na }: { item: KpiSheetItem; value: number | null; score: number | null; na: boolean }) {
-  if (na) return <span className="text-xs font-bold text-slate-500 dark:text-slate-400">Không phát sinh</span>;
-  if (score == null && value == null) return <span className="text-slate-400 dark:text-slate-600 font-bold">—</span>;
+  if (na) return <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Không phát sinh</span>;
+  if (score == null && value == null) return <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>;
   const level = item.levels.find((entry) => Number(entry.score) === Number(score));
   return (
     <div className="tabular-nums">
@@ -682,7 +682,7 @@ function ScoreInput({ item, value, score, na, hint, onChange }: {
   return (
     <div className="space-y-1">
       {na ? null : auto ? (
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600">
           {value ? <><span className="font-bold text-slate-900 dark:text-slate-100">{fmtNum(parseNum(value))}{unit}</span> · tự điền</> : 'Chờ số liệu kinh doanh'}
         </p>
       ) : numeric ? (
@@ -695,12 +695,11 @@ function ScoreInput({ item, value, score, na, hint, onChange }: {
             className="h-8 w-full min-w-0 rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 text-sm font-semibold tabular-nums outline-none focus:border-indigo-500"
             aria-label={`${item.name} — giá trị`}
           />
-          {unit && <span className="shrink-0 text-xs font-semibold text-slate-500">{unit}</span>}
+          {unit && <span className="shrink-0 text-xs font-semibold text-slate-600">{unit}</span>}
         </div>
       ) : (
         <Dropdown
           compact
-          square
           searchable={false}
           aria-label={`${item.name} — điểm`}
           value={score}

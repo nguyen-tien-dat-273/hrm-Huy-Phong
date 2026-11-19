@@ -141,7 +141,7 @@ export function OrgChart(props: OrgChartProps) {
             onClick={() => zoomBy(-0.1)}
             disabled={scale <= MIN_SCALE}
             aria-label="Thu nhỏ sơ đồ"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
+            className="flex h-7 w-7 items-center justify-center rounded-none text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
@@ -153,7 +153,7 @@ export function OrgChart(props: OrgChartProps) {
             onClick={() => zoomBy(0.1)}
             disabled={scale >= MAX_SCALE}
             aria-label="Phóng to sơ đồ"
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
+            className="flex h-7 w-7 items-center justify-center rounded-none text-slate-600 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-30 disabled:hover:bg-transparent"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -163,8 +163,8 @@ export function OrgChart(props: OrgChartProps) {
             onClick={() => setAutoFit(true)}
             aria-pressed={autoFit}
             title="Co cả cây cho vừa khung"
-            className={`flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-bold transition ${
-              autoFit ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+            className={`flex h-7 items-center gap-1 rounded-none px-2 text-[11px] font-bold transition ${
+              autoFit ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
             }`}
           >
             <Maximize2 className="h-3 w-3" />Vừa khung
@@ -188,7 +188,7 @@ export function OrgChart(props: OrgChartProps) {
       <div className="flex flex-col items-center">
         {props.rootLabel && (
           <>
-            <span className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
+            <span className="rounded-none border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
               {props.rootLabel}
             </span>
             <span aria-hidden className="h-5 w-px bg-slate-300" />
@@ -242,7 +242,7 @@ function Subtree({ unit, ...props }: OrgChartProps & { unit: OrganizationUnit })
           <button
             type="button"
             onClick={() => props.onToggle(unit.id)}
-            className="rounded-full border border-dashed border-slate-300 bg-white px-3 py-1 text-[11px] font-bold text-slate-500 transition hover:border-indigo-400 hover:text-indigo-600"
+            className="rounded-none border border-dashed border-slate-300 bg-white px-3 py-1 text-[11px] font-bold text-slate-600 transition hover:border-indigo-400 hover:text-indigo-600"
           >
             +{children.length} đơn vị con
           </button>
@@ -293,7 +293,7 @@ function NodeBox({
         type="button"
         onClick={() => onSelect(unit.id)}
         aria-current={isSelected ? 'true' : undefined}
-        className={`flex w-44 flex-col gap-2 rounded-xl border-2 px-3 py-2.5 text-left shadow-sm transition ${
+        className={`flex w-44 flex-col gap-2 rounded-none border-2 px-3 py-2.5 text-left shadow-sm transition ${
           isSelected
             ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-500/20'
             : unit.is_active
@@ -303,8 +303,8 @@ function NodeBox({
       >
         <div className="flex items-start gap-2">
           <span
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-              unit.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-400'
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none ${
+              unit.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-200 text-slate-600'
             }`}
           >
             <Building2 className="h-4 w-4" />
@@ -316,13 +316,13 @@ function NodeBox({
                 <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" aria-label="Cần bổ sung thông tin" />
               )}
             </span>
-            <span className="mt-0.5 block truncate text-[11px] text-slate-400">{typeLabel(unit)}</span>
+            <span className="mt-0.5 block truncate text-[11px] text-slate-600">{typeLabel(unit)}</span>
             {/* Nhan nay phai nam NGOAI phan to mau theo trang thai: kieu "dang
                 chon" de len tren kieu "ngung hoat dong", nen mot don vi vua
                 bam xoa ma dang duoc chon se trong y het don vi binh thuong —
                 nguoi dung tuong lenh xoa khong an. */}
             {!unit.is_active && (
-              <span className="mt-1 inline-block rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+              <span className="mt-1 inline-block rounded-none bg-slate-200 px-1.5 py-0.5 text-[11px] font-bold text-slate-600">
                 NGỪNG HOẠT ĐỘNG
               </span>
             )}
@@ -330,7 +330,7 @@ function NodeBox({
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px]">
-          <span className={`flex min-w-0 items-center gap-1 ${manager ? 'text-slate-500' : 'text-amber-600'}`}>
+          <span className={`flex min-w-0 items-center gap-1 ${manager ? 'text-slate-600' : 'text-amber-600'}`}>
             <UserRound className="h-3 w-3 shrink-0" />
             <span className="truncate">{manager || 'Chưa có phụ trách'}</span>
           </span>
@@ -349,12 +349,12 @@ function NodeBox({
           return (
             <div className="mt-1.5 flex flex-col gap-0.5 border-t border-slate-100 pt-1.5">
               {shown.map((person) => (
-                <span key={person.id} className="truncate text-[10px] leading-tight text-slate-500">
+                <span key={person.id} className="truncate text-[11px] leading-tight text-slate-600">
                   {person.name}
                 </span>
               ))}
               {rest > 0 && (
-                <span className="text-[10px] font-semibold leading-tight text-slate-400">
+                <span className="text-[11px] font-semibold leading-tight text-slate-600">
                   +{rest} người nữa
                 </span>
               )}
@@ -371,7 +371,7 @@ function NodeBox({
           onClick={() => onAddChild(unit)}
           title={`Thêm đơn vị con vào ${unit.name}`}
           aria-label={`Thêm đơn vị con vào ${unit.name}`}
-          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600"
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600"
         >
           <Plus className="h-3.5 w-3.5" />
         </button>
@@ -380,7 +380,7 @@ function NodeBox({
           onClick={() => onRemove(unit)}
           title={`Xóa ${unit.name}`}
           aria-label={`Xóa ${unit.name}`}
-          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
+          className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -391,7 +391,7 @@ function NodeBox({
             title={collapsed.has(unit.id) ? 'Mở nhánh' : 'Thu gọn nhánh'}
             aria-label={`${collapsed.has(unit.id) ? 'Mở' : 'Thu gọn'} nhánh ${unit.name}`}
             aria-expanded={!collapsed.has(unit.id)}
-            className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-500 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600"
+            className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-600 shadow-sm transition hover:border-indigo-400 hover:text-indigo-600"
           >
             {collapsed.has(unit.id) ? '+' : '−'}
           </button>

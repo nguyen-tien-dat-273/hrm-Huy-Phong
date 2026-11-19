@@ -240,7 +240,7 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
 
   const copyPicker = (
     <div className="w-full sm:w-72">
-      <Dropdown compact square searchable aria-label="Chép tiêu chí từ bộ khác" value="" placeholder="Chép tiêu chí từ bộ khác…"
+      <Dropdown compact searchable aria-label="Chép tiêu chí từ bộ khác" value="" placeholder="Chép tiêu chí từ bộ khác…"
         options={copyOptions} onChange={(value) => void copyCriteria(value)} />
     </div>
   );
@@ -270,13 +270,13 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
             <Input className="!rounded-none" label="Tên bộ" required value={name} onChange={(event) => touch(setName)(event.target.value)}
               placeholder="VD: KPI Phòng Kế toán" autoFocus />
           )}
-          <Dropdown compact square searchable={false} label="Khối" value={block}
+          <Dropdown compact searchable={false} label="Khối" value={block}
             options={[{ value: 'VAN_PHONG', label: 'Văn phòng' }, { value: 'KINH_DOANH', label: 'Kinh doanh' }]}
             onChange={(value) => touch(setBlock)(value as KpiBlock)} />
           <label className="block">
             <span className="mb-1.5 block text-sm font-semibold text-slate-700">Hiệu lực từ tháng</span>
             <input type="month" value={effectiveFrom} onChange={(event) => touch(setEffectiveFrom)(event.target.value)}
-              className="h-9 w-full rounded-none border border-slate-200 bg-white px-2.5 text-xs outline-none focus:border-indigo-500" />
+              className="h-9 w-full rounded-none border border-slate-300 bg-white px-2.5 text-xs outline-none focus:border-indigo-500" />
           </label>
           {embedded && copyPicker}
           <label className="flex cursor-pointer items-center gap-2 pb-3 text-sm font-semibold text-slate-700">
@@ -294,7 +294,6 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
             <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2.5 text-center">Chuẩn</div>
             <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-2.5" />
           </div>
-          <datalist id="kpi-categories">{categories.map((category) => <option key={category} value={category} />)}</datalist>
           {items.map((item, index) => {
             const showHead = index === 0 || items[index - 1].category !== item.category;
             const isOpen = expanded === item.key;
@@ -313,7 +312,7 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
                         aria-label="Tên hạng mục"
                         className="h-7 w-60 rounded-none border border-transparent bg-transparent px-1.5 text-xs font-black text-slate-900 dark:text-slate-100 transition hover:border-slate-400 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none"
                       />
-                      <span className="text-slate-400">·</span>
+                      <span className="text-slate-600">·</span>
                       <span className="text-xs font-black tabular-nums text-slate-700 dark:text-slate-300">
                         {fmtNum(totals.byCategory.get(item.category.trim()) ?? 0)}%
                       </span>
@@ -339,13 +338,13 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
                     <CellInput value={item.name} placeholder="Tên tiêu chí" onChange={(value) => updateItem(item.key, { name: value })} />
                   </div>
                   <div className="md:border-l md:border-slate-300 dark:md:border-slate-700 md:p-1">
-                    <Dropdown compact square searchable={false} aria-label="Nhóm" value={item.group_code}
+                    <Dropdown compact searchable={false} aria-label="Nhóm" value={item.group_code}
                       options={[{ value: 'QUANT', label: GROUP_LABEL.QUANT }, { value: 'QUAL', label: GROUP_LABEL.QUAL }]}
                       onChange={(value) => updateItem(item.key, { group_code: value as KpiGroup })} />
                   </div>
                   <CellInput value={item.weight} placeholder="0" align="center" numeric onChange={(value) => updateItem(item.key, { weight: value })} />
                   <div className="md:border-l md:border-slate-300 dark:md:border-slate-700 md:p-1">
-                    <Dropdown compact square searchable={false} aria-label="Cách chấm" value={item.method}
+                    <Dropdown compact searchable={false} aria-label="Cách chấm" value={item.method}
                       options={(Object.keys(METHOD_LABEL) as KpiMethod[]).map((method) => ({ value: method, label: METHOD_LABEL[method] }))}
                       onChange={(value) => updateItem(item.key, { method: value as KpiMethod })} />
                   </div>
@@ -359,7 +358,7 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
                     )}
                   </div>
                 </div>
-                {isOpen && <CriterionDetail item={item} onChange={(patch) => updateItem(item.key, patch)} />}
+                {isOpen && <CriterionDetail item={item} categories={categories} onChange={(patch) => updateItem(item.key, patch)} />}
               </div>
             );
           })}
@@ -400,7 +399,7 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
         </Button>
         <div className="min-w-0 flex-1">
           <CardTitle>{set ? 'Sửa bộ KPI' : 'Bộ KPI mới'}</CardTitle>
-          <p className="mt-0.5 truncate text-xs text-slate-500">{target.label}</p>
+          <p className="mt-0.5 truncate text-xs text-slate-600">{target.label}</p>
         </div>
         {copyPicker}
       </CardHeader>
@@ -409,28 +408,25 @@ export function KpiSetEditor({ data, target, set, copyFrom, defaultName, embedde
   );
 }
 
-function CriterionDetail({ item, onChange }: { item: DraftItem; onChange: (patch: Partial<DraftItem>) => void }) {
+function CriterionDetail({ item, categories, onChange }: { item: DraftItem; categories: string[]; onChange: (patch: Partial<DraftItem>) => void }) {
   const levelEditor = item.method === 'LEVEL' || item.method === 'BINARY';
   return (
     <div className="space-y-3 border-t border-dashed border-slate-200 bg-slate-50/60 px-3 py-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block">
-          <span className="mb-1 block text-xs font-semibold text-slate-600">Thuộc hạng mục</span>
-          <input
-            value={item.category}
-            list="kpi-categories"
-            onChange={(event) => onChange({ category: event.target.value })}
-            placeholder="Tên hạng mục"
-            className="h-9 w-full rounded-none border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-indigo-500"
-          />
-        </label>
+        <Dropdown
+          compact
+          label="Thuộc hạng mục"
+          value={item.category}
+          options={[...new Set([item.category, ...categories].filter(Boolean))].map((category) => ({ value: category, label: category }))}
+          onChange={(category) => onChange({ category })}
+        />
         <label className="block">
           <span className="mb-1 block text-xs font-semibold text-slate-600">Tiêu chí đo lường</span>
           <input
             value={item.measure}
             onChange={(event) => onChange({ measure: event.target.value })}
             placeholder="Đo bằng gì, lấy số ở đâu"
-            className="h-9 w-full rounded-none border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-indigo-500"
+            className="h-9 w-full rounded-none border border-slate-300 bg-white px-2.5 text-sm outline-none focus:border-indigo-500"
           />
         </label>
       </div>
@@ -458,10 +454,10 @@ function CriterionDetail({ item, onChange }: { item: DraftItem; onChange: (patch
 
       {item.method === 'RANGE' && (
         <div>
-          <p className="mb-1 text-xs font-semibold text-slate-600">Dải quy đổi → điểm <span className="font-normal text-slate-400">(từ ≤ giá trị &lt; dưới; bỏ trống = không chặn)</span></p>
+          <p className="mb-1 text-xs font-semibold text-slate-600">Dải quy đổi → điểm <span className="font-normal text-slate-600">(từ ≤ giá trị &lt; dưới; bỏ trống = không chặn)</span></p>
           <div className="space-y-1">
             {item.ranges.map((range, index) => (
-              <div key={index} className="flex items-center gap-1.5 text-xs text-slate-500">
+              <div key={index} className="flex items-center gap-1.5 text-xs text-slate-600">
                 Từ
                 <input value={range.min} inputMode="decimal" aria-label="Từ"
                   onChange={(event) => onChange({ ranges: item.ranges.map((entry, i) => (i === index ? { ...entry, min: event.target.value } : entry)) })}
@@ -484,7 +480,7 @@ function CriterionDetail({ item, onChange }: { item: DraftItem; onChange: (patch
             <label className="flex items-center gap-1.5 text-xs text-slate-600">
               Đơn vị
               <input value={item.value_unit} onChange={(event) => onChange({ value_unit: event.target.value })} placeholder="%, lần, bài…"
-                className="h-8 w-24 rounded-none border border-slate-200 bg-white px-2 outline-none focus:border-indigo-500" />
+                className="h-8 w-24 rounded-none border border-slate-300 bg-white px-2 outline-none focus:border-indigo-500" />
             </label>
           </div>
         </div>
@@ -494,7 +490,7 @@ function CriterionDetail({ item, onChange }: { item: DraftItem; onChange: (patch
         <label className="flex items-center gap-2 text-xs text-slate-600">
           Mỗi lần vi phạm trừ
           <input value={item.penalty_pct} inputMode="decimal" onChange={(event) => onChange({ penalty_pct: event.target.value })}
-            className="h-8 w-20 rounded-none border border-slate-200 bg-white px-2 text-center tabular-nums outline-none focus:border-indigo-500" />
+            className="h-8 w-20 rounded-none border border-slate-300 bg-white px-2 text-center tabular-nums outline-none focus:border-indigo-500" />
           % KPI (không trừ quá tỷ trọng của tiêu chí)
         </label>
       )}
@@ -505,7 +501,7 @@ function CriterionDetail({ item, onChange }: { item: DraftItem; onChange: (patch
           Cho chấm vượt chuẩn (tối đa 5)
         </label>
         <div className="w-64">
-          <Dropdown compact square searchable={false} aria-label="Tự điền giá trị" value={item.source}
+          <Dropdown compact searchable={false} aria-label="Tự điền giá trị" value={item.source}
             options={[{ value: '', label: 'Nhập tay' }, ...(Object.keys(SOURCE_LABEL) as KpiSource[]).map((source) => ({ value: source, label: `Tự điền: ${SOURCE_LABEL[source]}` }))]}
             onChange={(value) => onChange({ source: value as KpiSource | '' })} />
         </div>
@@ -537,7 +533,7 @@ export function IconButton({ children, label, onClick, danger = false }: {
 }) {
   return (
     <button type="button" onClick={onClick} aria-label={label} title={label}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors ${danger ? 'hover:bg-red-50 hover:text-red-600' : 'hover:bg-indigo-50 hover:text-indigo-600'}`}>
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-none text-slate-600 transition-colors ${danger ? 'hover:bg-red-50 hover:text-red-600' : 'hover:bg-indigo-50 hover:text-indigo-600'}`}>
       {children}
     </button>
   );

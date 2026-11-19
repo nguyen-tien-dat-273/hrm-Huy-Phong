@@ -2,7 +2,7 @@ import { type ReactNode, useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, KanbanSquare,
-  Bell, ChevronDown, Menu, X, ArrowLeft, Eye, KeyRound, LogOut, ShieldCheck,
+  Bell, ChevronDown, Menu, X, ArrowLeft, KeyRound, LogOut, ShieldCheck,
   UserCircle, BookOpen, Target, WalletCards, Clock, LayoutGrid, Moon, Sun,
   ClipboardList,
 } from 'lucide-react';
@@ -19,6 +19,8 @@ import { notificationRoute } from '@/lib/notificationRoutes';
 import type { Notification } from '@/types';
 import { STAFF_NAV_ITEMS } from '@/config/navigation';
 import { PageErrorBoundary } from '@/components/PageErrorBoundary';
+import { useNavBadges } from '@/contexts/NavBadgeContext';
+import { CountBadge } from '@/components/ui/CountBadge';
 
 /**
  * Cum chuc nang cua khu nhan vien.
@@ -97,9 +99,9 @@ export function StaffLayout({ children }: { children: ReactNode }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  /** Số thông báo chưa xem dẫn tới từng trang — hiện ở sidebar, ô module và nút bảng module. */
+  const { countFor, countForAll } = useNavBadges();
   const notifRef = useRef<HTMLDivElement>(null);
-  const [bottomOpen, setBottomOpen] = useState(false);
-  const bottomLauncherRef = useRef<HTMLDivElement>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const avatarRef = useRef<HTMLDivElement>(null);
   /** Bảng lưới module ở header desktop. Bấm vẫn mở/đóng được; rê chuột vào
@@ -143,7 +145,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) setNotifOpen(false);
-      if (bottomLauncherRef.current && !bottomLauncherRef.current.contains(e.target as Node)) setBottomOpen(false);
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) setAvatarOpen(false);
       if (launcherRef.current && !launcherRef.current.contains(e.target as Node)) setLauncherOpen(false);
     };
@@ -204,6 +205,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
   }, [groupOfCurrentPath]);
 
   const activeGroup = groupsWithItems.find((group) => group.name === openGroup) ?? null;
+  const launcherTotal = countForAll(STAFF_NAV_ITEMS.map((item) => item.to));
 
   const openModule = (name: string) => {
     setOpenGroup(name);
@@ -221,12 +223,11 @@ export function StaffLayout({ children }: { children: ReactNode }) {
     <div className="app-shell min-h-screen bg-ambient flex">
       <a href="#main-content" className="skip-link">Bỏ qua điều hướng</a>
       {/* ================================================================
-          Sidebar gọn trên desktop — danh sách chức năng của module đang
-          mở (như cũ). Mặc định chỉ hiện icon; rê chuột vào BẤT KỲ đâu
-          trong thanh là cả thanh xổ rộng ra (kiểu Supabase) và hiện tên
-          từng trang. Thuần CSS, không giữ state JS cho việc này.
+          Sidebar trên desktop — danh sách chức năng của module đang mở.
+          Luôn mở rộng, hiện đủ icon + tên trang + chấm số việc mới; không
+          còn kiểu thu gọn rồi rê chuột mới xổ ra.
           ================================================================ */}
-      <aside className="app-sidebar hidden md:flex sticky top-0 z-40 h-screen w-14 hover:w-60 flex-col overflow-hidden border-r border-slate-200 dark:border-slate-800 px-2 py-3 transition-[width] duration-200 ease-out">
+      <aside className="app-sidebar hidden md:flex sticky top-0 z-40 h-screen w-60 flex-shrink-0 flex-col overflow-hidden border-r border-slate-200 dark:border-slate-800 px-2 py-3">
         <NavLink
           to="/staff/dashboard"
           aria-label={orgName || 'HRM Huy Phong'}
@@ -249,25 +250,26 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                   to={item.to}
                   aria-label={item.label}
                   className={`flex h-10 flex-shrink-0 items-center gap-3 rounded-none px-2.5 transition-colors duration-150 ${
-                    isActive ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30' : 'text-slate-500 hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-400'
+                    isActive ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30' : 'text-slate-600 hover:bg-slate-100 hover:text-indigo-600 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-indigo-400'
                   }`}
                 >
                   <Icon className="h-5 w-5 flex-shrink-0" />
                   <span className="truncate text-sm font-semibold">{item.label}</span>
+                  <CountBadge count={countFor(item.to)} inverted={isActive} className="ml-auto" />
                 </NavLink>
               );
             })
           ) : (
-            <p className="px-2.5 py-6 text-xs leading-relaxed text-slate-400 dark:text-slate-500">
-              Chọn mục ở nút lưới trên đầu trang
+            <p className="px-2.5 py-6 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+              Chọn module ở nút lưới trên đầu trang
             </p>
           )}
         </nav>
       </aside>
 
       {/* ================================================================
-          Off-canvas cho điện thoại — hàng ô vuông chọn module ở trên,
-          danh sách chức năng của module đang chọn ở dưới.
+          Off-canvas cho điện thoại — danh sách chức năng của module đang mở,
+          hiện đủ chữ; đổi module ở nút lưới trên header (giống khu quản trị).
           ================================================================ */}
       <aside className={`app-sidebar fixed md:hidden top-0 left-0 z-40 h-screen w-[18.5rem] border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="min-h-20 flex items-center px-5 border-b border-slate-200 dark:border-slate-800">
@@ -280,10 +282,9 @@ export function StaffLayout({ children }: { children: ReactNode }) {
             />
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">{orgName || 'HRM Huy Phong'}</p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Cổng thông tin nhân viên</p>
             </div>
           </div>
-          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Đóng menu điều hướng" className="ml-auto flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
+          <button type="button" onClick={() => setSidebarOpen(false)} aria-label="Đóng menu điều hướng" className="ml-auto flex h-11 w-11 items-center justify-center rounded-none text-slate-600 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -292,12 +293,12 @@ export function StaffLayout({ children }: { children: ReactNode }) {
           {activeGroup ? (
             <div className="space-y-1">
               <div className="mb-3 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800 px-3 pb-3">
-                <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${activeGroup.iconOn}`}>
+                <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-none ${activeGroup.iconOn}`}>
                   <activeGroup.icon className="h-5 w-5" />
                 </span>
                 <span className="min-w-0">
                   <span className="block text-[15px] font-bold leading-snug text-slate-900 dark:text-slate-100">{activeGroup.name}</span>
-                  <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400">{activeGroup.items.length} chức năng</span>
+                  <span className="mt-0.5 block text-xs text-slate-600 dark:text-slate-400">{activeGroup.items.length} chức năng</span>
                 </span>
               </div>
 
@@ -309,7 +310,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                     to={item.to}
                     onClick={() => setSidebarOpen(false)}
                     className={({ isActive }) =>
-                      `group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors duration-200 ${
+                      `group flex items-start gap-3 rounded-none px-3 py-2.5 transition-colors duration-200 ${
                         isActive ? 'bg-indigo-600 shadow-sm shadow-indigo-600/30' : 'hover:bg-slate-100 dark:hover:bg-slate-800'
                       }`
                     }
@@ -326,17 +327,14 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                             {item.label}
                           </span>
                         </span>
+                        <CountBadge count={countFor(item.to)} inverted={isActive} className="mt-0.5" />
                       </>
                     )}
                   </NavLink>
                 );
               })}
             </div>
-          ) : (
-            <p className="px-3 py-6 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              Chọn một mục ở nút lưới trên đầu trang.
-            </p>
-          )}
+          ) : null}
         </nav>
       </aside>
 
@@ -350,13 +348,13 @@ export function StaffLayout({ children }: { children: ReactNode }) {
               duoc duoi kich thuoc noi dung - thieu no thi header phinh ra va
               day ca trang tran ngang, dung loi da gap ben khu quan tri. */}
           <div className="flex min-w-0 flex-1 items-center gap-4">
-            <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở menu điều hướng" className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
+            <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Mở menu điều hướng" className="flex h-11 w-11 items-center justify-center rounded-none text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 md:hidden">
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex min-w-0 flex-col">
               <div className="flex items-center gap-2">
-                {currentPage?.group && <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">{currentPage.group}</span>}
-                {currentPage?.group && <span className="hidden sm:inline text-slate-300 dark:text-slate-600">/</span>}
+                {currentPage?.group && <span className="hidden sm:inline text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">{currentPage.group}</span>}
+                {currentPage?.group && <span className="hidden sm:inline text-slate-600 dark:text-slate-400">/</span>}
                 <h1 className="font-display truncate text-base font-bold tracking-tight text-slate-900 dark:text-slate-100">{currentPage?.label || 'Cổng nhân viên'}</h1>
               </div>
               {!currentPage && (
@@ -380,54 +378,57 @@ export function StaffLayout({ children }: { children: ReactNode }) {
               <button
                 onClick={() => setLauncherOpen(!launcherOpen)}
                 onFocus={openLauncherHover}
-                className={`flex h-11 items-center gap-2 rounded-none px-3 text-sm font-bold transition-colors ${
+                className={`relative flex h-11 items-center gap-2 rounded-none px-3 text-sm font-bold transition-colors ${
                   activeGroup ? activeGroup.chip : 'bg-slate-800 text-white hover:bg-slate-900'
                 }`}
-                aria-label="Mở bảng chức năng"
+                aria-label="Mở bảng module"
                 aria-expanded={launcherOpen}
               >
                 <LayoutGrid className="h-4.5 w-4.5 flex-shrink-0" />
                 <span className="hidden max-w-[11rem] truncate sm:inline">
-                  {activeGroup?.name ?? 'Chọn mục'}
+                  {activeGroup?.name ?? 'Chọn module'}
                 </span>
                 <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${launcherOpen ? 'rotate-180' : ''}`} />
+                <CountBadge count={launcherTotal} className="absolute -right-2 -top-2 ring-2 ring-white dark:ring-slate-900" />
               </button>
 
               {launcherOpen && (
                 <div
                   onMouseEnter={openLauncherHover}
                   onMouseLeave={scheduleCloseLauncher}
-                  className="fixed inset-x-4 top-[4.5rem] z-50 rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(32rem,calc(100vw-2rem))]"
+                  className="fixed inset-x-4 top-[4.5rem] z-50 rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(38rem,calc(100vw-2rem))]"
                 >
                   <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
                     {groupsWithItems.map((group) => {
                       const Icon = group.icon;
                       const isActive = group.name === openGroup;
+                      const pending = countForAll(group.items.map((item) => item.to));
                       return (
                         <button
                           key={group.name}
                           type="button"
                           onClick={() => openModule(group.name)}
                           aria-current={isActive ? 'true' : undefined}
-                          className={`flex flex-col items-center gap-2 rounded-none px-2 py-3.5 text-center transition-colors ${
+                          className={`relative flex flex-col items-center gap-2 rounded-none px-2 py-3.5 text-center transition-colors ${
                             isActive ? group.tileOn : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
                           }`}
                         >
-                          <span className={`flex h-11 w-11 items-center justify-center rounded-none transition-colors ${
+                          <span className={`flex h-14 w-14 items-center justify-center rounded-none transition-colors ${
                             isActive ? group.iconOn : group.iconIdle
                           }`}>
-                            <Icon className="h-5 w-5" />
+                            <Icon className="h-7 w-7" strokeWidth={2.25} />
                           </span>
-                          <span className={`text-xs font-semibold leading-tight ${
-                            isActive ? group.textOn : 'text-slate-700 dark:text-slate-300'
+                          <span className={`text-sm font-bold leading-tight ${
+                            isActive ? group.textOn : 'text-slate-900 dark:text-slate-100'
                           }`}>
                             {group.name}
                           </span>
                           {/* So chuc nang ben trong: bu lai viec chung bi giau
                               sau mot cu bam - nhin la biet cum nao co gi. */}
-                          <span className={`text-[10px] ${isActive ? group.textOn : 'text-slate-400 dark:text-slate-500'}`}>
+                          <span className={`text-xs font-medium ${isActive ? group.textOn : 'text-slate-700 dark:text-slate-300'}`}>
                             {group.items.length} chức năng
                           </span>
+                          <CountBadge count={pending} className="absolute right-2 top-2" />
                         </button>
                       );
                     })}
@@ -446,21 +447,6 @@ export function StaffLayout({ children }: { children: ReactNode }) {
               {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
 
-            {isAdminViewingAsStaff && (
-              <button
-                type="button"
-                onClick={handleBackToAdmin}
-                title="Kết thúc chế độ xem nhân viên và quay lại trang quản trị trước đó"
-                className="group inline-flex h-11 items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 transition-colors hover:border-indigo-300 hover:bg-indigo-100 sm:px-3"
-              >
-                <Eye className="h-4 w-4" />
-                <span className="hidden lg:inline">Đang xem nhân viên</span>
-                <span className="hidden h-4 w-px bg-indigo-200 lg:block" />
-                <ArrowLeft className="h-3.5 w-3.5" />
-                <span>Về Admin</span>
-              </button>
-            )}
-
             {/* Notifications */}
             <div className="relative" ref={notifRef}>
               <button
@@ -471,13 +457,13 @@ export function StaffLayout({ children }: { children: ReactNode }) {
               >
                 <Bell className="w-5 h-5 text-slate-600 dark:text-slate-300" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-gradient-to-br from-red-500 to-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
+                  <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-gradient-to-br from-red-500 to-rose-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
                     {unreadCount}
                   </span>
                 )}
               </button>
               {notifOpen && (
-                <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-800 rounded-2xl shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in overflow-hidden">
+                <div className="absolute right-0 top-12 w-80 bg-white dark:bg-slate-800 rounded-none shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
                     <span className="font-display font-semibold text-sm text-slate-800 dark:text-slate-100">Thông báo</span>
                     {unreadCount > 0 && (
@@ -486,7 +472,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                   </div>
                   <div className="max-h-80 overflow-y-auto">
                     {unreadNotifications.length === 0 ? (
-                      <p className="text-sm text-slate-400 text-center py-10">Không có thông báo mới</p>
+                      <p className="text-sm text-slate-600 text-center py-10">Không có thông báo mới</p>
                     ) : (
                       unreadNotifications.map((n) => (
                         <button type="button" key={n.id} onClick={() => void openNotification(n)} className="block w-full px-4 py-3 border-b border-slate-50 dark:border-slate-700/60 text-left cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors bg-emerald-50/40 dark:bg-emerald-500/10">
@@ -494,7 +480,7 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                             {!n.is_read && <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />}
                             <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{n.title}</p>
                           </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 ml-4">{n.message}</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 ml-4">{n.message}</p>
                         </button>
                       ))
                     )}
@@ -512,21 +498,21 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                 aria-expanded={avatarOpen}
               >
                 <Avatar name={profile?.name || ''} url={profile?.avatar_url} size="sm" />
-                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${avatarOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown className={`w-4 h-4 text-slate-600 transition-transform duration-200 ${avatarOpen ? 'rotate-180' : ''}`} />
               </button>
               {avatarOpen && (
-                <div className="absolute right-0 top-12 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in py-1.5 overflow-hidden">
+                <div className="absolute right-0 top-12 w-56 bg-white dark:bg-slate-800 rounded-none shadow-lifted border border-slate-100 dark:border-slate-700 z-40 modal-in py-1.5 overflow-hidden">
                   <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
                     <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{profile?.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{profile?.email}</p>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 truncate">{profile?.email}</p>
                   </div>
                   {isAdminViewingAsStaff ? (
                     <button
                       onClick={handleBackToAdmin}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center"><ArrowLeft className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /></span>
-                      Về trang quản trị trước đó
+                      <span className="w-7 h-7 rounded-none bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center"><ArrowLeft className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /></span>
+                      Nhân Viên - Admin
                     </button>
                   ) : hasAnyAdminPermission(profile) && (
                     // Nhân viên được cấp quyền lẻ vẫn vào được phần khu quản trị
@@ -535,29 +521,29 @@ export function StaffLayout({ children }: { children: ReactNode }) {
                       onClick={() => { setAvatarOpen(false); navigate('/admin'); }}
                       className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
                     >
-                      <span className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /></span>
-                      Khu quản trị
+                      <span className="w-7 h-7 rounded-none bg-indigo-50 dark:bg-indigo-500/15 flex items-center justify-center"><ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" /></span>
+                      Nhân Viên - Admin
                     </button>
                   )}
                   <button
                     onClick={() => { setAvatarOpen(false); navigate('/profile'); }}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center"><UserCircle className="w-4 h-4 text-slate-600 dark:text-slate-300" /></span>
+                    <span className="w-7 h-7 rounded-none bg-slate-100 dark:bg-slate-700 flex items-center justify-center"><UserCircle className="w-4 h-4 text-slate-600 dark:text-slate-300" /></span>
                     Hồ sơ cá nhân
                   </button>
                   <button
                     onClick={() => { setAvatarOpen(false); navigate('/change-password'); }}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-violet-50 dark:bg-violet-500/15 flex items-center justify-center"><KeyRound className="w-4 h-4 text-violet-600 dark:text-violet-400" /></span>
+                    <span className="w-7 h-7 rounded-none bg-violet-50 dark:bg-violet-500/15 flex items-center justify-center"><KeyRound className="w-4 h-4 text-violet-600 dark:text-violet-400" /></span>
                     Đổi mật khẩu
                   </button>
                   <button
                     onClick={handleSignOut}
                     className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors text-left"
                   >
-                    <span className="w-7 h-7 rounded-lg bg-red-50 dark:bg-red-500/15 flex items-center justify-center"><LogOut className="w-4 h-4" /></span>
+                    <span className="w-7 h-7 rounded-none bg-red-50 dark:bg-red-500/15 flex items-center justify-center"><LogOut className="w-4 h-4" /></span>
                     Đăng xuất
                   </button>
                 </div>
@@ -566,84 +552,13 @@ export function StaffLayout({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Page content — chừa chỗ cho thanh điều hướng đáy trên điện thoại */}
-        <main id="main-content" data-bottom-launcher tabIndex={-1} className="page-content flex-1 p-4 pb-24 sm:p-6 sm:pb-24 md:p-8 md:pb-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
+        {/* Page content */}
+        <main id="main-content" tabIndex={-1} className="page-content flex-1 p-4 sm:p-6 md:p-8 xl:p-10 max-w-[1520px] w-full mx-auto page-fade-in">
           {/* Lưới an toàn: một trang ném lỗi thì chỉ trang đó hiện báo lỗi,
               thanh điều hướng và đầu trang vẫn còn để đi chỗ khác. Không có
               nó thì React gỡ cả cây và màn hình trắng trơn. */}
           <PageErrorBoundary>{children}</PageErrorBoundary>
         </main>
-      </div>
-      {/* ================================================================
-          Bảng module ở ĐÁY trên điện thoại.
-          ----------------------------------------------------------------
-          Nhân viên dùng điện thoại là chính, mà góc trên bên phải là chỗ
-          xa ngón cái nhất khi cầm một tay. Từ màn tablet trở lên thì nút
-          quay về header cho giống hệt khu quản trị — chuột thì góc trên
-          không phải vấn đề.
-
-          Chỉ một trong hai hiện tại mỗi thời điểm, nên không có chuyện hai
-          thanh điều hướng cùng tồn tại rồi phải đoán cái nào là chính.
-          ================================================================ */}
-      <div ref={bottomLauncherRef} className="md:hidden">
-        {bottomOpen && (
-          <>
-            <div
-              className="fixed inset-0 z-40 bg-slate-900/40"
-              onClick={() => setBottomOpen(false)}
-              aria-hidden
-            />
-            <div className="safe-bottom fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 shadow-[0_-18px_40px_-20px_rgba(15,23,42,0.45)]">
-              <span aria-hidden className="mx-auto mb-3 block h-1 w-10 rounded-full bg-slate-300 dark:bg-slate-600" />
-              <div className="grid grid-cols-3 gap-1">
-                {groupsWithItems.map((group) => {
-                  const Icon = group.icon;
-                  const isActive = group.name === openGroup;
-                  return (
-                    <button
-                      key={group.name}
-                      type="button"
-                      onClick={() => { openModule(group.name); setBottomOpen(false); }}
-                      aria-current={isActive ? 'true' : undefined}
-                      className={`flex flex-col items-center gap-2 rounded-lg px-2 py-3.5 text-center transition-colors ${
-                        isActive ? group.tileOn : 'hover:bg-slate-50 dark:hover:bg-slate-700/50'
-                      }`}
-                    >
-                      <span className={`flex h-12 w-12 items-center justify-center rounded-lg transition-colors ${
-                        isActive ? group.iconOn : group.iconIdle
-                      }`}>
-                        <Icon className="h-5 w-5" />
-                      </span>
-                      <span className={`text-xs font-semibold leading-tight ${
-                        isActive ? group.textOn : 'text-slate-700 dark:text-slate-300'
-                      }`}>
-                        {group.name}
-                      </span>
-                      <span className={`text-[10px] ${isActive ? group.textOn : 'text-slate-400 dark:text-slate-500'}`}>
-                        {group.items.length} chức năng
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        <div className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 px-4 pt-3 backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={() => setBottomOpen(!bottomOpen)}
-            aria-expanded={bottomOpen}
-            className={`flex h-12 w-full items-center justify-center gap-2 rounded-xl text-sm font-bold transition-colors ${
-              activeGroup ? activeGroup.chip : 'bg-slate-800 text-white'
-            }`}
-          >
-            <LayoutGrid className="h-5 w-5 flex-shrink-0" />
-            <span className="truncate">{activeGroup?.name ?? 'Chọn mục'}</span>
-            <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${bottomOpen ? '' : 'rotate-180'}`} />
-          </button>
-        </div>
       </div>
     </div>
   );

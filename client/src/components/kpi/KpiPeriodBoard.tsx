@@ -198,16 +198,16 @@ export function KpiPeriodBoard({
         <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
-              {locked ? <LockKeyhole className="h-4 w-4 text-slate-500" /> : <CalendarClock className="h-4 w-4 text-indigo-600" />}
+              {locked ? <LockKeyhole className="h-4 w-4 text-slate-600" /> : <CalendarClock className="h-4 w-4 text-indigo-600" />}
               Kỳ {label}:{' '}
-              <span className={locked ? 'text-slate-600' : period ? 'text-indigo-700' : 'text-slate-400'}>
+              <span className={locked ? 'text-slate-600' : period ? 'text-indigo-700' : 'text-slate-600'}>
                 {locked ? `Đã khoá sổ ${formatDateTime(period?.locked_at ?? null)}` : period ? 'Đang mở' : 'Chưa mở'}
               </span>
             </p>
             {!locked && (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
                 {deadlines.map(([name, date]) => (
-                  <span key={name} className={date < now ? 'text-slate-400 line-through' : ''}>
+                  <span key={name} className={date < now ? 'text-slate-600 line-through' : ''}>
                     {name} <span className="font-semibold tabular-nums text-slate-700">{fmtDeadline(date)}</span>
                   </span>
                 ))}
@@ -260,7 +260,7 @@ export function KpiPeriodBoard({
                 <div key={request.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-sm">
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-800">{nameOf(sheet?.user_id ?? null)} · {fmtPct(request.old_pct)}</p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-600">
                       {request.reason} · {nameOf(request.requested_by)} · {formatDateTime(request.requested_at)}
                       {request.minutes_path && (
                         <button type="button" className="ml-2 inline-flex items-center gap-1 font-semibold text-indigo-600 hover:underline"
@@ -308,13 +308,13 @@ export function KpiPeriodBoard({
             />
           </div>
           <div className="relative w-full sm:w-64">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Tìm theo tên, bộ KPI…"
               aria-label="Tìm phiếu"
-              className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
             />
           </div>
           <span className="ml-auto text-xs font-bold text-slate-700 dark:text-slate-300">{rows.length}/{data.sheets.length} phiếu</span>
@@ -322,7 +322,7 @@ export function KpiPeriodBoard({
         </div>
 
         {data.sheets.length === 0 ? (
-          <p className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+          <p className="px-6 py-12 text-center text-sm font-semibold text-slate-600">
             {period ? 'Kỳ đã mở nhưng chưa có phiếu nào.' : `Chưa mở kỳ KPI tháng ${label}.`}
           </p>
         ) : (
@@ -348,12 +348,12 @@ export function KpiPeriodBoard({
                       <td className="px-2.5 py-1.5">
                         <div className="min-w-0">
                           <p className="truncate font-black text-xs text-slate-900 dark:text-slate-100">{person?.name ?? 'Nhân sự đã nghỉ'}</p>
-                          <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{unitName.get(sheet.unit_id ?? '') ?? '—'}</p>
+                          <p className="truncate text-[11px] font-medium text-slate-600 dark:text-slate-400">{unitName.get(sheet.unit_id ?? '') ?? '—'}</p>
                         </div>
                       </td>
                       <td className="max-w-[180px] truncate border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 font-bold text-slate-800 dark:text-slate-200 text-xs" title={sheet.set_name}>{sheet.set_name}</td>
                       <td className="border-l border-slate-300 dark:border-slate-700 px-1.5 py-1.5 text-center">
-                        <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>
+                        <span className={`inline-flex items-center rounded-none px-1.5 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>
                           {SHEET_STATUS_LABEL[sheet.status]}
                         </span>
                         {openReopen.has(sheet.id) && <span className="ml-1 text-[11px] font-bold text-amber-700 dark:text-amber-400">mở lại</span>}

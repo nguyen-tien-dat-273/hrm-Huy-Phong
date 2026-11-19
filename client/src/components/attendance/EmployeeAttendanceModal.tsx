@@ -120,19 +120,19 @@ export function EmployeeAttendanceModal({
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{profile.name}</h3>
                 {profile.employee_code && (
-                  <span className="border border-slate-200 bg-white px-1.5 py-0.2 font-mono text-[10px] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-md">
+                  <span className="border border-slate-200 bg-white px-1.5 py-0.2 font-mono text-[11px] text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded-none">
                     {profile.employee_code}
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
                 {profile.department || 'Chưa phân phòng ban'} · Tháng {month.slice(5, 7)}/{month.slice(0, 4)}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Xếp loại:</span>
+            <span className="text-xs text-slate-600 dark:text-slate-400">Xếp loại:</span>
             <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${gradeInfo.color}`}>
               {gradeInfo.label}
             </span>
@@ -142,13 +142,13 @@ export function EmployeeAttendanceModal({
         {/* Thẻ số liệu tổng hợp trong tháng - vuông vức */}
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
           <div className="border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 rounded-none">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <CalendarDays className="h-3.5 w-3.5 text-indigo-600" />
               <span>Ngày công</span>
             </div>
             <div className="mt-1.5 flex items-baseline gap-1 font-mono">
               <span className="text-lg font-bold text-slate-800 dark:text-slate-100">{rollup.workDays}</span>
-              <span className="text-xs text-slate-400">/ {rollup.standardDays}</span>
+              <span className="text-xs text-slate-600">/ {rollup.standardDays}</span>
             </div>
             <div className="mt-0.5 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
               {rollup.completionRate}% chuẩn
@@ -156,21 +156,21 @@ export function EmployeeAttendanceModal({
           </div>
 
           <div className="border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 rounded-none">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <Clock className="h-3.5 w-3.5 text-slate-600" />
               <span>Tổng giờ</span>
             </div>
             <div className="mt-1.5 flex items-baseline gap-1 font-mono">
               <span className="text-lg font-bold text-slate-800 dark:text-slate-100">{rollup.totalHours}</span>
-              <span className="text-xs text-slate-400">h</span>
+              <span className="text-xs text-slate-600">h</span>
             </div>
-            <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
               {rollup.workDays > 0 ? (rollup.totalHours / rollup.workDays).toFixed(1) : 0}h / ngày
             </div>
           </div>
 
           <div className="border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 rounded-none">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
               <span>Đi muộn</span>
             </div>
@@ -178,15 +178,15 @@ export function EmployeeAttendanceModal({
               <span className={`text-lg font-bold ${rollup.lateCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-slate-100'}`}>
                 {rollup.lateCount}
               </span>
-              <span className="text-xs text-slate-400">lần ({rollup.lateMinutes}p)</span>
+              <span className="text-xs text-slate-600">lần ({rollup.lateMinutes}p)</span>
             </div>
-            <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
               {rollup.lateExcusedCount} có phép · {rollup.lateUnexcusedCount} vi phạm
             </div>
           </div>
 
           <div className="border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 rounded-none">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <Flame className="h-3.5 w-3.5 text-orange-600" />
               <span>Giờ OT</span>
             </div>
@@ -194,29 +194,29 @@ export function EmployeeAttendanceModal({
               <span className={`text-lg font-bold ${rollup.otHoursTotal > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-800 dark:text-slate-100'}`}>
                 {rollup.otHoursTotal}
               </span>
-              <span className="text-xs text-slate-400">h</span>
+              <span className="text-xs text-slate-600">h</span>
             </div>
-            <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
               {rollup.otHoursWeekday}h ngày · {rollup.otHoursWeekend}h nghỉ
             </div>
           </div>
 
           <div className="border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 rounded-none">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <Briefcase className="h-3.5 w-3.5 text-violet-600" />
               <span>Nghỉ phép</span>
             </div>
             <div className="mt-1.5 flex items-baseline gap-1 font-mono">
               <span className="text-lg font-bold text-slate-800 dark:text-slate-100">{rollup.leaveDaysTotal}</span>
-              <span className="text-xs text-slate-400">ngày</span>
+              <span className="text-xs text-slate-600">ngày</span>
             </div>
-            <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
               {rollup.leaveDaysAnnual} phép năm · {rollup.leaveDaysSick} ốm
             </div>
           </div>
 
           <div className="border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 rounded-none">
-            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
               <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
               <span>Đúng giờ</span>
             </div>
@@ -225,14 +225,14 @@ export function EmployeeAttendanceModal({
                 {rollup.punctualityRate}%
               </span>
             </div>
-            <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
               Quên checkout: {rollup.missingCheckoutCount} lần
             </div>
           </div>
         </div>
 
         {/* Lịch chi tiết từng ngày trong tháng */}
-        <div className="border-2 border-slate-400 dark:border-slate-600 rounded-xl overflow-hidden shadow-sm">
+        <div className="border-2 border-slate-400 dark:border-slate-600 rounded-none overflow-hidden shadow-sm">
           <div className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] px-3.5 py-2.5 text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
             Chi tiết ngày làm việc ({month.slice(5, 7)}/{month.slice(0, 4)})
           </div>
@@ -273,7 +273,7 @@ export function EmployeeAttendanceModal({
                             {formatTime(d.att.check_in_time)}
                           </span>
                         ) : (
-                          <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
+                          <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -286,7 +286,7 @@ export function EmployeeAttendanceModal({
                             Thiếu checkout
                           </span>
                         ) : (
-                          <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
+                          <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-right font-mono font-black text-sm text-slate-900 dark:text-slate-100">
@@ -335,7 +335,7 @@ export function EmployeeAttendanceModal({
                           )}
 
                           {!hasCheckin && !hasLeave && !d.isWeekend && (
-                            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                            <span className="text-[11px] text-slate-600 dark:text-slate-400">
                               Vắng mặt
                             </span>
                           )}

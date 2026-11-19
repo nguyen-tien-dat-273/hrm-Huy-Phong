@@ -154,11 +154,11 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
       <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
         <CardHeader><CardTitle>Giờ làm cố định</CardTitle></CardHeader>
         <CardContent>
-          <p className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-500">
+          <p className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-600">
             <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
             <span>
               Chưa bật quản lý giờ làm. Chạy migration{' '}
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs">
+              <code className="rounded-none bg-slate-100 px-1.5 py-0.5 font-mono text-xs">
                 20260928110000_work_schedules.sql
               </code>.
             </span>
@@ -180,9 +180,9 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
       </CardHeader>
 
       {loading ? (
-        <p className="py-6 text-center text-sm font-bold text-slate-400">Đang tải…</p>
+        <p className="py-6 text-center text-sm font-bold text-slate-600">Đang tải…</p>
       ) : set.schedules.length === 0 ? (
-        <p className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+        <p className="px-4 py-6 text-center text-sm font-semibold text-slate-600">
           Chưa khai giờ làm — công chuẩn lấy theo Tham số lương, chưa đo được đi muộn.
         </p>
       ) : (
@@ -205,9 +205,9 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
                 return (
                   <tr
                     key={schedule.id}
-                    className={schedule.is_active ? 'hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors' : 'bg-slate-100/60 dark:bg-slate-800/40 text-slate-400'}
+                    className={schedule.is_active ? 'hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition-colors' : 'bg-slate-100/60 dark:bg-slate-800/40 text-slate-600'}
                   >
-                    <td className={`${TD} font-black ${schedule.is_active ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400'}`} title={schedule.note ?? undefined}>
+                    <td className={`${TD} font-black ${schedule.is_active ? 'text-slate-900 dark:text-slate-100' : 'text-slate-600'}`} title={schedule.note ?? undefined}>
                       {schedule.name}
                       {!schedule.is_active && (
                         <span className="ml-2 inline-flex items-center gap-1 bg-slate-200 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">
@@ -222,7 +222,7 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
                     </td>
                     <td className={TD}>
                       {toInputTime(schedule.start_time)}–{toInputTime(schedule.end_time)}
-                      <span className="text-slate-400"> · nghỉ {schedule.break_minutes}′</span>
+                      <span className="text-slate-600"> · nghỉ {schedule.break_minutes}′</span>
                     </td>
                     <td className={`${TD} text-right tabular-nums`}>{perDay ?? '—'}</td>
                     <td className={TD}>{SATURDAY_LABEL[schedule.saturday_mode]}</td>
@@ -232,14 +232,14 @@ export function WorkScheduleCard({ set, loading, onChanged }: Props) {
                     <td className="px-2 text-right">
                       <button
                         onClick={() => openEdit(schedule)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-none text-slate-600 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
                         aria-label={`Sửa ${schedule.name}`}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => void toggleLock(schedule)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-none text-slate-600 transition-colors hover:bg-amber-50 hover:text-amber-600"
                         title={schedule.is_active ? 'Khóa' : 'Mở khóa'}
                         aria-label={`${schedule.is_active ? 'Khóa' : 'Mở khóa'} ${schedule.name}`}
                       >

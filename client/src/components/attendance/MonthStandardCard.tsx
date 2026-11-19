@@ -116,7 +116,7 @@ export function MonthStandardCard({ set, onChanged }: { set: ScheduleSet; onChan
           <div className="flex items-center gap-1">
             <button
               onClick={() => setYear((y) => y - 1)}
-              className="inline-flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="inline-flex h-8 w-8 items-center justify-center text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-label="Năm trước"
             >
               <ChevronLeft className="h-4 w-4" />
@@ -124,7 +124,7 @@ export function MonthStandardCard({ set, onChanged }: { set: ScheduleSet; onChan
             <span className="min-w-[3rem] text-center text-sm font-black tabular-nums text-slate-900 dark:text-slate-100">{year}</span>
             <button
               onClick={() => setYear((y) => y + 1)}
-              className="inline-flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              className="inline-flex h-8 w-8 items-center justify-center text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               aria-label="Năm sau"
             >
               <ChevronRight className="h-4 w-4" />
@@ -152,7 +152,7 @@ export function MonthStandardCard({ set, onChanged }: { set: ScheduleSet; onChan
                       onClick={(e) => { e.stopPropagation(); setOpen(isOpen ? null : month); }}
                       className="flex items-center gap-1.5"
                     >
-                      <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                      <ChevronDown className={`h-3.5 w-3.5 text-slate-600 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
                       Tháng {month + 1}
                     </button>
                   </td>
@@ -160,18 +160,18 @@ export function MonthStandardCard({ set, onChanged }: { set: ScheduleSet; onChan
                     {override != null ? (
                       <span className="inline-flex items-baseline gap-2">
                         {detail != null && detail.total !== override && (
-                          <span className="text-xs font-semibold text-slate-400 line-through">{fmt(detail.total)}</span>
+                          <span className="text-xs font-semibold text-slate-600 line-through">{fmt(detail.total)}</span>
                         )}
                         <span className="text-indigo-700 dark:text-indigo-300" title="Công chuẩn nhập tay">{fmt(override)}</span>
                       </span>
-                    ) : detail == null ? <span className="font-normal text-slate-400">—</span> : fmt(detail.total)}
+                    ) : detail == null ? <span className="font-normal text-slate-600">—</span> : fmt(detail.total)}
                   </td>
                 </tr>
                 {isOpen && (
                   <tr className="bg-slate-50/70">
                     <td colSpan={2} className="px-4 py-3 text-sm">
                       {detail == null ? (
-                        <p className="text-slate-500">
+                        <p className="text-slate-600">
                           Chưa có giờ làm cố định nào phủ tháng này nên chưa tính được công chuẩn — có thể nhập tay bên dưới.
                         </p>
                       ) : (
@@ -187,7 +187,7 @@ export function MonthStandardCard({ set, onChanged }: { set: ScheduleSet; onChan
                             <span className="tabular-nums">{fmt(detail.total)}</span>
                           </div>
                           {detail.holidayDates.length > 0 && (
-                            <p className="pt-1 text-xs text-slate-500">
+                            <p className="pt-1 text-xs text-slate-600">
                               Ngày lễ đã trừ: {detail.holidayDates.map(viDay).join(', ')}
                             </p>
                           )}

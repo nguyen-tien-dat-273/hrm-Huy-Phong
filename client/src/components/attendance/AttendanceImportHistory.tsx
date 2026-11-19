@@ -77,7 +77,7 @@ export function AttendanceImportHistory({ profiles }: { profiles: Profile[] }) {
                 {batch.updated_rows > 0 && <> · sửa giờ vào <strong className="font-black text-slate-900 dark:text-slate-100">{batch.updated_rows}</strong></>}
                 {batch.skipped_rows > 0 && <> · <span className="font-bold text-amber-600 dark:text-amber-400">bỏ {batch.skipped_rows}</span></>}
               </span>
-              <span className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400">
+              <span className="shrink-0 text-xs font-semibold text-slate-600 dark:text-slate-400">
                 {nameOf(batch.imported_by)} · {formatDateTime(batch.created_at)}
               </span>
             </div>

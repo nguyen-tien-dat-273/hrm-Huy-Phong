@@ -19,6 +19,7 @@ import {
   SALES_STATUS_LABEL, SALES_STATUS_TONE, fmtNum, fmtPct, fold, kpiSetFor, monthLabelOf, parseNum, type KpiSalesTarget,
 } from '@/lib/kpi';
 import { reviewSalesTargets, saveSalesActuals, saveSalesTargets, type KpiWorkspace } from '@/lib/kpiData';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 interface RowDraft { sales_target: string; collect_target: string; customers_target: string; sales_actual: string; collect_actual: string; customers_actual: string }
 const FIELDS: Array<keyof RowDraft> = ['sales_target', 'collect_target', 'customers_target', 'sales_actual', 'collect_actual', 'customers_actual'];
@@ -84,6 +85,7 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
     const raw = target?.[field];
     return raw == null ? '' : String(raw);
   };
+  const pg = usePagination(rows, PAGE_SIZE_TABLE, [userIds.length]);
   const setValue = (userId: string, field: keyof RowDraft, value: string) =>
     setEdits((current) => ({ ...current, [userId]: { ...current[userId], [field]: value.replace(/[^\d.,]/g, '') } }));
 
@@ -204,7 +206,7 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
   const disputes = data.sales.filter((row) => row.confirm_status === 'DISPUTED');
 
   const getCellClass = (isEdited: boolean) =>
-    `h-8 w-full min-w-[6.5rem] rounded-md border px-2 text-center text-sm tabular-nums font-bold transition-all duration-150 outline-none shadow-xs ${
+    `h-8 w-full min-w-[6.5rem] rounded-none border px-2 text-center text-sm tabular-nums font-bold transition-all duration-150 outline-none shadow-xs ${
       isEdited
         ? 'border-indigo-400 bg-indigo-50/60 text-indigo-950 ring-1 ring-indigo-400/30 dark:border-indigo-500 dark:bg-indigo-950/50 dark:text-indigo-100'
         : 'border-slate-300 bg-white text-slate-900 hover:border-slate-400 hover:bg-slate-50/60 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-750'
@@ -221,9 +223,9 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
       <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
         <div className="flex flex-wrap items-center gap-2 border-b-2 border-slate-300 dark:border-slate-700 px-4 py-3 no-print">
           <div className="relative w-full sm:w-64">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Lọc theo tên nhân viên…" aria-label="Lọc theo tên"
-              className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+              className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15" />
           </div>
           {canConfirm && (
             <div className="w-full sm:w-56">
@@ -236,7 +238,7 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => void downloadTemplate()}><Download className="h-3.5 w-3.5" /> Tải mẫu</Button>
             {canConfirm && (
-              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">
+              <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-none border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50">
                 <FileUp className="h-3.5 w-3.5" /> Nhập Excel
                 <input type="file" accept=".xlsx,.xls" className="hidden"
                   onChange={(event) => { const file = event.target.files?.[0]; if (file) void importFile(file); event.target.value = ''; }} />
@@ -267,10 +269,11 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
         )}
 
         {rows.length === 0 ? (
-          <p className="px-6 py-12 text-center text-sm font-semibold text-slate-500">
+          <p className="px-6 py-12 text-center text-sm font-semibold text-slate-600">
             Chưa có nhân viên kinh doanh tháng {label}.
           </p>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1080px] whitespace-nowrap text-sm tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
               <thead>
@@ -291,7 +294,7 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">
-                {rows.map(({ id, person, target }) => {
+                {pg.rows.map(({ id, person, target }) => {
                   const tEdit = targetEditable(target);
                   const sales = num(id, 'sales_actual');
                   const collect = num(id, 'collect_actual');
@@ -354,16 +357,16 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
                       <td className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5 text-center">
                         {target ? (
                           <>
-                            <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold ring-1 ring-inset ${SALES_STATUS_TONE[target.status]}`}>
+                            <span className={`inline-flex rounded-none px-1.5 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SALES_STATUS_TONE[target.status]}`}>
                               {SALES_STATUS_LABEL[target.status]}
                             </span>
                             {target.confirm_status && (
-                              <p className={`mt-0.5 text-[10px] font-semibold ${target.confirm_status === 'CONFIRMED' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                              <p className={`mt-0.5 text-[11px] font-semibold ${target.confirm_status === 'CONFIRMED' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                                 {target.confirm_status === 'CONFIRMED' ? 'NV đã xác nhận' : 'NV khiếu nại'}
                               </p>
                             )}
                           </>
-                        ) : <span className="text-[11px] text-slate-400">Chưa giao</span>}
+                        ) : <span className="text-[11px] text-slate-600">Chưa giao</span>}
                       </td>
                     </tr>
                   );
@@ -371,6 +374,8 @@ export function KpiSalesBoard({ data, month, viewer, onChanged }: {
               </tbody>
             </table>
           </div>
+            <Pagination className="px-4 pb-3" page={pg.page} total={pg.total} size={pg.size} noun="người" setPage={pg.setPage} />
+          </>
         )}
       </Card>
 

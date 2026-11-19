@@ -7,10 +7,10 @@ import { ConfirmProvider } from '@/contexts/ConfirmContext';
 import { ViewModeProvider } from '@/contexts/ViewModeContext';
 import { SettingsProvider } from '@/contexts/SettingsContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { NavBadgeProvider } from '@/contexts/NavBadgeContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
-import { IsolatedBoundary } from '@/components/PageErrorBoundary';
+import { IsolatedBoundary, RootBoundary } from '@/components/PageErrorBoundary';
 import { CommandPalette } from '@/components/CommandPalette';
-import { ChatbotWidget } from '@/components/chatbot/ChatbotWidget';
 import { InstallPrompt } from '@/components/InstallPrompt';
 import { PhoneNotificationPrompt } from '@/components/PhoneNotificationPrompt';
 import { hasAdminFunction, hasAnyAdminPermission, hasPermission, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
@@ -43,7 +43,6 @@ const AdminLeave = lazyRoute('AdminLeave', () => import('@/pages/admin/AdminLeav
 const AdminSettings = lazyRoute('AdminSettings', () => import('@/pages/admin/AdminSettings').then((m) => ({ default: m.AdminSettings })));
 const AdminAttendanceSettings = lazyRoute('AdminAttendanceSettings', () => import('@/pages/admin/AdminAttendanceSettings').then((m) => ({ default: m.AdminAttendanceSettings })));
 const AdminAudit = lazyRoute('AdminAudit', () => import('@/pages/admin/AdminAudit').then((m) => ({ default: m.AdminAudit })));
-const AdminChatbotLogs = lazyRoute('AdminChatbotLogs', () => import('@/pages/admin/AdminChatbotLogs').then((m) => ({ default: m.AdminChatbotLogs })));
 const PublicOnboardingPage = lazyRoute('PublicOnboardingPage', () => import('@/pages/public/PublicOnboardingPage').then((m) => ({ default: m.PublicOnboardingPage })));
 const AdminOnboarding = lazyRoute('AdminOnboarding', () => import('@/pages/admin/AdminOnboarding').then((m) => ({ default: m.AdminOnboarding })));
 const AdminProcessLibrary = lazyRoute('AdminProcessLibrary', () => import('@/pages/admin/AdminProcessLibrary').then((m) => ({ default: m.AdminProcessLibrary })));
@@ -74,7 +73,7 @@ function AppLoading() {
         <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-indigo-100 border-t-indigo-600" />
         <div>
           <p className="font-display text-sm font-bold text-slate-800 dark:text-slate-100">Đang mở không gian làm việc</p>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">HRM Huy Phong đang chuẩn bị dữ liệu cho bạn…</p>
+          <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">HRM Huy Phong đang chuẩn bị dữ liệu cho bạn…</p>
         </div>
       </div>
     </div>
@@ -85,7 +84,7 @@ function AuthRedirect() {
   const { profile, loading, supabaseConfigured } = useAuth();
   const location = useLocation();
 
-  if (loading) return null;
+  if (loading) return <AppLoading />;
   if (!supabaseConfigured) return <SetupPage />;
   if (!profile) return <LoginPage />;
   if (profile.must_change_password) return <Navigate to="/change-password" replace />;
@@ -117,7 +116,7 @@ function AuthRedirect() {
 function PublicRoute({ children }: { children: ReactNode }) {
   const { profile, loading } = useAuth();
 
-  if (loading) return null;
+  if (loading) return <AppLoading />;
   if (profile) {
     if (profile.must_change_password) return <Navigate to="/change-password" replace />;
     if (profile.role === 'staff' && !hasAnyAdminPermission(profile)) return <Navigate to="/staff/dashboard" replace />;
@@ -226,6 +225,7 @@ function AppRoutes() {
       <Route path="/admin/payroll/setup" element={<RedirectKeepQuery to="/admin/payroll/setup/params" />} />
       <Route path="/admin/payroll/setup/schemes" element={admin('attendance', <AdminPayroll section="schemes" />, { functionCode: ['admin.payroll_settings', 'admin.payroll_schemes'] })} />
       <Route path="/admin/payroll/setup/params" element={admin('attendance', <AdminPayroll section="params" />, { functionCode: 'admin.payroll_settings' })} />
+      <Route path="/admin/payroll/setup/sheets" element={admin('attendance', <AdminPayroll section="sheets" />, { functionCode: 'admin.payroll_settings' })} />
       <Route path="/admin/payroll/setup/timesheet" element={admin('attendance', <AdminPayroll section="timesheet" />, { functionCode: 'admin.payroll_settings' })} />
       <Route path="/admin/payroll/setup/components" element={admin('attendance', <AdminPayroll section="catalog" />, { functionCode: 'admin.payroll_components' })} />
       <Route path="/admin/payroll/schemes" element={<RedirectKeepQuery to="/admin/payroll/setup/schemes" />} />
@@ -257,7 +257,6 @@ function AppRoutes() {
       <Route path="/admin/settings" element={admin('settings', <AdminSettings />)} />
       {/* Nhật ký hệ thống — quyền module + chức năng nâng cao; RLS là hàng rào cuối. */}
       <Route path="/admin/audit" element={admin('settings', <AdminAudit />, { functionCode: 'admin.audit' })} />
-      <Route path="/admin/chatbot-logs" element={admin('settings', <AdminChatbotLogs />)} />
 
       {/* Hồ sơ cá nhân — ai đăng nhập cũng có, layout theo vai trò */}
       <Route path="/profile" element={<ProtectedRoute><OwnLayout><ProfilePage /></OwnLayout></ProtectedRoute>} />
@@ -298,13 +297,15 @@ export default function App() {
               {/* Trong AuthProvider: RLS đòi đăng nhập mới đọc được app_settings. */}
               <SettingsProvider>
                 <ViewModeProvider>
-                  <Suspense fallback={<AppLoading />}>
-                    <AppRoutes />
-                  </Suspense>
+                  <NavBadgeProvider>
+                    <RootBoundary>
+                      <Suspense fallback={<AppLoading />}>
+                        <AppRoutes />
+                      </Suspense>
+                    </RootBoundary>
+                  </NavBadgeProvider>
                   {/* Ctrl/⌘+K — tự ẩn khi chưa đăng nhập. */}
                   <IsolatedBoundary><CommandPalette /></IsolatedBoundary>
-                  {/* Trợ lý hỏi đáp — tự ẩn khi chưa đăng nhập. */}
-                  <IsolatedBoundary><ChatbotWidget /></IsolatedBoundary>
                   {/* Dải mời cài app — chỉ hiện khi trình duyệt thực sự cài được. */}
                   <IsolatedBoundary><InstallPrompt /></IsolatedBoundary>
                   {/* Xin quyền bằng thao tác rõ ràng của người dùng; trình duyệt

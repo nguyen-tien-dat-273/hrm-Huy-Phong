@@ -53,14 +53,10 @@ export function PositionChart(props: PositionChartProps) {
   if (active.length === 0) {
     return (
       <div className="px-5 py-12 text-center">
-        <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+        <span className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-none bg-slate-50 text-slate-600">
           <BriefcaseBusiness className="h-5 w-5" />
         </span>
         <p className="text-sm font-semibold text-slate-600">Chưa khai vị trí nào</p>
-        <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-400">
-          Sang tab <strong>Vị trí</strong> để khai chức danh. Đặt trường{' '}
-          <em>Báo cáo cho vị trí</em> thì tuyến cấp trên – cấp dưới sẽ hiện ở đây.
-        </p>
       </div>
     );
   }
@@ -124,7 +120,7 @@ function PositionBox({
       type="button"
       onClick={() => onSelect(position.id)}
       aria-current={isSelected ? 'true' : undefined}
-      className={`flex w-56 flex-col gap-2 rounded-xl border-2 px-3.5 py-3 text-left shadow-sm transition ${
+      className={`flex w-56 flex-col gap-2 rounded-none border-2 px-3.5 py-3 text-left shadow-sm transition ${
         isSelected
           ? 'border-indigo-600 bg-indigo-50 ring-2 ring-indigo-500/20'
           : 'border-slate-200 bg-white hover:border-indigo-400 hover:shadow-md'
@@ -132,22 +128,22 @@ function PositionBox({
     >
       <div className="flex items-start gap-2">
         <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-            position.is_manager ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none ${
+            position.is_manager ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
           }`}
         >
           {position.is_manager ? <Crown className="h-4 w-4" /> : <BriefcaseBusiness className="h-4 w-4" />}
         </span>
         <span className="min-w-0 flex-1">
           <strong className="line-clamp-2 text-[13px] leading-snug text-slate-900">{position.title}</strong>
-          <span className="mt-0.5 block truncate text-[11px] text-slate-400">
+          <span className="mt-0.5 block truncate text-[11px] text-slate-600">
             {unitName ?? 'Đơn vị không còn tồn tại'}
           </span>
         </span>
       </div>
 
       <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px]">
-        <span className={`flex items-center gap-1 ${holders > 0 ? 'text-slate-500' : 'text-amber-600'}`}>
+        <span className={`flex items-center gap-1 ${holders > 0 ? 'text-slate-600' : 'text-amber-600'}`}>
           {holders > 0 ? <Users className="h-3 w-3" /> : <CircleAlert className="h-3 w-3" />}
           {holders > 0 ? `${holders} người` : 'Chưa có ai'}
         </span>

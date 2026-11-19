@@ -3,7 +3,8 @@
 // ============================================================================
 
 import type { LeaveLedgerEntry, LeaveRequest, LeaveStatus, LeaveType } from '@/types';
-import { toDateString } from './utils';
+import { formatDate, toDateString } from './utils';
+import type { RequestDetail } from '@/components/ui/RequestDetailModal';
 import { dayWeight, type ScheduleSet } from './workSchedule';
 
 export const LEAVE_TYPE_CONFIG: Record<LeaveType, { label: string; color: string; dot: string; paid: boolean }> = {
@@ -123,4 +124,36 @@ export function calculateLedgerBalance(
 /** Ngày hôm nay ở dạng YYYY-MM-DD, dùng làm giá trị mặc định cho form. */
 export function defaultLeaveDate(): string {
   return toDateString(new Date());
+}
+
+/** Nội dung chi tiết / in / Excel của một đơn nghỉ phép. */
+export function leaveRequestDetail(
+  request: LeaveRequest,
+  applicant: { name?: string | null; department?: string | null } | null | undefined,
+  approvers: { manager?: string | null; final?: string | null } = {},
+): RequestDetail {
+  const status = request.is_cancelled ? 'Đã hủy' : leaveStatusLabel(request).label;
+  const name = applicant?.name ?? 'Nhân viên';
+  return {
+    title: 'Đơn nghỉ phép',
+    applicant: name,
+    status,
+    fields: [
+      { label: 'Nhân sự', value: name },
+      { label: 'Phòng ban', value: applicant?.department ?? '' },
+      { label: 'Loại nghỉ', value: LEAVE_TYPE_CONFIG[request.leave_type].label },
+      { label: 'Từ ngày', value: formatDate(request.start_date) },
+      { label: 'Đến ngày', value: formatDate(request.end_date) },
+      { label: 'Số ngày', value: `${Number(request.days)}${request.half_day ? ' (nửa ngày)' : ''}` },
+      { label: 'Lý do', value: request.reason ?? '' },
+      ...(approvers.manager ? [{ label: 'Quản lý duyệt', value: approvers.manager }] : []),
+      ...(approvers.final ? [{ label: 'Người chốt', value: approvers.final }] : []),
+      ...(request.reason_reject ? [{ label: 'Lý do từ chối', value: request.reason_reject }] : []),
+    ],
+    signers: [
+      { role: 'Người làm đơn' },
+      { role: 'Quản lý trực tiếp', name: approvers.manager, signedAt: request.manager_approved_by ? request.manager_approved_at : null },
+      { role: 'Nhân sự / HR', name: approvers.final, signedAt: request.status === 'approved' ? request.approved_at : null },
+    ],
+  };
 }
