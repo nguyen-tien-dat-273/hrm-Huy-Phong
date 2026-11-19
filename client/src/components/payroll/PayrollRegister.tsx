@@ -11,7 +11,7 @@
 // • Mọi chuyển trạng thái đi qua RPC ở database; màn này chỉ gọi và hiển thị.
 // ============================================================================
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -27,7 +27,7 @@ import { documentLinesFromCatalog } from '@/components/payroll/PayslipDocument';
 import { resolvePayslipLayout } from '@/lib/payslipLayout';
 import { ExportButtons } from '@/components/payroll/ExportButtons';
 import { printTables } from '@/lib/tablePrint';
-import { payrollSignOff, signOffLines } from '@/lib/payrollSignOff';
+import { payrollSheetSignOff, payrollSignOff, signOffLines } from '@/lib/payrollSignOff';
 import { TwoFactorDialog } from '@/components/payroll/TwoFactorDialog';
 import { BankExportModal } from '@/components/payroll/BankExportModal';
 import { Timeline } from '@/components/payroll/PayrollApprovals';
@@ -57,8 +57,11 @@ import {
 } from '@/lib/payrollData';
 import { notifyUsers } from '@/lib/assignments';
 import {
-  columnLabel, dataValueOf, fetchLeaveYear, headerGroups, isSheetMember, totalValueOf, type LeaveYear,
+  columnLabel, dataValueOf, DAYS_CHECK_WRONG, fetchLeaveYear, headerGroups, infoValueOf, isSheetMember, sheetTitle,
+  totalValueOf, type LeaveYear,
 } from '@/lib/payrollSheets';
+import { DEFAULT_COMPANY } from '@/lib/requestForm';
+import type { ExportOptions } from '@/lib/tableExport';
 import type { EmployeeBankAccount, PayComponentKind, PayrollRunStatus, Profile } from '@/types';
 import { Pagination, PAGE_SIZE_MATRIX } from '@/components/ui/Pagination';
 
@@ -263,12 +266,16 @@ export function PayrollRegister({
 
   // ---- Bảng cấu hình (BL 01, BL 02, Lương cắt lô…) ---------------------------
   const canConfigureSheets = hasAdminFunction(profile, 'admin.payroll_settings');
-  const activeSheetId = searchParams.get('sheet') ?? '';
+  // Mặc định mở bảng đầu tiên (BL 01) như file Excel; "Tất cả đầu mục" = ?sheet=all.
+  // Đến từ Danh bạ (lọc một người) thì mở kiểu xem tất cả để chắc chắn thấy người đó.
+  const ALL_SHEETS = 'all';
+  const sheetParam = searchParams.get('sheet');
+  const activeSheetId = sheetParam
+    ?? (searchParams.get('user') ? ALL_SHEETS : data.sheets[0]?.id ?? ALL_SHEETS);
   const activeSheet = data.sheets.find((sheet) => sheet.id === activeSheetId) ?? null;
   const selectSheet = (id: string) => {
     const next = new URLSearchParams(searchParams);
-    if (id) next.set('sheet', id);
-    else next.delete('sheet');
+    next.set('sheet', id || ALL_SHEETS);
     setSearchParams(next);
     setPage(0);
   };
@@ -389,7 +396,16 @@ export function PayrollRegister({
     .filter((row) => !shownInputCodes || [...shownInputCodes].some((code) => neededByPerson.get(row.profile.id)?.has(code)))
     .filter((row) => !activeSheet
       || isSheetMember(activeSheet, row.profile, new Set(row.computed.lines.map((line) => line.code.toUpperCase())), data.units));
-  const sorted = [...filtered].sort((a, b) => a.profile.name.localeCompare(b.profile.name, 'vi'));
+  /** Tên phòng ban của một dòng — bảng lương chia khối theo phòng ban. */
+  const unitOf = (row: PayrollRow) => unitNames.get(row.profile.unit_id ?? '') ?? row.profile.department ?? 'Chưa có phòng ban';
+  const sorted = [...filtered].sort((a, b) => {
+    const ua = unitOf(a);
+    const ub = unitOf(b);
+    const noUnitA = ua === 'Chưa có phòng ban';
+    const noUnitB = ub === 'Chưa có phòng ban';
+    if (noUnitA !== noUnitB) return noUnitA ? 1 : -1;
+    return ua.localeCompare(ub, 'vi') || a.profile.name.localeCompare(b.profile.name, 'vi');
+  });
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
   const pageRows = sorted.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
@@ -495,12 +511,18 @@ export function PayrollRegister({
     if (column.source === 'DATA') return dataValueOf(row.computed, column.code, params?.hoursPerDay ?? 8);
     if (column.source === 'LEAVE') return leaveYear ? leaveYear.get(row.profile.id)?.[column.code] ?? 0 : null;
     if (column.source === 'TOTAL') return totalValueOf(row.computed, column.code);
+    if (column.source === 'INFO') return null;
     return amountOf(row, column.code);
   };
+  /** Ô chữ (nguồn INFO): cảnh báo ngày công, ngày đi làm chính thức, ô để trống. */
+  const textOf = (row: PayrollRow, column: ItemColumn): string =>
+    infoValueOf(row.computed, row.profile, column.code, params?.hoursPerDay ?? 8);
   const lineColumns = columns.filter(isLine);
   const groupHeads = headerGroups(columns);
   const twoTier = groupHeads.some((head) => head.title);
   const headSpan = twoTier ? 2 : 1;
+  /** Số cột của thân bảng: STT, Mã NV, Nhân sự, [Công], các cột, [Tổng cộng, Tổng trừ, Thực nhận], thao tác. */
+  const bodyColSpan = 3 + (activeSheet ? 0 : 1) + columns.length + (activeSheet ? 0 : 3) + 1;
   // Khai báo trước khối đo tiêu đề bên dưới — mảng phụ thuộc của nó đọc `zoom` ngay khi render.
   const { zoom, setZoom } = useTableZoom('payroll');
   // Hàng tiêu đề thứ 2 dính ngay dưới hàng 1: phải đo chiều cao thật, đặt cứng sẽ hở khe cho dòng dữ liệu lọt qua.
@@ -858,35 +880,73 @@ export function PayrollRegister({
   };
 
   /** Chữ ký điện tử + con dấu "ĐÃ DUYỆT" lấy từ dấu vết kỳ lương, in ở chân chứng từ. */
-  const signOffOf = () => payrollSignOff(run, nameOf);
+  const signOffOf = () => (activeSheet
+    ? payrollSheetSignOff(run, nameOf, monthStart.getFullYear())
+    : payrollSignOff(run, nameOf));
+
+  /** Ô xuất / in của một cột bảng: số, hoặc chữ với cột INFO. */
+  const exportCell = (row: PayrollRow, column: ItemColumn) => (column.source === 'INFO' ? textOf(row, column) : valueOf(row, column) ?? '');
+
+  /**
+   * Bảng cấu hình (BL 01, BL 02…) xuất / in đúng khuôn Excel: đầu chứng từ, tiêu
+   * đề, "Số ngày làm việc trong tháng", cột TT | Họ và tên | các cột, dòng Tổng cộng,
+   * khối ký PHÓ GIÁM ĐỐC | KIỂM TRA | NGƯỜI LẬP.
+   */
+  const sheetExportOptions = (sheet: NonNullable<typeof activeSheet>) => {
+    const standardDays = sorted[0]?.computed.standardDays ?? params?.standardDays ?? 0;
+    return {
+      filename: `bang-luong-${normalizeText(sheet.name).replace(/\s+/g, '-')}-${format(monthStart, 'yyyy-MM')}`,
+      sheetName: sheet.name.slice(0, 31),
+      letterhead: { company: DEFAULT_COMPANY, unit: sheet.issuer, formCode: sheet.form_code },
+      title: sheetTitle(sheet, monthLabel, monthStart.getFullYear()),
+      subtitle: sheet.subtitle ?? undefined,
+      preface: sheet.show_standard_days
+        ? [`Số ngày làm việc trong tháng: ${formatFormulaNumber(standardDays)}`]
+        : undefined,
+      rows: sorted,
+      groupBy: unitOf,
+      headerGroups: [{ title: null, span: 2 }, ...groupHeads],
+      columns: [
+        { header: 'TT', value: (_row: PayrollRow, index: number) => index + 1, width: 5 },
+        { header: 'Họ và tên', value: (row: PayrollRow) => row.profile.name, width: 24 },
+        ...columns.map((column) => ({
+          header: column.name,
+          value: (row: PayrollRow) => exportCell(row, column),
+          width: column.source === 'INFO' ? 22 : 14,
+        })),
+      ],
+      totalRow: [
+        'Tổng cộng',
+        '',
+        ...columns.map((column) => (column.total ? sum((row) => valueOf(row, column) ?? 0, sorted) : '')),
+      ],
+    };
+  };
 
   /** Mỗi đầu mục một cột — đúng như bảng lương kế toán vẫn đối chiếu. */
-  const exportOptions = () => ({
-    filename: `bang-luong-${activeSheet ? `${normalizeText(activeSheet.name).replace(/\s+/g, '-')}-` : ''}${format(monthStart, 'yyyy-MM')}`,
-    sheetName: activeSheet?.name.slice(0, 31) ?? 'Bảng lương',
-    title: `${(activeSheet?.title || activeSheet?.name || 'Bảng lương').toUpperCase()} THÁNG ${monthLabel}`,
+  const exportOptions = (): ExportOptions<PayrollRow> => (activeSheet ? sheetExportOptions(activeSheet) : {
+    filename: `bang-luong-${format(monthStart, 'yyyy-MM')}`,
+    sheetName: 'Bảng lương',
+    title: `BẢNG LƯƠNG THÁNG ${monthLabel}`,
     subtitle: `Trạng thái kỳ: ${RUN_STATUS_LABEL[runStatus]}${closed ? ' (số liệu đã chốt)' : ' (bản xem trước)'}`,
     rows: sorted,
+    groupBy: unitOf,
+    headerGroups: [{ title: null, span: 5 }, ...groupHeads, { title: null, span: 4 }],
     columns: [
       { header: 'STT', value: (_row: PayrollRow, index: number) => index + 1, width: 6 },
       { header: 'Mã NV', value: (row: PayrollRow) => row.profile.employee_code ?? '', width: 10 },
       { header: 'Họ tên', value: (row: PayrollRow) => row.profile.name, width: 24 },
-      { header: 'Đơn vị', value: (row: PayrollRow) => unitNames.get(row.profile.unit_id ?? '') ?? row.profile.department ?? '', width: 20 },
-      ...(activeSheet ? [] : [
-        { header: 'Ngày công', value: (row: PayrollRow) => row.computed.stats.workDays, width: 10 },
-        { header: 'Công chuẩn', value: (row: PayrollRow) => row.computed.standardDays, width: 10 },
-      ]),
+      { header: 'Ngày công', value: (row: PayrollRow) => row.computed.stats.workDays, width: 10 },
+      { header: 'Công chuẩn', value: (row: PayrollRow) => row.computed.standardDays, width: 10 },
       ...columns.map((column) => ({
-        header: column.group ? `${column.group} – ${column.name}` : column.name,
+        header: column.name,
         value: (row: PayrollRow) => valueOf(row, column) ?? '',
         width: 16,
       })),
-      ...(activeSheet ? [] : [
-        { header: 'TỔNG CỘNG', value: (row: PayrollRow) => row.computed.gross },
-        { header: 'TỔNG TRỪ', value: (row: PayrollRow) => row.computed.totalDeductions },
-        { header: 'LÀM TRÒN', value: (row: PayrollRow) => row.computed.roundingAdjustment, width: 10 },
-        { header: 'THỰC NHẬN', value: (row: PayrollRow) => row.computed.netPay },
-      ]),
+      { header: 'TỔNG CỘNG', value: (row: PayrollRow) => row.computed.gross },
+      { header: 'TỔNG TRỪ', value: (row: PayrollRow) => row.computed.totalDeductions },
+      { header: 'LÀM TRÒN', value: (row: PayrollRow) => row.computed.roundingAdjustment, width: 10 },
+      { header: 'THỰC NHẬN', value: (row: PayrollRow) => row.computed.netPay },
     ],
   });
 
@@ -913,7 +973,7 @@ export function PayrollRegister({
       <TableShell full={full}>
           {(data.sheets.length > 0 || canConfigureSheets) && (
             <div className="flex items-end gap-1 overflow-x-auto border-b border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 pt-1.5 no-print" role="tablist" aria-label="Chọn bảng lương">
-              {[{ id: '', name: 'Tất cả đầu mục' }, ...data.sheets].map((sheet) => {
+              {[...data.sheets, { id: '', name: 'Tất cả đầu mục' }].map((sheet) => {
                 const active = sheet.id === (activeSheet?.id ?? '');
                 return (
                   <button
@@ -1231,8 +1291,23 @@ export function PayrollRegister({
                       ? row.computed.warnings
                       : row.hasScheme ? [] : ['Chưa có cơ chế lương'];
                     const isEditingRow = editingRowUserId === row.profile.id;
+                    const unitLabel = unitOf(row);
+                    const newBlock = rowIndex === 0 || unitOf(pageRows[rowIndex - 1]) !== unitLabel;
                     return (
-                      <tr key={row.profile.id} className={`group transition-colors ${isEditingRow ? 'bg-amber-50/70 dark:bg-amber-950/30 ring-1 ring-inset ring-amber-400 dark:ring-amber-500' : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60'}`}>
+                      <Fragment key={row.profile.id}>
+                      {newBlock && (
+                        <tr className="bg-slate-100 dark:bg-slate-800">
+                          <td colSpan={bodyColSpan} className="border-y border-slate-400 dark:border-slate-600 px-0 py-1.5">
+                            <span className="sticky left-0 inline-block px-3 text-xs font-black uppercase tracking-wide text-slate-900 dark:text-slate-100">
+                              {unitLabel}
+                              <span className="ml-2 font-bold normal-case text-slate-600 dark:text-slate-300">
+                                ({sorted.filter((item) => unitOf(item) === unitLabel).length} người)
+                              </span>
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      <tr className={`group transition-colors ${isEditingRow ? 'bg-amber-50/70 dark:bg-amber-950/30 ring-1 ring-inset ring-amber-400 dark:ring-amber-500' : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60'}`}>
                         <td className={`sticky left-0 z-10 w-[46px] min-w-[46px] max-w-[46px] px-1 py-1 text-center font-bold text-slate-600 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700 ${
                           isEditingRow ? 'bg-amber-50 dark:bg-slate-900' : 'bg-white dark:bg-slate-900 group-hover:bg-slate-100/80 dark:group-hover:bg-slate-800/80'
                         }`}>
@@ -1281,6 +1356,15 @@ export function PayrollRegister({
                           </td>
                         )}
                         {columns.map((column) => {
+                          if (column.source === 'INFO') {
+                            const text = textOf(row, column);
+                            const wrong = text === DAYS_CHECK_WRONG;
+                            return (
+                              <td key={column.key ?? column.code} className={`px-1.5 py-0.5 border-l border-slate-300 dark:border-slate-700 text-center whitespace-normal min-w-[90px] ${wrong ? 'bg-red-50 dark:bg-red-950/40' : 'bg-slate-50/60 dark:bg-slate-800/40'}`}>
+                                <span className={`text-xs font-bold ${wrong ? 'text-red-700 dark:text-red-300' : 'text-slate-900 dark:text-slate-100'}`}>{text}</span>
+                              </td>
+                            );
+                          }
                           if (!isLine(column)) {
                             // Dữ liệu chấm công / phép năm / tổng phiếu: chỉ xem.
                             const value = valueOf(row, column);
@@ -1547,6 +1631,7 @@ export function PayrollRegister({
                           )}
                         </td>
                       </tr>
+                      </Fragment>
                     );
                   })}
                 </tbody>

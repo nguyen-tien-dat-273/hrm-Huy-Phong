@@ -2,11 +2,12 @@
 // Bảng lương cấu hình được — mỗi bảng là một cách XEM dữ liệu lương tháng như
 // một sheet Excel (BL 01, BL 02, Lương cắt lô, Nghỉ phép, Đầu chai…).
 // ----------------------------------------------------------------------------
-// Bảng không tính gì. Mỗi cột lấy số từ một trong bốn nguồn:
+// Bảng không tính gì. Mỗi cột lấy số từ một trong năm nguồn:
 //   LINE   dòng phiếu lương của người đó (đầu mục)
 //   DATA   dữ liệu chấm công của tháng (ngày công, ngày phép, giờ OT…)
 //   LEAVE  sổ phép năm (đã nghỉ theo tháng, phép năm, trừ phép đi muộn, còn lại)
 //   TOTAL  tổng của phiếu (tổng cộng, tổng trừ, thực lĩnh)
+//   INFO   chữ: cảnh báo nhập sai ngày công, ngày đi làm chính thức, ô để trống
 // Cột có `group` giống nhau và đứng liền nhau gộp thành một tiêu đề hai tầng.
 // ============================================================================
 
@@ -16,7 +17,7 @@ import { systemScope, type ComputedPayslip } from './payroll';
 import { SYSTEM_VARIABLES, TOTAL_EARNINGS_CODE } from './payrollVariables';
 import type { OrganizationUnit, PayComponent } from '@/types';
 
-export type SheetSource = 'LINE' | 'DATA' | 'LEAVE' | 'TOTAL';
+export type SheetSource = 'LINE' | 'DATA' | 'LEAVE' | 'TOTAL' | 'INFO';
 
 export interface SheetColumn {
   group: string | null;
@@ -30,6 +31,14 @@ export interface PayrollSheet {
   id: string;
   name: string;
   title: string | null;
+  /** Mã biểu mẫu in ở góc phải (BL 01, DT 01…). */
+  form_code: string | null;
+  /** Dòng dưới tên công ty (PHÒNG KẾ TOÁN…). */
+  issuer: string | null;
+  /** Dòng dưới tiêu đề (BỘ PHẬN: KINH DOANH…). */
+  subtitle: string | null;
+  /** In dòng "Số ngày làm việc trong tháng". */
+  show_standard_days: boolean;
   sort_order: number;
   require_codes: string[];
   unit_ids: string[];
@@ -42,6 +51,7 @@ export const SOURCE_LABEL: Record<SheetSource, string> = {
   DATA: 'Chấm công',
   LEAVE: 'Phép năm',
   TOTAL: 'Tổng phiếu',
+  INFO: 'Thông tin',
 };
 
 /** Dữ liệu chấm công lấy được vào cột (khớp `payroll_sheet_data_codes()` ở database). */
@@ -66,11 +76,24 @@ export const TOTAL_SOURCES: ReadonlyArray<{ code: string; name: string }> = [
   { code: 'NET_PAY', name: 'Thực lĩnh' },
 ];
 
-/** Tên mặc định của nguồn — dùng khi cột không đặt tên riêng. */
+/** Cột chữ — không cộng tổng. */
+export const INFO_SOURCES: ReadonlyArray<{ code: string; name: string }> = [
+  { code: 'DAYS_CHECK', name: 'Cảnh báo nhập sai số liệu' },
+  { code: 'START_DATE', name: 'Ngày đi làm chính thức' },
+  { code: 'BLANK', name: 'Ô để trống' },
+];
+
+const SOURCE_LISTS: Record<Exclude<SheetSource, 'LINE'>, ReadonlyArray<{ code: string; name: string }>> = {
+  DATA: DATA_SOURCES,
+  LEAVE: LEAVE_SOURCES,
+  TOTAL: TOTAL_SOURCES,
+  INFO: INFO_SOURCES,
+};
+
+/** Tên mặc định của nguồn — dùng khi cột không đặt tên riêng. Không bao giờ trả mã biến. */
 export function sourceName(source: SheetSource, code: string, components: readonly PayComponent[]): string {
-  if (source === 'LINE') return components.find((component) => component.code === code)?.name ?? code;
-  const list = source === 'DATA' ? DATA_SOURCES : source === 'LEAVE' ? LEAVE_SOURCES : TOTAL_SOURCES;
-  return list.find((item) => item.code === code)?.name ?? code;
+  if (source === 'LINE') return components.find((component) => component.code === code)?.name ?? 'Đầu mục đã xoá';
+  return SOURCE_LISTS[source].find((item) => item.code === code)?.name ?? 'Không rõ nguồn';
 }
 
 export const columnLabel = (column: SheetColumn, components: readonly PayComponent[]) =>
@@ -119,6 +142,40 @@ export function dataValueOf(computed: ComputedPayslip, code: string, hoursPerDay
   );
   const value = scope[code];
   return Number.isFinite(value) ? value : null;
+}
+
+export const DAYS_CHECK_OK = 'OK!';
+export const DAYS_CHECK_WRONG = 'Đã nhập sai số ngày công của nhân viên này!';
+
+/**
+ * Ô chữ (nguồn INFO). Cảnh báo theo đúng công thức Excel: công + phép + lễ vượt
+ * số ngày làm việc trong tháng thì báo sai.
+ */
+export function infoValueOf(
+  computed: ComputedPayslip,
+  profile: { hire_date?: string | null },
+  code: string,
+  hoursPerDay: number,
+): string {
+  if (code === 'DAYS_CHECK') {
+    const cong = computed.lines.find((line) => line.code === 'CONG')?.amount
+      ?? dataValueOf(computed, 'WORK_DAYS', hoursPerDay) ?? 0;
+    const leave = dataValueOf(computed, 'LEAVE_DAYS', hoursPerDay) ?? 0;
+    const holiday = dataValueOf(computed, 'HOLIDAY_DAYS', hoursPerDay) ?? 0;
+    return cong + leave + holiday > computed.standardDays + 1e-9 ? DAYS_CHECK_WRONG : DAYS_CHECK_OK;
+  }
+  if (code === 'START_DATE') {
+    const match = profile.hire_date?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : '';
+  }
+  return '';
+}
+
+/** Tiêu đề in: thay {tháng} / {năm}; không có thì thêm "THÁNG mm/yyyy". */
+export function sheetTitle(sheet: Pick<PayrollSheet, 'name' | 'title'>, month: string, year: number): string {
+  const base = (sheet.title?.trim() || sheet.name).toUpperCase();
+  if (/\{(THÁNG|NĂM)\}/.test(base)) return base.replace(/\{THÁNG\}/g, month).replace(/\{NĂM\}/g, String(year));
+  return `${base} THÁNG ${month}`;
 }
 
 export function totalValueOf(computed: ComputedPayslip, code: string): number | null {
@@ -214,15 +271,19 @@ function sheetFromRow(row: Record<string, unknown>): PayrollSheet {
     id: String(row.id),
     name: String(row.name ?? ''),
     title: (row.title as string) ?? null,
+    form_code: (row.form_code as string) || null,
+    issuer: (row.issuer as string) || null,
+    subtitle: (row.subtitle as string) || null,
+    show_standard_days: row.show_standard_days === true,
     sort_order: Number(row.sort_order) || 0,
     require_codes: Array.isArray(row.require_codes) ? row.require_codes.map(String) : [],
     unit_ids: Array.isArray(row.unit_ids) ? row.unit_ids.map(String) : [],
     columns: columns.map((column) => ({
       group: (column.group as string) || null,
-      source: (['LINE', 'DATA', 'LEAVE', 'TOTAL'].includes(String(column.source)) ? column.source : 'LINE') as SheetSource,
+      source: (['LINE', 'DATA', 'LEAVE', 'TOTAL', 'INFO'].includes(String(column.source)) ? column.source : 'LINE') as SheetSource,
       code: String(column.code ?? ''),
       label: (column.label as string) || null,
-      total: column.total !== false,
+      total: column.source !== 'INFO' && column.total !== false,
     })),
     updated_at: (row.updated_at as string) ?? undefined,
   };

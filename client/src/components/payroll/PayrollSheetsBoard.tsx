@@ -19,7 +19,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
 import type { PayrollWorkspace } from '@/lib/payrollData';
 import {
-  DATA_SOURCES, LEAVE_SOURCES, SOURCE_LABEL, TOTAL_SOURCES, columnLabel, deletePayrollSheet, headerGroups,
+  DATA_SOURCES, INFO_SOURCES, LEAVE_SOURCES, SOURCE_LABEL, TOTAL_SOURCES, columnLabel, deletePayrollSheet, headerGroups,
   savePayrollSheet, sourceName, type PayrollSheet, type SheetColumn, type SheetSource,
 } from '@/lib/payrollSheets';
 
@@ -27,6 +27,10 @@ interface Draft {
   id: string | null;
   name: string;
   title: string;
+  form_code: string;
+  issuer: string;
+  subtitle: string;
+  show_standard_days: boolean;
   require_codes: string[];
   unit_ids: string[];
   columns: SheetColumn[];
@@ -34,10 +38,14 @@ interface Draft {
 
 const toDraft = (sheet: PayrollSheet | null): Draft => (sheet
   ? {
-    id: sheet.id, name: sheet.name, title: sheet.title ?? '', require_codes: [...sheet.require_codes],
-    unit_ids: [...sheet.unit_ids], columns: sheet.columns.map((column) => ({ ...column })),
+    id: sheet.id, name: sheet.name, title: sheet.title ?? '', form_code: sheet.form_code ?? '',
+    issuer: sheet.issuer ?? '', subtitle: sheet.subtitle ?? '', show_standard_days: sheet.show_standard_days,
+    require_codes: [...sheet.require_codes], unit_ids: [...sheet.unit_ids], columns: sheet.columns.map((column) => ({ ...column })),
   }
-  : { id: null, name: '', title: '', require_codes: [], unit_ids: [], columns: [] });
+  : {
+    id: null, name: '', title: '', form_code: '', issuer: '', subtitle: '', show_standard_days: false,
+    require_codes: [], unit_ids: [], columns: [],
+  });
 
 const cellInput = 'h-8 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 text-xs font-semibold text-slate-900 dark:text-slate-100 placeholder:text-slate-600 dark:placeholder:text-slate-400 outline-none focus:border-indigo-600 disabled:bg-slate-100 dark:disabled:bg-slate-800/60';
 
@@ -103,6 +111,7 @@ export function PayrollSheetsBoard({ data, canManage, onChanged }: {
     ...DATA_SOURCES.map((item) => ({ value: `DATA:${item.code}`, label: item.name, detail: SOURCE_LABEL.DATA })),
     ...LEAVE_SOURCES.map((item) => ({ value: `LEAVE:${item.code}`, label: item.name, detail: SOURCE_LABEL.LEAVE })),
     ...TOTAL_SOURCES.map((item) => ({ value: `TOTAL:${item.code}`, label: item.name, detail: SOURCE_LABEL.TOTAL })),
+    ...INFO_SOURCES.map((item) => ({ value: `INFO:${item.code}`, label: item.name, detail: SOURCE_LABEL.INFO })),
   ], [components]);
   const componentOptions = useMemo<DropdownOption[]>(
     () => components.filter((component) => !draft.require_codes.includes(component.code))
@@ -147,6 +156,10 @@ export function PayrollSheetsBoard({ data, canManage, onChanged }: {
     const { id, error } = await savePayrollSheet(draft.id, {
       name: draft.name.trim(),
       title: draft.title.trim() || null,
+      form_code: draft.form_code.trim() || null,
+      issuer: draft.issuer.trim() || null,
+      subtitle: draft.subtitle.trim() || null,
+      show_standard_days: draft.show_standard_days,
       sort_order: selected?.sort_order ?? (Math.max(0, ...sheets.map((sheet) => sheet.sort_order)) + 10),
       require_codes: draft.require_codes,
       unit_ids: draft.unit_ids,
@@ -229,6 +242,19 @@ export function PayrollSheetsBoard({ data, canManage, onChanged }: {
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Tên bảng" required value={draft.name} disabled={readOnly} onChange={(event) => patch({ name: event.target.value })} />
               <Input label="Tiêu đề khi in" value={draft.title} disabled={readOnly} placeholder={draft.name.toUpperCase()} onChange={(event) => patch({ title: event.target.value })} />
+              <Input label="Mã biểu mẫu" value={draft.form_code} disabled={readOnly} placeholder="BL 01" onChange={(event) => patch({ form_code: event.target.value })} />
+              <Input label="Đơn vị lập" value={draft.issuer} disabled={readOnly} placeholder="PHÒNG KẾ TOÁN" onChange={(event) => patch({ issuer: event.target.value })} />
+              <Input label="Dòng dưới tiêu đề" value={draft.subtitle} disabled={readOnly} placeholder="BỘ PHẬN: KINH DOANH" onChange={(event) => patch({ subtitle: event.target.value })} />
+              <label className="flex items-center gap-2 self-end pb-2.5 text-sm font-bold text-slate-800 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-indigo-600"
+                  checked={draft.show_standard_days}
+                  disabled={readOnly}
+                  onChange={(event) => patch({ show_standard_days: event.target.checked })}
+                />
+                In số ngày làm việc
+              </label>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -325,7 +351,7 @@ export function PayrollSheetsBoard({ data, canManage, onChanged }: {
                             options={sourceOptions}
                             onChange={(value) => {
                               const [source, code] = value.split(':') as [SheetSource, string];
-                              patchColumn(index, { source, code });
+                              patchColumn(index, { source, code, ...(source === 'INFO' ? { total: false } : {}) });
                             }}
                             aria-label={`Nguồn số của cột ${index + 1}`}
                           />
@@ -345,7 +371,7 @@ export function PayrollSheetsBoard({ data, canManage, onChanged }: {
                             type="checkbox"
                             className="h-4 w-4 accent-indigo-600"
                             checked={column.total}
-                            disabled={readOnly}
+                            disabled={readOnly || column.source === 'INFO'}
                             aria-label={`Cộng tổng cột ${index + 1}`}
                             onChange={(event) => patchColumn(index, { total: event.target.checked })}
                           />

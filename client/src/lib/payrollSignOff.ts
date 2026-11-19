@@ -32,6 +32,35 @@ export function payrollSignOff(
   };
 }
 
+/** "Ngày 10 tháng 09 năm 2026"; chưa ký thì để chấm như mẫu Excel. */
+function signDate(iso: string | null | undefined, year: number): string {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return `Ngày … tháng … năm ${year}`;
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `Ngày ${pad(date.getDate())} tháng ${pad(date.getMonth() + 1)} năm ${date.getFullYear()}`;
+}
+
+/**
+ * Khối ký theo mẫu bảng lương Excel: PHÓ GIÁM ĐỐC | KIỂM TRA | NGƯỜI LẬP, mỗi ô
+ * có dòng ngày phía trên. Cùng dấu vết kỳ lương như `payrollSignOff`.
+ */
+export function payrollSheetSignOff(
+  run: PayrollRun | null | undefined,
+  nameOf: (id: string | null) => string,
+  year: number,
+): PrintSignOff {
+  const base = payrollSignOff(run, nameOf);
+  const [maker, checker, director] = base.signers;
+  return {
+    signers: [
+      { ...director, role: 'PHÓ GIÁM ĐỐC', date: signDate(director.signedAt, year) },
+      { ...checker, role: 'KIỂM TRA', date: signDate(checker.signedAt, year) },
+      { ...maker, role: 'NGƯỜI LẬP', date: signDate(maker.signedAt, year) },
+    ],
+    approvedStamp: base.approvedStamp,
+  };
+}
+
 /** Cùng nội dung khối ký, dạng dòng chữ cho file Excel. */
 export function signOffLines(signOff: PrintSignOff): string[] {
   const at = (iso: string) => new Date(iso).toLocaleString('vi-VN');

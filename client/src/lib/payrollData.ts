@@ -131,7 +131,8 @@ export async function loadPayrollWorkspace(
     fetchParamVersions(),
     // Ca làm việc: cho công chuẩn theo tháng (BR-PAY-001) và đo đi muộn.
     fetchWorkSchedules(),
-    supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
+    // Cả người đã khoá tài khoản — lọc lại bên dưới theo cơ chế lương của tháng.
+    supabase.from('profiles_directory').select('*').order('name'),
     supabase.from('organization_units').select('id, code, name, unit_type, parent_id, manager_id, is_active, created_at, updated_at').order('name'),
     supabase.from('payroll_component_categories').select('*').order('sort_order'),
     supabase.from('payroll_components').select('*').order('sort_order'),
@@ -221,13 +222,23 @@ export async function loadPayrollWorkspace(
     .map((link) => link.component_code?.toUpperCase())
     .filter((code): code is string => !!code)];
 
+  // Người đã khoá tài khoản vẫn có mặt ở tháng mà cơ chế lương của họ còn hiệu
+  // lực VÀ có ngày kết thúc (làm đến hết tháng đó rồi nghỉ). Cơ chế để mở thì
+  // không tính — người nghỉ thật thường giữ nguyên dòng cơ chế cũ.
+  const payItems = (itemsRes.data || []) as EmployeePayItem[];
+  const endedInMonth = new Set(payItems
+    .filter((item) => item.effective_to && item.effective_from <= monthEndStr && item.effective_to >= monthStartStr)
+    .map((item) => item.user_id));
+  const profiles = ((profilesRes.data || []) as Profile[])
+    .filter((person) => person.is_active === true || endedInMonth.has(person.id));
+
   return {
-    profiles: (profilesRes.data || []) as Profile[],
+    profiles,
     units: (unitsRes.data || []) as OrganizationUnit[],
     categories: categoriesRes.error ? [] : (categoriesRes.data || []) as PayComponentCategory[],
     components: (componentsRes.data || []) as PayComponent[],
     paramVersions: versions.versions,
-    items: (itemsRes.data || []) as EmployeePayItem[],
+    items: payItems,
     schemes: schemesRes.error ? [] : (schemesRes.data || []) as PayScheme[],
     schemeItems: schemeItemsRes.error ? [] : (schemeItemsRes.data || []) as PaySchemeItem[],
     payslipLayouts: layoutsRes.error ? [] : (layoutsRes.data || []) as PayslipLayout[],
