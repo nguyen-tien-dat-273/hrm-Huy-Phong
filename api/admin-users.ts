@@ -216,6 +216,13 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     if (!fullAdmin && target.role !== 'staff') return fail(response, 403, 'Bạn không được thao tác tài khoản quản trị hoặc trưởng nhóm.');
 
     if (action === 'delete') {
+      // admin_delete_user xoá tài khoản cùng dữ liệu đi kèm trong một giao dịch,
+      // vượt qua các trigger khoá kỳ công / kỳ lương vốn làm GoTrue báo
+      // "Database error deleting user". DB chưa có hàm thì quay về cách cũ.
+      const { error: rpcError } = await service.rpc('admin_delete_user', { p_user: userId, p_actor: actor.id });
+      if (!rpcError) return response.status(200).json({ success: true });
+      const missingFunction = rpcError.code === 'PGRST202' || rpcError.code === '42883';
+      if (!missingFunction) return fail(response, 400, rpcError.message);
       const { error } = await service.auth.admin.deleteUser(userId);
       if (error) return fail(response, 400, error.message);
       return response.status(200).json({ success: true });
