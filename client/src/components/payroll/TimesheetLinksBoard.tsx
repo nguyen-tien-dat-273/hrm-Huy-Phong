@@ -121,7 +121,7 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
   };
 
   if (!loaded) {
-    return <p className="px-1 py-6 text-center text-sm font-semibold text-slate-500">Đang tải…</p>;
+    return <p className="px-1 py-6 text-center text-sm font-semibold text-slate-600">Đang tải…</p>;
   }
 
   return (
@@ -142,10 +142,10 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
                 <div key={source} className="grid grid-cols-[1fr_1.2fr] border-b border-slate-300 dark:border-slate-700 last:border-b-0">
                   <div className="px-3 py-2.5" title={hint}>
                     <p className="text-sm font-black text-slate-900 dark:text-slate-100">{label}</p>
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">{unit}</p>
+                    <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">{unit}</p>
                   </div>
                   <div className="border-l border-slate-300 dark:border-slate-700 px-2 py-1.5">
-                    <Dropdown compact square searchable disabled={!canManage} aria-label={`Đầu mục nhận ${label}`}
+                    <Dropdown compact searchable disabled={!canManage} aria-label={`Đầu mục nhận ${label}`}
                       value={links[source] ?? ''} options={options}
                       onChange={(value) => setLinks((current) => ({ ...current, [source]: value }))} />
                     {warning && (
@@ -158,10 +158,7 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
               );
             })}
           </div>
-          <p className="text-xs font-medium text-slate-500">
-            Số được điền khi khoá kỳ công và gỡ khi mở lại kỳ công. Đầu mục đã liên kết thì không sửa tay ở Bảng lương.
-            Lương nghỉ lễ tự tính từ ngày lễ công ty nên không cần liên kết — Bảng công chỉ hiện số ngày để đối chiếu.
-          </p>
+
         </CardContent>
       </Card>
 
@@ -173,7 +170,7 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
 
           <div>
             <p className="mb-1 text-xs font-bold text-slate-700 dark:text-slate-300">
-              Công làm thêm sau 22h <span className="font-normal text-slate-400">— ngày ra sau mốc giờ này cộng một công</span>
+              Công làm thêm sau 22h <span className="font-normal text-slate-600">— ngày ra sau mốc giờ này cộng một công</span>
             </p>
             <div className="grid grid-cols-[8rem_1fr] items-center gap-3">
               <input type="time" value={rules.night_cutoff} disabled={!canManage}
@@ -188,7 +185,7 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
 
           <div>
             <p className="mb-1 text-xs font-bold text-slate-700 dark:text-slate-300">
-              Phạt đi muộn quá số lần <span className="font-normal text-slate-400">— từ số lần này trở lên bị phạt ngần ấy ngày công</span>
+              Phạt đi muộn quá số lần <span className="font-normal text-slate-600">— từ số lần này trở lên bị phạt ngần ấy ngày công</span>
             </p>
             <div className="border-2 border-slate-400 dark:border-slate-600 shadow-sm">
               <div className="grid grid-cols-[1fr_1fr_2.5rem] border-b-2 border-slate-400 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-xs font-black text-slate-900 dark:text-slate-100">
@@ -208,13 +205,13 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
                   </div>
                   <button type="button" disabled={!canManage} aria-label="Xoá bậc"
                     onClick={() => setTiers((rows) => rows.filter((_, i) => i !== index))}
-                    className="flex items-center justify-center text-slate-400 hover:text-red-600 disabled:opacity-40">
+                    className="flex items-center justify-center text-slate-600 hover:text-red-600 disabled:opacity-40">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
               ))}
               {tiers.length === 0 && (
-                <p className="px-3 py-3 text-xs font-semibold text-slate-500">Chưa có bậc nào — đi muộn bao nhiêu lần cũng không bị trừ công.</p>
+                <p className="px-3 py-3 text-xs font-semibold text-slate-600">Chưa có bậc nào — đi muộn bao nhiêu lần cũng không bị trừ công.</p>
               )}
             </div>
             {canManage && (
@@ -222,9 +219,7 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
                 <Plus className="h-3.5 w-3.5" /> Thêm bậc
               </Button>
             )}
-            <p className="mt-2 text-xs font-medium text-slate-500">
-              Số lần đi muộn đo từ ca làm việc, bỏ những ngày có đơn đi muộn đã duyệt.
-            </p>
+
           </div>
 
           <label className="flex items-start gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -232,7 +227,7 @@ export function TimesheetLinksBoard({ data, canManage, onChanged }: { data: Payr
               onChange={(event) => setRules((value) => ({ ...value, deduct_leave_first: event.target.checked }))} />
             <span>
               Trừ phép năm còn lại trước
-              <span className="block font-normal text-slate-500">
+              <span className="block font-normal text-slate-600">
                 Ngày phạt trừ vào phép năm (ghi vào sổ phép); phần thiếu mới thành công bị trừ trong lương. Mở lại kỳ công thì hoàn phép.
               </span>
             </span>

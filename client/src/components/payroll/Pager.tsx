@@ -2,41 +2,16 @@
 import { useEffect, useRef, type ReactNode, type TouchEvent } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-export const ITEMS_PER_PAGE = 10;
+import { Pagination, PAGE_SIZE_LIST, clampPage as clamp } from '@/components/ui/Pagination';
 
-/** Kẹp số trang về đoạn hợp lệ — danh sách ngắn đi thì không đứng ở trang không còn. */
-export const clampPage = (page: number, total: number, size = ITEMS_PER_PAGE) =>
-  Math.min(Math.max(1, page), Math.max(1, Math.ceil(total / size)));
+export const ITEMS_PER_PAGE = PAGE_SIZE_LIST;
+export const clampPage = clamp;
 
-export function Pager({
-  page, total, size = ITEMS_PER_PAGE, noun = 'đầu mục', onPage,
-}: {
-  page: number;
-  total: number;
-  size?: number;
-  /** Chữ sau tổng số: "đầu mục", "người"… */
-  noun?: string;
-  onPage: (page: number) => void;
+/** Tên cũ của thanh phân trang dùng chung (components/ui/Pagination). */
+export function Pager({ page, total, size = ITEMS_PER_PAGE, noun = 'đầu mục', onPage }: {
+  page: number; total: number; size?: number; noun?: string; onPage: (page: number) => void;
 }) {
-  const pageCount = Math.max(1, Math.ceil(total / size));
-  if (total <= size) return null;
-  const from = (page - 1) * size + 1;
-  const to = Math.min(page * size, total);
-  const step = 'inline-flex h-9 items-center gap-1 rounded-none border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700 disabled:pointer-events-none disabled:opacity-40';
-  return (
-    <nav className="flex flex-wrap items-center justify-between gap-2 pt-1 no-print" aria-label={`Phân trang ${noun}`}>
-      <span className="text-xs text-slate-500">{from}–{to} / {total} {noun}</span>
-      <div className="flex items-center gap-2">
-        <button type="button" className={step} disabled={page <= 1} onClick={() => onPage(page - 1)}>
-          <ChevronLeft className="h-3.5 w-3.5" /> Trước
-        </button>
-        <span className="min-w-[3.5rem] text-center text-xs font-bold tabular-nums text-slate-700">{page} / {pageCount}</span>
-        <button type="button" className={step} disabled={page >= pageCount} onClick={() => onPage(page + 1)}>
-          Sau <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </nav>
-  );
+  return <Pagination page={page} total={total} size={size} noun={noun} setPage={onPage} />;
 }
 
 /**
@@ -102,7 +77,7 @@ export function PagedList({
     if (next >= 1 && next <= pageCount) onPage(next);
   };
 
-  const side = 'sticky top-[42vh] flex h-8 w-8 items-center justify-center self-start rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:pointer-events-none disabled:opacity-30 no-print';
+  const side = 'sticky top-[42vh] flex h-8 w-8 items-center justify-center self-start rounded-none border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600 disabled:pointer-events-none disabled:opacity-30 no-print';
   return (
     <div
       ref={boxRef}

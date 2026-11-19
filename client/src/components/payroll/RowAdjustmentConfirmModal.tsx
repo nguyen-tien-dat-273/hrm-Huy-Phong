@@ -150,19 +150,19 @@ export function RowAdjustmentConfirmModal({
     >
       <div className="space-y-5 text-sm">
         {/* Thông tin nhân sự */}
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-3.5">
+        <div className="flex items-center justify-between gap-3 rounded-none border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 p-3.5">
           <div className="flex items-center gap-3 min-w-0">
             <Avatar name={row.profile.name} url={row.profile.avatar_url} size="md" />
             <div className="min-w-0">
               <p className="truncate font-bold text-slate-900 dark:text-slate-100 text-base">{row.profile.name}</p>
-              <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+              <p className="truncate text-xs font-medium text-slate-600 dark:text-slate-400">
                 {row.profile.employee_code ? `${row.profile.employee_code} · ` : ''}
                 {row.mechanism ?? row.profile.department ?? 'Chưa gắn phòng ban'}
               </p>
             </div>
           </div>
           <div className="text-right shrink-0">
-            <span className="inline-flex items-center rounded-md bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+            <span className="inline-flex items-center rounded-none bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 text-xs font-bold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
               Kỳ lương {monthLabel}
             </span>
           </div>
@@ -184,7 +184,7 @@ export function RowAdjustmentConfirmModal({
             )}
           </div>
 
-          <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 shadow-xs">
+          <div className="max-h-64 overflow-y-auto rounded-none border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800/80 bg-white dark:bg-slate-900 shadow-xs">
             {items.map((item) => {
               const isEarning = item.kind === 'EARNING';
               const isDeduction = item.kind === 'DEDUCTION';
@@ -200,7 +200,7 @@ export function RowAdjustmentConfirmModal({
                         {item.name}
                       </span>
                       <span
-                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        className={`text-[11px] font-bold px-1.5 py-0.5 rounded-none ${
                           isEarning
                             ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
                             : isDeduction
@@ -211,19 +211,19 @@ export function RowAdjustmentConfirmModal({
                         {isEarning ? 'Thu nhập' : isDeduction ? 'Khoản trừ' : 'Trung gian'}
                       </span>
                     </div>
-                    <span className="text-xs text-slate-400 font-mono">{item.code}</span>
+                    <span className="text-xs text-slate-600 font-mono">{item.code}</span>
                   </div>
 
                   <div className="flex items-center gap-3 tabular-nums text-sm shrink-0">
-                    <span className="text-slate-500 line-through dark:text-slate-400">
+                    <span className="text-slate-600 line-through dark:text-slate-400">
                       {formatFormulaNumber(item.oldValue)}
                     </span>
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                    <ArrowRight className="h-3.5 w-3.5 text-slate-600" />
                     <span className="font-bold text-slate-900 dark:text-slate-100">
                       {formatFormulaNumber(item.newValue)}
                     </span>
                     <span
-                      className={`min-w-[70px] text-right font-black text-xs px-2 py-0.5 rounded ${
+                      className={`min-w-[70px] text-right font-black text-xs px-2 py-0.5 rounded-none ${
                         isPositiveImpact
                           ? 'bg-emerald-100/80 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
                           : 'bg-rose-100/80 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
@@ -262,9 +262,9 @@ export function RowAdjustmentConfirmModal({
             value={originMonth}
             onChange={(e) => setOriginMonth(e.target.value)}
             max={monthStartStr.slice(0, 7)}
-            className="h-9 w-full sm:w-60 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm font-medium text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+            className="h-9 w-full sm:w-60 rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm font-medium text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
           />
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-600">
             Để trống nếu là khoản điều chỉnh trực tiếp của kỳ lương tháng {monthLabel}.
           </p>
         </div>
@@ -275,7 +275,7 @@ export function RowAdjustmentConfirmModal({
             <button
               type="button"
               onClick={() => setShowExisting((val) => !val)}
-              className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
             >
               <History className="h-3.5 w-3.5" />
               {showExisting ? 'Ẩn' : 'Xem'} {existingAdjustments.length} điều chỉnh đã lưu trong tháng của nhân sự này
@@ -286,13 +286,13 @@ export function RowAdjustmentConfirmModal({
                 {existingAdjustments.map((adj) => (
                   <div
                     key={adj.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 px-3 py-1.5 text-xs"
+                    className="flex items-center justify-between gap-2 rounded-none border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 px-3 py-1.5 text-xs"
                   >
                     <div className="min-w-0 flex-1">
                       <span className="font-bold text-slate-800 dark:text-slate-200">
                         {adj.component_code ?? 'Điều chỉnh riêng'}
                       </span>
-                      <span className="mx-1 text-slate-400">·</span>
+                      <span className="mx-1 text-slate-600">·</span>
                       <span className="text-slate-600 dark:text-slate-400">{adj.reason}</span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -302,7 +302,7 @@ export function RowAdjustmentConfirmModal({
                       <button
                         type="button"
                         onClick={() => void handleRemoveExisting(adj)}
-                        className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                        className="p-1 text-slate-600 hover:text-rose-600 dark:hover:text-rose-400 rounded-none hover:bg-rose-50 dark:hover:bg-rose-950/40"
                         title="Xóa điều chỉnh này"
                       >
                         <Trash2 className="h-3.5 w-3.5" />

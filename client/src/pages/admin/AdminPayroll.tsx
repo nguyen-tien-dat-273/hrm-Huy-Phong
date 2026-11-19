@@ -25,6 +25,7 @@ import { PayrollSectionSkeleton } from '@/components/payroll/PayrollSkeletons';
 import { ComponentCatalog } from '@/components/payroll/ComponentCatalog';
 import { PayrollParamsTab } from '@/components/payroll/PayrollParamsTab';
 import { TimesheetLinksBoard } from '@/components/payroll/TimesheetLinksBoard';
+import { PayrollSheetsBoard } from '@/components/payroll/PayrollSheetsBoard';
 import { PayrollDryRunModal } from '@/components/payroll/PayrollDryRunModal';
 import { PaySchemeTree } from '@/components/payroll/PaySchemeTree';
 import { PayrollSetupSteps } from '@/components/payroll/PayrollSetupOverview';
@@ -40,10 +41,10 @@ import { toDateString } from '@/lib/utils';
 import { loadPayrollWorkspace, type PayrollWorkspace } from '@/lib/payrollData';
 import { paramsForMonth } from '@/lib/payrollRun';
 
-type Tab = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'timesheet' | 'approvals' | 'reports';
+type Tab = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'timesheet' | 'sheets' | 'approvals' | 'reports';
 
 /** Các mục thuộc "Thiết lập lương" — chung một thanh bước trên đầu trang. */
-const SETUP_TABS: readonly Tab[] = ['params', 'schemes', 'timesheet', 'catalog'];
+const SETUP_TABS: readonly Tab[] = ['params', 'schemes', 'sheets', 'timesheet', 'catalog'];
 
 /**
  * Mỗi mục là một ROUTE riêng, đã hiện thành module con trên sidebar — trang
@@ -62,6 +63,11 @@ const SECTION_META: Record<Tab, { title: string; hint: string; monthScoped: bool
   },
   params: {
     title: 'Tham số lương',
+    hint: '',
+    monthScoped: false, fn: ['admin.payroll_settings'],
+  },
+  sheets: {
+    title: 'Bảng lương',
     hint: '',
     monthScoped: false, fn: ['admin.payroll_settings'],
   },
@@ -157,7 +163,7 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
     return (
       <Card className="!rounded-none">
         <CardContent>
-          <p className="flex items-start gap-2.5 py-4 text-sm leading-relaxed text-slate-500">
+          <p className="flex items-start gap-2.5 py-4 text-sm leading-relaxed text-slate-600">
             <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
             Bạn chưa được cấp chức năng cho mục <strong className="text-slate-700">{meta.title}</strong>. Dữ liệu lương
             chỉ mở theo đúng chức năng được giao.
@@ -208,9 +214,9 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
     return (
       <Card className="!rounded-none">
         <CardContent className="py-10 text-center">
-          <Calculator className="mx-auto h-11 w-11 text-slate-300" />
+          <Calculator className="mx-auto h-11 w-11 text-slate-600" />
           <h2 className="mt-3 text-lg font-bold text-slate-800">Chưa bật phần tính lương</h2>
-          <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-500">
+          <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
             Cơ sở dữ liệu chưa có các bảng của phần lương. Liên hệ quản trị hệ thống để cập nhật rồi tải lại trang.
           </p>
         </CardContent>
@@ -263,6 +269,14 @@ export function AdminPayroll({ section = 'register' }: { section?: Tab } = {}) {
           currentMonth={monthStartStr}
           canManage={can('admin.payroll_settings')}
           onSaved={reload}
+        />
+      )}
+
+      {tab === 'sheets' && (
+        <PayrollSheetsBoard
+          data={data}
+          canManage={can('admin.payroll_settings')}
+          onChanged={reload}
         />
       )}
 

@@ -67,12 +67,10 @@ export function FormulaSheetModal({ open, onClose, subject, rows, nameOf, catego
               <Copy className="h-4 w-4" /> Chép dạng chữ
             </Button>
           </div>
-          <p className="text-xs text-slate-500">
-            Chỉ gồm các khoản cộng và khoản trừ. Dòng trung gian là số liệu nhập tay hoặc khai từng người thì giữ nguyên tên.
-          </p>
+
 
           {sheet.sections.length === 0 ? (
-            <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+            <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">
               Cơ chế chưa có khoản cộng hay khoản trừ nào.
             </p>
           ) : (
@@ -91,7 +89,7 @@ export function FormulaSheetModal({ open, onClose, subject, rows, nameOf, catego
                         </span>
                         <span className="block pl-5 break-words">= {line.text}</span>
                         {expand && line.expanded.length > 0 && (
-                          <span className="block pl-5 text-xs text-slate-400 break-words">
+                          <span className="block pl-5 text-xs text-slate-600 break-words">
                             Trong cơ chế: {line.written}
                           </span>
                         )}

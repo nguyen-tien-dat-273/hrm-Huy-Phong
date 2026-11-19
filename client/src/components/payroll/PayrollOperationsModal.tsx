@@ -57,12 +57,12 @@ export function RunLifecycle({ status }: { status: PayrollRunStatus }) {
             />
           )}
           <span
-            className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+            className={`rounded-none px-2.5 py-1 text-[11px] font-bold transition-colors ${
               index === current
                 ? 'bg-indigo-600 text-white shadow-xs'
                 : index < current
                 ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
             }`}
           >
             {RUN_STATUS_LABEL[step]}
@@ -163,12 +163,12 @@ export function PayrollOperationsModal({
   };
 
   return (
-    <Modal square open={open} onClose={onClose} title={`Vận hành & Quy trình kỳ lương tháng ${monthLabel}`} size="xl">
+    <Modal square open={open} onClose={onClose} title={`Kỳ lương ${monthLabel}`} size="xl">
       <div className="space-y-5">
         {/* ===================== KHỐI 1: VÒNG ĐỜI TRẠNG THÁI ===================== */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 p-4 space-y-3">
+        <div className="rounded-none border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-2.5">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
               Tiến trình kỳ lương
             </span>
             <span className="rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-200 px-2.5 py-0.5 text-xs font-black">
@@ -180,7 +180,7 @@ export function PayrollOperationsModal({
 
           {/* Thông báo chi tiết theo trạng thái */}
           {runStatus === 'CALCULATED' && run?.review_note && lastEvent && (lastEvent.action === 'REJECTED' || lastEvent.action === 'WITHDRAWN') && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200">
+            <div className="flex items-start gap-2.5 rounded-none border border-red-200 bg-red-50 p-3 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-200">
               <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
               <div>
                 <p className="font-bold">
@@ -193,7 +193,7 @@ export function PayrollOperationsModal({
           )}
 
           {runStatus === 'LOCKED' && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
+            <div className="flex items-start gap-2.5 rounded-none border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-200">
               <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <div>
                 <p className="font-bold">Kỳ đã khoá lúc {formatDateTime(run?.locked_at ?? null)} bởi {nameOf(run?.locked_by ?? null)}</p>
@@ -207,7 +207,7 @@ export function PayrollOperationsModal({
           )}
 
           {runStatus === 'APPROVED' && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200">
+            <div className="flex items-start gap-2.5 rounded-none border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-200">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
               <div>
                 <p className="font-bold">Kỳ lương đã được Ban Giám đốc duyệt chi</p>
@@ -219,7 +219,7 @@ export function PayrollOperationsModal({
           )}
 
           {runStatus === 'PAID' && (
-            <div className="flex items-start gap-2.5 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/60 dark:text-indigo-200">
+            <div className="flex items-start gap-2.5 rounded-none border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-800 dark:border-indigo-900 dark:bg-indigo-950/60 dark:text-indigo-200">
               <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
               <div>
                 <p className="font-bold">Đã hoàn tất chi trả và phát hành phiếu lương</p>
@@ -234,8 +234,8 @@ export function PayrollOperationsModal({
         {/* ===================== KHỐI 2: HÀNH ĐỘNG CHÍNH & VẬN HÀNH ===================== */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* CỘT TRÁI: CÁC NÚT HÀNH ĐỘNG VẬN HÀNH */}
-          <div className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2">
+          <div className="space-y-3 rounded-none border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2">
               <Calculator className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
               Thao tác vận hành kỳ
             </h4>
@@ -289,7 +289,7 @@ export function PayrollOperationsModal({
               {runStatus === 'LOCKED' && (
                 <div className="space-y-2">
                   {canApprove && (
-                    <div className="space-y-2 p-3 rounded-lg border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30">
+                    <div className="space-y-2 p-3 rounded-none border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/30">
                       <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
                         <ClipboardCheck className="h-3.5 w-3.5" /> Thẩm quyền phê duyệt chi
                       </div>
@@ -373,7 +373,7 @@ export function PayrollOperationsModal({
 
             {/* Xuất file & Bút toán kết chuyển */}
             <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
                 Xuất tài liệu & Báo cáo
               </span>
               <div className="flex flex-wrap items-center gap-2">
@@ -413,7 +413,7 @@ export function PayrollOperationsModal({
                   {historyOpen ? 'Thu gọn lịch sử kỳ lương' : `Xem lịch sử phê duyệt kỳ lương (${runEvents.length})`}
                 </button>
                 {historyOpen && (
-                  <div className="mt-2.5 max-h-48 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800 p-2.5 bg-slate-50 dark:bg-slate-850">
+                  <div className="mt-2.5 max-h-48 overflow-y-auto rounded-none border border-slate-200 dark:border-slate-800 p-2.5 bg-slate-50 dark:bg-slate-850">
                     <Timeline rows={runEvents} nameOf={nameOf} />
                   </div>
                 )}
@@ -422,14 +422,14 @@ export function PayrollOperationsModal({
           </div>
 
           {/* CỘT PHẢI: DANH SÁCH KIỂM TRA ĐIỀU KIỆN & CẢNH BÁO */}
-          <div className="space-y-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
+          <div className="space-y-3 rounded-none border border-slate-200 dark:border-slate-800 p-4 bg-white dark:bg-slate-900">
             <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
                 <ListChecks className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
                 Kiểm tra trước khi khoá kỳ
               </h4>
               <span
-                className={`text-[10px] font-black px-1.5 py-0.5 rounded ${
+                className={`text-[11px] font-black px-1.5 py-0.5 rounded-none ${
                   canLock ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
                 }`}
               >
@@ -462,13 +462,13 @@ export function PayrollOperationsModal({
                         {item.label}
                       </span>
                       {item.blocking && (
-                        <span className="text-[9px] font-black px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                        <span className="text-[11px] font-black px-1 py-0.2 rounded-none bg-slate-100 dark:bg-slate-800 text-slate-600">
                           Bắt buộc
                         </span>
                       )}
                     </div>
                     {!item.ok && (
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-snug">
                         {item.hint}
                       </p>
                     )}
@@ -486,7 +486,7 @@ export function PayrollOperationsModal({
                 </div>
 
                 {setupGaps.length > 0 && (
-                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 p-2 text-[11px] text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
+                  <div className="rounded-none bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 p-2 text-[11px] text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2">
                     <span>{setupGaps.length} người chưa thiết lập xong cơ chế</span>
                     <button
                       type="button"
@@ -502,12 +502,12 @@ export function PayrollOperationsModal({
                 )}
 
                 {allWarnings.length > 0 && (
-                  <div className="max-h-24 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800 p-2 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+                  <div className="max-h-24 overflow-y-auto rounded-none border border-slate-200 dark:border-slate-800 p-2 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
                     {allWarnings.slice(0, 5).map((w, idx) => (
                       <p key={idx} className="truncate">• {w}</p>
                     ))}
                     {allWarnings.length > 5 && (
-                      <p className="font-semibold text-slate-500">...và {allWarnings.length - 5} cảnh báo khác</p>
+                      <p className="font-semibold text-slate-600">...và {allWarnings.length - 5} cảnh báo khác</p>
                     )}
                   </div>
                 )}

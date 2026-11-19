@@ -53,7 +53,7 @@ export function UnitTreeList({
 }) {
   if (rows.length === 0) {
     return (
-      <p className="px-4 py-6 text-center text-xs leading-relaxed text-slate-500">
+      <p className="px-4 py-6 text-center text-xs leading-relaxed text-slate-600">
         Chưa dựng cơ cấu tổ chức. Tạo đơn vị ở <strong>Cơ cấu tổ chức</strong> rồi quay lại.
       </p>
     );
@@ -75,18 +75,18 @@ export function UnitTreeList({
             style={{ paddingLeft: `${12 + depth * 18}px` }}
           >
             {depth > 0 && <span aria-hidden className="h-px w-2.5 shrink-0 bg-slate-300" />}
-            <Building2 className={`h-4 w-4 shrink-0 ${selected ? 'text-indigo-600' : 'text-slate-400'}`} />
+            <Building2 className={`h-4 w-4 shrink-0 ${selected ? 'text-indigo-600' : 'text-slate-600'}`} />
             <span className="min-w-0 flex-1">
               <span className={`block truncate text-sm ${selected ? 'font-bold text-indigo-800' : 'font-semibold text-slate-800'}`}>
                 {unit.name}
               </span>
-              <span className="block truncate text-[11px] text-slate-400">
+              <span className="block truncate text-[11px] text-slate-600">
                 {TYPE_LABEL[unit.unit_type] ?? unit.unit_type}
                 {meta && <> · {meta(unit)}</>}
               </span>
             </span>
             {badge?.(unit)}
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-300" />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-600" />
           </button>
         );
       })}

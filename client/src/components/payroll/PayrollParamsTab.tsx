@@ -346,8 +346,8 @@ export function PayrollParamsTab({
         {sorted.length === 0 && !newVersion && (
           <Card className="!rounded-none">
             <CardContent className="space-y-3 py-10 text-center">
-              <Table2 className="mx-auto h-10 w-10 text-slate-300" />
-              <p className="text-sm text-slate-500">Chưa có bộ tham số lương nào.</p>
+              <Table2 className="mx-auto h-10 w-10 text-slate-600" />
+              <p className="text-sm text-slate-600">Chưa có bộ tham số lương nào.</p>
             </CardContent>
           </Card>
         )}
@@ -369,7 +369,7 @@ export function PayrollParamsTab({
         ))}
         {canManage && !newVersion && (
           <button type="button" onClick={startNew}
-            className="flex w-full flex-col items-center justify-center gap-1 rounded-none border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/40 py-8 text-sm font-semibold text-slate-500 dark:text-slate-400 transition hover:border-indigo-400 hover:text-indigo-600">
+            className="flex w-full flex-col items-center justify-center gap-1 rounded-none border border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/40 py-8 text-sm font-semibold text-slate-600 dark:text-slate-400 transition hover:border-indigo-400 hover:text-indigo-600">
             <Plus className="h-6 w-6" /> Thêm bộ
           </button>
         )}
@@ -412,30 +412,30 @@ export function PayrollParamsTab({
       {(!readOnly || draft.tables.length > 0) && (
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[14rem] flex-1 sm:max-w-sm">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
             <input
               type="search"
               value={tableQuery}
               onChange={(event) => setTableQuery(event.target.value)}
               placeholder="Tìm bảng hoặc tham số…"
               aria-label="Tìm bảng tham số"
-              className="h-9 w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 pl-9 pr-3 text-sm outline-none transition hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+              className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
             />
           </div>
           {!readOnly && (
             <div className="ml-auto flex flex-wrap justify-end gap-2">
-              <select
+              <Dropdown
+                compact
+                className="w-44"
                 value=""
-                onChange={(event) => {
-                  const template = TABLE_TEMPLATES.find((item) => item.name === event.target.value);
+                placeholder="Tạo từ mẫu…"
+                aria-label="Thêm bảng từ mẫu"
+                options={TABLE_TEMPLATES.map((template) => ({ value: template.name, label: template.name }))}
+                onChange={(name) => {
+                  const template = TABLE_TEMPLATES.find((item) => item.name === name);
                   if (template) addTemplate(template);
                 }}
-                aria-label="Thêm bảng từ mẫu"
-                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-500"
-              >
-                <option value="">Tạo từ mẫu…</option>
-                {TABLE_TEMPLATES.map((template) => <option key={template.name} value={template.name}>{template.name}</option>)}
-              </select>
+              />
               <Button size="sm" variant="outline" onClick={() => openCreate('LIST')}>
                 <Plus className="h-3.5 w-3.5" /> Bảng tham số
               </Button>
@@ -448,10 +448,10 @@ export function PayrollParamsTab({
       )}
 
       {draft.tables.length === 0 && (
-        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-500">Bộ này chưa có bảng nào.</CardContent></Card>
+        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-600">Bộ này chưa có bảng nào.</CardContent></Card>
       )}
       {draft.tables.length > 0 && visibleTables.length === 0 && (
-        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-500">Không có bảng nào khớp “{tableQuery.trim()}”.</CardContent></Card>
+        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-600">Không có bảng nào khớp “{tableQuery.trim()}”.</CardContent></Card>
       )}
       <div className="space-y-4">
         {visibleTables.map((table) => (table.kind === 'LIST' ? (
@@ -496,14 +496,14 @@ export function PayrollParamsTab({
             onChange={(event) => setCreateForm({ ...createForm, note: event.target.value })} />
           {creating === 'TIER' && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Dropdown square label="Cách tính" value={createForm.mode} options={TIER_MODE_OPTIONS}
+              <Dropdown label="Cách tính" value={createForm.mode} options={TIER_MODE_OPTIONS}
                 onChange={(value) => setCreateForm({
                   ...createForm,
                   mode: value as TierParamTable['mode'],
                   ...(value === 'PROGRESSIVE' ? { unit: '%' as ParamUnit } : {}),
                 })} />
               {createForm.mode === 'LOOKUP' && (
-                <Dropdown square label="Đơn vị của mức" value={createForm.unit} options={TIER_UNIT_OPTIONS}
+                <Dropdown label="Đơn vị của mức" value={createForm.unit} options={TIER_UNIT_OPTIONS}
                   onChange={(value) => setCreateForm({ ...createForm, unit: value as ParamUnit })} />
               )}
               <div className="sm:col-span-2">
@@ -634,7 +634,7 @@ function VersionCard({
   const [editGeneral, setEditGeneral] = useState(isNew);
   const editing = editHead || editGeneral;
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
-  const pencil = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400';
+  const pencil = 'flex h-8 w-8 shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400';
   const floorComponent = data.components.find((component) => component.code === form.floorComponentCode)?.name;
   const floorParam = paramsOf(version).find((param) => param.code === form.floorParamCode)?.name;
   const summary = [
@@ -686,7 +686,7 @@ function VersionCard({
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
-            <span className="text-sm text-slate-500 dark:text-slate-400">Áp dụng từ {monthLabel(form.effectiveFrom)}</span>
+            <span className="text-sm text-slate-600 dark:text-slate-400">Áp dụng từ {monthLabel(form.effectiveFrom)}</span>
           </>
         )}
         {isNew && <span className="rounded-full bg-amber-100 dark:bg-amber-900/40 px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-300">Chưa lưu</span>}
@@ -699,7 +699,7 @@ function VersionCard({
         {canManage && !isNew && canDelete && !locked && (
           <button type="button" aria-label="Xoá bộ" title="Xoá bộ"
             onClick={(event) => { stop(event); void remove(); }}
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:text-red-600 dark:text-slate-600 dark:hover:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950/40">
+            className="ml-auto flex h-8 w-8 items-center justify-center rounded-none text-slate-600 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950/40">
             <Trash2 className="h-4 w-4" />
           </button>
         )}
@@ -713,12 +713,12 @@ function VersionCard({
                 disabled={readOnly} error={issues['general.standardWorkDays']} onChange={(v) => set({ standardWorkDays: v })} />
             </div>
             <div className="w-40">
-              <Dropdown square label="Làm tròn thực lĩnh tới" value={String(form.netRoundingUnit)} disabled={readOnly}
+              <Dropdown label="Làm tròn thực lĩnh tới" value={String(form.netRoundingUnit)} disabled={readOnly}
                 options={ROUNDING_UNITS.map((unit) => ({ value: String(unit), label: unit === 1 ? 'Không làm tròn' : formatVND(unit) }))}
                 onChange={(value) => set({ netRoundingUnit: Number(value) as NetRoundingUnit })} />
             </div>
             <div className="w-36">
-              <Dropdown square label="Cách làm tròn" value={form.netRoundingMode} disabled={readOnly || form.netRoundingUnit === 1}
+              <Dropdown label="Cách làm tròn" value={form.netRoundingMode} disabled={readOnly || form.netRoundingUnit === 1}
                 options={[
                   { value: 'NEAREST', label: 'Gần nhất' },
                   { value: 'DOWN', label: 'Luôn xuống' },
@@ -730,7 +730,7 @@ function VersionCard({
               <p className="mb-1.5 text-sm font-semibold text-slate-700 dark:text-slate-300">Mức sàn khi trình cơ chế</p>
               <div className="flex items-center gap-2">
                 <div className="w-48">
-                  <Dropdown square aria-label="Đầu mục cần kiểm tra" searchable value={form.floorComponentCode ?? ''} disabled={readOnly}
+                  <Dropdown aria-label="Đầu mục cần kiểm tra" searchable value={form.floorComponentCode ?? ''} disabled={readOnly}
                     options={[
                       { value: '', label: 'Không kiểm tra' },
                       ...data.components.filter((component) => component.is_active)
@@ -738,9 +738,9 @@ function VersionCard({
                     ]}
                     onChange={(value) => set({ floorComponentCode: value || null })} />
                 </div>
-                <span className="text-sm font-bold text-slate-400">≥</span>
+                <span className="text-sm font-bold text-slate-600">≥</span>
                 <div className="w-48">
-                  <Dropdown square aria-label="Tham số làm mức sàn" searchable value={form.floorParamCode ?? ''} disabled={readOnly}
+                  <Dropdown aria-label="Tham số làm mức sàn" searchable value={form.floorParamCode ?? ''} disabled={readOnly}
                     options={[
                       { value: '', label: 'Chọn tham số…' },
                       ...paramsOf(version).filter((param) => !param.locked || param.code === form.floorParamCode).map((param) => ({
@@ -826,7 +826,7 @@ function ListTableEditor({
     params: [...table.params, { code: '', name: '', type: 'MONEY', unit: 'VND', value: 0, note: null }],
   });
 
-  const cell = 'h-9 w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 px-2.5 text-sm outline-none transition hover:border-slate-400 dark:hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 dark:disabled:bg-slate-900/50 disabled:text-slate-500 dark:disabled:text-slate-400';
+  const cell = 'h-9 w-full rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-600 dark:placeholder:text-slate-600 px-2.5 text-sm outline-none transition hover:border-slate-400 dark:hover:border-slate-600 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 disabled:bg-slate-50 dark:disabled:bg-slate-900/50 disabled:text-slate-600 dark:disabled:text-slate-400';
 
   return (
     <Card className="!rounded-none border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
@@ -863,16 +863,16 @@ function ListTableEditor({
                           onChange={(event) => rename(index, event.target.value)}
                           className={`${cell} font-semibold ${issue ? 'border-red-300 dark:border-red-500/60' : ''}`} />
                         {issue && <p className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">{issue}</p>}
-                        <p className="mt-0.5 text-[11px] text-slate-400" title={used.length > 0 ? used.join('\n') : undefined}>
+                        <p className="mt-0.5 text-[11px] text-slate-600" title={used.length > 0 ? used.join('\n') : undefined}>
                           {used.length > 0 ? `Đang dùng ở ${used.length} công thức` : 'Chưa dùng ở công thức nào'}
                         </p>
                       </td>
                       <td className="py-2 pr-3">
-                        <Dropdown square compact value={param.type} disabled={rowReadOnly} options={PARAM_TYPE_OPTIONS}
+                        <Dropdown compact value={param.type} disabled={rowReadOnly} options={PARAM_TYPE_OPTIONS}
                           aria-label="Loại tham số" onChange={(value) => changeType(index, value as ParamType)} />
                       </td>
                       <td className="py-2 pr-3">
-                        <Dropdown square compact value={param.unit} disabled={rowReadOnly} aria-label="Đơn vị"
+                        <Dropdown compact value={param.unit} disabled={rowReadOnly} aria-label="Đơn vị"
                           options={PARAM_TYPE_UNITS[param.type].map((unit) => ({ value: unit, label: PARAM_UNIT_LABEL[unit] }))}
                           onChange={(value) => setParam(index, { unit: value as ParamUnit })} />
                       </td>
@@ -890,7 +890,7 @@ function ListTableEditor({
                         {!readOnly && !param.name.trim() && !param.code && !rowLocked ? (
                           <button type="button" aria-label="Bỏ dòng trống" title="Bỏ dòng trống"
                             onClick={() => onChange({ params: table.params.filter((_, i) => i !== index) })}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 dark:text-slate-600 dark:hover:text-slate-300 transition hover:bg-slate-100 dark:hover:bg-slate-800">
+                            className="flex h-9 w-9 items-center justify-center rounded-none text-slate-600 hover:text-slate-600 dark:text-slate-400 dark:hover:text-slate-300 transition hover:bg-slate-100 dark:hover:bg-slate-800">
                             <X className="h-4 w-4" />
                           </button>
                         ) : !readOnly && (
@@ -898,7 +898,7 @@ function ListTableEditor({
                             aria-label={`${rowLocked ? 'Mở khoá' : 'Khoá'} ${param.name || 'tham số'}`}
                             title={rowLocked ? 'Mở khoá tham số' : 'Khoá tham số — giữ nguyên số, không gợi ý ở công thức mới'}
                             onClick={() => setParam(index, { locked: !rowLocked })}
-                            className={`flex h-9 w-9 items-center justify-center rounded-lg transition ${rowLocked ? 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40' : 'text-slate-300 hover:text-slate-700 dark:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+                            className={`flex h-9 w-9 items-center justify-center rounded-none transition ${rowLocked ? 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40' : 'text-slate-600 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
                             {rowLocked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
                           </button>
                         )}
@@ -910,7 +910,7 @@ function ListTableEditor({
             </table>
           </div>
         )}
-        {table.params.length === 0 && <p className="py-2 text-center text-xs text-slate-400">Bảng chưa có tham số nào.</p>}
+        {table.params.length === 0 && <p className="py-2 text-center text-xs text-slate-600">Bảng chưa có tham số nào.</p>}
         {!readOnly && (
           <Button size="sm" variant="outline" onClick={add}><Plus className="h-3.5 w-3.5" /> Thêm tham số</Button>
         )}
@@ -960,7 +960,7 @@ function TierTableEditor({
         />
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full sm:w-52">
-            <Dropdown square label="Cách tính" value={table.mode} disabled={readOnly} options={TIER_MODE_OPTIONS}
+            <Dropdown label="Cách tính" value={table.mode} disabled={readOnly} options={TIER_MODE_OPTIONS}
               onChange={(value) => onChange({ mode: value as TierParamTable['mode'], ...(value === 'PROGRESSIVE' ? { unit: '%' as ParamUnit } : {}) })} />
           </div>
           <div className="min-w-[12rem] flex-1">
@@ -970,7 +970,7 @@ function TierTableEditor({
           </div>
           {!progressive && (
             <div className="w-full sm:w-52">
-              <Dropdown square label="Đơn vị của mức" value={table.unit} disabled={readOnly} options={TIER_UNIT_OPTIONS}
+              <Dropdown label="Đơn vị của mức" value={table.unit} disabled={readOnly} options={TIER_UNIT_OPTIONS}
                 onChange={(value) => onChange({ unit: value as ParamUnit })} />
             </div>
           )}
@@ -997,7 +997,7 @@ function TierTableEditor({
                 <td className="py-1 text-right">
                   {!readOnly && table.rows.length > 1 && (
                     <button type="button" aria-label={`Bỏ bậc ${index + 1}`} onClick={() => onChange({ rows: table.rows.filter((_, i) => i !== index) })}
-                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-300 hover:text-red-600 dark:text-slate-600 dark:hover:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950/40">
+                      className="flex h-9 w-9 items-center justify-center rounded-none text-slate-600 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 transition hover:bg-red-50 dark:hover:bg-red-950/40">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   )}
@@ -1041,7 +1041,7 @@ function TableHeading({
 }) {
   const [editing, setEditing] = useState(() => !name.trim());
   const showEditor = !readOnly && (editing || !!error);
-  const iconButton = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition';
+  const iconButton = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-none transition';
   return (
     <div className="flex items-start gap-3">
       {showEditor ? (
@@ -1064,12 +1064,12 @@ function TableHeading({
             )}
             {!readOnly && (
               <button type="button" onClick={() => setEditing(true)} aria-label={`Sửa tên bảng ${name}`} title="Sửa tên bảng"
-                className={`${iconButton} text-slate-400 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400`}>
+                className={`${iconButton} text-slate-600 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400`}>
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
-          <p className="truncate text-xs text-slate-500 dark:text-slate-400">{[note, countText].filter(Boolean).join(' · ')}</p>
+          <p className="truncate text-xs text-slate-600 dark:text-slate-400">{[note, countText].filter(Boolean).join(' · ')}</p>
         </div>
       )}
       <div className={`flex shrink-0 items-center gap-1 ${showEditor ? 'pt-7' : ''}`}>
@@ -1083,7 +1083,7 @@ function TableHeading({
           <button type="button" onClick={onDuplicate}
             aria-label={`Sao chép bảng ${name}`}
             title="Sao chép bảng — tạo bảng mới cùng cấu trúc trong bộ này"
-            className={`${iconButton} text-slate-400 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400`}>
+            className={`${iconButton} text-slate-600 hover:bg-indigo-50 dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400`}>
             <Copy className="h-3.5 w-3.5" />
           </button>
         )}
@@ -1091,7 +1091,7 @@ function TableHeading({
           <button type="button" onClick={onToggleLock}
             aria-label={`${locked ? 'Mở khoá' : 'Khoá'} bảng ${name}`}
             title={locked ? 'Mở khoá bảng' : 'Khoá bảng — giữ nguyên số, không gợi ý ở công thức mới'}
-            className={`${iconButton} ${locked ? 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40' : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'}`}>
+            className={`${iconButton} ${locked ? 'text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40' : 'text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'}`}>
             {locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
           </button>
         )}

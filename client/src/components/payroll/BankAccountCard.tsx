@@ -54,11 +54,11 @@ export function BankAccountCard({ person, account, canManage, onSaved }: {
   return (
     <Card className="!rounded-none">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-slate-400" /> Tài khoản nhận lương</CardTitle>
+        <CardTitle className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-slate-600" /> Tài khoản nhận lương</CardTitle>
       </CardHeader>
       <CardContent>
         {!account && !canManage ? (
-          <p className="text-sm text-slate-500"><UserRound className="mr-1 inline h-4 w-4" />Chưa khai tài khoản.</p>
+          <p className="text-sm text-slate-600"><UserRound className="mr-1 inline h-4 w-4" />Chưa khai tài khoản.</p>
         ) : (
           <form
             className="grid gap-3 sm:grid-cols-2"

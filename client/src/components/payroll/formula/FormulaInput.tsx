@@ -429,7 +429,7 @@ export function FormulaInput({
   const renderToken = (token: FormulaToken, index: number) => {
     const isError = issue?.tokenIndex === index;
     const ring = armed === index ? 'ring-2 ring-red-500 bg-red-50' : isError ? 'ring-2 ring-red-400' : '';
-    const common = `cursor-pointer select-none rounded-md transition ${ring}`;
+    const common = `cursor-pointer select-none rounded-none transition ${ring}`;
     if (token.kind === 'ref' || token.kind === 'fn') {
       const entry = entryByCode.get(token.code);
       const soft = token.kind === 'ref' && softCodes?.has(token.code);
@@ -468,7 +468,7 @@ export function FormulaInput({
     const paren = token.kind === 'lparen' || token.kind === 'rparen';
     return (
       <span key={index} onMouseDown={(event) => { event.preventDefault(); editToken(index); }}
-        className={`${common} px-0.5 text-base leading-none ${paren ? 'font-bold text-slate-600' : 'font-semibold text-slate-400'} ${highlightParens.has(index) ? 'bg-amber-100 text-amber-800' : ''}`}>
+        className={`${common} px-0.5 text-base leading-none ${paren ? 'font-bold text-slate-600' : 'font-semibold text-slate-600'} ${highlightParens.has(index) ? 'bg-amber-100 text-amber-800' : ''}`}>
         {text}
       </span>
     );
@@ -488,7 +488,7 @@ export function FormulaInput({
       <div className="flex items-start gap-2">
         {leftLabel && (
           <span className="mt-2.5 shrink-0 text-sm font-black text-slate-900 dark:text-slate-100">
-            {leftLabel} <span className="text-slate-400 font-black">=</span>
+            {leftLabel} <span className="text-slate-600 font-black">=</span>
           </span>
         )}
         <div ref={boxRef} className="relative min-w-0 flex-1" onBlurCapture={onBlurCapture}>
@@ -500,24 +500,24 @@ export function FormulaInput({
                 rows={2}
                 autoFocus
                 aria-label={ariaLabel ?? 'Công thức dạng chữ'}
-                className="w-full rounded-xl border-2 border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full rounded-none border-2 border-indigo-400 dark:border-indigo-500 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <button type="button" onClick={applyText}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 font-bold text-white hover:bg-indigo-700">
+                  className="rounded-none bg-indigo-600 px-3 py-1.5 font-bold text-white hover:bg-indigo-700">
                   Dùng công thức này
                 </button>
                 <button type="button" onClick={() => setTextMode(false)}
-                  className="rounded-lg px-3 py-1.5 font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                  className="rounded-none px-3 py-1.5 font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
                   Huỷ
                 </button>
-                <span className="text-slate-500 dark:text-slate-400">Gõ tên đầu mục / tham số, dấu + − × ÷ và ngoặc; ngăn đối số của hàm bằng “;”.</span>
+                <span className="text-slate-600 dark:text-slate-400">Gõ tên đầu mục / tham số, dấu + − × ÷ và ngoặc; ngăn đối số của hàm bằng “;”.</span>
               </div>
             </div>
           ) : (
             <div
               onMouseDown={focusInput}
-              className={`flex min-h-11 flex-wrap items-center gap-x-1 gap-y-1.5 rounded-xl border-2 bg-white dark:bg-slate-800 px-2.5 py-2 transition ${
+              className={`flex min-h-11 flex-wrap items-center gap-x-1 gap-y-1.5 rounded-none border-2 bg-white dark:bg-slate-800 px-2.5 py-2 transition ${
                 disabled ? 'cursor-not-allowed bg-slate-50 dark:bg-slate-900/50' : 'cursor-text'
               } ${issue && tokens.length > 0 ? 'border-red-400 dark:border-red-500' : focused ? 'border-indigo-500 ring-4 ring-indigo-500/10' : 'border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500'}`}
             >
@@ -544,7 +544,7 @@ export function FormulaInput({
                 aria-controls={listId}
                 aria-autocomplete="list"
                 aria-activedescendant={showList ? optionId(safeActive) : undefined}
-                className="min-w-[2ch] flex-1 bg-transparent py-0.5 text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                className="min-w-[2ch] flex-1 bg-transparent py-0.5 text-sm text-slate-800 outline-none placeholder:text-slate-600"
               />
               {tokens.slice(caret).map((token, i) => renderToken(token, caret + i))}
               {trailing && <span className="ml-auto shrink-0 pl-2">{trailing}</span>}
@@ -555,11 +555,11 @@ export function FormulaInput({
             <div
               id={listId}
               role="listbox"
-              className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10"
+              className="absolute left-0 right-0 top-full z-40 mt-1 max-h-72 overflow-y-auto rounded-none border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10"
             >
               {groups.map((group) => (
                 <div key={group.group} role="group" aria-label={ENTRY_GROUP_LABEL[group.group]}>
-                  <p className="sticky top-0 bg-white/95 px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <p className="sticky top-0 bg-white/95 px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wider text-slate-600">
                     {ENTRY_GROUP_LABEL[group.group]}
                   </p>
                   {group.items.map((entry) => {
@@ -582,11 +582,11 @@ export function FormulaInput({
                             {entry.name}{entry.isFunction ? '( )' : ''}
                           </span>
                           {(entry.section || entry.hint) && (
-                            <span className="block truncate text-[11px] text-slate-400">{entry.section ? `Bảng ${entry.section}` : entry.hint}</span>
+                            <span className="block truncate text-[11px] text-slate-600">{entry.section ? `Bảng ${entry.section}` : entry.hint}</span>
                           )}
                         </span>
-                        {entry.detail && <span className="shrink-0 text-xs tabular-nums text-slate-500">{entry.detail}</span>}
-                        {selected && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-indigo-400" />}
+                        {entry.detail && <span className="shrink-0 text-xs tabular-nums text-slate-600">{entry.detail}</span>}
+                        {selected && <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-indigo-600" />}
                       </div>
                     );
                   })}
@@ -595,7 +595,7 @@ export function FormulaInput({
             </div>
           )}
           {open && !textMode && query.trim() && flat.length === 0 && !/^[\d\s.,%-]+$/.test(query.trim()) && (
-            <div className="absolute left-0 right-0 top-full z-40 mt-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-xl">
+            <div className="absolute left-0 right-0 top-full z-40 mt-1 rounded-none border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 shadow-xl">
               Không có gì khớp “{query.trim()}”. Thêm tham số ở trang Tham số lương hoặc đầu mục ở Danh mục.
             </div>
           )}
@@ -604,11 +604,7 @@ export function FormulaInput({
 
       {!textMode && (
         <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 ${leftLabel ? 'sm:pl-1' : ''}`}>
-          {tokens.length === 0 ? (compact ? null : (
-            <p className="text-xs text-slate-400">
-              Gõ tên để chọn · <kbd className="rounded bg-slate-100 px-1 font-sans">Enter</kbd> chốt gợi ý · gõ + − x : ( ) để thêm dấu
-            </p>
-          )) : issue ? (
+          {tokens.length === 0 ? null : issue ? (
             <p role="alert" className="flex items-start gap-1.5 text-xs font-medium text-red-600">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" /> {issue.message}
             </p>
@@ -623,7 +619,7 @@ export function FormulaInput({
             <p className="flex min-w-0 items-start gap-1.5 text-xs text-emerald-700">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
               <span className="min-w-0 break-words">
-                <span className="text-slate-500">{rendered} =</span> <strong className="tabular-nums">{formatResult(result)}</strong>
+                <span className="text-slate-600">{rendered} =</span> <strong className="tabular-nums">{formatResult(result)}</strong>
               </span>
             </p>
           ) : null}
@@ -640,7 +636,7 @@ export function FormulaInput({
                   type="button"
                   tabIndex={-1}
                   onMouseDown={(event) => { event.preventDefault(); insertOperator(op); inputRef.current?.focus(); }}
-                  className="h-7 min-w-7 rounded-md border border-slate-200 bg-white px-1.5 text-sm font-semibold text-slate-500 hover:border-indigo-300 hover:text-indigo-700"
+                  className="h-7 min-w-7 rounded-none border border-slate-200 bg-white px-1.5 text-sm font-semibold text-slate-600 hover:border-indigo-300 hover:text-indigo-700"
                   aria-label={`Chèn ${op === '(' ? 'mở ngoặc' : op === ')' ? 'đóng ngoặc' : OP_DISPLAY[op as FormulaOp]}`}
                 >
                   {op === '(' || op === ')' ? op : OP_DISPLAY[op as FormulaOp]}
@@ -649,7 +645,7 @@ export function FormulaInput({
               <button
                 type="button"
                 onClick={() => { setTextDraft(describeFormula(serializeFormula(tokens), (code) => entryByCode.get(code)?.name)); setTextMode(true); }}
-                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                className="inline-flex h-7 items-center gap-1 rounded-none px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-700"
                 title="Sửa cả công thức dạng chữ"
               >
                 <PenLine className="h-3.5 w-3.5" /> Dạng chữ

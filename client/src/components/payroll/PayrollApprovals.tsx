@@ -11,6 +11,7 @@
 // ghi lý do. Mọi quyết định ghi vào lịch sử phê duyệt (payroll_approval_events).
 // ============================================================================
 
+import { CountBadge } from '@/components/ui/CountBadge';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, ClipboardCheck, History, Search, XCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
@@ -36,6 +37,8 @@ import { notifyUsers } from '@/lib/assignments';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApprovalListSkeleton } from '@/components/payroll/PayrollSkeletons';
 import type { PayComponent, PayrollApprovalEvent, PayrollRun, PayrollSchemeRequest, SchemePayloadItem } from '@/types';
+import { FilterChips } from '@/components/ui/FilterChips';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 interface PayrollApprovalsProps {
   data: PayrollWorkspace;
@@ -161,36 +164,21 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
     onChanged();
     return null;
   };
+  const pg = usePagination(shownRuns, PAGE_SIZE_LIST, [view]);
 
   const pendingTotal = pendingSchemes.length + pendingRuns.length;
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-none bg-slate-100 p-1">
-          {([['pending', `Chờ duyệt`, ClipboardCheck], ['history', 'Lịch sử', History]] as const).map(([key, label, Icon]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setView(key)}
-              className={`inline-flex items-center gap-1.5 rounded-none px-3 py-1.5 text-sm font-semibold transition ${
-                view === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <Icon className="h-4 w-4" /> {label}
-              {key === 'pending' && pendingTotal > 0 && (
-                <span className="rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">{pendingTotal}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        <FilterChips value={view} onChange={setView} items={[{ key: 'pending', label: 'Chờ duyệt', icon: ClipboardCheck, count: pendingTotal, alert: true }, { key: 'history', label: 'Lịch sử', icon: History }] as const} />
         <div className="relative min-w-[200px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Tìm theo mã đề xuất, tên nhân viên / đơn vị, tháng…"
-            className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+            className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
           />
         </div>
         <div className="w-48">
@@ -213,14 +201,14 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
       ) : shownSchemes.length === 0 && shownRuns.length === 0 ? (
         <Card className="!rounded-none">
           <CardContent>
-            <p className="py-10 text-center text-sm text-slate-500">
+            <p className="py-10 text-center text-sm text-slate-600">
               {view === 'pending' ? 'Không có hồ sơ nào chờ duyệt.' : 'Chưa có lịch sử phê duyệt.'}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {shownRuns.map((run) => {
+          {pg.rows.map((run) => {
             const key = `run-${run.id}`;
             const total = totals.get(run.id);
             const open = expanded === key;
@@ -229,10 +217,10 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <button type="button" onClick={() => void toggle(key, 'RUN', run.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                      {open ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                      {open ? <ChevronDown className="h-4 w-4 text-slate-600" /> : <ChevronRight className="h-4 w-4 text-slate-600" />}
                       <div className="min-w-0">
                         <p className="font-bold text-slate-800">Bảng lương tháng {monthText(run.month_start)}</p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-600">
                           Khoá bởi {nameOf(run.locked_by)}{run.locked_at ? ` · ${formatDateTime(run.locked_at)}` : ''}
                           {run.approved_at && ` · Duyệt bởi ${nameOf(run.approved_by)} ${formatDateTime(run.approved_at)}`}
                         </p>
@@ -280,12 +268,12 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                 <CardContent className="space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <button type="button" onClick={() => void toggle(key, 'SCHEME', request.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
-                      {expanded === key ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                      {expanded === key ? <ChevronDown className="h-4 w-4 text-slate-600" /> : <ChevronRight className="h-4 w-4 text-slate-600" />}
                       <div className="min-w-0">
                         <p className="font-bold text-slate-800">
                           {request.code} · Cơ chế lương {target.name}
                         </p>
-                        <p className="text-xs text-slate-500">
+                        <p className="text-xs text-slate-600">
                           {target.sub} · Áp dụng từ {monthText(request.effective_from)} · Trình bởi {nameOf(request.submitted_by)}
                           {request.submitted_at ? ` ${formatDateTime(request.submitted_at)}` : ''}
                         </p>
@@ -307,7 +295,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
                   {expanded === key && <Timeline rows={events[request.id]} nameOf={nameOf} />}
                   {request.status === 'SUBMITTED' && canApprove && (
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      {ownRequest && <span className="mr-auto text-xs text-slate-500">Bạn là người trình — người có quyền duyệt khác phải duyệt.</span>}
+                      {ownRequest && <span className="mr-auto text-xs text-slate-600">Bạn là người trình — người có quyền duyệt khác phải duyệt.</span>}
                       <Button size="sm" variant="danger" disabled={ownRequest} onClick={() => setAction({ type: 'SCHEME', item: request, decision: 'REJECTED' })}>
                         <XCircle className="h-4 w-4" /> Từ chối
                       </Button>
@@ -320,6 +308,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
               </Card>
             );
           })}
+          <Pagination className="px-0" page={pg.page} total={pg.total} size={pg.size} noun="kỳ lương" setPage={pg.setPage} />
         </div>
       )}
 
@@ -350,7 +339,7 @@ export function PayrollApprovals({ data, canApprove, onChanged, onOpenRun }: Pay
 function Stat({ label, text, strong = false }: { label: string; text: string; strong?: boolean }) {
   return (
     <div>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">{label}</p>
       <p className={`tabular-nums ${strong ? 'text-sm font-black text-indigo-700' : 'font-bold text-slate-700'}`}>{text}</p>
     </div>
   );
@@ -366,13 +355,13 @@ function itemText(item: SchemePayloadItem | null, nameOf: (code: string) => stri
 function PayloadList({ items, componentById, nameOf }: {
   items: SchemePayloadItem[]; componentById: Map<string, PayComponent>; nameOf: (code: string) => string | undefined;
 }) {
-  if (items.length === 0) return <p className="text-xs text-slate-500">Không có giá trị khai riêng.</p>;
+  if (items.length === 0) return <p className="text-xs text-slate-600">Không có giá trị khai riêng.</p>;
   return (
     <ul className="divide-y divide-slate-100 rounded-none border border-slate-200 text-xs">
       {items.map((item) => (
         <li key={item.component_id} className="flex items-center gap-2 px-3 py-1.5">
           <span className="font-semibold text-slate-700">{componentById.get(item.component_id)?.name ?? '?'}</span>
-          <span className="ml-auto text-slate-500">{itemText(item, nameOf)}</span>
+          <span className="ml-auto text-slate-600">{itemText(item, nameOf)}</span>
         </li>
       ))}
     </ul>
@@ -402,9 +391,9 @@ function SchemeChanges({ request, data, componentById }: {
   return (
     <div className="space-y-2">
       {changes.length === 0 ? (
-        <p className="text-xs text-slate-500">Không đổi gì so với cơ chế hiện hành.</p>
+        <p className="text-xs text-slate-600">Không đổi gì so với cơ chế hiện hành.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto rounded-none border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
           <table className="w-full min-w-[480px] text-xs border-collapse">
             <thead className="bg-[#fdf2f4] dark:bg-[#201114] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
               <tr className="text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
@@ -420,13 +409,13 @@ function SchemeChanges({ request, data, componentById }: {
                   <tr key={change.componentId} className="group hover:bg-slate-100/80 dark:hover:bg-slate-800/60 transition-colors">
                     <td className="px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">
                       {component?.name ?? '?'}
-                      <span className={`ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                      <span className={`ml-1.5 rounded-none px-1.5 py-0.5 text-[11px] font-bold ${
                         change.kind === 'ADDED' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : change.kind === 'REMOVED' ? 'bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
                       }`}>
                         {change.kind === 'ADDED' ? 'MỚI' : change.kind === 'REMOVED' ? 'BỎ' : 'ĐỔI'}
                       </span>
                     </td>
-                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-medium text-slate-500 dark:text-slate-400">{itemText(change.before, nameOf)}</td>
+                    <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-medium text-slate-600 dark:text-slate-400">{itemText(change.before, nameOf)}</td>
                     <td className="border-l border-slate-300 dark:border-slate-700 px-3.5 py-2.5 font-bold text-slate-900 dark:text-slate-100">{itemText(change.after, nameOf)}</td>
                   </tr>
                 );
@@ -436,7 +425,7 @@ function SchemeChanges({ request, data, componentById }: {
         </div>
       )}
       {floorComponent && floorParam && floorValue != null && (
-        <p className={`text-xs ${floorValue < floorParam.value ? 'font-semibold text-red-600' : 'text-slate-500'}`}>
+        <p className={`text-xs ${floorValue < floorParam.value ? 'font-semibold text-red-600' : 'text-slate-600'}`}>
           {floorComponent.name} đề xuất {formatVND(floorValue)} · {floorParam.name}: {formatVND(floorParam.value)}
         </p>
       )}
@@ -449,18 +438,18 @@ export function Timeline({ rows, nameOf }: { rows: PayrollApprovalEvent[] | unde
     return (
       <div className="space-y-2 border-l-2 border-slate-100 pl-3" role="status" aria-busy="true">
         <span className="sr-only">Đang tải lịch sử…</span>
-        <Skeleton className="h-3.5 w-3/4 !rounded-md" />
-        <Skeleton className="h-3.5 w-1/2 !rounded-md" />
+        <Skeleton className="h-3.5 w-3/4 !rounded-none" />
+        <Skeleton className="h-3.5 w-1/2 !rounded-none" />
       </div>
     );
   }
-  if (rows.length === 0) return <p className="text-xs text-slate-400">Chưa có lịch sử.</p>;
+  if (rows.length === 0) return <p className="text-xs text-slate-600">Chưa có lịch sử.</p>;
   return (
     <ol className="space-y-1.5 border-l-2 border-slate-100 pl-3 text-xs">
       {rows.map((row) => (
         <li key={row.id}>
           <span className="font-semibold text-slate-700">{PAYROLL_EVENT_TEXT[row.action] ?? row.action}</span>
-          <span className="text-slate-500"> · {row.actor_name ?? nameOf(row.actor_id)} · {formatDateTime(row.created_at)}</span>
+          <span className="text-slate-600"> · {row.actor_name ?? nameOf(row.actor_id)} · {formatDateTime(row.created_at)}</span>
           {row.note && <span className="block text-slate-600">“{row.note}”</span>}
         </li>
       ))}

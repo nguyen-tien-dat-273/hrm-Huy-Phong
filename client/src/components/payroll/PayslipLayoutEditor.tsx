@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Eye, RotateCcw, Save } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Dropdown } from '@/components/ui/Dropdown';
 import { Modal } from '@/components/ui/Modal';
 import { PayslipDocument, documentLinesFromCatalog } from '@/components/payroll/PayslipDocument';
 import { fullMonthStats, monthEndOf, monthText } from '@/components/payroll/schemeWorkbench';
@@ -138,7 +139,7 @@ export function PayslipLayoutEditor({ data, unit, monthStart, canManage, onChang
   return (
     <div className="space-y-4 pb-20">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${draft ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
+        <span className={`rounded-none px-1.5 py-0.5 text-[11px] font-semibold ${draft ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-600'}`}>
           {draft ? 'Mẫu riêng của đơn vị' : origin ? `Theo ${origin}` : 'Mặc định'}
         </span>
         <div className="flex flex-wrap gap-2">
@@ -187,18 +188,16 @@ export function PayslipLayoutEditor({ data, unit, monthStart, canManage, onChang
           const format = headerFormatOf(component.code);
           if (!format) return null;
           return readOnly ? (
-            <span className="text-xs text-slate-500">{HEADER_FORMAT_LABEL[format]}</span>
+            <span className="text-xs text-slate-600">{HEADER_FORMAT_LABEL[format]}</span>
           ) : (
-            <select
+            <Dropdown
+              compact
+              className="w-40"
               value={format}
-              onChange={(event) => setHeader(component, true, event.target.value as PayslipHeaderFormat)}
+              onChange={(next) => setHeader(component, true, next as PayslipHeaderFormat)}
               aria-label={`Cách in ${component.name}`}
-              className="h-8 rounded-none border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-indigo-500"
-            >
-              {(Object.keys(HEADER_FORMAT_LABEL) as PayslipHeaderFormat[]).map((value) => (
-                <option key={value} value={value}>{HEADER_FORMAT_LABEL[value]}</option>
-              ))}
-            </select>
+              options={(Object.keys(HEADER_FORMAT_LABEL) as PayslipHeaderFormat[]).map((value) => ({ value, label: HEADER_FORMAT_LABEL[value] }))}
+            />
           );
         }}
       />
@@ -260,10 +259,10 @@ function PickList({ title, empty, items, isOn, onToggle, readOnly, extra }: {
     <section className="space-y-2">
       <h3 className="flex items-baseline gap-2 border-b border-slate-200 pb-1.5 text-xs font-extrabold uppercase tracking-wider text-slate-600">
         {title}
-        <span className="font-semibold normal-case tracking-normal text-slate-400">{count}/{items.length}</span>
+        <span className="font-semibold normal-case tracking-normal text-slate-600">{count}/{items.length}</span>
       </h3>
       {items.length === 0 ? (
-        <p className="text-sm text-slate-400">{empty}</p>
+        <p className="text-sm text-slate-600">{empty}</p>
       ) : (
         <ul className="divide-y divide-slate-100 rounded-none border border-slate-200 bg-white">
           {items.map((component) => {
@@ -278,7 +277,7 @@ function PickList({ title, empty, items, isOn, onToggle, readOnly, extra }: {
                     disabled={readOnly}
                     onChange={(event) => onToggle(component, event.target.checked)}
                   />
-                  <span className={`truncate text-sm font-semibold ${on ? 'text-slate-800' : 'text-slate-500'}`}>{component.name}</span>
+                  <span className={`truncate text-sm font-semibold ${on ? 'text-slate-800' : 'text-slate-600'}`}>{component.name}</span>
                 </label>
                 {extra?.(component)}
               </li>

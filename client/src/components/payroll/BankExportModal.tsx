@@ -157,24 +157,24 @@ export function BankExportModal({ open, run, signOff, rows, onClose, onExported 
         <div className="space-y-4" role="status" aria-busy="true">
           <span className="sr-only">Đang tải mẫu ngân hàng…</span>
           <div className="space-y-1.5">
-            <Skeleton className="h-4 w-36 !rounded-md" />
+            <Skeleton className="h-4 w-36 !rounded-none" />
             <Skeleton className="h-11 w-full" />
           </div>
           <Skeleton className="h-28 w-full" />
         </div>
       ) : templates.length === 0 ? (
-        <p className="py-8 text-center text-sm text-slate-500">Chưa có mẫu file ngân hàng nào đang dùng.</p>
+        <p className="py-8 text-center text-sm text-slate-600">Chưa có mẫu file ngân hàng nào đang dùng.</p>
       ) : (
         <div className="space-y-4">
           <Select className="!rounded-none" label="Mẫu file ngân hàng" required value={code} onChange={(event) => setCode(event.target.value)}>
             {templates.map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}
           </Select>
-          {template?.note && <p className="text-xs leading-relaxed text-slate-500">{template.note}</p>}
+          {template?.note && <p className="text-xs leading-relaxed text-slate-600">{template.note}</p>}
 
           <div className="grid grid-cols-3 gap-2 rounded-none bg-slate-50 p-3 text-xs">
-            <div><p className="font-bold uppercase tracking-wider text-slate-400">Số dòng</p><p className="text-sm font-bold text-slate-800">{ready.length}</p></div>
-            <div><p className="font-bold uppercase tracking-wider text-slate-400">Tổng chuyển</p><p className="text-sm font-bold text-indigo-700">{formatVND(total)}</p></div>
-            <div><p className="font-bold uppercase tracking-wider text-slate-400">Cột</p><p className="text-sm font-bold text-slate-800">{template?.columns.length ?? 0}</p></div>
+            <div><p className="font-bold uppercase tracking-wider text-slate-600">Số dòng</p><p className="text-sm font-bold text-slate-800">{ready.length}</p></div>
+            <div><p className="font-bold uppercase tracking-wider text-slate-600">Tổng chuyển</p><p className="text-sm font-bold text-indigo-700">{formatVND(total)}</p></div>
+            <div><p className="font-bold uppercase tracking-wider text-slate-600">Cột</p><p className="text-sm font-bold text-slate-800">{template?.columns.length ?? 0}</p></div>
           </div>
 
           {missing.length > 0 && (
@@ -188,7 +188,7 @@ export function BankExportModal({ open, run, signOff, rows, onClose, onExported 
           )}
 
           {template && ready.length > 0 && (
-            <div className="max-h-64 overflow-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm">
+            <div className="max-h-64 overflow-auto rounded-none border border-slate-300 dark:border-slate-700 shadow-sm">
               <table className="w-full text-xs border-collapse">
                 <thead className="sticky top-0 bg-[#fdf2f4] dark:bg-[#201114] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
                   <tr>{template.columns.map((column) => (

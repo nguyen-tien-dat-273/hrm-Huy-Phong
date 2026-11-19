@@ -29,6 +29,7 @@ export const SETUP_BASE = '/admin/payroll/setup';
 const STEP_LINKS = [
   { to: `${SETUP_BASE}/params`, label: '① Thông số chung', end: false },
   { to: `${SETUP_BASE}/schemes`, label: '② Cơ chế lương', end: false },
+  { to: `${SETUP_BASE}/sheets`, label: 'Bảng lương', end: false },
   { to: `${SETUP_BASE}/timesheet`, label: 'Liên kết Bảng công', end: false },
   { to: `${SETUP_BASE}/components`, label: 'Danh mục đầu mục', end: false },
 ] as const;
@@ -44,7 +45,7 @@ export function PayrollSetupSteps({ month }: { month: string }) {
           to={`${link.to}${query}`}
           end={link.end}
           className={({ isActive }) => `-mb-px border-b-2 px-3.5 py-2 text-sm font-semibold transition ${
-            isActive ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+            isActive ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-600 hover:text-slate-800'
           }`}
         >
           {link.label}
@@ -130,20 +131,20 @@ export function PayrollSetupOverview({ data, monthStart, monthEnd, onDryRun }: P
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block font-bold text-slate-900">{step.title}</span>
-                <span className="block text-xs text-slate-500">{step.detail}</span>
+                <span className="block text-xs text-slate-600">{step.detail}</span>
                 <span className={`mt-1 flex items-center gap-1.5 text-xs font-semibold ${step.ok ? 'text-emerald-700' : 'text-amber-700'}`}>
                   {step.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
                   {step.status}
                 </span>
               </span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-600" />
             </button>
           ))}
           <div className="flex w-full items-center gap-4 px-4 py-4">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-bold text-indigo-700">4</span>
             <span className="min-w-0 flex-1">
               <span className="block font-bold text-slate-900">Chạy thử</span>
-              <span className="block text-xs text-slate-500">Xem phiếu lương của một người với số công giả định trước khi tính lương tháng.</span>
+
             </span>
             <Button size="sm" variant="outline" onClick={() => onDryRun(firstReady?.id)}>
               <FlaskConical className="h-4 w-4" /> Chạy thử
@@ -166,10 +167,10 @@ export function PayrollSetupOverview({ data, monthStart, monthEnd, onDryRun }: P
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-bold text-slate-800 dark:text-slate-100">{gap.person.name}</span>
-                      <span className="block truncate text-[10px] text-slate-400">{gap.person.employee_code ?? '—'} · {gap.person.department || '—'}</span>
+                      <span className="block truncate text-[11px] text-slate-600">{gap.person.employee_code ?? '—'} · {gap.person.department || '—'}</span>
                     </span>
                     <span
-                      className={`max-w-[16rem] truncate rounded-full px-2 py-0.5 text-[10px] font-bold ${gap.noScheme ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}
+                      className={`max-w-[16rem] truncate rounded-full px-2 py-0.5 text-[11px] font-bold ${gap.noScheme ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-700'}`}
                       title={gap.noScheme ? undefined : `Còn trống: ${gap.missing.join(', ')}`}
                     >
                       {gap.noScheme ? 'Chưa có cơ chế' : missingLabel(gap.missing)}
@@ -178,7 +179,7 @@ export function PayrollSetupOverview({ data, monthStart, monthEnd, onDryRun }: P
                 </li>
               ))}
             </ul>
-            {gaps.length > 12 && <p className="text-xs text-slate-400">… và {gaps.length - 12} người khác.</p>}
+            {gaps.length > 12 && <p className="text-xs text-slate-600">… và {gaps.length - 12} người khác.</p>}
           </CardContent>
         </Card>
       )}

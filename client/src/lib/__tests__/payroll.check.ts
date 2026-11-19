@@ -1091,10 +1091,11 @@ check('đủ bốn nhãn báo cáo', PAY_REPORT_TAGS.map((tag) => tag.code).sort
     row(named('LUONG_CO_BAN', 'Bậc lương', 'INFO', null), 'PER_PERSON', 10_000_000),
     row(named('DAILY_RATE', 'Đơn giá ngày', 'INFO', null), 'FORMULA', 'LUONG_CO_BAN / STANDARD_DAYS'),
     row(named('NGAY_CONG', 'Ngày công', 'INFO', null), 'MONTHLY_INPUT'),
-    row(named('BASE_WORK', 'Lương thời gian', 'EARNING'), 'FORMULA', 'DAILY_RATE * NGAY_CONG'),
     row(named('PHU_CAP', 'Phụ cấp', 'EARNING', 'THU_NHAP_CO_DINH'), 'VALUE', 500_000),
+    row(named('BASE_WORK', 'Lương thời gian', 'EARNING'), 'FORMULA', 'DAILY_RATE * NGAY_CONG'),
     row(named('THUONG', 'Thưởng', 'EARNING', 'THUONG_PHAT_SINH'), 'MONTHLY_INPUT'),
-    row(named('QUY', 'Quỹ 1%', 'DEDUCTION', 'KHAU_TRU_PHAT'), 'FORMULA', 'MAX(BASE_WORK, DAILY_RATE) * 0.01'),
+    // Không nhóm: thành một mục riêng mang tên chính nó.
+    row(named('QUY', 'Quỹ 1%', 'DEDUCTION', null), 'FORMULA', 'MAX(BASE_WORK, DAILY_RATE) * 0.01'),
   ];
   const sheetNames = new Map(sheetRows.map((item) => [item.component.code, item.component.name]));
   sheetNames.set('STANDARD_DAYS', 'Công chuẩn');
@@ -1111,7 +1112,7 @@ check('đủ bốn nhãn báo cáo', PAY_REPORT_TAGS.map((tag) => tag.code).sort
     lines.map((line) => line.code), ['PHU_CAP', 'BASE_WORK', 'THUONG', 'QUY']);
   check('Công thức chữ: nhóm theo danh mục, đánh số liên tục',
     expanded.sections.map((section) => `${section.title}:${section.lines.map((line) => line.no).join(',')}`),
-    ['Thu nhập cố định:1', 'Thu nhập biến đổi:2', 'Thưởng:3', 'Khấu trừ:4']);
+    ['Thu nhập cố định:1', 'Thu nhập biến đổi:2', 'Thưởng:3', 'Quỹ 1%:4']);
   check('Công thức chữ: thay dòng trung gian bằng công thức, trong ngoặc',
     lines[1].text, '(Bậc lương ÷ Công chuẩn) × Ngày công');
   check('Công thức chữ: giữ bản gõ trong cơ chế để đối chiếu', lines[1].written, 'Đơn giá ngày × Ngày công');

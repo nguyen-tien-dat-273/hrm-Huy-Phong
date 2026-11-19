@@ -45,9 +45,9 @@ export function SchemeCopyMenu({ templates, people, disabled, onPickTemplate, on
       {open && (
         <>
           <div className="fixed inset-0 z-40" onMouseDown={close} aria-hidden />
-          <div className="absolute right-0 top-full z-50 mt-1 w-[min(20rem,90vw)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900">
+          <div className="absolute right-0 top-full z-50 mt-1 w-[min(20rem,90vw)] rounded-none border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
               <input
                 autoFocus
                 value={query}
@@ -55,13 +55,13 @@ export function SchemeCopyMenu({ templates, people, disabled, onPickTemplate, on
                 onKeyDown={(event) => { if (event.key === 'Escape') close(); }}
                 placeholder="Tìm bộ mẫu hoặc nhân viên…"
                 aria-label="Tìm nơi để copy cơ chế"
-                className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-700 dark:bg-slate-800"
+                className="h-9 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
               />
             </div>
             <div className="mt-2 max-h-72 overflow-y-auto" role="listbox">
               {shownTemplates.length > 0 && (
                 <>
-                  <p className="px-2 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">Bộ cơ chế mẫu</p>
+                  <p className="px-2 pb-1 pt-1 text-[11px] font-bold uppercase tracking-wider text-slate-600">Bộ cơ chế mẫu</p>
                   {shownTemplates.map((scheme) => (
                     <button
                       key={scheme.id}
@@ -69,7 +69,7 @@ export function SchemeCopyMenu({ templates, people, disabled, onPickTemplate, on
                       role="option"
                       aria-selected={false}
                       onClick={() => { close(); onPickTemplate(scheme); }}
-                      className="block w-full truncate rounded-lg px-2 py-1.5 text-left text-sm font-semibold text-slate-800 hover:bg-indigo-50 dark:text-slate-100 dark:hover:bg-slate-800"
+                      className="block w-full truncate rounded-none px-2 py-1.5 text-left text-sm font-semibold text-slate-800 hover:bg-indigo-50 dark:text-slate-100 dark:hover:bg-slate-800"
                     >
                       {scheme.name}
                     </button>
@@ -78,7 +78,7 @@ export function SchemeCopyMenu({ templates, people, disabled, onPickTemplate, on
               )}
               {matchedPeople.length > 0 && (
                 <>
-                  <p className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Nhân viên</p>
+                  <p className="px-2 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wider text-slate-600">Nhân viên</p>
                   {matchedPeople.slice(0, MAX_PEOPLE).map((person) => (
                     <button
                       key={person.id}
@@ -86,18 +86,18 @@ export function SchemeCopyMenu({ templates, people, disabled, onPickTemplate, on
                       role="option"
                       aria-selected={false}
                       onClick={() => { close(); onPickPerson(person); }}
-                      className="flex w-full items-baseline gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-indigo-50 dark:hover:bg-slate-800"
+                      className="flex w-full items-baseline gap-2 rounded-none px-2 py-1.5 text-left hover:bg-indigo-50 dark:hover:bg-slate-800"
                     >
                       <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{person.name}</span>
-                      <span className="shrink-0 text-[11px] text-slate-400">{person.employee_code ?? ''}</span>
+                      <span className="shrink-0 text-[11px] text-slate-600">{person.employee_code ?? ''}</span>
                     </button>
                   ))}
                   {matchedPeople.length > MAX_PEOPLE && (
-                    <p className="px-2 py-1 text-xs text-slate-400">Còn {matchedPeople.length - MAX_PEOPLE} người — gõ tên để lọc.</p>
+                    <p className="px-2 py-1 text-xs text-slate-600">Còn {matchedPeople.length - MAX_PEOPLE} người — gõ tên để lọc.</p>
                   )}
                 </>
               )}
-              {empty && <p className="px-2 py-4 text-center text-sm text-slate-500">Không có gì khớp.</p>}
+              {empty && <p className="px-2 py-4 text-center text-sm text-slate-600">Không có gì khớp.</p>}
             </div>
           </div>
         </>

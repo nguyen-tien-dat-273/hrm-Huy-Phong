@@ -116,11 +116,11 @@ export function TwoFactorDialog({ open, title, description, confirmLabel, onClos
 
         {step === 'enroll-scan' && enrollment && (
           <div className="grid gap-4 rounded-none border border-slate-200 p-4 sm:grid-cols-[auto_1fr]">
-            <img src={enrollment.qrCode} alt="Mã QR đăng ký ứng dụng xác thực" className="h-40 w-40 rounded-lg border border-slate-100" />
+            <img src={enrollment.qrCode} alt="Mã QR đăng ký ứng dụng xác thực" className="h-40 w-40 rounded-none border border-slate-100" />
             <div className="min-w-0 space-y-2 text-sm text-slate-600">
               <p>Mở ứng dụng xác thực, chọn <strong>Thêm tài khoản → Quét mã QR</strong>.</p>
               <p>Không quét được thì nhập mã bí mật:</p>
-              <code className="block break-all rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-800">
+              <code className="block break-all rounded-none bg-slate-100 px-2 py-1 font-mono text-xs text-slate-800">
                 {enrollment.secret}
               </code>
               <p>Rồi nhập mã 6 số đang hiện trên ứng dụng ở ô dưới.</p>

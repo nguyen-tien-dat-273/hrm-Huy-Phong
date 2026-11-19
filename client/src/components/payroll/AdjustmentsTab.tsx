@@ -189,11 +189,11 @@ export function AdjustmentsTab({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Card className="!rounded-none">
             <CardContent className="flex items-center gap-3 py-4">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none bg-emerald-50 text-emerald-600">
                 <ArrowUpRight className="h-4.5 w-4.5" />
               </span>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Tổng điều chỉnh tăng</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600">Tổng điều chỉnh tăng</p>
                 <p className="mt-0.5 text-base font-extrabold tabular-nums text-emerald-700">
                   {formatVND(totals.recovery)}
                 </p>
@@ -202,11 +202,11 @@ export function AdjustmentsTab({
           </Card>
           <Card className="!rounded-none">
             <CardContent className="flex items-center gap-3 py-4">
-              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+              <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none bg-red-50 text-red-600">
                 <ArrowDownLeft className="h-4.5 w-4.5" />
               </span>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Tổng điều chỉnh giảm</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600">Tổng điều chỉnh giảm</p>
                 <p className="mt-0.5 text-base font-extrabold tabular-nums text-red-700">
                   {formatVND(totals.clawback)}
                 </p>
@@ -219,7 +219,7 @@ export function AdjustmentsTab({
       <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {adjustments.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
+            <p className="px-5 py-10 text-center text-sm font-semibold text-slate-600">
               Chưa có điều chỉnh nào cho tháng {monthLabel}.
             </p>
           ) : (
@@ -247,7 +247,7 @@ export function AdjustmentsTab({
                         )}
                       </div>
                       <p className="mt-1 text-xs font-medium leading-relaxed text-slate-700 dark:text-slate-300">{adjustment.reason}</p>
-                      <p className="mt-0.5 text-xs text-slate-400">
+                      <p className="mt-0.5 text-xs text-slate-600">
                         {adjustment.origin_month
                           ? `Bù cho kỳ ${adjustment.origin_month.slice(5, 7)}/${adjustment.origin_month.slice(0, 4)}`
                           : 'Chưa ghi kỳ phát sinh'}
@@ -262,7 +262,7 @@ export function AdjustmentsTab({
                       {!readOnly && (
                         <button
                           onClick={() => remove(adjustment)}
-                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600"
                           aria-label="Xóa điều chỉnh"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -306,7 +306,7 @@ export function AdjustmentsTab({
                   </option>
                 ))}
               </Select>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+              <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
                 {draft.component_code
                   ? targetKind === 'INFO'
                     ? 'Đổi thẳng giá trị của đầu mục này, các khoản tính từ nó (thuế, bảo hiểm…) và thực nhận tự tính lại.'
@@ -326,7 +326,7 @@ export function AdjustmentsTab({
                 ))}
               </Select>
               {!draft.component_code && (
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
                   {draft.kind === 'RECOVERY'
                     ? 'Cộng vào thu nhập kỳ này. Truy lĩnh tiền lương là thu nhập chịu thuế của kỳ CHI TRẢ.'
                     : 'Trừ vào thực nhận kỳ này. Không làm giảm thu nhập chịu thuế vì đây là thu hồi tiền đã trả.'}
@@ -350,7 +350,7 @@ export function AdjustmentsTab({
               />
             </div>
             {Number(draft.amount) > 0 && (
-              <p className="-mt-2 text-xs text-slate-500">= {formatVND(Number(draft.amount))}</p>
+              <p className="-mt-2 text-xs text-slate-600">= {formatVND(Number(draft.amount))}</p>
             )}
 
             <Textarea className="!rounded-none"
@@ -362,11 +362,6 @@ export function AdjustmentsTab({
               onChange={(e) => setDraft({ ...draft, reason: e.target.value })}
             />
 
-            <p className="flex items-start gap-2 rounded-none bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
-              <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
-              Điều chỉnh này vào phiếu lương tháng <strong>{monthLabel}</strong>. Kỳ lương gốc
-              đã duyệt giữ nguyên — đó là nguyên tắc để phiếu lương đã phát không đổi số.
-            </p>
 
             <div className="flex gap-3 pt-1">
               <Button variant="outline" onClick={() => setDraft(null)} className="flex-1" disabled={saving}>

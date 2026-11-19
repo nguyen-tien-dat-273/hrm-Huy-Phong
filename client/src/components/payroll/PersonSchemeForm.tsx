@@ -157,7 +157,7 @@ export function PersonSchemeForm({
           <Avatar name={person.name} url={person.avatar_url} size="md" />
           <div className="min-w-0 flex-1">
             <CardTitle>Cơ chế của {person.name}</CardTitle>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               {person.employee_code ?? '—'} · {unitName ?? (person.department || 'Chưa có đơn vị')}
             </p>
           </div>

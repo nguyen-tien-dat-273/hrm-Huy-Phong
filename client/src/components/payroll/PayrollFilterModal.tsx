@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { Dropdown } from '@/components/ui/Dropdown';
 import { KindChip } from '@/components/payroll/KindChip';
 import { normalizeText } from '@/lib/formulaTokens';
+import type { SheetSource } from '@/lib/payrollSheets';
 import type { OrganizationUnit, PayComponentCategory, PayComponentKind } from '@/types';
 
 export interface ItemColumn {
@@ -24,6 +25,14 @@ export interface ItemColumn {
   name: string;
   kind: PayComponentKind;
   categoryCode?: string | null;
+  /** Khoá React — cùng một mã có thể đứng hai lần trong một bảng cấu hình. */
+  key?: string;
+  /** Tiêu đề cột gộp (hàng trên của tiêu đề hai tầng). */
+  group?: string | null;
+  /** Nguồn số của cột; trống = dòng phiếu lương. */
+  source?: SheetSource;
+  /** Có cộng ở dòng Tổng không; trống = cộng khi là khoản cộng / trừ. */
+  total?: boolean;
 }
 
 interface PayrollFilterModalProps {
@@ -105,7 +114,7 @@ export function PayrollFilterModal({
     <Modal square open={open} onClose={onClose} title="Tùy chỉnh" size="xl">
       <div className="space-y-5">
         {/* ===================== KHỐI 1: BỘ LỌC CƠ BẢN ===================== */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 p-4 rounded-none border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60">
           {/* Lọc phòng ban */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
@@ -122,9 +131,6 @@ export function PayrollFilterModal({
               ]}
               onChange={(value) => onUnitFilterChange(value)}
             />
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              Chỉ hiển thị các nhân sự thuộc phòng ban được chọn.
-            </p>
           </div>
 
           {/* Bỏ dòng trung gian */}
@@ -134,7 +140,7 @@ export function PayrollFilterModal({
               Dòng trung gian (INFO)
             </span>
             <label
-              className={`flex items-start gap-3 p-2.5 rounded-xl border cursor-pointer transition select-none ${
+              className={`flex items-start gap-3 p-2.5 rounded-none border cursor-pointer transition select-none ${
                 hideIntermediate
                   ? 'border-amber-400/80 bg-amber-50/70 dark:bg-amber-950/30 dark:border-amber-700/80'
                   : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-400'
@@ -144,14 +150,11 @@ export function PayrollFilterModal({
                 type="checkbox"
                 checked={hideIntermediate}
                 onChange={(e) => onHideIntermediateChange(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700"
+                className="mt-0.5 h-4 w-4 rounded-none border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700"
               />
               <div className="flex-1">
                 <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
                   Bỏ các dòng trung gian
-                </span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 block leading-tight mt-0.5">
-                  Ẩn các dòng số liệu trung gian (lương cơ bản, phụ thuộc, đơn giá...) không trực tiếp vào thực nhận.
                 </span>
               </div>
             </label>
@@ -177,14 +180,14 @@ export function PayrollFilterModal({
               <button
                 type="button"
                 onClick={onSelectAll}
-                className="px-2.5 py-1 font-semibold rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition"
+                className="px-2.5 py-1 font-semibold rounded-none border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition"
               >
                 Hiện tất cả
               </button>
               <button
                 type="button"
                 onClick={onDeselectAll}
-                className="px-2.5 py-1 font-semibold rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition"
+                className="px-2.5 py-1 font-semibold rounded-none border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition"
               >
                 Ẩn tất cả
               </button>
@@ -192,7 +195,7 @@ export function PayrollFilterModal({
                 type="button"
                 onClick={onReset}
                 title="Khôi phục trạng thái hiển thị mặc định"
-                className="px-2.5 py-1 font-semibold rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition"
+                className="px-2.5 py-1 font-semibold rounded-none border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition"
               >
                 Mặc định
               </button>
@@ -201,19 +204,19 @@ export function PayrollFilterModal({
 
           {/* Thanh tìm kiếm danh mục / đầu mục */}
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Tìm danh mục, tên khoản lương hoặc mã cột (VD: L01, ăn trưa, BHXH)..."
               aria-label="Tìm kiếm đầu mục"
-              className="h-9 w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-8 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+              className="h-9 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
             />
             {searchTerm && (
               <button
                 type="button"
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-600 hover:text-slate-600 dark:hover:text-slate-200"
                 title="Xoá từ khoá tìm kiếm"
               >
                 <X className="h-3.5 w-3.5" />
@@ -223,7 +226,7 @@ export function PayrollFilterModal({
 
           {/* Thanh công cụ phụ khi đang gõ tìm kiếm */}
           {query && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/80 px-3 py-1.5 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-none bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/80 px-3 py-1.5 text-xs">
               <span className="font-semibold text-indigo-900 dark:text-indigo-200">
                 Tìm thấy <strong>{searchedColumns.length}</strong> đầu mục khớp với &ldquo;{searchTerm}&rdquo;
               </span>
@@ -231,21 +234,21 @@ export function PayrollFilterModal({
                 <button
                   type="button"
                   onClick={() => onSelectOnly(searchedColumns.map((c) => c.code))}
-                  className="px-2 py-0.5 rounded bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition"
+                  className="px-2 py-0.5 rounded-none bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition"
                 >
                   Chỉ hiện các mục này
                 </button>
                 <button
                   type="button"
                   onClick={() => onSelectGroup(searchedColumns.map((c) => c.code), true)}
-                  className="px-2 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-bold hover:bg-indigo-50 transition"
+                  className="px-2 py-0.5 rounded-none border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 font-bold hover:bg-indigo-50 transition"
                 >
                   Bật các mục này
                 </button>
                 <button
                   type="button"
                   onClick={() => onSelectGroup(searchedColumns.map((c) => c.code), false)}
-                  className="px-2 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 font-bold hover:bg-rose-50 transition"
+                  className="px-2 py-0.5 rounded-none border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 font-bold hover:bg-rose-50 transition"
                 >
                   Tắt các mục này
                 </button>
@@ -254,9 +257,9 @@ export function PayrollFilterModal({
           )}
 
           {/* Danh sách các đầu mục theo nhóm */}
-          <div className="max-h-[360px] overflow-y-auto space-y-4 pr-1 rounded-xl border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-900">
+          <div className="max-h-[360px] overflow-y-auto space-y-4 pr-1 rounded-none border border-slate-200 dark:border-slate-800 p-3 bg-white dark:bg-slate-900">
             {searchedColumns.length === 0 ? (
-              <div className="py-10 text-center text-sm font-medium text-slate-400 dark:text-slate-500">
+              <div className="py-10 text-center text-sm font-medium text-slate-600 dark:text-slate-400">
                 Không tìm thấy đầu mục nào khớp với &ldquo;{searchTerm}&rdquo;.
               </div>
             ) : (
@@ -273,7 +276,7 @@ export function PayrollFilterModal({
                         <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
                           {group.label}
                         </span>
-                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${group.badgeColor}`}>
+                        <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-none ${group.badgeColor}`}>
                           {groupVisibleCount} / {group.items.length}
                         </span>
                       </div>
@@ -288,16 +291,6 @@ export function PayrollFilterModal({
                       </div>
                     </div>
 
-                    {/* Cảnh báo riêng cho dòng trung gian khi đang bật "Bỏ dòng trung gian" */}
-                    {group.key === 'INFO' && hideIntermediate && (
-                      <div className="flex items-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
-                        <CircleAlert className="h-3.5 w-3.5 shrink-0" />
-                        <span>
-                          Dòng trung gian hiện đang bị ẩn trên bảng lương do bạn đã bật tuỳ chọn &ldquo;Bỏ các dòng trung gian&rdquo; ở trên.
-                        </span>
-                      </div>
-                    )}
-
                     {/* Lưới các cột trong nhóm */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {group.items.map((col) => {
@@ -307,7 +300,7 @@ export function PayrollFilterModal({
                         return (
                           <label
                             key={col.code}
-                            className={`flex items-center gap-2.5 p-2 rounded-lg border cursor-pointer transition select-none ${
+                            className={`flex items-center gap-2.5 p-2 rounded-none border cursor-pointer transition select-none ${
                               isVisible
                                 ? 'border-indigo-200/90 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-950/20 hover:border-indigo-400'
                                 : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 opacity-70 hover:opacity-100 hover:border-slate-300'
@@ -317,13 +310,13 @@ export function PayrollFilterModal({
                               type="checkbox"
                               checked={isVisible}
                               onChange={() => onToggleColumn(col.code)}
-                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700"
+                              className="h-4 w-4 rounded-none border-slate-300 text-indigo-600 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-700"
                             />
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate" title={col.name}>
                                 {col.name}
                               </p>
-                              <p className="text-[10px] text-slate-400 dark:text-slate-500 font-mono truncate">
+                              <p className="text-[11px] text-slate-600 dark:text-slate-400 font-mono truncate">
                                 {col.code}
                                 {categoryName && <span className="font-sans"> · {categoryName}</span>}
                               </p>

@@ -11,6 +11,7 @@
 // ============================================================================
 
 import type { PostgrestError } from '@supabase/supabase-js';
+import { fetchPayrollSheets, type PayrollSheet } from './payrollSheets';
 import { supabase } from './supabase';
 import { describeDbError } from './dbError';
 import type {
@@ -69,6 +70,8 @@ export interface PayrollWorkspace {
   schemeItems: PaySchemeItem[];
   /** Mẫu phiếu lương theo đơn vị — chỉ để trình bày phiếu. */
   payslipLayouts: PayslipLayout[];
+  /** Bảng lương cấu hình được (BL 01, BL 02, Lương cắt lô…) — chỉ để xem / nhập. */
+  sheets: PayrollSheet[];
   inputs: PayrollInput[];
   attendance: Attendance[];
   leaves: LeaveRequest[];
@@ -112,7 +115,7 @@ export async function loadPayrollWorkspace(
 ): Promise<PayrollWorkspace> {
   const empty: PayrollWorkspace = {
     profiles: [], units: [], categories: [], components: [], paramVersions: [],
-    items: [], schemes: [], schemeItems: [], payslipLayouts: [], inputs: [],
+    items: [], schemes: [], schemeItems: [], payslipLayouts: [], sheets: [], inputs: [],
     attendance: [], leaves: [], attendanceRequests: [], holidays: [], schedules: EMPTY_SCHEDULES,
     adjustments: [], schemeRequests: [], run: null, runEvents: [], payslips: [], payslipLines: [],
     readiness: null, kpiCodes: [], timesheetCodes: [], timesheetLocked: false, engineReady: false, specReady: false, error: null,
@@ -123,7 +126,7 @@ export async function loadPayrollWorkspace(
     versions, schedules,
     profilesRes, unitsRes, categoriesRes, componentsRes, itemsRes, schemesRes, schemeItemsRes, inputsRes,
     attendanceRes, leavesRes, attendanceRequestsRes, runRes, periodRes, requestsRes, holidaysRes, adjustmentsRes,
-    layoutsRes,
+    layoutsRes, sheets,
   ] = await Promise.all([
     fetchParamVersions(),
     // Ca làm việc: cho công chuẩn theo tháng (BR-PAY-001) và đo đi muộn.
@@ -170,6 +173,8 @@ export async function loadPayrollWorkspace(
       .eq('month_start', monthStartStr),
     // Bảng có thể chưa tồn tại (migration chưa chạy) — phiếu dạng mẫu dùng cách hiện mặc định.
     supabase.from('payslip_layouts').select('unit_id, form_code, title, header, before_total, updated_at'),
+    // Bảng có thể chưa tồn tại (migration chưa chạy) — Bảng lương chỉ còn kiểu xem mọi đầu mục.
+    fetchPayrollSheets(),
   ]);
 
   // Bảng của bộ máy lương chưa tồn tại nghĩa là migration chưa chạy. Đây là
@@ -226,6 +231,7 @@ export async function loadPayrollWorkspace(
     schemes: schemesRes.error ? [] : (schemesRes.data || []) as PayScheme[],
     schemeItems: schemeItemsRes.error ? [] : (schemeItemsRes.data || []) as PaySchemeItem[],
     payslipLayouts: layoutsRes.error ? [] : (layoutsRes.data || []) as PayslipLayout[],
+    sheets,
     inputs: (inputsRes.data || []) as PayrollInput[],
     attendance: (attendanceRes.data || []) as Attendance[],
     leaves: ((leavesRes.data || []) as LeaveRequest[]).filter((leave) => !leave.is_cancelled),

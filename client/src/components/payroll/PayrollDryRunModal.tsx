@@ -180,13 +180,13 @@ export function PayrollDryRunModal({
               </div>
             </div>
             {baseline && (
-              <p className="-mt-2 text-xs text-slate-500">
+              <p className="-mt-2 text-xs text-slate-600">
                 Cơ chế đang áp cho người này: {baseline.rows.length} dòng
               </p>
             )}
 
             <div className="rounded-none border border-slate-200 p-4">
-              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Số liệu giả định</p>
+              <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-600">Số liệu giả định</p>
               <div className="grid gap-3 sm:grid-cols-4">
                 {field('standardDays', 'Công chuẩn của tháng')}
                 {statFields.map((item) => field(item.key, SYSTEM_VARIABLE_BY_CODE.get(item.code)?.name ?? item.code))}
@@ -232,11 +232,11 @@ export function PayrollDryRunModal({
                   <tbody className="divide-y divide-slate-50">
                     {(result.computed.trace ?? []).map((step, index) => (
                       <tr key={`${step.code}-${index}`} className="align-top">
-                        <td className="px-3 py-2 text-slate-400">{index + 1}</td>
+                        <td className="px-3 py-2 text-slate-600">{index + 1}</td>
                         <td className="px-3 py-2 font-semibold text-slate-800">
                           <span className="flex flex-wrap items-center gap-1.5"><KindChip kind={step.kind} /> {step.label}</span>
                         </td>
-                        <td className="px-3 py-2 text-slate-500">{step.mode === 'ADJUSTMENT' ? 'Điều chỉnh' : ROW_MODE_LABEL[step.mode]}</td>
+                        <td className="px-3 py-2 text-slate-600">{step.mode === 'ADJUSTMENT' ? 'Điều chỉnh' : ROW_MODE_LABEL[step.mode]}</td>
                         <td className="max-w-[320px] px-3 py-2">
                           {step.rendered && <span className="break-words text-[11px] text-indigo-700">{step.rendered}</span>}
                           {step.note && <p className="mt-0.5 text-[11px] text-amber-700">{step.note}</p>}
@@ -277,7 +277,7 @@ export function PayrollDryRunModal({
 function Stat({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
     <div className="rounded-none bg-slate-50 px-3 py-2.5">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600">{label}</p>
       <p className={`mt-0.5 truncate text-sm font-bold tabular-nums ${strong ? 'text-indigo-700' : 'text-slate-800'}`}>{value}</p>
     </div>
   );

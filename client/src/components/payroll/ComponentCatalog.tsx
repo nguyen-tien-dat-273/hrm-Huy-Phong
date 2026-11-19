@@ -1,7 +1,7 @@
 // ============================================================================
 // Danh mục khoản lương — danh sách ĐẦU MỤC dùng trong cơ chế lương.
 // ----------------------------------------------------------------------------
-// Danh mục chỉ khai đầu mục LÀ GÌ: tên, mã, nhóm (1 trong 5 nhóm), loại dòng
+// Danh mục chỉ khai đầu mục LÀ GÌ: tên, mã, nhóm (cột gộp của bảng lương, có thể trống), loại dòng
 // (cộng vào lương / trừ khỏi lương) và nhãn báo cáo.
 // Cách tính và con số của từng đầu mục đặt ở Cơ chế lương — mỗi cơ chế một công thức.
 //
@@ -31,6 +31,7 @@ import {
 import { KIND_LABEL, KIND_SHORT } from '@/lib/formulaEntries';
 import { codeFromName } from '@/lib/payrollSettings';
 import { PAY_REPORT_TAGS, reportTagKindProblem, reportTagLabel } from '@/lib/payrollReportTags';
+import { Tabs } from '@/components/ui/Tabs';
 import type {
   PayComponent, PayComponentCategoryCode, PayComponentKind, PayReportTag,
 } from '@/types';
@@ -38,11 +39,10 @@ import type {
 /** Ba loại dòng chọn được; EMPLOYER_COST chỉ còn trên dữ liệu cũ. */
 const KINDS: Array<Exclude<PayComponentKind, 'EMPLOYER_COST'>> = ['EARNING', 'DEDUCTION', 'INFO'];
 
-/** Thẻ lọc: tất cả, một trong năm nhóm, hoặc dòng trung gian không thuộc nhóm nào. */
-type CatalogTab = 'ALL' | PayComponentCategoryCode | 'MID';
+/** Thẻ lọc: tất cả, một nhóm, hoặc đầu mục không thuộc nhóm nào (cột đơn của bảng lương). */
+type CatalogTab = 'ALL' | PayComponentCategoryCode | 'NONE';
 
-/** Dòng trung gian đứng ngoài năm nhóm. */
-const isLooseIntermediate = (component: PayComponent) => component.kind === 'INFO' && !component.category_code;
+const isUngrouped = (component: PayComponent) => !component.category_code;
 
 /** Bỏ dấu để gõ "phu cap" tìm ra "Phụ cấp". */
 const stripTone = (text: string) => text
@@ -99,11 +99,6 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
     [standard, components],
   );
 
-  const categoryOrder = useMemo(
-    () => new Map(categories.map((category, index) => [category.code, index])),
-    [categories],
-  );
-
   /** Khớp ô tìm kiếm — dùng cả để đếm số đầu mục trên từng nhóm. */
   const searched = useMemo(() => {
     const keyword = stripTone(query);
@@ -113,11 +108,11 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   const filtered = useMemo(() => {
     const rows = searched.filter((component) => (
       categoryFilter === 'ALL'
-      || (categoryFilter === 'MID' ? isLooseIntermediate(component) : component.category_code === categoryFilter)
+      || (categoryFilter === 'NONE' ? isUngrouped(component) : component.category_code === categoryFilter)
     ));
-    const orderOf = (component: PayComponent) => (component.category_code ? categoryOrder.get(component.category_code) ?? 98 : 99);
-    return [...rows].sort((a, b) => orderOf(a) - orderOf(b) || a.sort_order - b.sort_order);
-  }, [searched, categoryFilter, categoryOrder]);
+    // Theo thứ tự cột của bảng lương.
+    return [...rows].sort((a, b) => a.sort_order - b.sort_order);
+  }, [searched, categoryFilter]);
 
   const usageOf = (component: PayComponent) => {
     const schemeIds = new Set(data.schemeItems.filter((item) => item.component_id === component.id).map((item) => item.scheme_id));
@@ -131,11 +126,12 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   // Biểu mẫu thêm / sửa
   // ------------------------------------------------------------------------
   const openCreate = (tab: CatalogTab = 'ALL') => {
-    const categoryCode = tab === 'ALL' || tab === 'MID' ? '' : tab;
+    const categoryCode = tab === 'ALL' || tab === 'NONE' ? '' : tab;
+    const allowed = categoryCode ? categoryByCode.get(categoryCode)?.allowed_kinds ?? [] : [];
     setErrors({});
     setDraft({
       code: '', codeTouched: false, name: '', category_code: categoryCode,
-      kind: tab === 'MID' ? 'INFO' : categoryCode === 'KHAU_TRU_PHAT' ? 'DEDUCTION' : 'EARNING',
+      kind: allowed.length > 0 && !allowed.includes('EARNING') ? allowed[0] : 'EARNING',
       report_tag: '',
       show_on_payslip: false,
       is_active: true, note: '',
@@ -185,7 +181,6 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
     else if (components.some((item) => item.name.trim().toLowerCase() === value.name.trim().toLowerCase() && item.id !== value.id)) {
       found.name = 'Tên khoản lương đã tồn tại trên hệ thống.';
     }
-    if (!value.category_code && value.kind !== 'INFO') found.category_code = 'Khoản cộng / trừ phải thuộc một trong năm nhóm.';
     const tagProblem = reportTagKindProblem(value.report_tag || null, value.kind);
     if (tagProblem) found.report_tag = tagProblem;
     return found;
@@ -297,7 +292,6 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
         <EmptyState
           icon={<PackagePlus className="h-8 w-8" />}
           title="Chưa có danh mục khoản lương"
-          description="Chưa có đầu mục nào. Bấm “Khởi tạo danh mục chuẩn” hoặc “Thêm mới”."
           action={canManage ? (
             <div className="flex flex-wrap justify-center gap-2">
               <Button onClick={() => void handleSeed()} disabled={seeding}>
@@ -313,7 +307,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
   }
 
   function groupName(component: PayComponent): string {
-    if (!component.category_code) return 'Dòng trung gian';
+    if (!component.category_code) return '';
     return categoryByCode.get(component.category_code)?.name ?? component.category_code;
   }
 
@@ -324,8 +318,8 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
           <button type="button" onClick={() => setDetail(component)} className="text-left text-sm font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400">
             {component.name}
           </button>
-          {categoryFilter === 'ALL' && (
-            <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{groupName(component)}</p>
+          {categoryFilter === 'ALL' && component.category_code && (
+            <p className="mt-0.5 text-[11px] font-medium text-slate-600 dark:text-slate-400">{groupName(component)}</p>
           )}
         </td>
         <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center">
@@ -334,7 +328,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
           </span>
         </td>
         <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-2.5 text-center">
-          <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${component.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+          <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${component.is_active ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-400'}`}>
             <span className={`h-2 w-2 rounded-full ${component.is_active ? 'bg-emerald-500' : 'bg-slate-400 dark:bg-slate-600'}`} />
             {component.is_active ? 'Kích hoạt' : 'Khóa'}
           </span>
@@ -401,7 +395,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
                     role="radio"
                     aria-checked={draft.kind === kind}
                     onClick={() => updateDraft({ kind })}
-                    className={`rounded-none px-3 py-2 text-sm font-bold transition ${draft.kind === kind ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                    className={`rounded-none px-3 py-2 text-sm font-bold transition ${draft.kind === kind ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                   >
                     {kind === 'INFO' ? KIND_LABEL[kind] : KIND_SHORT[kind]}
                   </button>
@@ -410,19 +404,18 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <Dropdown square
+              <Dropdown
                 label="Nhóm"
-                required={draft.kind !== 'INFO'}
                 placeholder="Chọn nhóm…"
                 value={draft.category_code}
                 options={[
-                  ...(draft.kind === 'INFO' ? [{ value: '', label: 'Không thuộc nhóm nào' }] : []),
+                  { value: '', label: 'Không thuộc nhóm nào' },
                   ...categories.map((item) => ({ value: item.code, label: item.name })),
                 ]}
                 onChange={(value) => updateDraft({ category_code: value as PayComponentCategoryCode | '' })}
                 error={errors.category_code}
               />
-              <Dropdown square
+              <Dropdown
                 label="Nhãn báo cáo"
                 value={draft.report_tag}
                 options={[
@@ -456,7 +449,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
                     role="radio"
                     aria-checked={draft.is_active === value}
                     onClick={() => updateDraft({ is_active: value })}
-                    className={`rounded-none px-3 py-2 text-sm font-bold transition ${draft.is_active === value ? on : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
+                    className={`rounded-none px-3 py-2 text-sm font-bold transition ${draft.is_active === value ? on : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}
                   >
                     {label}
                   </button>
@@ -484,20 +477,20 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
       label: category.name,
       count: searched.filter((component) => component.category_code === category.code).length,
     })),
-    { code: 'MID', label: 'Dòng trung gian', count: searched.filter(isLooseIntermediate).length },
+    { code: 'NONE', label: 'Không nhóm', count: searched.filter(isUngrouped).length },
   ];
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] max-w-md flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Tìm đầu mục theo tên…"
             aria-label="Tìm đầu mục theo tên"
-            className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15"
+            className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
           />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2 no-print">
@@ -510,37 +503,16 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
           )}
           {canManage && (
             <Button size="sm" onClick={() => openCreate(categoryFilter)}>
-              <Plus className="h-3.5 w-3.5" /> {categoryFilter === 'MID' ? 'Thêm dòng trung gian' : 'Thêm khoản lương'}
+              <Plus className="h-3.5 w-3.5" /> Thêm đầu mục
             </Button>
           )}
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800 no-print" role="tablist" aria-label="Lọc theo nhóm">
-        {tabs.map((tab) => {
-          const active = categoryFilter === tab.code;
-          return (
-            <button
-              key={tab.code}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => setCategoryFilter(tab.code)}
-              className={`-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-semibold transition ${
-                active ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              {tab.label}
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${active ? 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'}`}>
-                {tab.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <Tabs label="Lọc theo nhóm" items={tabs.map((item) => ({ key: item.code, label: item.label, count: item.count }))} value={categoryFilter} onChange={setCategoryFilter} />
 
       {filtered.length === 0 ? (
-        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-500">Không có đầu mục nào khớp.</CardContent></Card>
+        <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm text-slate-600">Không có đầu mục nào khớp.</CardContent></Card>
       ) : (
         <Card className="!rounded-none">
           <CardContent className="p-0">{renderTable(filtered)}</CardContent>
@@ -567,7 +539,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
                 <Field label="Trong cơ chế của" value={`${usage.people} nhân sự`} />
               </dl>
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Mô tả</p>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Mô tả</p>
                 <p className="mt-1 whitespace-pre-line text-sm text-slate-700">{detail.note || 'Chưa có mô tả.'}</p>
               </div>
               {usage.mechanisms.length + usage.people === 0 && detail.is_active && (
@@ -597,7 +569,7 @@ export function ComponentCatalog({ data, canManage, onChanged }: ComponentCatalo
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{label}</dt>
+      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-600">{label}</dt>
       <dd className="mt-0.5 text-slate-800">{value}</dd>
     </div>
   );
@@ -612,7 +584,7 @@ function IconButton({ children, label, onClick, danger = false }: {
       onClick={onClick}
       aria-label={label}
       title={label}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors ${
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-none text-slate-600 transition-colors ${
         danger ? 'hover:bg-red-50 hover:text-red-600' : 'hover:bg-indigo-50 hover:text-indigo-600'
       }`}
     >

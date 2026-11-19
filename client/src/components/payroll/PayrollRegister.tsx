@@ -11,7 +11,7 @@
 // • Mọi chuyển trạng thái đi qua RPC ở database; màn này chỉ gọi và hiển thị.
 // ============================================================================
 
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -38,7 +38,7 @@ import { CellFormulaModal } from '@/components/payroll/CellFormulaModal';
 import { PayrollFilterModal, type ItemColumn } from '@/components/payroll/PayrollFilterModal';
 import { PayrollOperationsModal } from '@/components/payroll/PayrollOperationsModal';
 import {
-  FullscreenPanel, FullscreenToggle, ScrollArrows, TableShell, scrollAreaClass, useColumnScroll,
+  FullscreenPanel, FullscreenToggle, STICKY_COL_WIDTH, ScrollArrows, TableShell, ZoomControl, scrollAreaClass, useColumnScroll, useCtrlWheelZoom, useTableZoom,
 } from '@/components/payroll/WideTable';
 import { useToast } from '@/contexts/ToastContext';
 import { useConfirm } from '@/contexts/ConfirmContext';
@@ -56,7 +56,11 @@ import {
   persistPayslips, savePayrollInput, withdrawPayrollRun, type PayrollWorkspace,
 } from '@/lib/payrollData';
 import { notifyUsers } from '@/lib/assignments';
+import {
+  columnLabel, dataValueOf, fetchLeaveYear, headerGroups, isSheetMember, totalValueOf, type LeaveYear,
+} from '@/lib/payrollSheets';
 import type { EmployeeBankAccount, PayComponentKind, PayrollRunStatus, Profile } from '@/types';
+import { Pagination, PAGE_SIZE_MATRIX } from '@/components/ui/Pagination';
 
 interface PayrollRegisterProps {
   data: PayrollWorkspace;
@@ -87,7 +91,7 @@ export const RUN_STATUS_LABEL: Record<PayrollRunStatus, string> = {
   APPROVED: 'Đã duyệt chi',
   PAID: 'Đã chi trả & phát hành',
 };
-const PAGE_SIZE = 50;
+const PAGE_SIZE = PAGE_SIZE_MATRIX;
 /** Số KPI do module KPI tự đẩy sang khi khoá phiếu — không nhập tay. */
 /** "10.500.000" (chấm ngăn nghìn) và "1,5" / "1.5" (số lẻ) đều đọc đúng. */
 const parseQuantity = (raw: string) => {
@@ -257,6 +261,31 @@ export function PayrollRegister({
   const [checkOpen, setCheckOpen] = useState(false);
   const [warningsOpen, setWarningsOpen] = useState(false);
 
+  // ---- Bảng cấu hình (BL 01, BL 02, Lương cắt lô…) ---------------------------
+  const canConfigureSheets = hasAdminFunction(profile, 'admin.payroll_settings');
+  const activeSheetId = searchParams.get('sheet') ?? '';
+  const activeSheet = data.sheets.find((sheet) => sheet.id === activeSheetId) ?? null;
+  const selectSheet = (id: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (id) next.set('sheet', id);
+    else next.delete('sheet');
+    setSearchParams(next);
+    setPage(0);
+  };
+  const needsLeave = !!activeSheet?.columns.some((column) => column.source === 'LEAVE');
+  const sheetYear = monthStart.getFullYear();
+  const [leaveYear, setLeaveYear] = useState<LeaveYear | null>(null);
+  useEffect(() => {
+    if (!needsLeave) return undefined;
+    let alive = true;
+    void fetchLeaveYear(sheetYear).then(({ data: leave, error }) => {
+      if (!alive) return;
+      if (error) toast('Không đọc được sổ phép năm: ' + error, 'error');
+      setLeaveYear(leave);
+    });
+    return () => { alive = false; };
+  }, [needsLeave, sheetYear]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const run = data.run;
   const runStatus: PayrollRunStatus = run?.status ?? 'DRAFT';
   const closed = runStatus === 'LOCKED' || runStatus === 'APPROVED' || runStatus === 'PAID';
@@ -358,7 +387,8 @@ export function PayrollRegister({
     .filter((row) => !selectedUserId || row.profile.id === selectedUserId)
     .filter((row) => !keyword || normalizeText(`${row.profile.name} ${row.profile.employee_code ?? ''}`).includes(keyword))
     .filter((row) => !shownInputCodes || [...shownInputCodes].some((code) => neededByPerson.get(row.profile.id)?.has(code)))
-;
+    .filter((row) => !activeSheet
+      || isSheetMember(activeSheet, row.profile, new Set(row.computed.lines.map((line) => line.code.toUpperCase())), data.units));
   const sorted = [...filtered].sort((a, b) => a.profile.name.localeCompare(b.profile.name, 'vi'));
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -397,18 +427,38 @@ export function PayrollRegister({
 
   const categoryNameMap = useMemo(() => new Map<string, string>(data.categories.map((c) => [c.code, c.name])), [data.categories]);
 
-  /** Mỗi đầu mục một cột, theo thứ tự xuất hiện trên phiếu. */
+  /**
+   * Bảng cấu hình: đúng các cột đã khai. Kiểu xem mọi đầu mục: mỗi đầu mục một
+   * cột theo thứ tự trên phiếu, cột cùng nhóm gộp tiêu đề như bảng Excel.
+   */
   const columns = useMemo<ItemColumn[]>(() => {
+    if (activeSheet) {
+      return activeSheet.columns.map((column, index) => {
+        const component = column.source === 'LINE' ? data.components.find((item) => item.code === column.code) : undefined;
+        return {
+          key: `${index}:${column.source}:${column.code}`,
+          code: column.code,
+          name: columnLabel(column, data.components),
+          kind: component?.kind ?? (column.source === 'TOTAL' ? 'EARNING' : 'INFO'),
+          categoryCode: component?.category_code ?? null,
+          group: column.group,
+          source: column.source,
+          total: column.total,
+        };
+      });
+    }
     const categoryByCode = new Map(data.components.map((c) => [c.code, c.category_code]));
     const seen = new Map<string, ItemColumn>();
     for (const row of sorted) {
       for (const line of row.computed.lines) {
         if (!seen.has(line.code)) {
+          const categoryCode = categoryByCode.get(line.code) ?? null;
           seen.set(line.code, {
             code: line.code,
             name: line.name,
             kind: line.kind,
-            categoryCode: categoryByCode.get(line.code) ?? null,
+            categoryCode,
+            group: categoryCode ? categoryNameMap.get(categoryCode) ?? null : null,
           });
         }
       }
@@ -431,7 +481,7 @@ export function PayrollRegister({
       });
     }
     return all;
-  }, [categoryNameMap, columnSearch, data.components, hiddenColumnCodes, hideIntermediate, shownInputCodes, sorted]);
+  }, [activeSheet, categoryNameMap, columnSearch, data.components, hiddenColumnCodes, hideIntermediate, shownInputCodes, sorted]);
 
   const activeFilterCount = (unitFilter ? 1 : 0) + (hideIntermediate ? 1 : 0) + (hiddenColumnCodes.size > 0 ? 1 : 0);
   const hasActiveFilters = activeFilterCount > 0;
@@ -439,6 +489,33 @@ export function PayrollRegister({
     const lines = row.computed.lines.filter((line) => line.code === code);
     return lines.length === 0 ? null : lines.reduce((sum, line) => sum + line.amount, 0);
   };
+  const isLine = (column: ItemColumn) => !column.source || column.source === 'LINE';
+  /** Số của một ô theo nguồn của cột. */
+  const valueOf = (row: PayrollRow, column: ItemColumn): number | null => {
+    if (column.source === 'DATA') return dataValueOf(row.computed, column.code, params?.hoursPerDay ?? 8);
+    if (column.source === 'LEAVE') return leaveYear ? leaveYear.get(row.profile.id)?.[column.code] ?? 0 : null;
+    if (column.source === 'TOTAL') return totalValueOf(row.computed, column.code);
+    return amountOf(row, column.code);
+  };
+  const lineColumns = columns.filter(isLine);
+  const groupHeads = headerGroups(columns);
+  const twoTier = groupHeads.some((head) => head.title);
+  const headSpan = twoTier ? 2 : 1;
+  // Khai báo trước khối đo tiêu đề bên dưới — mảng phụ thuộc của nó đọc `zoom` ngay khi render.
+  const { zoom, setZoom } = useTableZoom('payroll');
+  // Hàng tiêu đề thứ 2 dính ngay dưới hàng 1: phải đo chiều cao thật, đặt cứng sẽ hở khe cho dòng dữ liệu lọt qua.
+  const headRowRef = useRef<HTMLTableRowElement>(null);
+  const [headTop, setHeadTop] = useState(28);
+  useLayoutEffect(() => {
+    const el = headRowRef.current;
+    if (!el || !twoTier) return;
+    // `top` của ô dính cũng bị nhân theo mức thu/phóng, nên đo xong phải chia lại.
+    const measure = () => setHeadTop(Math.round(el.getBoundingClientRect().height / zoom));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [twoTier, columns.length, zoom]);
 
   /** Điều chỉnh đã lưu gắn vào từng ô: tổng thay đổi và lý do — để ô hiện "số cũ + − chênh lệch". */
   const adjustmentByCell = useMemo(() => {
@@ -518,6 +595,7 @@ export function PayrollRegister({
   const [full, setFull] = useState(false);
   const exitFull = useCallback(() => setFull(false), []);
   const { scrollRef, edge, updateEdge, scrollColumns } = useColumnScroll([columns.length, pageRows.length, rows.length, full]);
+  useCtrlWheelZoom(scrollRef, zoom, setZoom);
 
   const dirtyCount = Object.keys(edits).length;
 
@@ -577,7 +655,7 @@ export function PayrollRegister({
   const startEditingRow = (row: PayrollRow) => {
     setEditingRowUserId(row.profile.id);
     const initial: Record<string, string> = {};
-    for (const column of columns) {
+    for (const column of lineColumns) {
       const amt = amountOf(row, column.code);
       initial[column.code] = amt != null ? formatFormulaNumber(amt) : '';
     }
@@ -591,7 +669,7 @@ export function PayrollRegister({
 
   const handleSaveRowEdits = (row: PayrollRow) => {
     const changedItems: RowChangedItem[] = [];
-    for (const column of columns) {
+    for (const column of lineColumns) {
       const currentAmt = amountOf(row, column.code) ?? 0;
       const raw = rowDraftValues[column.code];
       const newVal = raw !== undefined ? parseQuantity(raw) : currentAmt;
@@ -784,9 +862,9 @@ export function PayrollRegister({
 
   /** Mỗi đầu mục một cột — đúng như bảng lương kế toán vẫn đối chiếu. */
   const exportOptions = () => ({
-    filename: `bang-luong-${format(monthStart, 'yyyy-MM')}`,
-    sheetName: 'Bảng lương',
-    title: `BẢNG LƯƠNG THÁNG ${monthLabel}`,
+    filename: `bang-luong-${activeSheet ? `${normalizeText(activeSheet.name).replace(/\s+/g, '-')}-` : ''}${format(monthStart, 'yyyy-MM')}`,
+    sheetName: activeSheet?.name.slice(0, 31) ?? 'Bảng lương',
+    title: `${(activeSheet?.title || activeSheet?.name || 'Bảng lương').toUpperCase()} THÁNG ${monthLabel}`,
     subtitle: `Trạng thái kỳ: ${RUN_STATUS_LABEL[runStatus]}${closed ? ' (số liệu đã chốt)' : ' (bản xem trước)'}`,
     rows: sorted,
     columns: [
@@ -794,17 +872,21 @@ export function PayrollRegister({
       { header: 'Mã NV', value: (row: PayrollRow) => row.profile.employee_code ?? '', width: 10 },
       { header: 'Họ tên', value: (row: PayrollRow) => row.profile.name, width: 24 },
       { header: 'Đơn vị', value: (row: PayrollRow) => unitNames.get(row.profile.unit_id ?? '') ?? row.profile.department ?? '', width: 20 },
-      { header: 'Ngày công', value: (row: PayrollRow) => row.computed.stats.workDays, width: 10 },
-      { header: 'Công chuẩn', value: (row: PayrollRow) => row.computed.standardDays, width: 10 },
+      ...(activeSheet ? [] : [
+        { header: 'Ngày công', value: (row: PayrollRow) => row.computed.stats.workDays, width: 10 },
+        { header: 'Công chuẩn', value: (row: PayrollRow) => row.computed.standardDays, width: 10 },
+      ]),
       ...columns.map((column) => ({
-        header: column.name,
-        value: (row: PayrollRow) => amountOf(row, column.code) ?? '',
+        header: column.group ? `${column.group} – ${column.name}` : column.name,
+        value: (row: PayrollRow) => valueOf(row, column) ?? '',
         width: 16,
       })),
-      { header: 'TỔNG CỘNG', value: (row: PayrollRow) => row.computed.gross },
-      { header: 'TỔNG TRỪ', value: (row: PayrollRow) => row.computed.totalDeductions },
-      { header: 'LÀM TRÒN', value: (row: PayrollRow) => row.computed.roundingAdjustment, width: 10 },
-      { header: 'THỰC NHẬN', value: (row: PayrollRow) => row.computed.netPay },
+      ...(activeSheet ? [] : [
+        { header: 'TỔNG CỘNG', value: (row: PayrollRow) => row.computed.gross },
+        { header: 'TỔNG TRỪ', value: (row: PayrollRow) => row.computed.totalDeductions },
+        { header: 'LÀM TRÒN', value: (row: PayrollRow) => row.computed.roundingAdjustment, width: 10 },
+        { header: 'THỰC NHẬN', value: (row: PayrollRow) => row.computed.netPay },
+      ]),
     ],
   });
 
@@ -829,8 +911,42 @@ export function PayrollRegister({
 
       <FullscreenPanel full={full} onExit={exitFull}>
       <TableShell full={full}>
+          {(data.sheets.length > 0 || canConfigureSheets) && (
+            <div className="flex items-end gap-1 overflow-x-auto border-b border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 pt-1.5 no-print" role="tablist" aria-label="Chọn bảng lương">
+              {[{ id: '', name: 'Tất cả đầu mục' }, ...data.sheets].map((sheet) => {
+                const active = sheet.id === (activeSheet?.id ?? '');
+                return (
+                  <button
+                    key={sheet.id || 'all'}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => selectSheet(sheet.id)}
+                    className={`-mb-px shrink-0 rounded-none border-b-2 px-3 py-1.5 text-xs font-bold transition ${
+                      active
+                        ? 'border-[#bf1f2b] text-[#5c0f16] dark:border-[#e66a76] dark:text-[#fde8ea]'
+                        : 'border-transparent text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'
+                    }`}
+                  >
+                    {sheet.name}
+                  </button>
+                );
+              })}
+              {canConfigureSheets && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/admin/payroll/setup/sheets?month=${monthStartStr.slice(0, 7)}${activeSheet ? `&sheet=${activeSheet.id}` : ''}`)}
+                  title="Thiết lập các bảng lương"
+                  aria-label="Thiết lập các bảng lương"
+                  className="mb-1 ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800"
+                >
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900 px-4 py-2.5 no-print">
-            {full && <p className="w-full text-xs font-bold text-slate-800 dark:text-slate-200 sm:w-auto">Bảng lương tháng {monthLabel}</p>}
+            {full && <p className="w-full text-xs font-bold text-slate-800 dark:text-slate-200 sm:w-auto">{activeSheet?.name ?? 'Bảng lương'} tháng {monthLabel}</p>}
 
             {/* CTA Trạng thái kỳ lương — chỉ hiện trạng thái, bấm vào để chỉnh sửa / vận hành */}
             <Button
@@ -857,26 +973,26 @@ export function PayrollRegister({
               ) : runStatus === 'CALCULATED' ? (
                 <Calculator className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               ) : (
-                <Unlock className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                <Unlock className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
               )}
               <span>{RUN_STATUS_LABEL[runStatus]}</span>
             </Button>
 
             {/* Tìm kiếm theo tên nhân sự */}
             <div className="relative w-full sm:w-44">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
               <input
                 value={personFilter}
                 onChange={(event) => { setPersonFilter(event.target.value); setPage(0); }}
                 placeholder="Lọc nhân viên…"
                 aria-label="Lọc theo tên nhân viên"
-                className="!min-h-0 h-8 w-full !rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-7 text-xs font-medium text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/20"
+                className="h-9 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
               />
               {personFilter && (
                 <button
                   type="button"
                   onClick={() => { setPersonFilter(''); setPage(0); }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-600 dark:hover:text-slate-200"
                   title="Xoá tìm nhân viên"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -884,9 +1000,10 @@ export function PayrollRegister({
               )}
             </div>
 
-            {/* Tìm kiếm đầu mục cho bảng lương */}
+            {/* Tìm kiếm đầu mục cho bảng lương — bảng cấu hình đã có cột cố định */}
+            {!activeSheet && (
             <div className="relative w-full sm:w-44">
-              <Columns3 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Columns3 className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
               <input
                 value={columnSearch}
                 onChange={(event) => setColumnSearch(event.target.value)}
@@ -898,13 +1015,14 @@ export function PayrollRegister({
                 <button
                   type="button"
                   onClick={() => setColumnSearch('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-600 dark:hover:text-slate-200"
                   title="Xoá tìm đầu mục"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
+            )}
 
             {unitFilter && (
               <span className="inline-flex items-center gap-1.5 rounded-none border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300">
@@ -997,6 +1115,7 @@ export function PayrollRegister({
               >
                 <Printer className="h-3.5 w-3.5" /> In bút toán
               </Button>
+              <ZoomControl zoom={zoom} onChange={setZoom} square />
               <FullscreenToggle full={full} onToggle={() => setFull((value) => !value)} square />
               <Button
                 size="xs"
@@ -1009,7 +1128,7 @@ export function PayrollRegister({
               >
                 <Settings className="h-3.5 w-3.5" />
                 {activeFilterCount > 0 && (
-                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-none bg-indigo-600 text-white dark:bg-indigo-400 dark:text-slate-900 text-[9px] font-black h-3.5 min-w-[14px] px-0.5 shadow-xs">
+                  <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-none bg-indigo-600 text-white dark:bg-indigo-400 dark:text-slate-900 text-[11px] font-black h-3.5 min-w-[14px] px-0.5 shadow-xs">
                     {activeFilterCount}
                   </span>
                 )}
@@ -1018,57 +1137,92 @@ export function PayrollRegister({
           </div>
 
           {rows.length === 0 ? (
-            <p className="px-6 py-12 text-center text-sm font-medium text-slate-500 dark:text-slate-400">
+            <p className="px-6 py-12 text-center text-sm font-medium text-slate-600 dark:text-slate-400">
               {closed ? 'Kỳ này chưa có phiếu lương nào.' : 'Chưa có nhân sự đang làm việc.'}
             </p>
           ) : (
             <div className={full ? 'relative flex min-h-0 flex-1 flex-col' : 'relative'}>
-              <ScrollArrows edge={edge} onScroll={scrollColumns} />
+              <ScrollArrows edge={edge} onScroll={scrollColumns} stickyWidth={STICKY_COL_WIDTH * zoom} />
             <div ref={scrollRef} onScroll={updateEdge} className={scrollAreaClass(full)}>
-              <table className="w-full whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
+              <table style={{ zoom }} className="w-full whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
                 <thead>
-                  <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black text-[#5c0f16] dark:text-[#fde8ea]">
-                    <th className="sticky left-0 top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[46px] min-w-[46px] max-w-[46px] bg-[#fdf2f4] dark:bg-[#201114] px-1 py-1 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
-                      STT
-                    </th>
-                    <th className="sticky left-[46px] top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[84px] min-w-[84px] max-w-[84px] bg-[#fdf2f4] dark:bg-[#201114] px-1.5 py-1 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
-                      Mã NV
-                    </th>
-                    <th className="sticky left-[130px] top-0 z-30 shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] w-[150px] min-w-[150px] max-w-[150px] bg-[#fdf2f4] dark:bg-[#201114] px-2.5 py-1 text-left border-r-2 border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
-                      Nhân sự
-                    </th>
-                    <th className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[50px] px-1.5 py-1 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]">
-                      <div className="min-w-[50px] text-center line-clamp-1 leading-snug">Công</div>
-                    </th>
-                    {columns.map((column) => (
-                      <th key={column.code} className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[76px] max-w-[110px] px-1.5 py-1 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black text-[#5c0f16] dark:text-[#fde8ea]">
+                  {(() => {
+                    const headBase = 'sticky z-20 bg-[#fdf2f4] dark:bg-[#201114] border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black text-[#5c0f16] dark:text-[#fde8ea]';
+                    const bottomRed = 'shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]';
+                    const columnHead = (column: ItemColumn, options: { rowSpan?: number; second?: boolean }) => (
+                      <th
+                        key={column.key ?? column.code}
+                        rowSpan={options.rowSpan}
+                        style={options.second ? { top: headTop } : undefined}
+                        className={`${headBase} ${bottomRed} ${options.second ? '' : 'top-0'} min-w-[76px] max-w-[110px] px-1.5 py-1`}
+                      >
                         <div className="w-full min-w-[76px] max-w-[110px] mx-auto flex items-center justify-center">
                           <span
                             className="font-black text-[#5c0f16] dark:text-[#fde8ea] text-xs line-clamp-2 text-center leading-tight whitespace-normal break-words"
-                            title={column.kind === 'INFO' ? `${column.name} (Dòng trung gian)` : column.name}
+                            title={column.group ? `${column.group} › ${column.name}` : column.name}
                           >
                             {column.name}
                           </span>
                         </div>
                       </th>
-                    ))}
-                    <th className="sticky top-0 z-20 bg-[#f9e5e7] dark:bg-[#2c1519] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[80px] max-w-[100px] px-1.5 py-1.5 border-l-2 border-[#bf1f2b] dark:border-[#e66a76] text-center font-black uppercase tracking-wider text-[#6f151c] dark:text-[#fcd6da]">
-                      <div className="w-full min-w-[80px] text-center line-clamp-2 leading-tight">
-                        Tổng cộng
-                      </div>
-                    </th>
-                    <th className="sticky top-0 z-20 bg-[#fde8ea] dark:bg-rose-950/40 shadow-[inset_0_-2px_0_#e11d48] dark:shadow-[inset_0_-2px_0_#fb7185] min-w-[80px] max-w-[100px] px-1.5 py-1.5 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black uppercase tracking-wider text-rose-800 dark:text-rose-300">
-                      <div className="w-full min-w-[80px] text-center line-clamp-2 leading-tight">
-                        Tổng trừ
-                      </div>
-                    </th>
-                    <th className="sticky top-0 z-20 bg-[#e8f5ec] dark:bg-[#08291a] shadow-[inset_0_-2px_0_#10b981] dark:shadow-[inset_0_-2px_0_#34d399] min-w-[85px] max-w-[110px] px-2 py-1.5 border-l-2 border-[#bf1f2b] dark:border-[#e66a76] text-center font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-200">
-                      <div className="w-full min-w-[85px] text-center line-clamp-2 leading-tight">
-                        Thực nhận
-                      </div>
-                    </th>
-                    <th className="sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[72px] w-[72px] px-1 py-1.5 border-l border-[#eed5d8] dark:border-[#4a1c22] no-print" />
-                  </tr>
+                    );
+                    const grouped: boolean[] = [];
+                    for (const head of groupHeads) for (let i = 0; i < head.span; i += 1) grouped.push(!!head.title);
+                    let cursor = 0;
+                    return (
+                      <>
+                        <tr ref={headRowRef} className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black text-[#5c0f16] dark:text-[#fde8ea]">
+                          <th rowSpan={headSpan} className={`sticky left-0 top-0 z-30 ${bottomRed} w-[46px] min-w-[46px] max-w-[46px] bg-[#fdf2f4] dark:bg-[#201114] px-1 py-1 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]`}>
+                            STT
+                          </th>
+                          <th rowSpan={headSpan} className={`sticky left-[46px] top-0 z-30 ${bottomRed} w-[84px] min-w-[84px] max-w-[84px] bg-[#fdf2f4] dark:bg-[#201114] px-1.5 py-1 text-center border-r border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]`}>
+                            Mã NV
+                          </th>
+                          <th rowSpan={headSpan} className={`sticky left-[130px] top-0 z-30 ${bottomRed} w-[150px] min-w-[150px] max-w-[150px] bg-[#fdf2f4] dark:bg-[#201114] px-2.5 py-1 text-left border-r-2 border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea]`}>
+                            Nhân sự
+                          </th>
+                          {!activeSheet && (
+                            <th rowSpan={headSpan} className={`${headBase} ${bottomRed} top-0 min-w-[50px] px-1.5 py-1 uppercase tracking-wider`}>
+                              <div className="min-w-[50px] text-center line-clamp-1 leading-snug">Công</div>
+                            </th>
+                          )}
+                          {groupHeads.map((head) => {
+                            const start = cursor;
+                            cursor += head.span;
+                            if (!head.title) return columnHead(columns[start], { rowSpan: headSpan });
+                            return (
+                              <th
+                                key={`group-${start}`}
+                                colSpan={head.span}
+                                className={`${headBase} top-0 h-7 px-1.5 py-0 shadow-[inset_0_-1px_0_#eed5d8] dark:shadow-[inset_0_-1px_0_#4a1c22] border-l-2`}
+                              >
+                                <span className="line-clamp-1 text-xs font-black" title={head.title}>{head.title}</span>
+                              </th>
+                            );
+                          })}
+                          {!activeSheet && (
+                            <>
+                              <th rowSpan={headSpan} className="sticky top-0 z-20 bg-[#f9e5e7] dark:bg-[#2c1519] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76] min-w-[80px] max-w-[100px] px-1.5 py-1.5 border-l-2 border-[#bf1f2b] dark:border-[#e66a76] text-center font-black uppercase tracking-wider text-[#6f151c] dark:text-[#fcd6da]">
+                                <div className="w-full min-w-[80px] text-center line-clamp-2 leading-tight">Tổng cộng</div>
+                              </th>
+                              <th rowSpan={headSpan} className="sticky top-0 z-20 bg-[#fde8ea] dark:bg-rose-950/40 shadow-[inset_0_-2px_0_#e11d48] dark:shadow-[inset_0_-2px_0_#fb7185] min-w-[80px] max-w-[100px] px-1.5 py-1.5 border-l border-[#eed5d8] dark:border-[#4a1c22] text-center font-black uppercase tracking-wider text-rose-800 dark:text-rose-300">
+                                <div className="w-full min-w-[80px] text-center line-clamp-2 leading-tight">Tổng trừ</div>
+                              </th>
+                              <th rowSpan={headSpan} className="sticky top-0 z-20 bg-[#e8f5ec] dark:bg-[#08291a] shadow-[inset_0_-2px_0_#10b981] dark:shadow-[inset_0_-2px_0_#34d399] min-w-[85px] max-w-[110px] px-2 py-1.5 border-l-2 border-[#bf1f2b] dark:border-[#e66a76] text-center font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-200">
+                                <div className="w-full min-w-[85px] text-center line-clamp-2 leading-tight">Thực nhận</div>
+                              </th>
+                            </>
+                          )}
+                          <th rowSpan={headSpan} className={`sticky top-0 z-20 bg-[#fdf2f4] dark:bg-[#201114] ${bottomRed} min-w-[72px] w-[72px] px-1 py-1.5 border-l border-[#eed5d8] dark:border-[#4a1c22] no-print`} />
+                        </tr>
+                        {twoTier && (
+                          <tr className="bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black text-[#5c0f16] dark:text-[#fde8ea]">
+                            {columns.map((column, index) => (grouped[index] ? columnHead(column, { second: true }) : null))}
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })()}
                 </thead>
                 <tbody className="divide-y divide-slate-300 dark:divide-slate-800 bg-white dark:bg-slate-900">
                   {pageRows.map((row, rowIndex) => {
@@ -1079,7 +1233,7 @@ export function PayrollRegister({
                     const isEditingRow = editingRowUserId === row.profile.id;
                     return (
                       <tr key={row.profile.id} className={`group transition-colors ${isEditingRow ? 'bg-amber-50/70 dark:bg-amber-950/30 ring-1 ring-inset ring-amber-400 dark:ring-amber-500' : 'hover:bg-slate-100/80 dark:hover:bg-slate-800/60'}`}>
-                        <td className={`sticky left-0 z-10 w-[46px] min-w-[46px] max-w-[46px] px-1 py-1 text-center font-bold text-slate-500 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700 ${
+                        <td className={`sticky left-0 z-10 w-[46px] min-w-[46px] max-w-[46px] px-1 py-1 text-center font-bold text-slate-600 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700 ${
                           isEditingRow ? 'bg-amber-50 dark:bg-slate-900' : 'bg-white dark:bg-slate-900 group-hover:bg-slate-100/80 dark:group-hover:bg-slate-800/80'
                         }`}>
                           {currentPage * PAGE_SIZE + rowIndex + 1}
@@ -1107,7 +1261,7 @@ export function PayrollRegister({
                               <div className="flex items-center gap-1">
                                 <p className="truncate text-xs font-black text-slate-900 dark:text-slate-100 group-hover:text-indigo-700 dark:group-hover:text-indigo-400" title={row.profile.name}>{row.profile.name}</p>
                                 {isEditingRow && (
-                                  <span className="shrink-0 rounded bg-amber-200 dark:bg-amber-900/80 px-1 py-0.2 text-[9px] font-black text-amber-800 dark:text-amber-200 uppercase">
+                                  <span className="shrink-0 rounded-none bg-amber-200 dark:bg-amber-900/80 px-1 py-0.2 text-[11px] font-black text-amber-800 dark:text-amber-200 uppercase">
                                     Sửa
                                   </span>
                                 )}
@@ -1120,11 +1274,24 @@ export function PayrollRegister({
                             )}
                           </button>
                         </td>
-                        <td className="px-1.5 py-1 border-l border-slate-300 dark:border-slate-700 text-center font-bold text-slate-900 dark:text-slate-100 text-xs">
-                          {row.computed.stats.paidDays}
-                          <span className="text-slate-500 dark:text-slate-400 font-medium">/{row.computed.standardDays}</span>
-                        </td>
+                        {!activeSheet && (
+                          <td className="px-1.5 py-1 border-l border-slate-300 dark:border-slate-700 text-center font-bold text-slate-900 dark:text-slate-100 text-xs">
+                            {row.computed.stats.paidDays}
+                            <span className="text-slate-600 dark:text-slate-400 font-medium">/{row.computed.standardDays}</span>
+                          </td>
+                        )}
                         {columns.map((column) => {
+                          if (!isLine(column)) {
+                            // Dữ liệu chấm công / phép năm / tổng phiếu: chỉ xem.
+                            const value = valueOf(row, column);
+                            return (
+                              <td key={column.key ?? column.code} className={`px-1 py-0.5 border-l border-slate-300 dark:border-slate-700 text-center ${column.source === 'TOTAL' ? 'bg-emerald-50/50 dark:bg-emerald-950/30' : 'bg-slate-50/60 dark:bg-slate-800/40'}`}>
+                                <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
+                                  {value == null ? <span className="font-normal text-slate-600 dark:text-slate-400">—</span> : formatFormulaNumber(value)}
+                                </span>
+                              </td>
+                            );
+                          }
                           const amount = amountOf(row, column.code);
                           const userId = row.profile.id;
                           const monthly = canEnter && !closed && (neededByPerson.get(userId)?.has(column.code) ?? false);
@@ -1143,7 +1310,7 @@ export function PayrollRegister({
                             const delta = Math.round((typedAmt - currentAmt) * 100) / 100;
                             return (
                               <td
-                                key={column.code}
+                                key={column.key ?? column.code}
                                 className={`px-1 py-0.5 border-l border-slate-300 dark:border-slate-700 text-center ${
                                   hasChanged
                                     ? 'bg-amber-100/70 dark:bg-amber-950/40'
@@ -1182,7 +1349,7 @@ export function PayrollRegister({
                                     data-col={column.code}
                                     placeholder="0"
                                     aria-label={`${column.name} của ${row.profile.name}`}
-                                    className={`h-7 w-full min-w-[4.8rem] rounded border px-1 text-center text-xs tabular-nums font-bold focus:outline-none transition ${
+                                    className={`h-7 w-full min-w-[4.8rem] rounded-none border px-1 text-center text-xs tabular-nums font-bold focus:outline-none transition ${
                                       hasChanged
                                         ? 'border-[#bf1f2b] bg-rose-50/80 dark:bg-rose-950/60 text-[#5c0f16] dark:text-rose-100 focus:border-[#bf1f2b] focus:ring-1 focus:ring-[#bf1f2b]/40'
                                         : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:border-[#bf1f2b] focus:ring-1 focus:ring-[#bf1f2b]/30'
@@ -1190,7 +1357,7 @@ export function PayrollRegister({
                                   />
                                   {hasChanged && (
                                     <span
-                                      className="mt-0.5 block text-[10px] font-bold leading-tight tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap"
+                                      className="mt-0.5 block text-[11px] font-bold leading-tight tabular-nums text-slate-600 dark:text-slate-400 whitespace-nowrap"
                                       title={`Số cũ: ${formatFormulaNumber(currentAmt)}`}
                                     >
                                       cũ {formatFormulaNumber(currentAmt)}{' '}
@@ -1206,7 +1373,7 @@ export function PayrollRegister({
 
                           return (
                             <td
-                              key={column.code}
+                              key={column.key ?? column.code}
                               className={`px-1 border-l border-slate-300 dark:border-slate-700 text-center ${
                                 monthly ? (empty ? 'bg-rose-50 dark:bg-rose-950/30 py-0.5' : inDragRange ? 'bg-indigo-50 dark:bg-indigo-950/30 py-0.5' : 'bg-rose-50/40 dark:bg-rose-950/20 py-0.5') : 'py-0.5'}`}
                             >
@@ -1232,8 +1399,8 @@ export function PayrollRegister({
                                     placeholder="Chưa nhập"
                                     aria-label={`${column.name} của ${row.profile.name}`}
                                     className={`${cellClass} focus:border-[#bf1f2b] ${empty
-                                      ? 'border-red-400 dark:border-red-500/80 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-500'
-                                      : 'border-[#eed5d8] dark:border-[#4a1c22] placeholder:text-slate-400 dark:placeholder:text-slate-500 hover:border-[#bf1f2b]/60'}`}
+                                      ? 'border-red-400 dark:border-red-500/80 placeholder:font-normal placeholder:text-slate-600 dark:placeholder:text-slate-600'
+                                      : 'border-[#eed5d8] dark:border-[#4a1c22] placeholder:text-slate-600 dark:placeholder:text-slate-600 hover:border-[#bf1f2b]/60'}`}
                                   />
                                   {showFillHandle && (
                                     <div
@@ -1259,15 +1426,15 @@ export function PayrollRegister({
                                       setInspectCell({ row, column });
                                     }
                                   }}
-                                  className="group/cell relative flex flex-col items-center justify-center min-h-[26px] min-w-[76px] max-w-[110px] px-1 py-0.5 rounded transition-colors select-none cursor-pointer hover:bg-rose-50/80 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-rose-200"
+                                  className="group/cell relative flex flex-col items-center justify-center min-h-[26px] min-w-[76px] max-w-[110px] px-1 py-0.5 rounded-none transition-colors select-none cursor-pointer hover:bg-rose-50/80 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-rose-200"
                                   title={closed ? `Bấm để xem công thức "${column.name}" (chỉ xem)` : `Bấm để xem giá trị & chỉnh sửa công thức "${column.name}"`}
                                 >
                                   <span className="font-bold text-xs text-slate-900 dark:text-slate-100">
-                                    {amount == null ? <span className="text-slate-400 dark:text-slate-500 font-normal">—</span> : formatFormulaNumber(amount)}
+                                    {amount == null ? <span className="text-slate-600 dark:text-slate-400 font-normal">—</span> : formatFormulaNumber(amount)}
                                   </span>
                                   {changed && changed.delta !== 0 && amount != null && (
                                     <span
-                                      className="mt-0.5 block text-[10px] font-bold leading-tight tabular-nums text-slate-600 dark:text-slate-400"
+                                      className="mt-0.5 block text-[11px] font-bold leading-tight tabular-nums text-slate-600 dark:text-slate-400"
                                       title={changed.reasons.join('\n')}
                                     >
                                       cũ {formatFormulaNumber(amount - changed.delta)}{' '}
@@ -1281,11 +1448,11 @@ export function PayrollRegister({
                             </td>
                           );
                         })}
-                        {(() => {
+                        {!activeSheet && (() => {
                           let gross = row.computed.gross;
                           let deductions = row.computed.totalDeductions;
                           if (isEditingRow) {
-                            for (const col of columns) {
+                            for (const col of lineColumns) {
                               if (rowDraftValues[col.code] !== undefined) {
                                 const orig = amountOf(row, col.code) ?? 0;
                                 const typed = parseQuantity(rowDraftValues[col.code]);
@@ -1308,7 +1475,7 @@ export function PayrollRegister({
                               }`}>
                                 {formatFormulaNumber(gross)}
                                 {grossChanged && (
-                                  <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                  <span className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
                                     cũ {formatFormulaNumber(row.computed.gross)}
                                   </span>
                                 )}
@@ -1318,7 +1485,7 @@ export function PayrollRegister({
                               }`}>
                                 {deductions ? `−${formatFormulaNumber(deductions)}` : '—'}
                                 {dedChanged && (
-                                  <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                  <span className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
                                     cũ {formatFormulaNumber(row.computed.totalDeductions)}
                                   </span>
                                 )}
@@ -1328,7 +1495,7 @@ export function PayrollRegister({
                               }`}>
                                 {formatFormulaNumber(netPay)}
                                 {netChanged && (
-                                  <span className="block text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                                  <span className="block text-[11px] font-bold text-slate-600 dark:text-slate-400">
                                     cũ {formatFormulaNumber(row.computed.netPay)}
                                   </span>
                                 )}
@@ -1342,7 +1509,7 @@ export function PayrollRegister({
                               <button
                                 type="button"
                                 onClick={(event) => { event.stopPropagation(); handleSaveRowEdits(row); }}
-                                className="inline-flex h-6 w-6 items-center justify-center rounded bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-none bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
                                 title="Lưu các thay đổi của hàng này"
                                 aria-label="Lưu các thay đổi"
                               >
@@ -1351,7 +1518,7 @@ export function PayrollRegister({
                               <button
                                 type="button"
                                 onClick={(event) => { event.stopPropagation(); cancelEditingRow(); }}
-                                className="inline-flex h-6 w-6 items-center justify-center rounded bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-700 dark:bg-slate-700 dark:hover:bg-rose-950/60 dark:text-slate-300 dark:hover:text-rose-300 shadow-xs transition"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-none bg-slate-200 hover:bg-rose-100 text-slate-700 hover:text-rose-700 dark:bg-slate-700 dark:hover:bg-rose-950/60 dark:text-slate-300 dark:hover:text-rose-300 shadow-xs transition"
                                 title="Hủy bỏ chỉnh sửa"
                                 aria-label="Hủy bỏ chỉnh sửa"
                               >
@@ -1370,7 +1537,7 @@ export function PayrollRegister({
                                     startEditingRow(row);
                                   }
                                 }}
-                                className="inline-flex h-6 w-6 items-center justify-center rounded text-slate-500 dark:text-slate-400 transition-colors hover:bg-rose-50 dark:hover:bg-slate-800 hover:text-rose-600 dark:hover:text-rose-400"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded-none text-slate-600 dark:text-slate-400 transition-colors hover:bg-rose-50 dark:hover:bg-slate-800 hover:text-rose-600 dark:hover:text-rose-400"
                                 title={closed ? 'Xem điều chỉnh lương (chỉ xem)' : 'Mở chỉnh sửa tất cả đầu lương hàng này'}
                                 aria-label={`Chỉnh sửa lương của ${row.profile.name}`}
                               >
@@ -1385,17 +1552,21 @@ export function PayrollRegister({
                 </tbody>
                 <tfoot className="sticky bottom-0 z-20 bg-slate-100 dark:bg-slate-900 font-bold text-slate-900 dark:text-slate-100 border-t-2 border-slate-400 dark:border-slate-600 shadow-[0_-3px_6px_rgba(0,0,0,0.06)] dark:shadow-[0_-3px_6px_rgba(0,0,0,0.4)]">
                   <tr>
-                    <td className="sticky left-0 z-10 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] w-[46px] min-w-[46px] max-w-[46px] bg-slate-100 dark:bg-slate-900 px-1 py-1.5 text-center text-xs font-black uppercase text-slate-500 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700" />
-                    <td className="sticky left-[46px] z-10 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] w-[84px] min-w-[84px] max-w-[84px] bg-slate-100 dark:bg-slate-900 px-1.5 py-1.5 text-center text-xs font-black uppercase text-slate-500 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700" />
+                    <td className="sticky left-0 z-10 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] w-[46px] min-w-[46px] max-w-[46px] bg-slate-100 dark:bg-slate-900 px-1 py-1.5 text-center text-xs font-black uppercase text-slate-600 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700" />
+                    <td className="sticky left-[46px] z-10 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] w-[84px] min-w-[84px] max-w-[84px] bg-slate-100 dark:bg-slate-900 px-1.5 py-1.5 text-center text-xs font-black uppercase text-slate-600 dark:text-slate-400 border-r border-slate-300 dark:border-slate-700" />
                     <td className="sticky left-[130px] z-10 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] w-[150px] min-w-[150px] max-w-[150px] bg-slate-100 dark:bg-slate-900 px-2.5 py-1.5 text-left text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100 border-r-2 border-slate-400 dark:border-slate-600">
                       Tổng ({filtered.length} người)
                     </td>
-                    <td className="bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] border-l border-slate-300 dark:border-slate-700" />
+                    {!activeSheet && (
+                      <td className="bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] border-l border-slate-300 dark:border-slate-700" />
+                    )}
                     {columns.map((column) => (
-                      <td key={column.code} className="bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] px-1.5 py-1.5 border-l border-slate-300 dark:border-slate-700 text-center font-black text-slate-900 dark:text-slate-100 text-xs">
-                        {column.kind === 'INFO' ? '' : formatFormulaNumber(sum((row) => amountOf(row, column.code) ?? 0))}
+                      <td key={column.key ?? column.code} className="bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] px-1.5 py-1.5 border-l border-slate-300 dark:border-slate-700 text-center font-black text-slate-900 dark:text-slate-100 text-xs">
+                        {(column.total ?? column.kind !== 'INFO') ? formatFormulaNumber(sum((row) => valueOf(row, column) ?? 0)) : ''}
                       </td>
                     ))}
+                    {!activeSheet && (
+                    <>
                     <td className="bg-slate-200/80 dark:bg-slate-800 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] px-1.5 py-1.5 border-l-2 border-slate-400 dark:border-slate-600 text-center font-black text-slate-900 dark:text-slate-100 text-xs">
                       {formatFormulaNumber(totals.gross)}
                     </td>
@@ -1405,6 +1576,8 @@ export function PayrollRegister({
                     <td className="bg-emerald-100/90 dark:bg-emerald-950/70 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] px-2 py-1.5 border-l-2 border-slate-400 dark:border-slate-600 text-center font-black text-emerald-950 dark:text-emerald-200 text-xs">
                       {formatFormulaNumber(totals.net)}
                     </td>
+                    </>
+                    )}
                     <td className="bg-slate-100 dark:bg-slate-900 shadow-[inset_0_2px_0_#94a3b8] dark:shadow-[inset_0_2px_0_#475569] border-l border-slate-300 dark:border-slate-700 no-print min-w-[72px] w-[72px]" />
                   </tr>
                 </tfoot>
@@ -1412,22 +1585,14 @@ export function PayrollRegister({
             </div>
             </div>
           )}
-          {pageCount > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900 px-4 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-400 no-print">
-              <span>Trang {currentPage + 1}/{pageCount}</span>
-              <div className="flex gap-2">
-                <Button size="xs" square variant="outline" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)} className="!min-h-0 !h-8 px-2.5 text-xs">Trước</Button>
-                <Button size="xs" square variant="outline" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)} className="!min-h-0 !h-8 px-2.5 text-xs">Sau</Button>
-              </div>
-            </div>
-          )}
+          <Pagination page={currentPage + 1} total={sorted.length} size={PAGE_SIZE} noun="người" setPage={(value) => setPage(value - 1)} />
       </TableShell>
       </FullscreenPanel>
 
       {data.runEvents.length > 0 && (
         <details className="rounded-none border border-slate-200 bg-white px-4 py-3">
           <summary className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
-            <History className="h-4 w-4 text-slate-400" /> Lịch sử kỳ lương ({data.runEvents.length})
+            <History className="h-4 w-4 text-slate-600" /> Lịch sử kỳ lương ({data.runEvents.length})
           </summary>
           <div className="mt-3"><Timeline rows={data.runEvents} nameOf={nameOf} /></div>
         </details>
@@ -1464,7 +1629,7 @@ export function PayrollRegister({
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-xs text-slate-500">
+        <p className="mt-4 text-xs text-slate-600">
           Mục <span className="font-semibold text-red-600">đỏ</span> chặn khoá kỳ; mục <span className="font-semibold text-amber-600">vàng</span> chỉ là nhắc.
         </p>
       </Modal>
@@ -1544,7 +1709,7 @@ export function PayrollRegister({
 
           {allWarnings.length > 0 && (
             <div className="space-y-2 pt-1">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
                 Chi tiết các cảnh báo ({allWarnings.length})
               </p>
               <ul className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
@@ -1620,7 +1785,7 @@ export function PayrollRegister({
                   className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition -mb-px ${
                     detailTab === 'payslip'
                       ? 'border-indigo-600 text-indigo-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      : 'border-transparent text-slate-600 hover:text-slate-800'
                   }`}
                 >
                   <FileSpreadsheet className="h-4 w-4" /> Phiếu lương
@@ -1631,7 +1796,7 @@ export function PayrollRegister({
                   className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition -mb-px ${
                     detailTab === 'scheme'
                       ? 'border-indigo-600 text-indigo-700'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      : 'border-transparent text-slate-600 hover:text-slate-800'
                   }`}
                 >
                   <SlidersHorizontal className="h-4 w-4" /> Cơ chế lương
@@ -1646,7 +1811,6 @@ export function PayrollRegister({
                     <MiniStat label="Công chuẩn" value={`${detailRow.computed.standardDays}`} />
                     <MiniStat label="Giờ làm" value={`${detailRow.computed.stats.workHours}`} />
                   </div>
-                  {closed && <p className="flex items-center gap-1.5 text-xs text-slate-500"><FileSpreadsheet className="h-3.5 w-3.5" /> Số liệu đọc từ phiếu đã khoá — không tính lại.</p>}
                   <PayslipBreakdown
                     lines={detailRow.computed.lines}
                     netPay={detailRow.computed.netPay}
@@ -1807,7 +1971,7 @@ export function PayrollRegister({
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-none bg-slate-50 px-3 py-2.5">
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
+      <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600">{label}</p>
       <p className="mt-0.5 truncate text-sm font-bold text-slate-800">{value}</p>
     </div>
   );

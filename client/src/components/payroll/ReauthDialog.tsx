@@ -100,7 +100,7 @@ export function ReauthDialog({
             autoComplete="current-password"
             hasError={!!error && !noteMissing}
           />
-          <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-relaxed text-slate-500">
+          <p className="mt-1.5 flex items-start gap-1.5 text-xs leading-relaxed text-slate-600">
             <Fingerprint className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
             Trên điện thoại có thể điền bằng vân tay / FaceID qua trình quản lý mật khẩu của máy.
           </p>

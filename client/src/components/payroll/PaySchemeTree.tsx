@@ -26,6 +26,7 @@ import { schemeSourceOf } from '@/lib/payrollRun';
 import { stripVietnamese } from '@/lib/tableExport';
 import { fetchBankAccounts, type PayrollWorkspace } from '@/lib/payrollData';
 import type { EmployeeBankAccount, Profile } from '@/types';
+import { Tabs } from '@/components/ui/Tabs';
 
 type SchemeTab = 'people' | 'templates' | 'payslip';
 
@@ -45,7 +46,7 @@ interface PaySchemeTreeProps {
 }
 
 const NO_UNIT = '__none__';
-const PEOPLE_PER_PAGE = 15;
+const PEOPLE_PER_PAGE = 20;
 
 const stripTone = (text: string) => stripVietnamese(text).toLowerCase().trim();
 
@@ -107,26 +108,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
   const searching = query.trim().length > 0;
 
   const tabs = (
-    <div className="inline-flex rounded-none bg-slate-100 p-1 no-print" role="tablist" aria-label="Cơ chế lương">
-      {([
-        ['people', 'Nhân sự'],
-        ['templates', 'Bộ cơ chế mẫu'],
-        ['payslip', 'Phiếu lương'],
-      ] as const).map(([value, label]) => (
-        <button
-          key={value}
-          type="button"
-          role="tab"
-          aria-selected={tab === value}
-          onClick={() => { setTab(value); setPersonId(null); setQuery(''); }}
-          className={`rounded-none px-3.5 py-1.5 text-sm font-semibold transition ${
-            tab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
+    <Tabs label="Cơ chế lương" items={[{ key: 'people', label: 'Nhân sự' }, { key: 'templates', label: 'Bộ cơ chế mẫu' }, { key: 'payslip', label: 'Phiếu lương' }] as const} value={tab} onChange={(value) => { setTab(value); setPersonId(null); setQuery(''); }} />
   );
 
   if (tab === 'templates') {
@@ -146,12 +128,12 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
           {tab === 'people' && (
             <div className="pb-2">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
                 <input
                   value={query}
                   onChange={(event) => { setQuery(event.target.value); setPersonId(null); }}
                   placeholder="Tìm nhân viên theo tên / mã..."
-                  className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
                 />
               </div>
             </div>
@@ -171,9 +153,9 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                   unitId === NO_UNIT && !query ? 'bg-indigo-50 font-bold text-indigo-800' : 'font-semibold text-slate-600 hover:bg-indigo-50/50'
                 }`}
               >
-                <Users className="h-4 w-4 text-slate-400" />
+                <Users className="h-4 w-4 text-slate-600" />
                 <span className="flex-1">Chưa gán đơn vị</span>
-                <span className="text-[11px] text-slate-400">{unassignedCount} người</span>
+                <span className="text-[11px] text-slate-600">{unassignedCount} người</span>
               </button>
             )}
           </div>
@@ -184,7 +166,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
             <Card className="!rounded-none">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-slate-400" /> {unit?.name ?? 'Chọn đơn vị'}
+                  <Building2 className="h-4 w-4 text-slate-600" /> {unit?.name ?? 'Chọn đơn vị'}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -221,7 +203,7 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
               <CardHeader className="flex flex-wrap items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <CardTitle className="flex items-center gap-2">
-                    {searching ? <Search className="h-4 w-4 text-slate-400" /> : <Building2 className="h-4 w-4 text-slate-400" />}
+                    {searching ? <Search className="h-4 w-4 text-slate-600" /> : <Building2 className="h-4 w-4 text-slate-600" />}
                     {searching ? `Kết quả tìm "${query.trim()}"` : unit?.name ?? (unitId === NO_UNIT ? 'Chưa gán đơn vị' : 'Chọn đơn vị')}
                   </CardTitle>
                 </div>
@@ -239,11 +221,11 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
               </CardHeader>
               <CardContent className="space-y-3">
                 {people.length === 0 ? (
-                  <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                  <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">
                     {searching ? 'Không có nhân viên nào khớp.' : 'Đơn vị này chưa có nhân sự.'}
                   </p>
                 ) : (
-                  <div className="overflow-x-auto rounded-xl border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto rounded-none border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden">
                     <table className="w-full min-w-[420px] text-xs border-collapse">
                       <thead>
                         <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
@@ -262,16 +244,16 @@ export function PaySchemeTree({ data, monthStart, monthEnd, lastClosedMonth, can
                               <td className="py-1.5 px-2.5">
                                 <div className="min-w-0">
                                   <p className="truncate font-bold text-xs text-slate-900 dark:text-slate-100">{row.name}</p>
-                                  <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
+                                  <p className="truncate text-[11px] font-medium text-slate-600 dark:text-slate-400">{row.employee_code ?? '—'} · {row.department || '—'}</p>
                                 </div>
                               </td>
                               <td className="border-l border-slate-300 dark:border-slate-700 py-1.5 px-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                {personRows.length > 0 ? `${personRows.length} dòng` : <span className="text-slate-400 dark:text-slate-600">—</span>}
+                                {personRows.length > 0 ? `${personRows.length} dòng` : <span className="text-slate-600 dark:text-slate-400">—</span>}
                               </td>
                               <td className="border-l border-slate-300 dark:border-slate-700 py-1.5 px-2">
-                                <span className={`inline-block max-w-[14rem] truncate align-middle rounded-full px-2 py-0.5 text-[10px] font-bold ${status.tone}`} title={status.title}>{status.label}</span>
+                                <span className={`inline-block max-w-[14rem] truncate align-middle rounded-full px-2 py-0.5 text-[11px] font-bold ${status.tone}`} title={status.title}>{status.label}</span>
                               </td>
-                              <td className="py-1.5 px-2 text-right text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
+                              <td className="py-1.5 px-2 text-right text-slate-600 group-hover:text-slate-700 dark:group-hover:text-slate-200"><ChevronRight className="inline h-3.5 w-3.5" /></td>
                             </tr>
                           );
                         })}

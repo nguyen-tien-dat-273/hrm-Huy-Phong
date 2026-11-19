@@ -51,10 +51,10 @@ function MonthlyChip({ on, disabled, onToggle }: { on: boolean; disabled: boolea
       onClick={onToggle}
       aria-pressed={on}
       title={on ? 'Số được nhập mỗi tháng ở Bảng lương — bấm để quay lại công thức' : 'Bấm để nhập số mỗi tháng ở Bảng lương thay vì công thức'}
-      className={`rounded border px-1.5 py-0.5 text-[10px] font-bold leading-tight transition ${
+      className={`rounded-none border px-1.5 py-0.5 text-[11px] font-bold leading-tight transition ${
         on
           ? 'border-indigo-600 bg-indigo-600 text-white'
-          : 'border-slate-300 bg-white text-slate-500 hover:border-indigo-400 hover:text-indigo-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
+          : 'border-slate-300 bg-white text-slate-600 hover:border-indigo-400 hover:text-indigo-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300'
       } ${disabled ? 'cursor-default opacity-60' : ''}`}
     >
       theo tháng
@@ -82,7 +82,7 @@ export function SchemeRowsEditor({
 
   const groupOf = (component: PayComponent) => (component.category_code
     ? data.categories.find((category) => category.code === component.category_code)?.name ?? ''
-    : 'Dòng trung gian');
+    : '');
 
   const patch = (id: string, change: Partial<SchemeDraftRow>) => onChange(
     rows.map((row) => (row.componentId === id ? { ...row, ...change } : row)),
@@ -156,7 +156,7 @@ export function SchemeRowsEditor({
     includeCatalog: !readOnly,
   });
 
-  const boxClass = (bad: boolean) => `flex min-h-11 items-center rounded-xl border-2 bg-white px-3 text-sm dark:bg-slate-800 ${
+  const boxClass = (bad: boolean) => `flex min-h-11 items-center rounded-none border-2 bg-white px-3 text-sm dark:bg-slate-800 ${
     bad ? 'border-red-400' : 'border-slate-300 dark:border-slate-600'
   }`;
 
@@ -191,10 +191,10 @@ export function SchemeRowsEditor({
                   >
                     <span className="truncate">{component.name}</span>
                   </div>
-                  <span className="mt-2.5 shrink-0 font-black text-slate-400">=</span>
+                  <span className="mt-2.5 shrink-0 font-black text-slate-600">=</span>
                   <div className="min-w-0 flex-1">
                     {monthly ? (
-                      <div className={`${boxClass(false)} gap-2 text-slate-500`}>
+                      <div className={`${boxClass(false)} gap-2 text-slate-600`}>
                         <span className="min-w-0 flex-1 truncate">
                           {autoFilledCodes?.has(component.code.toUpperCase()) ? 'Tự điền khi khoá sổ' : 'Nhập mỗi tháng ở Bảng lương'}
                         </span>
@@ -237,7 +237,7 @@ export function SchemeRowsEditor({
                       onClick={() => void removeRow(row)}
                       title="Bỏ dòng này"
                       aria-label={`Bỏ ${component.name}`}
-                      className="mt-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      className="mt-1.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-none text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -253,7 +253,7 @@ export function SchemeRowsEditor({
         <AddLine candidates={candidates} groupOf={groupOf} onPick={(component) => addComponent(component.id)} onCreate={createLine} boxClass={boxClass} empty={ordered.length === 0} />
       )}
       {readOnly && ordered.length === 0 && (
-        <p className="rounded-none border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500">Chưa có dòng nào.</p>
+        <p className="rounded-none border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-600">Chưa có dòng nào.</p>
       )}
     </div>
   );
@@ -310,7 +310,7 @@ function AddLine({ candidates, groupOf, onPick, onCreate, boxClass, empty }: {
     <div className="flex items-start gap-2">
       <div className="relative w-40 shrink-0 sm:w-56">
         <div className={`${boxClass(false)} gap-1.5 border-dashed ${open ? '!border-indigo-500 ring-4 ring-indigo-500/10' : ''}`}>
-          <Plus className="h-4 w-4 shrink-0 text-slate-400" />
+          <Plus className="h-4 w-4 shrink-0 text-slate-600" />
           <input
             ref={inputRef}
             value={text}
@@ -324,13 +324,13 @@ function AddLine({ candidates, groupOf, onPick, onCreate, boxClass, empty }: {
             role="combobox"
             aria-expanded={open}
             aria-autocomplete="list"
-            className="min-w-0 flex-1 bg-transparent py-2 text-sm font-semibold text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400 dark:text-slate-100"
+            className="min-w-0 flex-1 bg-transparent py-2 text-sm font-semibold text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-600 dark:text-slate-100"
           />
         </div>
         {open && total > 0 && (
           <div
             role="listbox"
-            className="absolute left-0 top-full z-40 mt-1 max-h-72 w-[min(22rem,80vw)] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900"
+            className="absolute left-0 top-full z-40 mt-1 max-h-72 w-[min(22rem,80vw)] overflow-y-auto rounded-none border border-slate-200 bg-white py-1 shadow-xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900"
           >
             {matches.map((component, index) => (
               <div
@@ -343,7 +343,7 @@ function AddLine({ candidates, groupOf, onPick, onCreate, boxClass, empty }: {
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-semibold text-slate-800 dark:text-slate-100">{component.name}</span>
-                  <span className="block truncate text-[11px] text-slate-400">{groupOf(component)}</span>
+                  <span className="block truncate text-[11px] text-slate-600">{groupOf(component)}</span>
                 </span>
                 <KindChip kind={component.kind} />
               </div>
@@ -365,8 +365,8 @@ function AddLine({ candidates, groupOf, onPick, onCreate, boxClass, empty }: {
           </div>
         )}
       </div>
-      <span className="mt-2.5 shrink-0 font-black text-slate-300">=</span>
-      <div className={`${boxClass(false)} min-w-0 flex-1 border-dashed text-slate-400`}>
+      <span className="mt-2.5 shrink-0 font-black text-slate-600">=</span>
+      <div className={`${boxClass(false)} min-w-0 flex-1 border-dashed text-slate-600`}>
         <span className="truncate">{empty ? 'Chọn đầu mục ở ô bên trái rồi gõ công thức' : ''}</span>
       </div>
       <span className="w-8 shrink-0" />

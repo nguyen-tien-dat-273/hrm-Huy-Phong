@@ -69,7 +69,7 @@ function Field({ label, children, hint }: { label: string; children: ReactNode; 
     <div className="min-w-0">
       <p className="mb-1.5 text-sm font-semibold text-slate-700">{label}</p>
       {children}
-      {hint && <div className="mt-1.5 text-xs leading-relaxed text-slate-500">{hint}</div>}
+      {hint && <div className="mt-1.5 text-xs leading-relaxed text-slate-600">{hint}</div>}
     </div>
   );
 }
@@ -230,7 +230,7 @@ export function PersonAdjustmentModal({
             <Avatar name={person.name} url={person.avatar_url} size="sm" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-bold text-slate-800">{person.name}</p>
-              <p className="truncate text-xs text-slate-500">
+              <p className="truncate text-xs text-slate-600">
                 {[person.employee_code, person.department].filter(Boolean).join(' · ') || '—'}
               </p>
             </div>
@@ -244,7 +244,7 @@ export function PersonAdjustmentModal({
 
           {own.length > 0 && (
             <section>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-400">Đã điều chỉnh trong tháng</p>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-600">Đã điều chỉnh trong tháng</p>
               <ul className="divide-y divide-slate-100 rounded-none border border-slate-200">
                 {own.map((item) => {
                   const effect = effectOf(item);
@@ -252,9 +252,9 @@ export function PersonAdjustmentModal({
                     <li key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-3.5 py-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-slate-800">{effect.name ?? 'Dòng điều chỉnh riêng'}</p>
-                        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{item.reason}</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-slate-600">{item.reason}</p>
                         {item.origin_month && (
-                          <p className="text-[11px] text-slate-400">Bù cho kỳ {item.origin_month.slice(5, 7)}/{item.origin_month.slice(0, 4)}</p>
+                          <p className="text-[11px] text-slate-600">Bù cho kỳ {item.origin_month.slice(5, 7)}/{item.origin_month.slice(0, 4)}</p>
                         )}
                       </div>
                       <span className={`text-sm font-bold tabular-nums ${effect.up ? 'text-emerald-700' : 'text-red-700'}`}>
@@ -264,7 +264,7 @@ export function PersonAdjustmentModal({
                         <button
                           type="button"
                           onClick={() => void remove(item)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-none text-slate-600 transition-colors hover:bg-red-50 hover:text-red-600"
                           aria-label="Xoá điều chỉnh"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -280,7 +280,7 @@ export function PersonAdjustmentModal({
           {readOnly ? (
             <div className="space-y-4">
               {own.length === 0 && (
-                <p className="rounded-none border border-dashed border-slate-200 py-6 text-center text-xs text-slate-500">
+                <p className="rounded-none border border-dashed border-slate-200 py-6 text-center text-xs text-slate-600">
                   Không có khoản điều chỉnh nào trong tháng {monthLabel} cho nhân sự này.
                 </p>
               )}
@@ -290,10 +290,10 @@ export function PersonAdjustmentModal({
             </div>
           ) : (
             <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Thêm điều chỉnh</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600">Thêm điều chỉnh</p>
 
             <Field label="Đầu mục cần điều chỉnh">
-              <Dropdown square
+              <Dropdown
                 value={target}
                 options={options}
                 searchable
@@ -305,21 +305,21 @@ export function PersonAdjustmentModal({
 
             {chosen && targetName && (
               <div className="rounded-none border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm" aria-label="Công thức lương">
-                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Công thức lương</p>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-600">Công thức lương</p>
                 {targetRow ? (
                   <>
                     <p className="mt-1.5 break-words font-semibold text-slate-800">
                       {targetName} = <span className="font-medium text-slate-700">{describeRowFormula(targetRow, nameOf ?? (() => undefined))}</span>
                     </p>
                     {targetLine && (
-                      <p className="mt-1 break-words text-xs tabular-nums text-slate-500">
+                      <p className="mt-1 break-words text-xs tabular-nums text-slate-600">
                         {targetLine.detail ? `${targetLine.detail} = ` : '= '}
                         <span className="font-bold text-slate-800">{formatFormulaNumber(targetLine.amount)}</span>
                       </p>
                     )}
                   </>
                 ) : (
-                  <p className="mt-1.5 text-xs text-slate-500">
+                  <p className="mt-1.5 text-xs text-slate-600">
                     {targetLine
                       ? `Số hiện tại: ${formatFormulaNumber(targetLine.amount)}.`
                       : 'Đầu mục này chưa có trong cơ chế của người này nên phiếu lương chưa tính nó.'}
@@ -375,8 +375,8 @@ export function PersonAdjustmentModal({
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-none border border-slate-200 px-3.5 py-3 text-sm">
                 <span className="font-semibold text-slate-700">{targetName}</span>
                 <span className="flex items-center gap-2 tabular-nums">
-                  <span className="text-slate-500">{formatFormulaNumber(before)}</span>
-                  <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="text-slate-600">{formatFormulaNumber(before)}</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-slate-600" />
                   <span className="font-bold text-slate-900">{formatFormulaNumber(after)}</span>
                 </span>
                 <span className={`ml-auto text-xs font-semibold ${netKind === 'RECOVERY' ? 'text-emerald-700' : 'text-red-700'}`}>
@@ -389,11 +389,11 @@ export function PersonAdjustmentModal({
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-none border border-slate-200 px-3.5 py-3 text-sm">
                 <span className="font-semibold text-slate-700">{targetName}</span>
                 <span className="flex items-center gap-2 tabular-nums">
-                  <span className="text-slate-500">{formatFormulaNumber(currentValue)}</span>
-                  <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                  <span className="text-slate-600">{formatFormulaNumber(currentValue)}</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-slate-600" />
                   <span className="font-bold text-slate-900">{formatFormulaNumber(newValue)}</span>
                 </span>
-                <span className="ml-auto text-xs text-slate-500">Các khoản đọc giá trị này sẽ tính lại theo số mới.</span>
+
               </div>
             )}
 

@@ -235,9 +235,9 @@ export function CellFormulaModal({
         {/* Thông tin giá trị hiện tại & nguồn */}
         <div className="flex flex-wrap items-center justify-between gap-3 border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-4 py-3">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Giá trị tính ra:</span>{' '}
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">Giá trị tính ra:</span>{' '}
             <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
-              {formatFormulaNumber(currentValue)} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">đ</span>
+              {formatFormulaNumber(currentValue)} <span className="text-xs font-normal text-slate-600 dark:text-slate-400">đ</span>
             </span>
           </div>
 
@@ -257,12 +257,12 @@ export function CellFormulaModal({
               {readOnly ? 'Cách tính đang áp dụng' : 'Chỉnh sửa cách tính'}
             </span>
             {!readOnly && (
-              <div className="flex rounded-lg border border-slate-300 dark:border-slate-700 p-0.5 text-xs">
+              <div className="flex rounded-none border border-slate-300 dark:border-slate-700 p-0.5 text-xs">
                 <button
                   type="button"
                   onClick={() => setKind('FORMULA')}
                   className={`px-3 py-1 font-semibold transition ${
-                    kind === 'FORMULA' ? 'bg-indigo-600 text-white rounded' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    kind === 'FORMULA' ? 'bg-indigo-600 text-white rounded-none' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Công thức
@@ -271,7 +271,7 @@ export function CellFormulaModal({
                   type="button"
                   onClick={() => setKind('VALUE')}
                   className={`px-3 py-1 font-semibold transition ${
-                    kind === 'VALUE' ? 'bg-indigo-600 text-white rounded' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    kind === 'VALUE' ? 'bg-indigo-600 text-white rounded-none' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
                   Số tiền cố định (VND)
@@ -282,7 +282,7 @@ export function CellFormulaModal({
 
           {readOnly ? (
             <div className="space-y-2">
-              <div className="rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-3 font-mono text-sm text-slate-800 dark:text-slate-200">
+              <div className="rounded-none border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 p-3 font-mono text-sm text-slate-800 dark:text-slate-200">
                 {kind === 'FORMULA' ? (
                   formulaText ? formulaText : '—'
                 ) : (
@@ -315,7 +315,7 @@ export function CellFormulaModal({
                   value={formulaText}
                   onChange={(e) => setFormulaText(e.target.value.replace(/[^\d.,]/g, ''))}
                   placeholder="Nhập số tiền (VND), vd: 15.000.000"
-                  className="h-10 w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                  className="h-11 w-full border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-sm font-semibold tabular-nums text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
                 />
                 <span className="shrink-0 text-sm font-semibold text-slate-600 dark:text-slate-400">VNĐ</span>
               </div>
@@ -329,7 +329,7 @@ export function CellFormulaModal({
         </div>
 
         {readOnly && (
-          <p className="rounded border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+          <p className="rounded-none border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
             Kỳ lương đã khoá / phát hành — chỉ xem công thức và diễn giải, không thể chỉnh sửa cơ chế.
           </p>
         )}

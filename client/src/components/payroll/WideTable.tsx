@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState, type DependencyList, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Maximize2, Minimize2, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 
 /** Độ rộng cột Nhân sự cố định ở mép trái — nút lướt trái đặt ngay sau nó. */
@@ -45,18 +45,77 @@ export function useColumnScroll(deps: DependencyList) {
     if (!el) return;
     const heads = Array.from(el.querySelectorAll<HTMLElement>('thead th'));
     const stickyHeads = heads.filter((head) => head.className.includes('sticky') && (head.className.includes('left-') || head.className.includes('left-[')));
+    // Đo bằng toạ độ hiển thị (getBoundingClientRect) để đúng cả khi bảng đang thu/phóng.
     const sticky = stickyHeads.length > 0
-      ? stickyHeads.reduce((acc, head) => acc + head.offsetWidth, 0)
-      : (heads[0]?.offsetWidth ?? 0);
+      ? stickyHeads.reduce((acc, head) => acc + head.getBoundingClientRect().width, 0)
+      : (heads[0]?.getBoundingClientRect().width ?? 0);
     const cols = heads.filter((head) => !stickyHeads.includes(head) && !head.classList.contains('no-print'));
     if (cols.length === 0) return;
+    const origin = el.getBoundingClientRect().left - el.scrollLeft;
+    const leftOf = (head: HTMLElement) => head.getBoundingClientRect().left - origin;
     const visibleLeft = el.scrollLeft + sticky;
-    const first = Math.max(0, cols.findIndex((head) => head.offsetLeft + head.offsetWidth > visibleLeft + 1));
+    const first = Math.max(0, cols.findIndex((head) => leftOf(head) + head.getBoundingClientRect().width > visibleLeft + 1));
     const next = Math.min(cols.length - 1, Math.max(0, first + direction * 3));
-    el.scrollTo({ left: Math.max(0, cols[next].offsetLeft - sticky), behavior: 'smooth' });
+    el.scrollTo({ left: Math.max(0, leftOf(cols[next]) - sticky), behavior: 'smooth' });
   };
 
   return { scrollRef, edge, updateEdge, scrollColumns };
+}
+
+const ZOOM_MIN = 0.6;
+const ZOOM_MAX = 1.4;
+const ZOOM_STEP = 0.1;
+
+/** Mức thu/phóng của bảng, nhớ theo từng bảng (`storageKey`). 1 = 100%. */
+export function useTableZoom(storageKey: string) {
+  const [zoom, setZoomState] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem(`table-zoom:${storageKey}`));
+      return saved >= ZOOM_MIN && saved <= ZOOM_MAX ? saved : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const setZoom = useCallback((next: number) => {
+    const clamped = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next)) * 10) / 10;
+    setZoomState(clamped);
+    try { localStorage.setItem(`table-zoom:${storageKey}`, String(clamped)); } catch { /* bỏ qua */ }
+  }, [storageKey]);
+  return { zoom, setZoom };
+}
+
+/** Nút − / % / + : bấm % để về 100%. Ctrl + lăn chuột trên bảng cũng thu/phóng. */
+export function ZoomControl({ zoom, onChange, square = false }: { zoom: number; onChange: (zoom: number) => void; square?: boolean }) {
+  const size = square ? 'xs' : 'sm';
+  const box = square ? '!min-h-0 !h-8' : 'h-10';
+  return (
+    <div className="no-print inline-flex shrink-0 items-center">
+      <Button variant="outline" size={size} square={square} onClick={() => onChange(zoom - ZOOM_STEP)} disabled={zoom <= ZOOM_MIN + 0.001} title="Thu nhỏ bảng" aria-label="Thu nhỏ bảng" className={`${box} ${square ? '!w-8' : 'w-10'} p-0 border-slate-300 dark:border-slate-700`}>
+        <ZoomOut className="h-4 w-4" />
+      </Button>
+      <Button variant="outline" size={size} onClick={() => onChange(1)} title="Về 100%" aria-label="Đặt lại mức thu phóng" className={`${box} -mx-px min-w-[3.25rem] px-1 text-xs font-bold tabular-nums border-slate-300 dark:border-slate-700`}>
+        {Math.round(zoom * 100)}%
+      </Button>
+      <Button variant="outline" size={size} square={square} onClick={() => onChange(zoom + ZOOM_STEP)} disabled={zoom >= ZOOM_MAX - 0.001} title="Phóng to bảng" aria-label="Phóng to bảng" className={`${box} ${square ? '!w-8' : 'w-10'} p-0 border-slate-300 dark:border-slate-700`}>
+        <ZoomIn className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+/** Ctrl + lăn chuột trên khung cuộn thì thu/phóng bảng thay vì phóng cả trang. */
+export function useCtrlWheelZoom(ref: React.RefObject<HTMLElement | null>, zoom: number, setZoom: (zoom: number) => void) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      setZoom(zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
 }
 
 const ARROW_CLASS = 'no-print absolute top-1/2 z-40 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-300 dark:border-slate-600 bg-white/95 dark:bg-slate-800/95 text-slate-800 dark:text-slate-100 shadow-lg transition hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-700 dark:hover:text-indigo-400';

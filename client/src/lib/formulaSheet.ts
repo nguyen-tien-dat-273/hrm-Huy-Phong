@@ -133,17 +133,18 @@ export function buildFormulaSheet(
     .filter((row) => row.component.kind === 'EARNING' || row.component.kind === 'DEDUCTION')
     .sort((a, b) => a.sortOrder - b.sortOrder || a.component.sort_order - b.component.sort_order);
 
+  // Mục theo thứ tự dòng như cột của bảng lương: dòng cùng nhóm vào chung một
+  // mục, dòng không nhóm là một mục riêng mang tên chính nó.
   const groups: Array<Omit<FormulaSheetSection, 'lines'> & { rows: MechanismRow[] }> = [];
-  const known = new Set(categories.map((category) => category.code));
+  const categoryName = new Map(categories.map((category) => [category.code, category.name]));
   for (const kind of ['EARNING', 'DEDUCTION'] as const) {
-    const ofKind = listed.filter((row) => row.component.kind === kind);
-    for (const category of categories) {
-      const inGroup = ofKind.filter((row) => row.component.category_code === category.code);
-      if (inGroup.length) groups.push({ key: `${kind}-${category.code}`, title: category.name, kind, rows: inGroup });
-    }
-    const other = ofKind.filter((row) => !row.component.category_code || !known.has(row.component.category_code));
-    if (other.length) {
-      groups.push({ key: `${kind}-other`, title: kind === 'EARNING' ? 'Khoản cộng khác' : 'Khoản trừ khác', kind, rows: other });
+    for (const row of listed.filter((item) => item.component.kind === kind)) {
+      const code = row.component.category_code;
+      const title = code ? categoryName.get(code) : undefined;
+      const key = title ? `${kind}-${code}` : `${kind}-line-${row.component.code}`;
+      const group = groups.find((item) => item.key === key);
+      if (group) group.rows.push(row);
+      else groups.push({ key, title: title ?? row.component.name, kind, rows: [row] });
     }
   }
 

@@ -88,7 +88,7 @@ export function PayslipBreakdown({
               <div key={`${line.code}-${line.name}`} className="flex items-baseline justify-between gap-3 border-b border-slate-200 dark:border-slate-700 px-4 py-2.5 last:border-0">
                 <dt className="min-w-0 text-sm font-semibold text-slate-700 dark:text-slate-300">
                   {line.name}
-                  {line.detail && <span className="mt-0.5 block text-xs font-medium text-slate-500 dark:text-slate-400 break-words">{line.detail}</span>}
+                  {line.detail && <span className="mt-0.5 block text-xs font-medium text-slate-600 dark:text-slate-400 break-words">{line.detail}</span>}
                 </dt>
                 <dd className="shrink-0 text-base font-black tabular-nums text-slate-900 dark:text-slate-100">{formatFormulaNumber(line.amount)}</dd>
               </div>
@@ -104,7 +104,7 @@ export function PayslipBreakdown({
       )}
 
       {roundingAdjustment !== 0 && (
-        <p className="flex items-center justify-between gap-4 px-4 text-xs font-bold text-slate-500 dark:text-slate-400">
+        <p className="flex items-center justify-between gap-4 px-4 text-xs font-bold text-slate-600 dark:text-slate-400">
           <span>Làm tròn thực lĩnh</span>
           <span className="tabular-nums font-black">{roundingAdjustment > 0 ? '+' : '−'}{formatVND(Math.abs(roundingAdjustment))}</span>
         </p>
@@ -146,7 +146,7 @@ function Section({
         <span className={`text-base font-black tabular-nums ${amountColor}`}>{sign}{formatVND(total)}</span>
       </div>
       {lines.length === 0 ? (
-        <p className="px-4 py-3 text-xs font-semibold text-slate-400">Không có dòng nào.</p>
+        <p className="px-4 py-3 text-xs font-semibold text-slate-600">Không có dòng nào.</p>
       ) : (
         <ul className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900">
           {lines.map((line) => (
@@ -154,7 +154,7 @@ function Section({
               <div className="min-w-0">
                 <p className="text-sm font-bold text-slate-900 dark:text-slate-100">{line.name}</p>
                 {line.detail && (
-                  <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400 break-words">{line.detail}</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-400 break-words">{line.detail}</p>
                 )}
               </div>
               <span className={`flex-shrink-0 text-base font-black tabular-nums ${amountColor}`}>

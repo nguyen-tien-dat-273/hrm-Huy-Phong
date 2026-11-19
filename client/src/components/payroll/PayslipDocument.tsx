@@ -89,17 +89,20 @@ interface Group {
   lines: Array<DocumentLine & { no: number }>;
 }
 
-/** Gom dòng theo nhóm danh mục (giữ thứ tự nhóm của danh mục, trong nhóm giữ thứ tự phiếu). */
-function groupByCategory(lines: readonly DocumentLine[], fallback: string) {
-  const groups: Array<{ title: string; sort: number; lines: DocumentLine[] }> = [];
+/**
+ * Gom dòng theo nhóm danh mục như cột gộp của bảng lương: dòng có nhóm vào chung
+ * một mục, dòng không nhóm là một mục riêng mang tên chính nó. Mục xếp theo thứ
+ * tự dòng đầu tiên của nó trên phiếu.
+ */
+function groupByCategory(lines: readonly DocumentLine[]) {
+  const groups: Array<{ key: string; title: string; lines: DocumentLine[] }> = [];
   for (const line of lines) {
-    const title = line.category?.name ?? fallback;
-    const sort = line.category?.sort ?? Number.MAX_SAFE_INTEGER;
-    let group = groups.find((item) => item.title === title);
-    if (!group) { group = { title, sort, lines: [] }; groups.push(group); }
+    const key = line.category ? `g:${line.category.name}` : `l:${line.code}`;
+    let group = groups.find((item) => item.key === key);
+    if (!group) { group = { key, title: line.category?.name ?? line.name, lines: [] }; groups.push(group); }
     group.lines.push(line);
   }
-  return groups.sort((a, b) => a.sort - b.sort);
+  return groups;
 }
 
 /** Số hạng của một mục trong công thức Tổng cộng: số thứ tự dòng, hoặc số La Mã của mục gộp. */
@@ -152,8 +155,8 @@ export function PayslipDocument({
       lines: group.lines.map((line) => ({ ...line, no: collapsed ? 0 : ++no })),
     };
   });
-  const earningGroups = build(groupByCategory(earnings, 'Khoản cộng khác'));
-  const penaltyGroups = build(groupByCategory(penalties, 'Khoản trừ'));
+  const earningGroups = build(groupByCategory(earnings));
+  const penaltyGroups = build(groupByCategory(penalties));
 
   const gross = earnings.reduce((sum, line) => sum + line.amount, 0);
   const penaltyTotal = penalties.reduce((sum, line) => sum + line.amount, 0);

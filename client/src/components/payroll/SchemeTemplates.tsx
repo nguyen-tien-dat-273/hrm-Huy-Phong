@@ -74,7 +74,7 @@ export function SchemeTemplates({ data, monthStart, canManage, onChanged }: Sche
   return (
     <Card className="!rounded-none">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Layers className="h-4 w-4 text-slate-400" /> Bộ cơ chế mẫu</CardTitle>
+        <CardTitle className="flex items-center gap-2"><Layers className="h-4 w-4 text-slate-600" /> Bộ cơ chế mẫu</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         {data.schemes.map((row) => (
@@ -85,8 +85,8 @@ export function SchemeTemplates({ data, monthStart, canManage, onChanged }: Sche
             className="flex min-h-11 w-full items-center gap-3 rounded-none border-2 border-slate-300 bg-white px-3 text-left text-sm font-bold text-slate-900 transition hover:border-indigo-400 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           >
             <span className="min-w-0 flex-1 truncate">{row.name}</span>
-            <span className="shrink-0 text-xs font-semibold text-slate-400">{countOf(row.id)} dòng</span>
-            <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+            <span className="shrink-0 text-xs font-semibold text-slate-600">{countOf(row.id)} dòng</span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-600" />
           </button>
         ))}
         {canManage && (
@@ -94,19 +94,19 @@ export function SchemeTemplates({ data, monthStart, canManage, onChanged }: Sche
             className="flex min-h-11 items-center gap-2 rounded-none border-2 border-dashed border-slate-300 bg-white px-3 dark:border-slate-600 dark:bg-slate-800"
             onSubmit={(event) => { event.preventDefault(); void create(); }}
           >
-            <Plus className="h-4 w-4 shrink-0 text-slate-400" />
+            <Plus className="h-4 w-4 shrink-0 text-slate-600" />
             <input
               value={newName}
               onChange={(event) => setNewName(event.target.value)}
               disabled={busy}
               placeholder="Gõ tên bộ mới rồi Enter…"
               aria-label="Tên bộ cơ chế mới"
-              className="min-w-0 flex-1 bg-transparent py-2 text-sm font-semibold outline-none placeholder:font-normal placeholder:text-slate-400"
+              className="min-w-0 flex-1 bg-transparent py-2 text-sm font-semibold outline-none placeholder:font-normal placeholder:text-slate-600"
             />
           </form>
         )}
         {data.schemes.length === 0 && !canManage && (
-          <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">Chưa có bộ cơ chế nào.</p>
+          <p className="rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">Chưa có bộ cơ chế nào.</p>
         )}
       </CardContent>
     </Card>
@@ -214,7 +214,7 @@ function TemplateEditor({ scheme, data, monthStart, canManage, onBack, onChanged
             readOnly={readOnly}
             onChange={(event) => { setName(event.target.value); setDirty(true); }}
             aria-label="Tên bộ cơ chế"
-            className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-lg font-black text-slate-900 outline-none hover:border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:text-slate-100"
+            className="min-w-0 flex-1 rounded-none border border-transparent bg-transparent px-2 py-1 text-lg font-black text-slate-900 outline-none hover:border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:text-slate-100"
           />
           {!readOnly && (
             <>
@@ -225,7 +225,7 @@ function TemplateEditor({ scheme, data, monthStart, canManage, onBack, onChanged
                 onPickPerson={(person) => void copyPerson(person)}
               />
               <Button size="sm" variant="ghost" onClick={() => void handleDelete()} aria-label="Xoá bộ cơ chế" title="Xoá bộ cơ chế">
-                <Trash2 className="h-4 w-4 text-slate-400" />
+                <Trash2 className="h-4 w-4 text-slate-600" />
               </Button>
             </>
           )}

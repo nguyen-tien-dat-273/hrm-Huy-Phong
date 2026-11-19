@@ -14,11 +14,11 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/Card';
 
-type Section = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'timesheet' | 'approvals' | 'reports';
+type Section = 'register' | 'setup' | 'schemes' | 'adjustments' | 'catalog' | 'params' | 'timesheet' | 'sheets' | 'approvals' | 'reports';
 
-/** Thanh xám — bo `rounded-md` để lớp bo lớn hơn truyền vào còn ghi đè được. */
+/** Thanh xám — bo `rounded-none` để lớp bo lớn hơn truyền vào còn ghi đè được. */
 function Bar({ className = '' }: { className?: string }) {
-  return <div className={`skeleton rounded-md ${className}`} aria-hidden="true" />;
+  return <div className={`skeleton rounded-none ${className}`} aria-hidden="true" />;
 }
 
 /** Vỏ chung: báo trình đọc màn hình là đang tải, nội dung bên trong ẩn khỏi nó. */
@@ -52,11 +52,11 @@ function CatalogSkeleton() {
   return (
     <Frame>
       <div className="flex flex-wrap items-center gap-2">
-        <Bar className="h-10 min-w-[220px] max-w-md flex-1 rounded-xl" />
+        <Bar className="h-10 min-w-[220px] max-w-md flex-1 rounded-none" />
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <Bar className="h-11 w-28 rounded-xl" />
-          <Bar className="h-11 w-44 rounded-xl" />
-          <Bar className="h-11 w-36 rounded-xl" />
+          <Bar className="h-11 w-28 rounded-none" />
+          <Bar className="h-11 w-44 rounded-none" />
+          <Bar className="h-11 w-36 rounded-none" />
         </div>
       </div>
 
@@ -91,8 +91,8 @@ function CatalogSkeleton() {
                     <td className="px-3 py-3"><Bar className="h-4 w-20" /></td>
                     <td className="px-3 py-1.5">
                       <div className="flex justify-end gap-0.5">
-                        <Bar className="h-9 w-9 rounded-lg" />
-                        <Bar className="h-9 w-9 rounded-lg" />
+                        <Bar className="h-9 w-9 rounded-none" />
+                        <Bar className="h-9 w-9 rounded-none" />
                       </div>
                     </td>
                   </tr>
@@ -112,9 +112,9 @@ function CatalogSkeleton() {
 function ParamsSkeleton() {
   return (
     <Frame>
-      <section className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+      <section className="overflow-hidden rounded-none border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
         <div className="flex flex-wrap items-center gap-4 border-b border-slate-100 dark:border-slate-800 px-5 py-4">
-          <Bar className="h-12 w-12 shrink-0 rounded-xl" />
+          <Bar className="h-12 w-12 shrink-0 rounded-none" />
           <div className="min-w-0 flex-1 space-y-2">
             <Bar className="h-3.5 w-64 max-w-full" />
             <Bar className="h-6 w-56 max-w-full" />
@@ -122,14 +122,14 @@ function ParamsSkeleton() {
         </div>
         <div className="space-y-4 p-5">
           <div className="flex flex-wrap items-end gap-3">
-            <div className="w-full space-y-1.5 sm:w-72"><Bar className="h-4 w-24" /><Bar className="h-11 w-full rounded-xl" /></div>
-            <div className="w-full space-y-1.5 sm:w-44"><Bar className="h-4 w-28" /><Bar className="h-11 w-full rounded-xl" /></div>
-            <div className="min-w-[10rem] flex-1 space-y-1.5"><Bar className="h-4 w-16" /><Bar className="h-11 w-full rounded-xl" /></div>
-            <div className="min-w-[12rem] flex-[1.4] space-y-1.5"><Bar className="h-4 w-16" /><Bar className="h-11 w-full rounded-xl" /></div>
+            <div className="w-full space-y-1.5 sm:w-72"><Bar className="h-4 w-24" /><Bar className="h-11 w-full rounded-none" /></div>
+            <div className="w-full space-y-1.5 sm:w-44"><Bar className="h-4 w-28" /><Bar className="h-11 w-full rounded-none" /></div>
+            <div className="min-w-[10rem] flex-1 space-y-1.5"><Bar className="h-4 w-16" /><Bar className="h-11 w-full rounded-none" /></div>
+            <div className="min-w-[12rem] flex-[1.4] space-y-1.5"><Bar className="h-4 w-16" /><Bar className="h-11 w-full rounded-none" /></div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
-            <Bar className="h-11 w-32 rounded-xl" />
-            <Bar className="h-11 w-28 rounded-xl" />
+            <Bar className="h-11 w-32 rounded-none" />
+            <Bar className="h-11 w-28 rounded-none" />
           </div>
         </div>
       </section>
@@ -139,7 +139,7 @@ function ParamsSkeleton() {
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">
             {[0, 1, 2].map((index) => (
-              <div key={index} className="space-y-1.5"><Bar className="h-4 w-36" /><Bar className="h-11 w-full rounded-xl" /></div>
+              <div key={index} className="space-y-1.5"><Bar className="h-4 w-36" /><Bar className="h-11 w-full rounded-none" /></div>
             ))}
           </div>
         </CardContent>
@@ -169,11 +169,11 @@ function ParamsSkeleton() {
                 <tbody className="divide-y divide-slate-50">
                   {Array.from({ length: rows }).map((_, index) => (
                     <tr key={index}>
-                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-lg" /></td>
-                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-lg" /></td>
-                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-lg" /></td>
-                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-lg" /></td>
-                      <td className="py-2"><Bar className="h-9 w-9 rounded-lg" /></td>
+                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-none" /></td>
+                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-none" /></td>
+                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-none" /></td>
+                      <td className="py-2 pr-3"><Bar className="h-9 w-full rounded-none" /></td>
+                      <td className="py-2"><Bar className="h-9 w-9 rounded-none" /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -193,7 +193,7 @@ function SchemesSkeleton() {
   return (
     <Frame className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
       <Card className="overflow-hidden">
-        <div className="border-b border-slate-100 p-3"><Bar className="h-10 w-full rounded-lg" /></div>
+        <div className="border-b border-slate-100 p-3"><Bar className="h-10 w-full rounded-none" /></div>
         <div className="space-y-1 p-2">
           {[0, 1, 1, 2, 2, 1, 2, 1].map((depth, index) => (
             <div key={index} className="flex items-center gap-2 px-2 py-2" style={{ paddingLeft: 8 + depth * 16 }}>
@@ -211,7 +211,7 @@ function SchemesSkeleton() {
             <Bar className="h-6 w-56" />
           </CardHeader>
           <CardContent className="space-y-3">
-            <Bar className="h-10 w-72 max-w-full rounded-xl" />
+            <Bar className="h-10 w-72 max-w-full rounded-none" />
             <table className="w-full min-w-[520px] text-sm">
               <thead>
                 <tr className={`border-b border-slate-100 ${TH}`}>
@@ -251,14 +251,14 @@ function AdjustmentsSkeleton() {
           <Bar className="h-4 w-full max-w-xl" />
           <Bar className="h-4 w-2/3 max-w-md" />
         </div>
-        <Bar className="h-11 w-44 rounded-xl" />
+        <Bar className="h-11 w-44 rounded-none" />
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {[0, 1].map((index) => (
           <Card key={index}>
             <CardContent className="flex items-center gap-3 py-4">
-              <Bar className="h-9 w-9 flex-shrink-0 rounded-xl" />
+              <Bar className="h-9 w-9 flex-shrink-0 rounded-none" />
               <div className="space-y-2">
                 <Bar className="h-3 w-36" />
                 <Bar className="h-5 w-28" />
@@ -305,22 +305,22 @@ function RegisterSkeleton() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <Bar className="h-11 w-52 rounded-xl" />
-          <Bar className="h-11 w-28 rounded-xl" />
+          <Bar className="h-11 w-52 rounded-none" />
+          <Bar className="h-11 w-28 rounded-none" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Bar className="h-11 w-32 rounded-xl" />
-          <Bar className="h-11 w-40 rounded-xl" />
+          <Bar className="h-11 w-32 rounded-none" />
+          <Bar className="h-11 w-40 rounded-none" />
         </div>
       </div>
 
       <Card>
         <CardContent className="p-0">
           <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
-            <Bar className="h-11 w-full rounded-xl sm:w-60" />
-            <Bar className="h-11 w-full rounded-xl sm:w-72" />
-            <Bar className="h-11 w-full rounded-xl sm:w-48" />
-            <Bar className="h-11 w-full rounded-xl sm:w-52" />
+            <Bar className="h-11 w-full rounded-none sm:w-60" />
+            <Bar className="h-11 w-full rounded-none sm:w-72" />
+            <Bar className="h-11 w-full rounded-none sm:w-48" />
+            <Bar className="h-11 w-full rounded-none sm:w-52" />
             <Bar className="ml-auto h-4 w-24" />
           </div>
           <div className="min-h-[320px] overflow-hidden">
@@ -349,7 +349,7 @@ function RegisterSkeleton() {
                     <td className="border-l border-slate-100 px-3 py-2.5"><Bar className="mx-auto h-4 w-20" /></td>
                     <td className="border-l border-slate-100 px-3 py-2.5"><Bar className="mx-auto h-4 w-16" /></td>
                     <td className="border-l border-slate-100 px-4 py-2.5"><Bar className="mx-auto h-4 w-20" /></td>
-                    <td className="px-2 py-2.5"><Bar className="mx-auto h-8 w-8 rounded-lg" /></td>
+                    <td className="px-2 py-2.5"><Bar className="mx-auto h-8 w-8 rounded-none" /></td>
                   </tr>
                 ))}
               </tbody>
@@ -380,7 +380,7 @@ export function ApprovalListSkeleton({ count = 2 }: { count?: number }) {
               </div>
               <Bar className="h-7 w-24 rounded-full" />
             </div>
-            <div className="grid gap-2 rounded-xl bg-slate-50 p-3 sm:grid-cols-4">
+            <div className="grid gap-2 rounded-none bg-slate-50 p-3 sm:grid-cols-4">
               {[0, 1, 2, 3].map((cell) => (
                 <div key={cell} className="space-y-1.5">
                   <Bar className="h-3 w-20" />
@@ -389,8 +389,8 @@ export function ApprovalListSkeleton({ count = 2 }: { count?: number }) {
               ))}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
-              <Bar className="h-11 w-40 rounded-xl" />
-              <Bar className="h-11 w-28 rounded-xl" />
+              <Bar className="h-11 w-40 rounded-none" />
+              <Bar className="h-11 w-28 rounded-none" />
             </div>
           </CardContent>
         </Card>
@@ -403,9 +403,9 @@ function ApprovalsSkeleton() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Bar className="h-12 w-52 rounded-xl" />
-        <Bar className="h-10 min-w-[200px] flex-1 rounded-lg" />
-        <Bar className="h-10 w-48 rounded-lg" />
+        <Bar className="h-12 w-52 rounded-none" />
+        <Bar className="h-10 min-w-[200px] flex-1 rounded-none" />
+        <Bar className="h-10 w-48 rounded-none" />
       </div>
       <ApprovalListSkeleton />
     </div>
@@ -419,7 +419,8 @@ export function PayrollSectionSkeleton({ section }: { section: Section }) {
   switch (section) {
     case 'catalog': return <CatalogSkeleton />;
     case 'params':
-    case 'timesheet': return <ParamsSkeleton />;
+    case 'timesheet':
+    case 'sheets': return <ParamsSkeleton />;
     case 'setup':
     case 'schemes': return <SchemesSkeleton />;
     case 'adjustments': return <AdjustmentsSkeleton />;
@@ -442,7 +443,7 @@ export function PayslipSkeleton() {
               <Bar className="h-5 w-44" />
               <Bar className="h-10 w-64 max-w-full" />
             </div>
-            <Bar className="h-[74px] w-40 rounded-2xl" />
+            <Bar className="h-[74px] w-40 rounded-none" />
           </div>
         </CardContent>
       </Card>
@@ -451,7 +452,7 @@ export function PayslipSkeleton() {
         {[0, 1, 2].map((index) => (
           <Card key={index}>
             <CardContent className="flex items-center gap-3 py-5">
-              <Bar className="h-10 w-10 flex-shrink-0 rounded-xl" />
+              <Bar className="h-10 w-10 flex-shrink-0 rounded-none" />
               <div className="min-w-0 space-y-2">
                 <Bar className="h-3.5 w-32" />
                 <Bar className="h-5 w-24" />
@@ -464,7 +465,7 @@ export function PayslipSkeleton() {
       <Card>
         <CardContent className="p-0">
           <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
-            <Bar className="h-10 w-10 rounded-xl" />
+            <Bar className="h-10 w-10 rounded-none" />
             <div className="space-y-2">
               <Bar className="h-5 w-40" />
               <Bar className="h-3.5 w-52" />
