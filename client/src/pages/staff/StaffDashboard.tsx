@@ -130,11 +130,6 @@ const mList = (memberships || []) as { project_id: string }[];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800">Dashboard tổng quan</h1>
-        <p className="text-slate-500 mt-1">Theo dõi công việc, chấm công và tiến độ cá nhân</p>
-      </div>
-
       {/* Lịch họp & nhắc nhở sắp tới — tự ẩn khi không có */}
       <UpcomingEventsCard />
 
@@ -148,7 +143,7 @@ const mList = (memberships || []) as { project_id: string }[];
                   <ClipboardList className="w-5 h-5 text-emerald-600" />
                   Công việc hôm nay
                 </span>
-                <span className="ml-2 text-xs font-normal text-slate-400">
+                <span className="ml-2 text-xs font-normal text-slate-600">
                   {asgApproved}/{todayAssignments.length} đã xác nhận
                 </span>
               </CardTitle>
@@ -164,9 +159,9 @@ const mList = (memberships || []) as { project_id: string }[];
               {todayAssignments.slice(0, 4).map((a) => {
                 const cfg = ASSIGNMENT_STATUS_CONFIG[a.status];
                 return (
-                  <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-50/70">
+                  <div key={a.id} className="flex items-center gap-3 p-2.5 rounded-none bg-slate-50/70">
                     <span className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
-                    <span className={`text-sm flex-1 truncate ${a.status === 'approved' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                    <span className={`text-sm flex-1 truncate ${a.status === 'approved' ? 'text-slate-600 line-through' : 'text-slate-700'}`}>
                       {a.title}
                     </span>
                     <Badge className={cfg.color}>{cfg.label}</Badge>
@@ -174,7 +169,7 @@ const mList = (memberships || []) as { project_id: string }[];
                 );
               })}
               {todayAssignments.length > 4 && (
-                <p className="text-xs text-slate-400 text-center pt-1">
+                <p className="text-xs text-slate-600 text-center pt-1">
                   … và {todayAssignments.length - 4} công việc khác
                 </p>
               )}
@@ -242,7 +237,7 @@ const mList = (memberships || []) as { project_id: string }[];
                   const priority = PRIORITY_CONFIG[task.priority];
                   const overdue = isOverdue(task.due_date, task.status);
                   return (
-                    <div key={task.id} className={`p-3 rounded-xl border-l-4 ${priority.border} bg-slate-50/50 hover:bg-slate-50 transition-colors`}>
+                    <div key={task.id} className={`p-3 rounded-none border-l-4 ${priority.border} bg-slate-50/50 hover:bg-slate-50 transition-colors`}>
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-slate-800 flex-1">{task.title}</p>
                         <Badge className={TASK_STATUSES.find((s) => s.value === task.status)?.color || ''}>
@@ -250,9 +245,9 @@ const mList = (memberships || []) as { project_id: string }[];
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-xs text-slate-400">{task.project?.name}</span>
+                        <span className="text-xs text-slate-600">{task.project?.name}</span>
                         {task.due_date && (
-                          <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-slate-400'}`}>
+                          <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-slate-600'}`}>
                             • Hạn: {formatDate(task.due_date)}
                           </span>
                         )}
@@ -272,7 +267,7 @@ const mList = (memberships || []) as { project_id: string }[];
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between gap-2">
-              <CardTitle>Lịch sử chấm công (7 ngày)</CardTitle>
+              <CardTitle>Chấm công 7 ngày</CardTitle>
               <Link to="/staff/attendance" className="text-xs font-semibold text-emerald-600 hover:text-emerald-700">
                 Xem lịch công tháng →
               </Link>
@@ -286,14 +281,14 @@ const mList = (memberships || []) as { project_id: string }[];
             ) : (
               <div className="space-y-2">
                 {attendance.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between p-3 rounded-lg bg-slate-50/50">
+                  <div key={a.id} className="flex items-center justify-between p-3 rounded-none bg-slate-50/50">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-lg bg-white border border-slate-200 flex items-center justify-center">
-                        <Clock className="w-4 h-4 text-slate-400" />
+                      <div className="w-9 h-9 rounded-none bg-white border border-slate-200 flex items-center justify-center">
+                        <Clock className="w-4 h-4 text-slate-600" />
                       </div>
                       <div>
                         <p className="text-sm font-medium text-slate-700">{formatDate(a.date)}</p>
-                        <p className="text-xs text-slate-400">{!a.check_in_time && a.check_out_time ? `Chưa vào → ${formatTime(a.check_out_time)}` : `${formatTime(a.check_in_time)} → ${formatTime(a.check_out_time)}`}</p>
+                        <p className="text-xs text-slate-600">{!a.check_in_time && a.check_out_time ? `Chưa vào → ${formatTime(a.check_out_time)}` : `${formatTime(a.check_in_time)} → ${formatTime(a.check_out_time)}`}</p>
                       </div>
                     </div>
                     <Badge className={!a.check_in_time && a.check_out_time ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300' : a.check_out_time ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}>
@@ -319,15 +314,15 @@ const mList = (memberships || []) as { project_id: string }[];
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {projects.map((p) => (
-                <div key={p.id} className="p-4 rounded-xl border border-slate-200 hover:shadow-sm transition-shadow">
+                <div key={p.id} className="p-4 rounded-none border border-slate-200 hover:shadow-sm transition-shadow">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-sm font-semibold text-slate-800">{p.name}</p>
                     <Badge className={PROJECT_STATUS_CONFIG[p.status].color}>
                       {PROJECT_STATUS_CONFIG[p.status].label}
                     </Badge>
                   </div>
-                  <p className="text-xs text-slate-500">{p.client || '—'}</p>
-                  <p className="text-xs text-slate-400 mt-1">{formatDate(p.start_date)} → {formatDate(p.end_date)}</p>
+                  <p className="text-xs text-slate-600">{p.client || '—'}</p>
+                  <p className="text-xs text-slate-600 mt-1">{formatDate(p.start_date)} → {formatDate(p.end_date)}</p>
                 </div>
               ))}
             </div>
@@ -358,13 +353,13 @@ function StatCell({
   const alert = tone === 'alert';
   return (
     <div className="px-5 py-4">
-      <div className={`flex items-center gap-2 text-xs font-semibold ${alert ? 'text-rose-600' : 'text-slate-500'}`}>
+      <div className={`flex items-center gap-2 text-xs font-semibold ${alert ? 'text-rose-600' : 'text-slate-600'}`}>
         {icon}
         {label}
       </div>
       <p className={`mt-1.5 text-3xl font-bold tabular-nums ${alert ? 'text-rose-600' : 'text-slate-900'}`}>
         {value}
-        {suffix && <span className="ml-0.5 text-xl font-semibold text-slate-400">{suffix}</span>}
+        {suffix && <span className="ml-0.5 text-xl font-semibold text-slate-600">{suffix}</span>}
       </p>
 
       {progress != null && (
@@ -376,7 +371,7 @@ function StatCell({
         </div>
       )}
 
-      <p className={`mt-1.5 text-xs ${alert ? 'text-rose-500' : 'text-slate-400'}`}>{hint}</p>
+      <p className={`mt-1.5 text-xs ${alert ? 'text-rose-500' : 'text-slate-600'}`}>{hint}</p>
     </div>
   );
 }
@@ -398,16 +393,16 @@ function QuickAction({
   return (
     <Link
       to={to}
-      className="group flex items-center gap-3 rounded-2xl border border-slate-200/80 bg-white/95 px-5 py-4 shadow-card transition hover:border-indigo-300 hover:shadow-md"
+      className="group flex items-center gap-3 rounded-none border border-slate-200/80 bg-white/95 px-5 py-4 shadow-card transition hover:border-indigo-300 hover:shadow-md"
     >
-      <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition group-hover:bg-indigo-600 group-hover:text-white">
+      <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-none bg-indigo-50 text-indigo-600 transition group-hover:bg-indigo-600 group-hover:text-white">
         {icon}
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-slate-800">{title}</span>
-        <span className="block text-xs text-slate-500">{desc}</span>
+        <span className="block text-xs text-slate-600">{desc}</span>
       </span>
-      <ArrowRight className="h-4 w-4 flex-shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-indigo-600" />
+      <ArrowRight className="h-4 w-4 flex-shrink-0 text-slate-600 transition group-hover:translate-x-0.5 group-hover:text-indigo-600" />
     </Link>
   );
 }
@@ -424,11 +419,11 @@ function EmptyHint({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+      <span className="flex h-11 w-11 items-center justify-center rounded-none bg-slate-50 text-slate-600">
         {icon}
       </span>
       <p className="text-sm font-semibold text-slate-600">{title}</p>
-      <p className="max-w-xs text-xs leading-relaxed text-slate-400">{description}</p>
+      <p className="max-w-xs text-xs leading-relaxed text-slate-600">{description}</p>
       {to && action && (
         <Link
           to={to}

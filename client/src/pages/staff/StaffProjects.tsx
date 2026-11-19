@@ -16,6 +16,7 @@ import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { PROJECT_STATUS_CONFIG, MEMBER_ROLE_CONFIG, KANBAN_COLUMNS, formatDate } from '@/lib/utils';
 import type { Project, ProjectMember, Task } from '@/types';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 export function StaffProjects() {
   const { profile } = useAuth();
@@ -24,6 +25,7 @@ export function StaffProjects() {
   const [docsProject, setDocsProject] = useState<{ id: string; name: string } | null>(null);
   const [detailProject, setDetailProject] = useState<Project | null>(null);
   const [projects, setProjects] = useState<{ project: Project; role: string; members: ProjectMember[]; tasks: Task[]; taskCount: number }[]>([]);
+  const pg = usePagination(projects, PAGE_SIZE_LIST, [projects.length]);
 
   useEffect(() => {
     if (profile) loadData();
@@ -115,7 +117,6 @@ const result = projectList.map((project) => {
         <EmptyState
           icon={<Briefcase className="w-8 h-8" />}
           title="Chưa tham gia dự án nào"
-          description="Khi được thêm vào dự án, nó sẽ hiển thị tại đây."
         />
       </Card>
     );
@@ -123,11 +124,11 @@ const result = projectList.map((project) => {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-{projects.map(({ project, role, members, taskCount }) => (
+{pg.rows.map(({ project, role, members, taskCount }) => (
         <Card hover key={project.id} className="p-5 group">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center transition-colors group-hover:bg-indigo-100">
+              <div className="w-11 h-11 rounded-none bg-indigo-50 border border-indigo-100 text-indigo-600 flex items-center justify-center transition-colors group-hover:bg-indigo-100">
                 <Briefcase className="w-5.5 h-5.5" />
               </div>
               <div>
@@ -142,9 +143,9 @@ const result = projectList.map((project) => {
             </Badge>
           </div>
 
-          <p className="text-sm text-slate-500 mb-4 line-clamp-2">{project.description || 'Không có mô tả'}</p>
+          <p className="text-sm text-slate-600 mb-4 line-clamp-2">{project.description || 'Không có mô tả'}</p>
 
-          <div className="space-y-2.5 text-xs text-slate-500 mb-4">
+          <div className="space-y-2.5 text-xs text-slate-600 mb-4">
             <div className="flex items-center gap-2">
               <Calendar className="w-3.5 h-3.5" />
               {formatDate(project.start_date)} → {formatDate(project.end_date)}
@@ -160,14 +161,14 @@ const result = projectList.map((project) => {
               <Avatar key={m.id} name={m.profile?.name || ''} url={m.profile?.avatar_url} size="sm" />
             ))}
             {members.length > 5 && (
-              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-medium text-slate-500">
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-medium text-slate-600">
                 +{members.length - 5}
               </div>
             )}
 
             <Link
               to={`/staff/kanban?project=${encodeURIComponent(project.id)}`}
-              className="ml-auto inline-flex items-center gap-1.5 h-9 px-3 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
+              className="ml-auto inline-flex min-h-11 items-center justify-center gap-2 rounded-none bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700"
             >
               <KanbanSquare className="w-4 h-4" /> Kanban
             </Link>
@@ -176,13 +177,13 @@ const result = projectList.map((project) => {
                 trong hộp thoại ngay từ thẻ. */}
             <button
               onClick={() => setDetailProject(project)}
-              className="ml-auto inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+              className="ml-auto inline-flex items-center gap-1.5 h-9 px-3 rounded-none border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
             >
               <ExternalLink className="w-4 h-4" /> Chi tiết
             </button>
             <button
               onClick={() => setDocsProject({ id: project.id, name: project.name })}
-              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-none border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-colors"
             >
               <FileText className="w-4 h-4" />
               Tài liệu
@@ -203,40 +204,40 @@ const result = projectList.map((project) => {
           const done = projectTasks.filter((task) => task.status === 'done').length;
           const memberNames = new Map((row?.members ?? []).map((member) => [member.user_id, member.profile?.name || 'Thành viên']));
           return <div className="space-y-4">
-            <section className="rounded-xl bg-indigo-50/70 p-4">
+            <section className="rounded-none bg-indigo-50/70 p-4">
               <h3 className="text-sm font-bold text-slate-800">Giới thiệu dự án</h3>
               <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">{detailProject.description || 'Dự án chưa có phần giới thiệu.'}</p>
-              <p className="mt-3 text-xs text-slate-500">{formatDate(detailProject.start_date)} → {formatDate(detailProject.end_date)} · Vai trò của bạn: {row?.role || 'Thành viên'}</p>
+              <p className="mt-3 text-xs text-slate-600">{formatDate(detailProject.start_date)} → {formatDate(detailProject.end_date)} · Vai trò của bạn: {row?.role || 'Thành viên'}</p>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {(row?.members ?? []).map((member) => <Badge key={member.id} className="bg-white text-slate-600">{member.profile?.name || 'Thành viên'}</Badge>)}
               </div>
             </section>
             <Link
               to={`/staff/kanban?project=${encodeURIComponent(detailProject.id)}`}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700"
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-none bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700"
             >
               <KanbanSquare className="h-4 w-4" /> Mở Kanban dự án
             </Link>
-            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">Tiến độ: {done}/{projectTasks.length} nhiệm vụ hoàn thành ({projectTasks.length ? Math.round(done * 100 / projectTasks.length) : 0}%)</div>
+            <div className="rounded-none bg-slate-50 p-3 text-sm text-slate-700">Tiến độ: {done}/{projectTasks.length} nhiệm vụ hoàn thành ({projectTasks.length ? Math.round(done * 100 / projectTasks.length) : 0}%)</div>
             <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800"><KanbanSquare className="h-4 w-4 text-emerald-600" />Kanban công việc của dự án</h3>
             <div className="flex snap-x gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-2 xl:grid-cols-4">
               {KANBAN_COLUMNS.map((column) => {
                 const columnTasks = projectTasks.filter((task) => task.status === column.value);
-                return <section key={column.value} className="w-[78vw] shrink-0 snap-start rounded-xl border border-slate-200 bg-slate-50 p-3 md:w-auto">
-                  <div className={`mb-3 flex items-center justify-between border-t-4 ${column.accent} rounded-t pt-2`}>
+                return <section key={column.value} className="w-[78vw] shrink-0 snap-start rounded-none border border-slate-200 bg-slate-50 p-3 md:w-auto">
+                  <div className={`mb-3 flex items-center justify-between border-t-4 ${column.accent} rounded-t-none pt-2`}>
                     <h4 className="text-xs font-bold text-slate-700">{column.label}</h4>
                     <Badge className="bg-white text-slate-600">{columnTasks.length}</Badge>
                   </div>
                   <div className="max-h-72 space-y-2 overflow-y-auto">
-                    {columnTasks.map((task) => <article key={task.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    {columnTasks.map((task) => <article key={task.id} className="rounded-none border border-slate-200 bg-white p-3 shadow-sm">
                       <p className="text-sm font-semibold text-slate-800">{task.title}</p>
-                      {task.description && <p className="mt-1 line-clamp-2 text-xs text-slate-500">{task.description}</p>}
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+                      {task.description && <p className="mt-1 line-clamp-2 text-xs text-slate-600">{task.description}</p>}
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2 text-[11px] text-slate-600">
                         <span>{task.assignee_id ? memberNames.get(task.assignee_id) || 'Thành viên dự án' : 'Chưa phân công'}</span>
                         {task.due_date && <span>Hạn {formatDate(task.due_date)}</span>}
                       </div>
                     </article>)}
-                    {columnTasks.length === 0 && <p className="py-4 text-center text-xs text-slate-400">Chưa có tác vụ</p>}
+                    {columnTasks.length === 0 && <p className="py-4 text-center text-xs text-slate-600">Chưa có tác vụ</p>}
                   </div>
                 </section>;
               })}
@@ -252,6 +253,7 @@ const result = projectList.map((project) => {
       >
         {docsProject && <ProjectDocuments projectId={docsProject.id} />}
       </Modal>
+      <Pagination className="col-span-full" page={pg.page} total={pg.total} size={pg.size} noun="dự án" setPage={pg.setPage} />
     </div>
   );
 }

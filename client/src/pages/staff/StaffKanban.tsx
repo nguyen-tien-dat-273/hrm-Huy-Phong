@@ -8,6 +8,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Calendar, CalendarDays, Clock3, History, KanbanSquare, AlertCircle, Edit3, Trash2, Plus, ShieldCheck, Send, Paperclip, X } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
+import { Dropdown } from '@/components/ui/Dropdown';
 import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
@@ -28,6 +29,7 @@ import { notifyUser } from '@/lib/assignments';
 import { TaskCompletionReviewModal } from '@/components/TaskCompletionReviewModal';
 import { KANBAN_COLUMNS, PRIORITY_CONFIG, formatDate, getTodayString, isOverdue } from '@/lib/utils';
 import type { Task, TaskStatus, TaskPriority, Project, Profile, ProjectMember, MemberRole, ProjectRoleDefinition } from '@/types';
+import { FilterChips } from '@/components/ui/FilterChips';
 
 type ProjectAccess = Pick<ProjectRoleDefinition, 'code' | 'name' | 'permissions'>;
 type TaskViewFilter = 'all' | 'today' | 'upcoming' | 'history';
@@ -556,7 +558,7 @@ export function StaffKanban() {
 
   if (loadError) {
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl">
+      <div className="bg-white border border-slate-200 rounded-none">
         <ErrorState message={loadError} onRetry={loadData} />
       </div>
     );
@@ -565,60 +567,38 @@ export function StaffKanban() {
   if (projects.length === 0) {
     return (
       <Card>
-        <EmptyState title="Chưa có dự án" description="Bạn cần được thêm vào dự án để sử dụng Kanban board." />
+        <EmptyState title="Chưa có dự án" />
       </Card>
     );
   }
 
   return (
     <div className="space-y-5">
-      <header className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-sm sm:px-6">
+      <header className="rounded-none border border-slate-200/80 bg-white px-5 py-4 shadow-sm sm:px-6">
         <p className="text-lg font-bold tracking-tight text-slate-800">{selectedProject?.name || 'Dự án của tôi'}</p>
-        <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-          <span>Dự án</span><span className="text-slate-300">/</span><span className="font-medium text-emerald-700">Bảng tác vụ</span>
+        <div className="mt-1 flex items-center gap-2 text-xs text-slate-600">
+          <span>Dự án</span><span className="text-slate-600">/</span><span className="font-medium text-emerald-700">Bảng tác vụ</span>
           {selectedAccess && <Badge className="ml-1 bg-emerald-50 text-emerald-700"><ShieldCheck className="mr-1 h-3.5 w-3.5" />{selectedAccess.name}</Badge>}
         </div>
       </header>
 
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm sm:p-4">
+      <section className="rounded-none border border-slate-200/80 bg-white p-3 shadow-sm sm:p-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Lọc tác vụ">
-            {([
-              { value: 'all', label: 'Tất cả', count: projectTasks.length, icon: KanbanSquare },
-              { value: 'today', label: 'Hôm nay', count: todayTasks.length, icon: CalendarDays },
-              { value: 'upcoming', label: 'Sắp tới', count: upcomingTasks.length, icon: Clock3 },
-              { value: 'history', label: 'Lịch sử tác vụ', count: historyTasks.length, icon: History },
-            ] as const).map((filter) => {
-              const Icon = filter.icon;
-              const active = taskView === filter.value;
-              return (
-                <button
-                  key={filter.value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setTaskView(filter.value)}
-                  className={`inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition-colors sm:text-sm ${active
-                    ? 'border-rose-600 bg-rose-600 text-white shadow-sm'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {filter.label}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{filter.count}</span>
-                </button>
-              );
-            })}
-          </div>
+          <FilterChips label="Lọc tác vụ" value={taskView} onChange={setTaskView} items={[
+            { key: 'all', label: 'Tất cả', count: projectTasks.length, icon: KanbanSquare },
+            { key: 'today', label: 'Hôm nay', count: todayTasks.length, icon: CalendarDays },
+            { key: 'upcoming', label: 'Sắp tới', count: upcomingTasks.length, icon: Clock3 },
+            { key: 'history', label: 'Lịch sử tác vụ', count: historyTasks.length, icon: History },
+          ] as const} />
 
           <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <select
+            <Dropdown
+              className="min-w-48 flex-1 sm:w-60 sm:flex-none"
               value={projectFilter}
-              onChange={(e) => setProjectFilter(e.target.value)}
+              onChange={setProjectFilter}
               aria-label="Chọn dự án"
-              className="h-10 min-w-48 flex-1 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 sm:flex-none"
-            >
-              <option value="all">Tất cả dự án</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+              options={[{ value: 'all', label: 'Tất cả dự án' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+            />
             {creatableProjects.length > 0 && (
               <Button
                 theme="staff"
@@ -655,12 +635,12 @@ export function StaffKanban() {
               <KanbanDropColumn
                 id={column.value}
                 key={column.value}
-                className="bg-slate-50/90 rounded-2xl p-3 min-h-[440px] flex flex-col border border-slate-200/70 shadow-sm
+                className="bg-slate-50/90 rounded-none p-3 min-h-[440px] flex flex-col border border-slate-200/70 shadow-sm
                            w-[85vw] flex-shrink-0 snap-start md:w-auto md:flex-shrink"
               >
-                <div className={`flex items-center justify-between mb-3 px-1 border-t-4 ${column.accent} rounded-t-lg pt-2`}>
+                <div className={`flex items-center justify-between mb-3 px-1 border-t-4 ${column.accent} rounded-t-none pt-2`}>
                   <h3 className="text-sm font-bold text-slate-700">{column.label}</h3>
-                  <span className="text-xs font-bold text-slate-500 bg-white px-2.5 py-0.5 rounded-full shadow-soft">
+                  <span className="text-xs font-bold text-slate-600 bg-white px-2.5 py-0.5 rounded-full shadow-soft">
                     {columnTasks.length}
                   </span>
                 </div>
@@ -691,7 +671,7 @@ export function StaffKanban() {
                   </div>
                 </SortableContext>
                 {columnTasks.length === 0 && (
-                  <div className="flex-1 flex items-center justify-center text-xs text-slate-400 py-4">
+                  <div className="flex-1 flex items-center justify-center text-xs text-slate-600 py-4">
                     Kéo tác vụ vào đây
                   </div>
                 )}
@@ -773,8 +753,7 @@ export function StaffKanban() {
               onChange={(e) => setCreateForm({ ...createForm, due_date: e.target.value })}
             />
           </div>
-          {editingTask && <p className="text-xs text-slate-500">Đổi hạn chót cần gửi yêu cầu gia hạn để Project lead duyệt.</p>}
-          <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
             <Select
               label="Mức ưu tiên"
               value={createForm.priority}
@@ -803,7 +782,7 @@ export function StaffKanban() {
             <p className="text-sm font-medium text-slate-700">{workflowTarget.title}</p>
             {workflowKind === 'DEADLINE_EXTENSION' && (
               <>
-                <p className="text-xs text-slate-500">Hạn hiện tại: {workflowTarget.due_date ? formatDate(workflowTarget.due_date) : '—'}</p>
+                <p className="text-xs text-slate-600">Hạn hiện tại: {workflowTarget.due_date ? formatDate(workflowTarget.due_date) : '—'}</p>
                 <Input
                   label="Hạn mới đề xuất"
                   type="date"
@@ -833,11 +812,11 @@ export function StaffKanban() {
               />
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-slate-700">File minh chứng (bắt buộc)</p>
-                <label htmlFor="completion-evidence-file" className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition hover:border-indigo-400 hover:bg-indigo-50/50">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm"><Paperclip className="h-5 w-5" /></span>
+                <label htmlFor="completion-evidence-file" className="flex cursor-pointer items-center gap-3 rounded-none border border-dashed border-slate-300 bg-slate-50 px-4 py-3 transition hover:border-indigo-400 hover:bg-indigo-50/50">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-none bg-white text-indigo-600 shadow-sm"><Paperclip className="h-5 w-5" /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-semibold text-indigo-700">Chọn file từ máy tính</span>
-                    <span className="mt-0.5 block text-xs font-normal text-slate-500">Tối đa 10 MB · Link minh chứng là tùy chọn, nhưng bắt buộc phải gán file minh chứng</span>
+
                   </span>
                   <input
                     id="completion-evidence-file"
@@ -850,14 +829,14 @@ export function StaffKanban() {
                   />
                 </label>
                 {workflowEvidenceFile && (
-                  <div className="flex items-center gap-3 rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+                  <div className="flex items-center gap-3 rounded-none border border-indigo-100 bg-indigo-50 px-3 py-2">
                     <Paperclip className="h-4 w-4 shrink-0 text-indigo-600" />
                     <span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{workflowEvidenceFile.name}</span>
-                    <span className="shrink-0 text-[11px] text-slate-500">{(workflowEvidenceFile.size / (1024 * 1024)).toFixed(2)} MB</span>
+                    <span className="shrink-0 text-[11px] text-slate-600">{(workflowEvidenceFile.size / (1024 * 1024)).toFixed(2)} MB</span>
                     <button
                       type="button"
                       onClick={() => setWorkflowEvidenceFile(null)}
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-white hover:text-red-600"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-none text-slate-600 hover:bg-white hover:text-red-600"
                       aria-label="Gỡ file minh chứng"
                     >
                       <X className="h-4 w-4" />
@@ -944,7 +923,7 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
 
   return (
 <div
-      className={`bg-white rounded-xl p-3 border border-slate-200 border-l-4 ${priority.border} ${canMove ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} shadow-soft transition-all duration-200 ${
+      className={`bg-white rounded-none p-3 border border-slate-200 border-l-4 ${priority.border} ${canMove ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'} shadow-soft transition-all duration-200 ${
         dragging ? 'shadow-lifted scale-[1.02] rotate-1 ring-2 ring-emerald-500/30' : 'hover:shadow-card'
       }`}
     >
@@ -954,7 +933,7 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
           {onEdit && (
             <button
               onClick={(e) => { e.stopPropagation(); onEdit(); }}
-              className="p-1 rounded text-slate-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              className="p-1 rounded-none text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
               title="Sửa"
             >
               <Edit3 className="w-3.5 h-3.5" />
@@ -963,7 +942,7 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
           {onDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="p-1 rounded text-slate-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+              className="p-1 rounded-none text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors"
               title="Xóa"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -972,7 +951,7 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
           {onRequestDeadline && (
             <button
               onClick={(e) => { e.stopPropagation(); onRequestDeadline(); }}
-              className="p-1 rounded text-slate-300 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+              className="p-1 rounded-none text-slate-600 hover:text-amber-600 hover:bg-amber-50 transition-colors"
               title="Yêu cầu gia hạn deadline"
             >
               <Calendar className="w-3.5 h-3.5" />
@@ -981,19 +960,19 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
           {onRequestCompletion && (
             <button
               onClick={(e) => { e.stopPropagation(); onRequestCompletion(); }}
-              className="p-1 rounded text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+              className="p-1 rounded-none text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
               title="Gửi nghiệm thu"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
             </button>
           )}
-          {canMove && <GripVertical className="w-3.5 h-3.5 text-slate-300 mt-0.5" />}
+          {canMove && <GripVertical className="w-3.5 h-3.5 text-slate-600 mt-0.5" />}
         </div>
       </div>
       <div className="flex items-center gap-2 flex-wrap">
         <Badge className={priority.color}>{priority.label}</Badge>
         {task.project && (
-          <span className="text-xs text-slate-400 truncate">{task.project.name}</span>
+          <span className="text-xs text-slate-600 truncate">{task.project.name}</span>
         )}
       </div>
       {request && (
@@ -1025,7 +1004,7 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
       <div className="flex items-center justify-between mt-2.5 pt-2.5 border-t border-slate-50">
         <div className="flex items-center gap-2">
           {task.due_date && (
-            <span className={`text-xs flex items-center gap-1 ${overdue ? 'text-red-500' : 'text-slate-400'}`}>
+            <span className={`text-xs flex items-center gap-1 ${overdue ? 'text-red-500' : 'text-slate-600'}`}>
               {overdue ? <AlertCircle className="w-3 h-3" /> : <Calendar className="w-3 h-3" />}
               {formatDate(task.due_date)}
             </span>
@@ -1036,17 +1015,17 @@ function TaskCard({ task, assignee, dragging, canMove = true, onEdit, onDelete, 
       {(onStart || onRequestCompletion || onReview) && (
         <div className="mt-2">
           {onReview && (
-            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onReview(); }} className="w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-600">
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onReview(); }} className="w-full rounded-none bg-amber-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-600">
               Chờ bạn duyệt · Nghiệm thu
             </button>
           )}
           {onStart && (
-            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onStart(); }} className="w-full rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700">
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onStart(); }} className="w-full rounded-none bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700">
               Bắt đầu tác vụ
             </button>
           )}
           {onRequestCompletion && (
-            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRequestCompletion(); }} className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700">
+            <button onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRequestCompletion(); }} className="w-full rounded-none bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700">
               Nộp task · gửi nghiệm thu
             </button>
           )}

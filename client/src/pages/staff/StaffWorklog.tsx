@@ -224,10 +224,10 @@ export function StaffWorklog() {
       {/* Chọn ngày */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
-          <button onClick={() => shiftDate(-1)} className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors" aria-label="Ngày trước">
+          <button onClick={() => shiftDate(-1)} className="p-2 rounded-none border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors" aria-label="Ngày trước">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button onClick={() => shiftDate(1)} disabled={date >= getTodayString()} className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" aria-label="Ngày sau">
+          <button onClick={() => shiftDate(1)} disabled={date >= getTodayString()} className="p-2 rounded-none border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40" aria-label="Ngày sau">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -237,10 +237,10 @@ export function StaffWorklog() {
           value={date}
           onChange={(e) => { if (e.target.value) setDate(e.target.value > getTodayString() ? getTodayString() : e.target.value); }}
           max={getTodayString()}
-          className="h-10 px-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+          className="h-11 px-3 rounded-none border border-slate-300 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
         />
 
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-600">
           {new Date(`${date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit' })}
         </p>
 
@@ -257,8 +257,8 @@ export function StaffWorklog() {
           <CardContent className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-800">Worklog tuần {weekStart} – {weekEnd}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                Gửi theo dự án sau khi tuần kết thúc. Đã ghi nhận {weekLogProjectIds.length} dự án.
+              <p className="mt-1 text-xs text-slate-600">
+                Đã ghi nhận {weekLogProjectIds.length} dự án.
                 {dirty ? ' Lưu thay đổi trước khi gửi.' : ''}
               </p>
               {weekSubmissions.length > 0 && (
@@ -313,7 +313,6 @@ export function StaffWorklog() {
             <EmptyState
               icon={<NotebookPen className="w-8 h-8" />}
               title="Không có tác vụ nào để ghi giờ"
-              description="Bạn chưa được giao tác vụ nào đang mở. Khi có, chúng sẽ hiện tại đây."
             />
           ) : (
             <div className="divide-y divide-slate-50">
@@ -321,7 +320,7 @@ export function StaffWorklog() {
                 <div key={entry.task.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800 truncate">{entry.task.title}</p>
-                    <p className="text-xs text-slate-400 truncate">
+                    <p className="text-xs text-slate-600 truncate">
                       {entry.task.project?.name ?? '—'}
                       {entry.task.estimated_hours ? ` · ước lượng ${formatHours(Number(entry.task.estimated_hours))}` : ''}
                     </p>
@@ -344,9 +343,9 @@ export function StaffWorklog() {
                     disabled={lockedProjectIds.has(entry.task.project_id)}
                     placeholder="0"
                     aria-label={`Số giờ cho ${entry.task.title}`}
-                    className="w-20 h-10 px-3 text-center rounded-xl border border-slate-200 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    className="w-20 h-11 px-3 text-center rounded-none border border-slate-300 text-sm font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                   />
-                  <span className="text-sm text-slate-400 -ml-1.5">giờ</span>
+                  <span className="text-sm text-slate-600 -ml-1.5">giờ</span>
 
                   <input
                     type="text"
@@ -355,7 +354,7 @@ export function StaffWorklog() {
                     disabled={lockedProjectIds.has(entry.task.project_id)}
                     placeholder="Ghi chú (không bắt buộc)"
                     aria-label={`Ghi chú cho ${entry.task.title}`}
-                    className="w-full sm:w-56 h-10 px-3 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                    className="w-full sm:w-56 h-11 px-3 rounded-none border border-slate-300 text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>
               ))}
@@ -370,17 +369,17 @@ export function StaffWorklog() {
           <CardContent>
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="text-sm text-slate-500">Tổng đã ghi</p>
+                <p className="text-sm text-slate-600">Tổng đã ghi</p>
                 <p className="font-display text-3xl font-extrabold text-slate-800">{formatHours(totalLogged)}</p>
               </div>
 
               <div className="text-sm">
                 {presentHours === null ? (
-                  <p className="text-slate-400">
+                  <p className="text-slate-600">
                     {attendanceShifts.length > 0 ? 'Chưa check-out nên chưa tính được giờ có mặt.' : 'Không có dữ liệu chấm công ngày này.'}
                   </p>
                 ) : gap !== null && gap > UNLOGGED_TOLERANCE_HOURS ? (
-                  <p className="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3.5 py-2.5">
+                  <p className="flex items-start gap-2 text-amber-700 bg-amber-50 border border-amber-200 rounded-none px-3.5 py-2.5">
                     <TriangleAlert className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
                     <span>
                       Chấm công ghi nhận <strong>{formatHours(presentHours)}</strong> có mặt, nhật ký mới khai{' '}
@@ -388,7 +387,7 @@ export function StaffWorklog() {
                     </span>
                   </p>
                 ) : gap !== null && gap < -UNLOGGED_TOLERANCE_HOURS ? (
-                  <p className="flex items-start gap-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2.5">
+                  <p className="flex items-start gap-2 text-blue-700 bg-blue-50 border border-blue-200 rounded-none px-3.5 py-2.5">
                     <TriangleAlert className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
                     <span>
                       Khai <strong>{formatHours(Math.abs(gap))}</strong> nhiều hơn giờ có mặt ({formatHours(presentHours)}).
@@ -402,7 +401,7 @@ export function StaffWorklog() {
                   </p>
                 )}
                 {presentHours !== null && (closedShiftHours.length > 1 || openShiftCount > 0) && (
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-slate-600">
                     {closedShiftHours.length > 1 ? `Cộng ${closedShiftHours.length} ca đã check-out.` : ''}
                     {openShiftCount > 0 ? ` Còn ${openShiftCount} ca chưa check-out, chưa tính.` : ''}
                   </p>
@@ -424,12 +423,6 @@ export function StaffWorklog() {
 
       {leadsAnyProject && <WorklogApprovalQueue />}
 
-      {!loading && entries.some((e) => e.task.status === 'done') && (
-        <p className="text-xs text-slate-400">
-          Tác vụ đã hoàn thành vẫn hiện nếu bạn từng ghi giờ cho nó ngày này —{' '}
-          <Badge className="bg-slate-100 text-slate-600">không nuốt mất dữ liệu đã nhập</Badge>
-        </p>
-      )}
     </div>
   );
 }

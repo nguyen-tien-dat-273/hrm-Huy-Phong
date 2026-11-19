@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, Clock3, Rocket } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+import { Dropdown } from '@/components/ui/Dropdown';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -10,6 +11,7 @@ import { useToast } from '@/contexts/ToastContext';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { describeDbError } from '@/lib/dbError';
 import { supabase } from '@/lib/supabase';
+import { Tabs } from '@/components/ui/Tabs';
 
 type ChecklistStatus = 'OPEN' | 'IN_PROGRESS' | 'COMPLETED';
 interface Process { id: string; user_id: string; mentor_id: string | null; title: string; process_type: string; target_date: string | null; status: string }
@@ -62,13 +64,13 @@ export function StaffGrowth({ processType }: { processType: Process['process_typ
     else await load();
   };
 
-  if (loading) return <Card><CardContent><p className="py-14 text-center text-sm text-slate-400">Đang tải checklist…</p></CardContent></Card>;
+  if (loading) return <Card><CardContent><p className="py-14 text-center text-sm text-slate-600">Đang tải checklist…</p></CardContent></Card>;
   if (error) return <Card><ErrorState message={error} onRetry={load} /></Card>;
 
   const visibleProcesses = processes.filter((process) => process.process_type === processType);
   const sectionTitle = processType === 'ONBOARDING' ? 'Tham gia / Hội nhập' : 'Lưu trữ thông tin nghỉ việc';
   return <div className="space-y-6">
-    <div><h1 className="text-2xl font-bold text-slate-800">Hội nhập nhân viên</h1><p className="mt-1 text-sm text-slate-500">Theo dõi công việc, người phụ trách, hạn hoàn thành và lịch sử cập nhật.</p><nav aria-label="Phân loại quy trình nhân viên" className="mt-4 flex flex-wrap gap-2"><Link to="/staff/growth/onboarding" className={`rounded-xl border px-4 py-2 text-sm font-semibold ${processType === 'ONBOARDING' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>Tham gia / Hội nhập</Link><Link to="/staff/growth/offboarding" className={`rounded-xl border px-4 py-2 text-sm font-semibold ${processType === 'OFFBOARDING' ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>Lưu trữ thông tin nghỉ việc</Link></nav><h2 className="mt-4 text-lg font-semibold text-slate-800">{sectionTitle}</h2></div>
+    <div><Tabs label="Phân loại quy trình nhân viên" value={processType} onChange={() => undefined} items={[{ key: 'ONBOARDING', label: 'Tham gia / Hội nhập', to: '/staff/growth/onboarding' }, { key: 'OFFBOARDING', label: 'Lưu trữ thông tin nghỉ việc', to: '/staff/growth/offboarding' }] as const} /><h2 className="mt-4 text-lg font-semibold text-slate-800">{sectionTitle}</h2></div>
     {!visibleProcesses.length ? <Card><CardContent><EmptyState title={processType === 'ONBOARDING' ? 'Chưa có nội dung hội nhập được giao' : 'Chưa có thông tin nghỉ việc'} description={processType === 'ONBOARDING' ? 'Khi quản lý tạo quy trình tham gia hoặc giao việc cho bạn, nội dung sẽ xuất hiện ở đây.' : 'Khi có quy trình nghỉ việc liên quan đến bạn, thông tin sẽ xuất hiện ở đây.'} /></CardContent></Card> : visibleProcesses.map((process) => {
       const list = items.filter((item) => item.process_id === process.id);
       const completed = list.filter((item) => (item.status || (item.completed ? 'COMPLETED' : 'OPEN')) === 'COMPLETED').length;
@@ -76,21 +78,21 @@ export function StaffGrowth({ processType }: { processType: Process['process_typ
       const relation = process.user_id === profile?.id ? 'Quy trình của bạn' : process.mentor_id === profile?.id ? 'Bạn là người hướng dẫn' : 'Bạn được giao phụ trách checklist';
       const processHistory = history.filter((event) => event.process_id === process.id).slice(0, 8);
       return <Card key={process.id}>
-        <CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><CardTitle className="flex items-center gap-2"><Rocket className="h-5 w-5 text-indigo-600" />{process.title}</CardTitle><Badge className={process.process_type === 'ONBOARDING' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}>{process.process_type === 'ONBOARDING' ? 'Hội nhập' : 'Nghỉ việc'}</Badge></div><p className="text-xs text-slate-500">{relation} · Trạng thái quy trình: {process.status === 'COMPLETED' ? 'Hoàn thành' : process.status === 'CANCELLED' ? 'Đã hủy' : 'Đang thực hiện'}{process.target_date ? ` · Hạn quy trình ${process.target_date}` : ''}</p></CardHeader>
+        <CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><CardTitle className="flex items-center gap-2"><Rocket className="h-5 w-5 text-indigo-600" />{process.title}</CardTitle><Badge className={process.process_type === 'ONBOARDING' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}>{process.process_type === 'ONBOARDING' ? 'Hội nhập' : 'Nghỉ việc'}</Badge></div><p className="text-xs text-slate-600">{relation} · Trạng thái quy trình: {process.status === 'COMPLETED' ? 'Hoàn thành' : process.status === 'CANCELLED' ? 'Đã hủy' : 'Đang thực hiện'}{process.target_date ? ` · Hạn quy trình ${process.target_date}` : ''}</p></CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between text-xs text-slate-500"><span>Tiến độ checklist</span><strong>{completed}/{list.length} việc · {percent}%</strong></div>
+          <div className="flex items-center justify-between text-xs text-slate-600"><span>Tiến độ checklist</span><strong>{completed}/{list.length} việc · {percent}%</strong></div>
           <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${percent}%` }} /></div>
           <div className="mt-4 space-y-2">{list.map((item) => {
             const status = item.status || (item.completed ? 'COMPLETED' : 'OPEN');
             const isOwner = item.owner_id === profile?.id;
             const overdue = item.due_date && item.due_date < new Date().toISOString().slice(0, 10) && status !== 'COMPLETED';
-            return <div key={item.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 p-3">
-              <CheckCircle2 className={`h-5 w-5 shrink-0 ${status === 'COMPLETED' ? 'text-emerald-600' : 'text-slate-300'}`} />
-              <div className="min-w-0 flex-1"><p className={`text-sm font-medium ${status === 'COMPLETED' ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{item.title}</p><p className={`mt-1 flex items-center gap-1 text-xs ${overdue ? 'text-rose-600' : 'text-slate-400'}`}><Clock3 className="h-3 w-3" />{isOwner ? 'Bạn phụ trách' : 'Người phụ trách khác'} · Hạn: {item.due_date || 'Chưa đặt hạn'}{overdue ? ' · Quá hạn' : ''}</p></div>
-              {isOwner ? <select aria-label={`Trạng thái ${item.title}`} value={status} onChange={(event) => void setStatus(item, event.target.value as ChecklistStatus)} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700">{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : <Badge className={status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}>{statusLabels[status]}</Badge>}
+            return <div key={item.id} className="flex flex-wrap items-center gap-3 rounded-none border border-slate-100 p-3">
+              <CheckCircle2 className={`h-5 w-5 shrink-0 ${status === 'COMPLETED' ? 'text-emerald-600' : 'text-slate-600'}`} />
+              <div className="min-w-0 flex-1"><p className={`text-sm font-medium ${status === 'COMPLETED' ? 'text-slate-600 line-through' : 'text-slate-800'}`}>{item.title}</p><p className={`mt-1 flex items-center gap-1 text-xs ${overdue ? 'text-rose-600' : 'text-slate-600'}`}><Clock3 className="h-3 w-3" />{isOwner ? 'Bạn phụ trách' : 'Người phụ trách khác'} · Hạn: {item.due_date || 'Chưa đặt hạn'}{overdue ? ' · Quá hạn' : ''}</p></div>
+              {isOwner ? <Dropdown compact className="w-40" aria-label={`Trạng thái ${item.title}`} value={status} onChange={(next) => void setStatus(item, next as ChecklistStatus)} options={Object.entries(statusLabels).map(([value, label]) => ({ value, label }))} /> : <Badge className={status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600'}>{statusLabels[status]}</Badge>}
             </div>;
           })}</div>
-          {processHistory.length > 0 && <details className="mt-4 rounded-xl bg-slate-50 px-3 py-2"><summary className="cursor-pointer text-xs font-semibold text-slate-600">Lịch sử thực hiện ({processHistory.length} gần nhất)</summary><div className="mt-3 space-y-2">{processHistory.map((event) => { const value = event.new_values || event.old_values; const itemTitle = String(value?.title || 'Quy trình'); const detail = event.action === 'CHECKLIST_UPDATED' && value?.status ? ` → ${statusLabels[value.status as ChecklistStatus] || value.status}` : ''; const label = event.action === 'CHECKLIST_CREATED' ? 'Tạo việc' : event.action === 'CHECKLIST_UPDATED' ? 'Cập nhật' : event.action === 'PROCESS_CREATED' ? 'Tạo quy trình' : event.action === 'CHECKLIST_DELETED' ? 'Xóa việc' : 'Cập nhật quy trình'; return <div key={event.id} className="flex justify-between gap-3 text-xs text-slate-500"><span>{label}: {itemTitle}{detail} · {event.actor_id === profile?.id ? 'Bạn' : 'Quản lý/nhân sự'}</span><time className="shrink-0">{new Date(event.created_at).toLocaleString('vi-VN')}</time></div>; })}</div></details>}
+          {processHistory.length > 0 && <details className="mt-4 rounded-none bg-slate-50 px-3 py-2"><summary className="cursor-pointer text-xs font-semibold text-slate-600">Lịch sử thực hiện ({processHistory.length} gần nhất)</summary><div className="mt-3 space-y-2">{processHistory.map((event) => { const value = event.new_values || event.old_values; const itemTitle = String(value?.title || 'Quy trình'); const detail = event.action === 'CHECKLIST_UPDATED' && value?.status ? ` → ${statusLabels[value.status as ChecklistStatus] || value.status}` : ''; const label = event.action === 'CHECKLIST_CREATED' ? 'Tạo việc' : event.action === 'CHECKLIST_UPDATED' ? 'Cập nhật' : event.action === 'PROCESS_CREATED' ? 'Tạo quy trình' : event.action === 'CHECKLIST_DELETED' ? 'Xóa việc' : 'Cập nhật quy trình'; return <div key={event.id} className="flex justify-between gap-3 text-xs text-slate-600"><span>{label}: {itemTitle}{detail} · {event.actor_id === profile?.id ? 'Bạn' : 'Quản lý/nhân sự'}</span><time className="shrink-0">{new Date(event.created_at).toLocaleString('vi-VN')}</time></div>; })}</div></details>}
         </CardContent>
       </Card>;
     })}

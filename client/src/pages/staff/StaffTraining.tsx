@@ -16,6 +16,7 @@ import { StaffLearningPaths } from '@/pages/staff/StaffLearningPaths';
 import { TrainingPathsBoard } from '@/pages/admin/TrainingPathsBoard';
 import { Modal } from '@/components/ui/Modal';
 import type { TrainingCourse, TrainingEnrollment, TrainingEnrollmentStatus } from '@/types';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 const statusConfig: Record<TrainingEnrollmentStatus, { label: string; color: string }> = {
   enrolled: { label: 'Chưa bắt đầu', color: 'bg-slate-100 text-slate-600' },
@@ -28,6 +29,7 @@ export function StaffTraining() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { toast } = useToast();
   const [courses, setCourses] = useState<TrainingCourse[]>([]);
+  const pg = usePagination(courses, PAGE_SIZE_LIST, [courses.length]);
   const [enrollments, setEnrollments] = useState<TrainingEnrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -105,19 +107,15 @@ export function StaffTraining() {
     <div className="space-y-5">
       <TrainingPathsBoard managerView />
       <StaffLearningPaths />
-      <div>
-        <h2 className="font-display text-xl font-bold text-slate-800">Đào tạo của tôi</h2>
-        <p className="mt-1 text-sm text-slate-500">Theo dõi các khóa học và lộ trình phát triển cá nhân.</p>
-      </div>
-      {loading ? (
-        <Card><CardContent><p className="py-10 text-center text-sm text-slate-400">Đang tải lộ trình...</p></CardContent></Card>
+            {loading ? (
+        <Card><CardContent><p className="py-10 text-center text-sm text-slate-600">Đang tải lộ trình...</p></CardContent></Card>
       ) : loadError ? (
         <Card><ErrorState message={loadError} onRetry={() => load()} /></Card>
       ) : courses.length === 0 ? (
-        <Card><EmptyState icon={<BookOpen className="h-8 w-8" />} title="Chưa có khóa học mới" description="Các khóa học được công ty mở sẽ xuất hiện ở đây." /></Card>
+        <Card><EmptyState icon={<BookOpen className="h-8 w-8" />} title="Chưa có khóa học mới" /></Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {courses.map((course) => {
+          {pg.rows.map((course) => {
             const enrollment = enrollmentFor(course.id);
             const status = enrollment ? statusConfig[enrollment.status] : null;
             const draftProgress = enrollment ? (progressDrafts[enrollment.id] ?? enrollment.progress) : 0;
@@ -128,15 +126,15 @@ export function StaffTraining() {
               <Card key={course.id}>
                 <CardContent>
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-none bg-emerald-50 text-emerald-700">
                       <BookOpen className="h-5 w-5" />
                     </div>
                     {status ? <Badge className={status.color}>{status.label}</Badge> : <Badge className="bg-amber-100 text-amber-700">Chưa đăng ký</Badge>}
                   </div>
                   <h3 className="mt-4 font-display text-base font-bold text-slate-800">{course.title}</h3>
-                  <p className="mt-1 line-clamp-2 text-sm text-slate-500">{course.description || 'Chưa có mô tả.'}</p>
+                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">{course.description || 'Chưa có mô tả.'}</p>
                   {enrollment?.status === 'completed' && <p className="mt-2 text-xs font-medium text-emerald-700">Hoàn thành khóa học</p>}
-                  <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-500">
+                  <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-600">
                     <span>{course.category}</span>
                     <span>{course.duration_hours} giờ</span>
                     {course.instructor && <span>{course.instructor}</span>}
@@ -144,7 +142,7 @@ export function StaffTraining() {
                   </div>
                   {enrollment && (
                     <div className="mt-4">
-                      <div className="mb-1 flex justify-between text-xs text-slate-500">
+                      <div className="mb-1 flex justify-between text-xs text-slate-600">
                         <label htmlFor={`progress-${enrollment.id}`}>Tiến độ</label>
                         <strong className="text-slate-700">{draftProgress}%</strong>
                       </div>
@@ -161,7 +159,7 @@ export function StaffTraining() {
                         className="w-full accent-emerald-600 disabled:opacity-50"
                       />
                       <div className="mt-2 flex items-center justify-between gap-3">
-                        <p className="text-xs text-slate-500">Kéo để chỉnh, sau đó lưu tiến độ.</p>
+                        <p className="text-xs text-slate-600">Kéo để chỉnh, sau đó lưu tiến độ.</p>
                         {hasProgressChanges && (
                           <Button size="sm" theme="staff" disabled={isSaving} onClick={() => void updateProgress(enrollment, draftProgress)}>
                             {isSaving ? 'Đang lưu…' : 'Lưu tiến độ'}
@@ -193,14 +191,15 @@ export function StaffTraining() {
               </Card>
             );
           })}
+          <Pagination className="col-span-full" page={pg.page} total={pg.total} size={pg.size} noun="khóa học" setPage={pg.setPage} />
         </div>
       )}
       <Modal open={!!detailCourse} onClose={() => setDetailCourse(null)} title={detailCourse?.title || 'Chi tiết khóa học'}>
         {detailCourse && <div className="space-y-4">
-          {videoUrls[detailCourse.id] && <video controls preload="metadata" className="aspect-video w-full rounded-xl bg-slate-900" src={videoUrls[detailCourse.id]} />}
+          {videoUrls[detailCourse.id] && <video controls preload="metadata" className="aspect-video w-full rounded-none bg-slate-900" src={videoUrls[detailCourse.id]} />}
           <p className="whitespace-pre-wrap text-sm text-slate-600">{detailCourse.description || 'Khóa học chưa có mô tả.'}</p>
-          <div className="flex flex-wrap gap-3 text-xs text-slate-500"><span>{detailCourse.category}</span><span>{detailCourse.duration_hours} giờ</span>{detailCourse.instructor && <span>{detailCourse.instructor}</span>}{detailCourse.deadline && <span>Hạn {detailCourse.deadline}</span>}</div>
-          {detailCourse.document_path && documentUrls[detailCourse.id] && <a href={documentUrls[detailCourse.id]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700"><FileText className="h-4 w-4" />{detailCourse.document_file_name || 'Mở tài liệu khóa học'}<ExternalLink className="h-4 w-4" /></a>}
+          <div className="flex flex-wrap gap-3 text-xs text-slate-600"><span>{detailCourse.category}</span><span>{detailCourse.duration_hours} giờ</span>{detailCourse.instructor && <span>{detailCourse.instructor}</span>}{detailCourse.deadline && <span>Hạn {detailCourse.deadline}</span>}</div>
+          {detailCourse.document_path && documentUrls[detailCourse.id] && <a href={documentUrls[detailCourse.id]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-none border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700"><FileText className="h-4 w-4" />{detailCourse.document_file_name || 'Mở tài liệu khóa học'}<ExternalLink className="h-4 w-4" /></a>}
           {!enrollmentFor(detailCourse.id) && <Button onClick={() => void enroll(detailCourse)} theme="staff"><PlayCircle className="h-4 w-4" />Đăng ký học</Button>}
         </div>}
       </Modal>

@@ -119,17 +119,13 @@ export function StaffProcesses() {
   return (
     <div className="space-y-4">
       <Card><CardContent>
-        <p className="text-xs leading-relaxed text-slate-500">
-          Chỉ hiện tài liệu <strong className="text-slate-700">đang hiệu lực</strong>. Bản nháp và
-          bản đã bị thay thế không hiện ở đây, để không ai làm theo một quy trình đã hết hiệu lực.
-        </p>
         <div className="relative mt-3">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Tìm theo tên, mã hoặc nội dung tóm tắt..."
-            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+            className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
           />
         </div>
       </CardContent></Card>
@@ -146,7 +142,7 @@ export function StaffProcesses() {
         byCategory.map((group) => (
           <Card key={group.category}>
             <CardContent className="p-0">
-              <p className="border-b border-slate-100 bg-slate-50 px-5 py-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              <p className="border-b border-slate-100 bg-slate-50 px-5 py-3 text-[11px] font-bold uppercase tracking-widest text-slate-600">
                 {CATEGORY_LABEL[group.category]} ({group.items.length})
               </p>
               <ul className="divide-y divide-slate-50">
@@ -157,21 +153,21 @@ export function StaffProcesses() {
                         <button type="button" onClick={() => setSelectedDoc(doc)} className="text-left text-sm font-bold text-slate-900 hover:text-indigo-700">{doc.title}</button>
                         <Badge className={CATEGORY_COLOR[doc.category]}>{doc.version_label}</Badge>
                       </span>
-                      <span className="mt-0.5 block text-xs text-slate-500">
+                      <span className="mt-0.5 block text-xs text-slate-600">
                         {doc.code} · hiệu lực từ {formatDate(doc.effective_from)}
                       </span>
                       {doc.summary && (
-                        <span className="mt-1 block text-xs leading-relaxed text-slate-500">{doc.summary}</span>
+                        <span className="mt-1 block text-xs leading-relaxed text-slate-600">{doc.summary}</span>
                       )}
                     </span>
-                    <button type="button" onClick={() => setSelectedDoc(doc)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50">
+                    <button type="button" onClick={() => setSelectedDoc(doc)} className="inline-flex h-9 items-center gap-1.5 rounded-none border border-indigo-200 px-3 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-50">
                       <Eye className="h-3.5 w-3.5" /> Chi tiết
                     </button>
                     <button
                       type="button"
                       onClick={() => void openFile(doc)}
                       disabled={!doc.file_path}
-                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700 disabled:opacity-40"
+                      className="inline-flex h-9 items-center gap-1.5 rounded-none border border-slate-200 px-3 text-xs font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700 disabled:opacity-40"
                     >
                       <Download className="h-3.5 w-3.5" />
                       {doc.file_path ? 'Mở file' : 'Chưa có file'}
@@ -186,9 +182,9 @@ export function StaffProcesses() {
       <Modal open={!!selectedDoc} onClose={() => setSelectedDoc(null)} title={selectedDoc?.title || 'Chi tiết quy trình'}>
         {selectedDoc && <div className="space-y-4">
           <div className="flex flex-wrap gap-2"><Badge className={CATEGORY_COLOR[selectedDoc.category]}>{CATEGORY_LABEL[selectedDoc.category]}</Badge><Badge className="bg-emerald-50 text-emerald-700">Đang hiệu lực</Badge><Badge className="bg-slate-100 text-slate-600">{selectedDoc.version_label}</Badge></div>
-          <dl className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-sm"><div><dt className="text-xs text-slate-500">Mã quy trình</dt><dd className="mt-1 font-mono font-semibold text-slate-800">{selectedDoc.code}</dd></div><div><dt className="text-xs text-slate-500">Ngày hiệu lực</dt><dd className="mt-1 font-medium text-slate-800">{formatDate(selectedDoc.effective_from)}</dd></div></dl>
+          <dl className="grid grid-cols-2 gap-3 rounded-none bg-slate-50 p-3 text-sm"><div><dt className="text-xs text-slate-600">Mã quy trình</dt><dd className="mt-1 font-mono font-semibold text-slate-800">{selectedDoc.code}</dd></div><div><dt className="text-xs text-slate-600">Ngày hiệu lực</dt><dd className="mt-1 font-medium text-slate-800">{formatDate(selectedDoc.effective_from)}</dd></div></dl>
           <div><h3 className="text-sm font-semibold text-slate-800">Nội dung / tóm tắt</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{selectedDoc.summary || 'Chưa có phần tóm tắt. Mở tệp đính kèm để xem nội dung chi tiết.'}</p></div>
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="truncate text-xs text-slate-500">{selectedDoc.file_name || 'Chưa đính kèm tài liệu'}</span><button type="button" disabled={!selectedDoc.file_path} onClick={() => void openFile(selectedDoc)} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg bg-indigo-600 px-3 text-sm font-semibold text-white disabled:opacity-40"><Download className="h-4 w-4" />Mở tài liệu</button></div>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="truncate text-xs text-slate-600">{selectedDoc.file_name || 'Chưa đính kèm tài liệu'}</span><button type="button" disabled={!selectedDoc.file_path} onClick={() => void openFile(selectedDoc)} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-none bg-indigo-600 px-3 text-sm font-semibold text-white disabled:opacity-40"><Download className="h-4 w-4" />Mở tài liệu</button></div>
         </div>}
       </Modal>
     </div>

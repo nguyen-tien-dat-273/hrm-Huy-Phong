@@ -27,6 +27,7 @@ import {
   confirmSales, loadMySales, loadMySheets, loadPeriod, loadSettings, loadTeamSheets, settingsFor,
 } from '@/lib/kpiData';
 import { supabase } from '@/lib/supabase';
+import { Tabs } from '@/components/ui/Tabs';
 
 type Tab = 'mine' | 'team' | 'history';
 
@@ -106,15 +107,7 @@ export function StaffKpi() {
     <div className="space-y-5 kpi-module" data-module="kpi">
       <div className="flex justify-center"><MonthNav value={monthStart} onChange={setMonthStart} theme="staff" bare /></div>
 
-      <div className="flex gap-1 overflow-x-auto border-b-2 border-slate-300 dark:border-slate-700" role="tablist">
-        {tabs.map(([key, text, count]) => (
-          <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}
-            className={`-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-4 py-3 text-sm font-bold transition ${tab === key ? 'border-indigo-600 text-indigo-700 dark:text-indigo-400 font-black' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'}`}>
-            {text}
-            {count != null && count > 0 && <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{count}</span>}
-          </button>
-        ))}
-      </div>
+      <Tabs items={tabs.map(([key, label, count]) => ({ key, label, count: count ?? 0, alert: true }))} value={tab} onChange={setTab} />
 
       {loading ? (
         <div className="space-y-2 border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
@@ -132,7 +125,7 @@ export function StaffKpi() {
                     ['Khách hàng có đơn', sales.customers_actual, sales.customers_target],
                   ] as Array<[string, number | null, number]>).map(([text, actual, target]) => (
                     <div key={text} className="bg-white dark:bg-slate-900 px-4 py-3">
-                      <p className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">{text}</p>
+                      <p className="text-xs font-black uppercase tracking-wider text-slate-600 dark:text-slate-400">{text}</p>
                       <p className="mt-1 text-sm tabular-nums text-slate-700 dark:text-slate-300 font-bold">
                         <span className="text-xl font-black text-slate-900 dark:text-slate-100">{fmtNum(actual)}</span> / {fmtNum(target)}
                         <span className="ml-2 font-black text-base text-indigo-700 dark:text-indigo-400">{actual != null && target ? fmtPct(Math.round((actual * 10000) / target) / 100) : ''}</span>
@@ -201,7 +194,7 @@ function SheetList({ sheets, nameOf, onOpen, empty, highlight, showMonth = false
   sheets: KpiSheet[]; nameOf: (id: string | null) => string; onOpen: (sheet: KpiSheet) => void; empty: string;
   highlight?: Set<string>; showMonth?: boolean;
 }) {
-  if (sheets.length === 0) return <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm font-semibold text-slate-500">{empty}</CardContent></Card>;
+  if (sheets.length === 0) return <Card className="!rounded-none"><CardContent className="py-10 text-center text-sm font-semibold text-slate-600">{empty}</CardContent></Card>;
   const sorted = [...sheets].sort((a, b) => (showMonth
     ? b.period_month.localeCompare(a.period_month)
     : Number(highlight?.has(b.id)) - Number(highlight?.has(a.id)) || nameOf(a.user_id).localeCompare(nameOf(b.user_id), 'vi')));
@@ -222,7 +215,7 @@ function SheetList({ sheets, nameOf, onOpen, empty, highlight, showMonth = false
               <tr key={sheet.id} onClick={() => onOpen(sheet)} className={`cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800/60 ${highlight?.has(sheet.id) ? 'bg-rose-50/60 dark:bg-rose-950/30' : ''}`}>
                 <td className="px-3 py-1.5 font-black text-xs text-slate-900 dark:text-slate-100">{showMonth ? monthLabelOf(sheet.period_month) : nameOf(sheet.user_id)}</td>
                 <td className="border-l border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-center">
-                  <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>{SHEET_STATUS_LABEL[sheet.status]}</span>
+                  <span className={`inline-flex rounded-none px-2 py-0.5 text-[11px] font-bold ring-1 ring-inset ${SHEET_STATUS_TONE[sheet.status]}`}>{SHEET_STATUS_LABEL[sheet.status]}</span>
                 </td>
                 <td className="border-l border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-center font-bold text-xs">{fmtPct(sheet.self_pct)}</td>
                 <td className="border-l border-slate-300 dark:border-slate-700 px-2.5 py-1.5 text-center font-black text-xs text-indigo-700 dark:text-indigo-400">

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  CalendarDays, CheckCircle2, Clock, Fingerprint, History, ShieldCheck,
-  ClipboardList, LogIn, LogOut, Flame, Briefcase, AlertTriangle,
+  CalendarDays, CheckCircle2, Clock, Fingerprint,
+  ClipboardList, LogIn, LogOut, Flame, Briefcase,
 } from 'lucide-react';
 import { startOfMonth, endOfMonth, getDaysInMonth, format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,6 +20,7 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { Button } from '@/components/ui/Button';
 import { MonthNav } from '@/components/ui/MonthNav';
 import type { Attendance, LeaveRequest } from '@/types';
+import { Tabs } from '@/components/ui/Tabs';
 
 interface StaffAttendanceRequestRow {
   id: string;
@@ -103,6 +104,12 @@ const statusLabel = (record: Attendance): string => {
   return fromDevice ? 'Đã checkout · đang tính công' : 'Đã checkout · chờ quản lý xác nhận';
 };
 
+const TABS = [
+  { key: 'today', label: 'Hôm nay' },
+  { key: 'calendar', label: 'Lịch công' },
+  { key: 'log', label: 'Nhật ký' },
+] as const;
+
 export function StaffDeviceAttendance() {
   const { profile } = useAuth();
   const { toast } = useToast();
@@ -110,6 +117,7 @@ export function StaffDeviceAttendance() {
   const [checkingOut, setCheckingOut] = useState(false);
   const [checkingIn, setCheckingIn] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [tab, setTab] = useState<'today' | 'calendar' | 'log'>('today');
 
   const [monthStart, setMonthStart] = useState(() => startOfMonth(new Date()));
   const [monthRecords, setMonthRecords] = useState<Attendance[]>([]);
@@ -469,8 +477,10 @@ export function StaffDeviceAttendance() {
       return;
     }
 
-    // Chưa có bản ghi hôm nay: cho phép check out khi chưa check in
-    let { error } = await supabase
+    // Chưa có bản ghi hôm nay: cho phép check out khi chưa check in.
+    // Nguồn luôn là MANUAL: nguồn DEVICE chỉ máy chấm công được ghi (database chặn
+    // nhân viên tự tạo), nếu không thì ngày này sẽ tự được duyệt không cần quản lý.
+    const { error } = await supabase
       .from('attendance')
       .insert({
         user_id: profile.id,
@@ -478,28 +488,11 @@ export function StaffDeviceAttendance() {
         check_in_time: null,
         check_out_time: nowIso,
         status: 'completed',
-        check_in_method: 'DEVICE',
+        check_in_method: 'MANUAL',
         approved_by_lead: false,
       })
       .select('id')
       .maybeSingle();
-
-    if (error) {
-      const res = await supabase
-        .from('attendance')
-        .insert({
-          user_id: profile.id,
-          date: today,
-          check_in_time: null,
-          check_out_time: nowIso,
-          status: 'completed',
-          check_in_method: 'MANUAL',
-          approved_by_lead: false,
-        })
-        .select('id')
-        .maybeSingle();
-      error = res.error;
-    }
 
     setCheckingOut(false);
     if (error) {
@@ -511,534 +504,456 @@ export function StaffDeviceAttendance() {
     await loadData(true);
   };
 
-  if (loading) return <div className="space-y-5"><Skeleton className="h-16 w-full" /><Skeleton className="h-64 w-full rounded-2xl" /><Skeleton className="h-80 w-full rounded-2xl" /></div>;
+  if (loading) return <div className="space-y-5"><Skeleton className="h-16 w-full" /><Skeleton className="h-64 w-full rounded-none" /><Skeleton className="h-80 w-full rounded-none" /></div>;
   if (loadError) return <Card><ErrorState message={loadError} onRetry={() => loadData()} /></Card>;
 
   return (
     <div className="space-y-5 attendance-module" data-module="attendance">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-extrabold text-slate-900 dark:text-slate-100">Chấm công & Bảng công tháng</h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Theo dõi giờ vào/ra hôm nay và toàn bộ lịch công từng ngày trong tháng.</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs items={TABS.map((item) => ({ key: item.key, label: item.label, count: item.key === 'log' ? monthRecords.length : undefined }))} value={tab} onChange={setTab} />
         <div className="flex flex-wrap items-center gap-2">
-          <Link to="/staff/leave" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:border-indigo-300 hover:text-indigo-700">
+          {tab !== 'today' && <MonthNav value={monthStart} onChange={setMonthStart} theme="staff" />}
+          <Link to="/staff/leave" className="inline-flex min-h-11 items-center gap-2 rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:border-indigo-300 hover:text-indigo-700">
             <Briefcase className="h-4 w-4" /> Đơn từ & Nghỉ phép
           </Link>
-          <Link to="/staff/assignments" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:border-emerald-300 hover:text-emerald-700">
+          <Link to="/staff/assignments" className="inline-flex min-h-11 items-center gap-2 rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 text-sm font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:border-emerald-300 hover:text-emerald-700">
             <ClipboardList className="h-4 w-4" /> Việc được giao
           </Link>
         </div>
       </div>
 
-      <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3.5 text-sm text-blue-900">
-        <ShieldCheck className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
-        <div className="leading-relaxed">
-          <p><strong>Máy chấm công là nguồn chính ghi giờ vào.</strong> Quét ở máy rồi thì không cần
-          check-in ở đây nữa — cuối ngày chỉ bấm <strong>Check-out</strong>, ngày công tính ngay.</p>
-          <p className="mt-1.5">Hôm nào chưa kịp quét máy thì check-in ở đây, nhưng ngày đó
-          <strong> phải chờ quản lý xác nhận</strong> mới được tính công.</p>
-        </div>
-      </div>
-
-      {!todayRecord && focusRecord && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5">
-          <p className="text-sm text-slate-600">
-            Hôm nay chưa có giờ vào — ca đang hiển thị bên dưới là ca cũ chưa checkout.
-          </p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn || checkingOut}>
-              <LogIn className="h-4 w-4" />
-              {checkingIn ? 'Đang check-in…' : 'Check-in hôm nay'}
-            </Button>
-            <Button variant="outline" onClick={() => handleCheckOut()} disabled={checkingOut || checkingIn}>
-              <LogOut className="h-4 w-4" />
-              {checkingOut ? 'Đang checkout…' : 'Check-out hôm nay'}
-            </Button>
+      {tab === 'today' && (
+        <>
+          {!todayRecord && focusRecord && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-slate-200 bg-white px-4 py-3.5">
+            <p className="text-sm font-semibold text-slate-900">Chưa có giờ vào hôm nay</p>
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn || checkingOut}>
+                <LogIn className="h-4 w-4" />
+                {checkingIn ? 'Đang check-in…' : 'Check-in hôm nay'}
+              </Button>
+              <Button variant="outline" onClick={() => handleCheckOut()} disabled={checkingOut || checkingIn}>
+                <LogOut className="h-4 w-4" />
+                {checkingOut ? 'Đang checkout…' : 'Check-out hôm nay'}
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
+
+        <Card className="overflow-hidden">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white px-4 py-3.5 sm:px-6 sm:py-4">
+            <div className="flex items-center gap-2 text-sm font-bold text-emerald-800"><CalendarDays className="h-4 w-4" />{focusRecord?.date === today ? 'Hôm nay' : 'Ca cần checkout'} · {formatDate(focusRecord?.date || today)}</div>
+          </div>
+          <CardContent className="p-4 sm:p-6">
+            {!focusRecord ? (
+              <div className="py-8 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-none bg-slate-100 text-slate-600"><Fingerprint className="h-8 w-8" /></div>
+                <h2 className="mt-4 font-display text-lg font-bold text-slate-800">Chưa có giờ vào hôm nay</h2>
+                <div className="mt-5 flex flex-col items-stretch gap-2.5 sm:flex-row sm:items-center sm:justify-center sm:gap-3">
+                  <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn || checkingOut}>
+                    <LogIn className="h-4 w-4" />
+                    {checkingIn ? 'Đang check-in…' : 'Check-in trên HRM'}
+                  </Button>
+                  <Button variant="outline" onClick={() => handleCheckOut()} disabled={checkingOut || checkingIn}>
+                    <LogOut className="h-4 w-4" />
+                    {checkingOut ? 'Đang checkout…' : 'Check-out (chưa check-in)'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+                <div className={`min-w-0 rounded-none border p-4 sm:p-5 ${!focusRecord.check_in_time && focusRecord.check_out_time ? 'border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/70' : 'border-emerald-200 bg-emerald-50/60'}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                    <div className="min-w-0">
+                      <p className={`text-xs font-bold uppercase tracking-widest ${!focusRecord.check_in_time && focusRecord.check_out_time ? 'text-slate-600 dark:text-slate-400' : 'text-emerald-700'}`}>
+                        {focusRecord.check_in_time ? 'Giờ vào đã ghi nhận' : 'Giờ ra đã ghi nhận'}
+                      </p>
+                      <p className="mt-2 font-display text-4xl font-extrabold tabular-nums text-slate-900 dark:text-slate-100">
+                        {focusRecord.check_in_time ? formatTime(focusRecord.check_in_time) : formatTime(focusRecord.check_out_time)}
+                      </p>
+                    </div>
+                    <Badge className="max-w-full whitespace-normal bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 ring-1 ring-slate-300 dark:ring-slate-700">
+                      <Fingerprint className="mr-1 h-3.5 w-3.5" />{sourceLabel(focusRecord)}
+                    </Badge>
+                  </div>
+                  <p className="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                    {!focusRecord.check_in_time && focusRecord.check_out_time
+                      ? `Checkout lúc ${formatTime(focusRecord.check_out_time)} · Chưa có giờ vào (sẽ bổ sung qua máy chấm công).`
+                      : focusRecord.check_out_time
+                      ? `Checkout lúc ${formatTime(focusRecord.check_out_time)}`
+                      : 'Chưa checkout'}
+                  </p>
+                  {!focusRecord.check_out_time && (
+                    <Button theme="staff" onClick={() => handleCheckOut(focusRecord.id)} disabled={checkingOut} className="mt-4 h-12 w-full text-base sm:mt-5 sm:h-auto sm:w-auto sm:text-sm">
+                      <LogOut className="h-4 w-4" />
+                      {checkingOut ? 'Đang checkout…' : 'Checkout cuối ngày'}
+                    </Button>
+                  )}
+                  {!focusRecord.check_in_time && focusRecord.check_out_time && (
+                    <Button variant="outline" size="sm" onClick={handleCheckIn} disabled={checkingIn} className="mt-4 w-full sm:w-auto">
+                      <LogIn className="h-4 w-4" />
+                      {checkingIn ? 'Đang check-in…' : 'Check-in bổ sung'}
+                    </Button>
+                  )}
+                </div>
+                <div className="min-w-0 space-y-3">
+                  <InfoRow icon={<CheckCircle2 className="h-4 w-4" />} label="Trạng thái" value={statusLabel(focusRecord)} />
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        </>
       )}
 
-      <Card className="overflow-hidden">
-        <div className="border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-2 text-sm font-bold text-emerald-800"><CalendarDays className="h-4 w-4" />{focusRecord?.date === today ? 'Hôm nay' : 'Ca cần checkout'} · {formatDate(focusRecord?.date || today)}</div>
-        </div>
-        <CardContent className="p-5 sm:p-6">
-          {!focusRecord ? (
-            <div className="py-8 text-center">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 text-slate-400"><Fingerprint className="h-8 w-8" /></div>
-              <h2 className="mt-4 font-display text-lg font-bold text-slate-800">Chưa có giờ vào hôm nay</h2>
-              <p className="mx-auto mt-1 max-w-md text-sm leading-relaxed text-slate-500">
-                Quét tại máy chấm công là cách thông thường; trang sẽ tự cập nhật sau lần đồng bộ
-                kế tiếp. Nếu hôm nay bạn không quét được máy thì check-in ở đây.
-              </p>
-              <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-                <Button theme="staff" onClick={handleCheckIn} disabled={checkingIn || checkingOut}>
-                  <LogIn className="h-4 w-4" />
-                  {checkingIn ? 'Đang check-in…' : 'Check-in trên HRM'}
-                </Button>
-                <Button variant="outline" onClick={() => handleCheckOut()} disabled={checkingOut || checkingIn}>
-                  <LogOut className="h-4 w-4" />
-                  {checkingOut ? 'Đang checkout…' : 'Check-out (chưa check-in)'}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-              <div className={`rounded-2xl border p-5 ${!focusRecord.check_in_time && focusRecord.check_out_time ? 'border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/70' : 'border-emerald-200 bg-emerald-50/60'}`}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className={`text-xs font-bold uppercase tracking-widest ${!focusRecord.check_in_time && focusRecord.check_out_time ? 'text-slate-600 dark:text-slate-400' : 'text-emerald-700'}`}>
-                      {focusRecord.check_in_time ? 'Giờ vào đã ghi nhận' : 'Giờ ra đã ghi nhận'}
-                    </p>
-                    <p className="mt-2 font-display text-4xl font-extrabold tabular-nums text-slate-900 dark:text-slate-100">
-                      {focusRecord.check_in_time ? formatTime(focusRecord.check_in_time) : formatTime(focusRecord.check_out_time)}
-                    </p>
-                  </div>
-                  <Badge className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 ring-1 ring-slate-300 dark:ring-slate-700">
-                    <Fingerprint className="mr-1 h-3.5 w-3.5" />{sourceLabel(focusRecord)}
-                  </Badge>
+      {tab === 'calendar' && (
+        <Card className="overflow-hidden border border-slate-300 dark:border-slate-700">
+          <CardContent className="p-4 sm:p-6 space-y-5">
+            {/* Thẻ chỉ số tổng quan trong tháng */}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                  <span className="font-bold">Ngày công</span>
+                  <CalendarDays className="h-4 w-4 text-emerald-600" />
                 </div>
-                <p className="mt-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                  {!focusRecord.check_in_time && focusRecord.check_out_time
-                    ? `Checkout lúc ${formatTime(focusRecord.check_out_time)} · Chưa có giờ vào (sẽ bổ sung qua máy chấm công).`
-                    : focusRecord.check_out_time
-                    ? `Checkout lúc ${formatTime(focusRecord.check_out_time)}`
-                    : 'Máy đã ghi giờ vào; bạn chưa checkout ca này.'}
+                <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
+                  {calendarData.totalWorkDays}
+                  <span className="ml-1 text-xs font-semibold text-slate-600">/ {calendarData.standardDays} công</span>
                 </p>
-                {!focusRecord.check_out_time && (
-                  <Button theme="staff" onClick={() => handleCheckOut(focusRecord.id)} disabled={checkingOut} className="mt-5 w-full sm:w-auto">
-                    <LogOut className="h-4 w-4" />
-                    {checkingOut ? 'Đang checkout…' : 'Checkout cuối ngày'}
-                  </Button>
-                )}
-                {!focusRecord.check_in_time && focusRecord.check_out_time && (
-                  <Button variant="outline" size="sm" onClick={handleCheckIn} disabled={checkingIn} className="mt-4">
-                    <LogIn className="h-4 w-4" />
-                    {checkingIn ? 'Đang check-in…' : 'Check-in bổ sung'}
-                  </Button>
-                )}
+                <p className="mt-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  Đạt {calendarData.standardDays > 0 ? Math.round((calendarData.totalWorkDays / calendarData.standardDays) * 100) : 0}% công chuẩn
+                </p>
               </div>
-              <div className="space-y-3">
-                <InfoRow icon={<CheckCircle2 className="h-4 w-4" />} label="Trạng thái" value={statusLabel(focusRecord)} />
-                <InfoRow icon={<Fingerprint className="h-4 w-4" />} label="Nguồn dữ liệu" value={sourceLabel(focusRecord)} />
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* ====================================================================
-          TỔNG QUAN CÔNG THÁNG & LỊCH CÔNG 31 NGÀY
-          ==================================================================== */}
-      <Card className="overflow-hidden border-2 border-slate-300 dark:border-slate-700 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-4 py-3.5 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
-              <CalendarDays className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="font-display text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">
-                Lịch công tháng {monthLabel}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Chạm vào từng ngày trên lịch để xem chi tiết giờ vào, giờ ra, nghỉ phép hoặc làm thêm.
-              </p>
-            </div>
-          </div>
-          <MonthNav value={monthStart} onChange={setMonthStart} theme="staff" />
-        </div>
-
-        <CardContent className="p-4 sm:p-6 space-y-5">
-          {/* Thẻ chỉ số tổng quan trong tháng */}
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-bold">Ngày công</span>
-                <CalendarDays className="h-4 w-4 text-emerald-600" />
-              </div>
-              <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
-                {calendarData.totalWorkDays}
-                <span className="ml-1 text-xs font-semibold text-slate-400">/ {calendarData.standardDays} công</span>
-              </p>
-              <p className="mt-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                Đạt {calendarData.standardDays > 0 ? Math.round((calendarData.totalWorkDays / calendarData.standardDays) * 100) : 0}% công chuẩn
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-bold">Tổng giờ làm</span>
-                <Clock className="h-4 w-4 text-blue-600" />
-              </div>
-              <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
-                {calendarData.totalWorkHours}
-                <span className="ml-1 text-xs font-semibold text-slate-400">giờ</span>
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                {calendarData.missingCheckoutCount > 0 ? `${calendarData.missingCheckoutCount} ngày thiếu checkout` : 'Đã đủ giờ ra các ca'}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-bold">Nghỉ phép</span>
-                <Briefcase className="h-4 w-4 text-violet-600" />
-              </div>
-              <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
-                {calendarData.totalLeaveDays}
-                <span className="ml-1 text-xs font-semibold text-slate-400">ngày</span>
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                Đơn nghỉ đã được duyệt
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-bold">Làm thêm (OT)</span>
-                <Flame className="h-4 w-4 text-orange-600" />
-              </div>
-              <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
-                {calendarData.totalOtHours}
-                <span className="ml-1 text-xs font-semibold text-slate-400">giờ</span>
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                Giờ tăng ca đã duyệt
-              </p>
-            </div>
-
-            <div className="col-span-2 sm:col-span-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-              <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-bold">Đi muộn</span>
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-              </div>
-              <p className={`mt-1.5 font-display text-xl font-black tabular-nums ${calendarData.lateCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}`}>
-                {calendarData.lateCount}
-                <span className="ml-1 text-xs font-semibold text-slate-400">lần ({calendarData.lateMinutesTotal}p)</span>
-              </p>
-              <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                {calendarData.lateCount === 0 ? 'Đúng giờ tất cả các ngày' : 'So với giờ vào ca chuẩn'}
-              </p>
-            </div>
-          </div>
-
-          {/* Chú thích màu sắc trên quyển lịch */}
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 px-3.5 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-emerald-500" /> Đủ công (1.0)
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-teal-400" /> Nửa công (0.5)
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-amber-400" /> Thiếu checkout / Chờ máy
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-violet-500" /> Nghỉ phép (P)
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded bg-rose-400" /> Vắng mặt
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 rounded border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800" /> Ngày nghỉ / Chủ nhật
-            </span>
-          </div>
-
-          {/* Lưới lịch tháng 7 cột (Thứ 2 -> Chủ nhật) như tờ lịch treo tường */}
-          <div className="overflow-hidden rounded-2xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
-            <div className="grid grid-cols-7 border-b-2 border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-center text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
-              {WEEKDAY_HEADERS.map((label, idx) => (
-                <div
-                  key={label}
-                  className={`py-2.5 ${idx > 0 ? 'border-l border-slate-200 dark:border-slate-700' : ''} ${idx === 6 ? 'text-rose-600 dark:text-rose-400' : idx === 5 ? 'text-amber-700 dark:text-amber-400' : ''}`}
-                >
-                  {label}
+              <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                  <span className="font-bold">Tổng giờ làm</span>
+                  <Clock className="h-4 w-4 text-blue-600" />
                 </div>
-              ))}
+                <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
+                  {calendarData.totalWorkHours}
+                  <span className="ml-1 text-xs font-semibold text-slate-600">giờ</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
+                  Tổng giờ các ngày đã có đủ giờ vào/ra
+                </p>
+              </div>
+
+              <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                  <span className="font-bold">Nghỉ phép</span>
+                  <Briefcase className="h-4 w-4 text-violet-600" />
+                </div>
+                <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
+                  {calendarData.totalLeaveDays}
+                  <span className="ml-1 text-xs font-semibold text-slate-600">ngày</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
+                  Đơn nghỉ đã được duyệt
+                </p>
+              </div>
+
+              <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
+                  <span className="font-bold">Làm thêm (OT)</span>
+                  <Flame className="h-4 w-4 text-orange-600" />
+                </div>
+                <p className="mt-1.5 font-display text-xl font-black tabular-nums text-slate-900 dark:text-slate-100">
+                  {calendarData.totalOtHours}
+                  <span className="ml-1 text-xs font-semibold text-slate-600">giờ</span>
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">
+                  Giờ tăng ca đã duyệt
+                </p>
+              </div>
+
             </div>
 
-            <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
-              {Array.from({ length: calendarData.leadingBlanks }).map((_, idx) => (
-                <div key={`blank-${idx}`} className="min-h-[74px] sm:min-h-[96px] bg-slate-50/60 dark:bg-slate-900/40" />
-              ))}
+            {/* Chú thích màu sắc trên quyển lịch */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-none border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 px-3.5 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-none bg-emerald-500" /> Đủ công (1.0)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-none bg-teal-400" /> Nửa công (0.5)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-none bg-amber-400" /> Thiếu checkout / Chờ máy
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-none bg-violet-500" /> Nghỉ phép (P)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-none bg-rose-400" /> Vắng mặt
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-none border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800" /> Ngày nghỉ / Chủ nhật
+              </span>
+            </div>
 
-              {calendarData.days.map((d) => {
-                const isSelected = d.date === selectedDayInfo?.date;
-                let cellBg = 'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60';
-                let badgeEl: ReactNode = null;
-
-                if (d.statusKind === 'worked_full') {
-                  cellBg = 'bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100/70';
-                  badgeEl = <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">1 công</span>;
-                } else if (d.statusKind === 'worked_half') {
-                  cellBg = 'bg-teal-50/70 dark:bg-teal-950/30 hover:bg-teal-100/70';
-                  badgeEl = <span className="rounded bg-teal-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">0.5 công</span>;
-                } else if (d.statusKind === 'missing_checkout') {
-                  cellBg = 'bg-amber-50/80 dark:bg-amber-950/40 hover:bg-amber-100/70';
-                  badgeEl = <span className="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-extrabold text-white">Thiếu ra</span>;
-                } else if (d.statusKind === 'missing_checkin') {
-                  cellBg = 'bg-amber-50/60 dark:bg-amber-950/30 hover:bg-amber-100/60';
-                  badgeEl = <span className="rounded bg-slate-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">Chờ máy</span>;
-                } else if (d.statusKind === 'leave') {
-                  cellBg = 'bg-violet-50/80 dark:bg-violet-950/35 hover:bg-violet-100/70';
-                  badgeEl = (
-                    <span className="rounded bg-violet-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">
-                      {d.leave?.half_day ? 'P/2' : 'Phép'}
-                    </span>
-                  );
-                } else if (d.statusKind === 'holiday') {
-                  cellBg = 'bg-pink-50/70 dark:bg-pink-950/30 hover:bg-pink-100/70';
-                  badgeEl = <span className="rounded bg-pink-600 px-1.5 py-0.5 text-[10px] font-extrabold text-white">Lễ</span>;
-                } else if (d.statusKind === 'absent') {
-                  cellBg = 'bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100/50';
-                  badgeEl = <span className="rounded bg-rose-100 dark:bg-rose-900/50 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 dark:text-rose-300">Vắng</span>;
-                } else if (d.statusKind === 'off') {
-                  cellBg = 'bg-slate-50/90 dark:bg-slate-800/40 hover:bg-slate-100/80';
-                }
-
-                return (
-                  <button
-                    key={d.date}
-                    type="button"
-                    onClick={() => setSelectedDate(d.date)}
-                    className={`group relative flex min-h-[74px] sm:min-h-[96px] flex-col justify-between p-1.5 sm:p-2.5 text-left transition-all focus:outline-none ${cellBg} ${
-                      isSelected
-                        ? 'ring-2 ring-inset ring-indigo-600 dark:ring-indigo-400 z-10'
-                        : d.isToday
-                        ? 'ring-2 ring-inset ring-emerald-500'
-                        : ''
-                    }`}
+            {/* Lưới lịch tháng 7 cột (Thứ 2 -> Chủ nhật) như tờ lịch treo tường */}
+            <div className="overflow-hidden rounded-none border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900">
+              <div className="grid grid-cols-7 border-b-2 border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-center text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                {WEEKDAY_HEADERS.map((label, idx) => (
+                  <div
+                    key={label}
+                    className={`py-2.5 ${idx > 0 ? 'border-l border-slate-200 dark:border-slate-700' : ''} ${idx === 6 ? 'text-rose-600 dark:text-rose-400' : idx === 5 ? 'text-amber-700 dark:text-amber-400' : ''}`}
                   >
-                    <div className="flex w-full items-start justify-between gap-1">
-                      <span
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs sm:text-sm font-black tabular-nums ${
-                          d.isToday
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : d.weekdayIdx === 0
-                            ? 'text-rose-600 dark:text-rose-400'
-                            : d.weekdayIdx === 6
-                            ? 'text-amber-700 dark:text-amber-400'
-                            : 'text-slate-800 dark:text-slate-100'
-                        }`}
-                      >
-                        {d.dayNum}
+                    {label}
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 divide-x divide-y divide-slate-200 dark:divide-slate-800">
+                {Array.from({ length: calendarData.leadingBlanks }).map((_, idx) => (
+                  <div key={`blank-${idx}`} className="min-h-[74px] sm:min-h-[96px] bg-slate-50/60 dark:bg-slate-900/40" />
+                ))}
+
+                {calendarData.days.map((d) => {
+                  const isSelected = d.date === selectedDayInfo?.date;
+                  let cellBg = 'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60';
+                  let badgeEl: ReactNode = null;
+
+                  if (d.statusKind === 'worked_full') {
+                    cellBg = 'bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100/70';
+                    badgeEl = <span className="rounded-none bg-emerald-600 px-1.5 py-0.5 text-[11px] font-extrabold leading-none tabular-nums text-white">1</span>;
+                  } else if (d.statusKind === 'worked_half') {
+                    cellBg = 'bg-teal-50/70 dark:bg-teal-950/30 hover:bg-teal-100/70';
+                    badgeEl = <span className="rounded-none bg-teal-600 px-1.5 py-0.5 text-[11px] font-extrabold leading-none tabular-nums text-white">0.5</span>;
+                  } else if (d.statusKind === 'missing_checkout') {
+                    cellBg = 'bg-amber-50/80 dark:bg-amber-950/40 hover:bg-amber-100/70';
+                  } else if (d.statusKind === 'missing_checkin') {
+                    cellBg = 'bg-amber-50/60 dark:bg-amber-950/30 hover:bg-amber-100/60';
+                    badgeEl = <span className="rounded-none bg-slate-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">Chờ máy</span>;
+                  } else if (d.statusKind === 'leave') {
+                    cellBg = 'bg-violet-50/80 dark:bg-violet-950/35 hover:bg-violet-100/70';
+                    badgeEl = (
+                      <span className="rounded-none bg-violet-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">
+                        {d.leave?.half_day ? 'P/2' : 'Phép'}
                       </span>
-                      <div className="hidden sm:block">{badgeEl}</div>
-                    </div>
+                    );
+                  } else if (d.statusKind === 'holiday') {
+                    cellBg = 'bg-pink-50/70 dark:bg-pink-950/30 hover:bg-pink-100/70';
+                    badgeEl = <span className="rounded-none bg-pink-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">Lễ</span>;
+                  } else if (d.statusKind === 'absent') {
+                    cellBg = 'bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100/50';
+                    badgeEl = <span className="rounded-none bg-rose-100 dark:bg-rose-900/50 px-1.5 py-0.5 text-[11px] font-bold text-rose-700 dark:text-rose-300">Vắng</span>;
+                  } else if (d.statusKind === 'off') {
+                    cellBg = 'bg-slate-50/90 dark:bg-slate-800/40 hover:bg-slate-100/80';
+                  }
 
-                    {/* Giờ vào / ra hoặc trạng thái tóm tắt ngay trên ô lịch */}
-                    <div className="mt-1 space-y-0.5 w-full">
-                      <div className="sm:hidden">{badgeEl}</div>
+                  return (
+                    <button
+                      key={d.date}
+                      type="button"
+                      onClick={() => setSelectedDate(d.date)}
+                      className={`group relative flex min-h-[74px] sm:min-h-[96px] flex-col justify-between p-1.5 sm:p-2.5 text-left transition-all focus:outline-none ${cellBg} ${
+                        isSelected
+                          ? 'ring-2 ring-inset ring-indigo-600 dark:ring-indigo-400 z-10'
+                          : d.isToday
+                          ? 'ring-2 ring-inset ring-emerald-500'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex w-full items-start justify-between gap-1">
+                        <span
+                          className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] sm:text-xs font-bold tabular-nums ${
+                            d.isToday
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : d.weekdayIdx === 0
+                              ? 'text-rose-600 dark:text-rose-400'
+                              : d.weekdayIdx === 6
+                              ? 'text-amber-700 dark:text-amber-400'
+                              : 'text-slate-800 dark:text-slate-100'
+                          }`}
+                        >
+                          {d.dayNum}
+                        </span>
+                        <div className="hidden sm:block">{badgeEl}</div>
+                      </div>
 
-                      {d.checkInTime && (
-                        <p className="truncate font-mono text-[10px] sm:text-xs font-bold text-slate-800 dark:text-slate-100">
-                          <span className="text-emerald-700 dark:text-emerald-400">{formatTime(d.checkInTime)}</span>
-                          {d.checkOutTime ? (
-                            <span className="text-slate-500 dark:text-slate-400"> → {formatTime(d.checkOutTime)}</span>
-                          ) : (
-                            <span className="text-amber-600 dark:text-amber-400"> → ?</span>
-                          )}
-                        </p>
-                      )}
+                      {/* Giờ vào / ra hoặc trạng thái tóm tắt ngay trên ô lịch */}
+                      <div className="mt-1 space-y-0.5 w-full">
+                        <div className="sm:hidden">{badgeEl}</div>
 
-                      {!d.checkInTime && d.checkOutTime && (
-                        <p className="truncate font-mono text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
-                          ? → {formatTime(d.checkOutTime)}
-                        </p>
-                      )}
+                        {d.checkInTime && (
+                          <p className="truncate font-mono text-[11px] sm:text-xs font-bold text-slate-800 dark:text-slate-100">
+                            <span className="text-emerald-700 dark:text-emerald-400">{formatTime(d.checkInTime)}</span>
+                            {d.checkOutTime && (
+                              <span className="text-slate-600 dark:text-slate-400"> → {formatTime(d.checkOutTime)}</span>
+                            )}
+                          </p>
+                        )}
 
-                      {!d.checkInTime && !d.checkOutTime && d.leave && (
-                        <p className="truncate text-[10px] sm:text-[11px] font-bold text-violet-700 dark:text-violet-300">
-                          {LEAVE_TYPE_CONFIG[d.leave.leave_type]?.label ?? 'Nghỉ phép'}
-                        </p>
-                      )}
+                        {!d.checkInTime && d.checkOutTime && (
+                          <p className="truncate font-mono text-[11px] sm:text-xs font-bold text-slate-600 dark:text-slate-300">
+                            ? → {formatTime(d.checkOutTime)}
+                          </p>
+                        )}
 
-                      {!d.checkInTime && !d.checkOutTime && !d.leave && d.holidayName && (
-                        <p className="truncate text-[10px] sm:text-[11px] font-bold text-pink-700 dark:text-pink-300">
-                          {d.holidayName}
-                        </p>
-                      )}
+                        {!d.checkInTime && !d.checkOutTime && d.leave && (
+                          <p className="truncate text-[11px] sm:text-[11px] font-bold text-violet-700 dark:text-violet-300">
+                            {LEAVE_TYPE_CONFIG[d.leave.leave_type]?.label ?? 'Nghỉ phép'}
+                          </p>
+                        )}
 
-                      {/* Chấm cảnh báo đi muộn hoặc có OT */}
-                      {(d.lateMinutes > 0 || d.otHoursApproved > 0) && (
-                        <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                          {d.lateMinutes > 0 && (
-                            <span className="inline-block rounded bg-amber-100 dark:bg-amber-900/60 px-1 py-0 text-[9px] font-bold text-amber-800 dark:text-amber-200">
-                              Muộn {d.lateMinutes}p
-                            </span>
-                          )}
-                          {d.otHoursApproved > 0 && (
-                            <span className="inline-block rounded bg-orange-100 dark:bg-orange-900/60 px-1 py-0 text-[9px] font-bold text-orange-800 dark:text-orange-200">
+                        {!d.checkInTime && !d.checkOutTime && !d.leave && d.holidayName && (
+                          <p className="truncate text-[11px] sm:text-[11px] font-bold text-pink-700 dark:text-pink-300">
+                            {d.holidayName}
+                          </p>
+                        )}
+
+                        {/* Chấm cảnh báo đi muộn hoặc có OT */}
+                        {d.otHoursApproved > 0 && (
+                          <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                            <span className="inline-block rounded-none bg-orange-100 dark:bg-orange-900/60 px-1 py-0 text-[11px] font-bold text-orange-800 dark:text-orange-200">
                               +{d.otHoursApproved}h OT
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Khung chi tiết của ngày đang chọn trên lịch */}
+            {selectedDayInfo && (
+              <div className="rounded-none border-2 border-indigo-200 dark:border-indigo-900/70 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 sm:p-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 dark:border-indigo-900/60 pb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-display text-base font-extrabold text-slate-900 dark:text-slate-100">
+                        {selectedDayInfo.weekdayLong}, {formatDate(selectedDayInfo.date)}
+                      </h3>
+                      {selectedDayInfo.isToday && (
+                        <Badge className="bg-indigo-600 text-white font-bold">Hôm nay</Badge>
                       )}
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Khung chi tiết của ngày đang chọn trên lịch */}
-          {selectedDayInfo && (
-            <div className="rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/70 bg-indigo-50/40 dark:bg-indigo-950/20 p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 dark:border-indigo-900/60 pb-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-display text-base font-extrabold text-slate-900 dark:text-slate-100">
-                      {selectedDayInfo.weekdayLong}, {formatDate(selectedDayInfo.date)}
-                    </h3>
-                    {selectedDayInfo.isToday && (
-                      <Badge className="bg-indigo-600 text-white font-bold">Hôm nay</Badge>
-                    )}
+                    <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
+                      Định mức ngày: <strong>{selectedDayInfo.weight} công</strong>
+                      {selectedDayInfo.holidayName ? ` · Nghỉ lễ: ${selectedDayInfo.holidayName}` : ''}
+                    </p>
                   </div>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    Định mức ngày: <strong>{selectedDayInfo.weight} công</strong>
-                    {selectedDayInfo.holidayName ? ` · Nghỉ lễ: ${selectedDayInfo.holidayName}` : ''}
-                  </p>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge className={
+                      selectedDayInfo.workCredit > 0
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold'
+                        : selectedDayInfo.leave
+                        ? 'bg-violet-100 text-violet-800 border border-violet-300 font-bold'
+                        : 'bg-slate-100 text-slate-700 border border-slate-300 font-bold'
+                    }>
+                      Tính công: {selectedDayInfo.workCredit} công
+                      {selectedDayInfo.hoursWorked > 0 ? ` (${selectedDayInfo.hoursWorked}h)` : ''}
+                    </Badge>
+                  </div>
                 </div>
 
+                <div className="mt-3.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                  <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Giờ vào</p>
+                    <p className="mt-1 font-mono text-lg font-black text-slate-900 dark:text-slate-100">
+                      {selectedDayInfo.checkInTime ? formatTime(selectedDayInfo.checkInTime) : '—'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Giờ ra</p>
+                    <p className="mt-1 font-mono text-lg font-black text-slate-900 dark:text-slate-100">
+                      {selectedDayInfo.checkOutTime ? formatTime(selectedDayInfo.checkOutTime) : '—'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Nguồn & Trạng thái</p>
+                    <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
+                      {selectedDayInfo.primaryRecord ? sourceLabel(selectedDayInfo.primaryRecord) : 'Chưa phát sinh'}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-600">
+                      {selectedDayInfo.primaryRecord
+                        ? statusLabel(selectedDayInfo.primaryRecord)
+                        : selectedDayInfo.leave
+                        ? `Nghỉ: ${LEAVE_TYPE_CONFIG[selectedDayInfo.leave.leave_type]?.label}`
+                        : selectedDayInfo.holidayName
+                        ? selectedDayInfo.holidayName
+                        : selectedDayInfo.weight === 0
+                        ? 'Ngày nghỉ hàng tuần'
+                        : selectedDayInfo.isFuture
+                        ? 'Chưa tới ngày làm việc'
+                        : 'Không có bản ghi chấm công'}
+                    </p>
+                  </div>
+
+                  <div className="rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Đơn từ / Tăng ca</p>
+                    <div className="mt-1 space-y-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {selectedDayInfo.leave && (
+                        <p className="text-violet-700 dark:text-violet-300">
+                          • {LEAVE_TYPE_CONFIG[selectedDayInfo.leave.leave_type]?.label}
+                          {selectedDayInfo.leave.half_day ? ' (Nửa ngày)' : ' (Cả ngày)'}
+                        </p>
+                      )}
+                      {selectedDayInfo.otHoursApproved > 0 && (
+                        <p className="text-orange-700 dark:text-orange-300">
+                          • OT đã duyệt: +{selectedDayInfo.otHoursApproved}h
+                        </p>
+                      )}
+                      {selectedDayInfo.otHoursPending > 0 && (
+                        <p className="text-amber-700 dark:text-amber-300">
+                          • OT chờ duyệt: +{selectedDayInfo.otHoursPending}h
+                        </p>
+                      )}
+                      {!selectedDayInfo.leave && selectedDayInfo.otHoursApproved === 0 && selectedDayInfo.otHoursPending === 0 && (
+                        <p className="text-slate-600">Không có đơn từ ngày này</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === 'log' && (
+        <Card className="overflow-hidden border border-slate-300 dark:border-slate-600">
+          {monthRecords.length === 0 ? <div className="px-5 py-12 text-center text-sm font-semibold text-slate-600">Tháng {monthLabel} chưa có dữ liệu chấm công.</div> : (
+            <div className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">{monthRecords.map((record) => (
+              <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-none bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"><Clock className="h-4.5 w-4.5" /></div>
+                  <div>
+                    <p className="font-black text-sm text-slate-900 dark:text-slate-100">{formatDate(record.date)}</p>
+                    <p className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                      {!record.check_in_time && record.check_out_time
+                        ? `Chưa vào · Ra ${formatTime(record.check_out_time)}`
+                        : `Vào ${formatTime(record.check_in_time)}${record.check_out_time ? ` · Ra ${formatTime(record.check_out_time)}` : ' · Thiếu checkout'}`}
+                    </p>
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold">{sourceLabel(record)}</Badge>
                   <Badge className={
-                    selectedDayInfo.workCredit > 0
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold'
-                      : selectedDayInfo.leave
-                      ? 'bg-violet-100 text-violet-800 border border-violet-300 font-bold'
-                      : 'bg-slate-100 text-slate-700 border border-slate-300 font-bold'
+                    !record.check_in_time && record.check_out_time
+                      ? 'bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold'
+                      : record.approved_by_lead
+                      ? 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 font-bold'
+                      : 'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold'
                   }>
-                    Tính công: {selectedDayInfo.workCredit} công
-                    {selectedDayInfo.hoursWorked > 0 ? ` (${selectedDayInfo.hoursWorked}h)` : ''}
+                    {!record.check_in_time && record.check_out_time ? 'Chờ máy chấm công' : record.approved_by_lead ? 'Đã xác nhận' : 'Chờ đối soát'}
                   </Badge>
                 </div>
               </div>
-
-              <div className="mt-3.5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Giờ vào</p>
-                  <p className="mt-1 font-mono text-lg font-black text-slate-900 dark:text-slate-100">
-                    {selectedDayInfo.checkInTime ? formatTime(selectedDayInfo.checkInTime) : '—'}
-                  </p>
-                  {selectedDayInfo.lateMinutes > 0 && (
-                    <p className="mt-0.5 text-xs font-semibold text-amber-600">
-                      Đi muộn {selectedDayInfo.lateMinutes} phút
-                      {selectedDayInfo.lateStatus === 'APPROVED' ? ' (Đã duyệt đơn)' : ''}
-                    </p>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Giờ ra</p>
-                  <p className="mt-1 font-mono text-lg font-black text-slate-900 dark:text-slate-100">
-                    {selectedDayInfo.checkOutTime ? formatTime(selectedDayInfo.checkOutTime) : selectedDayInfo.checkInTime ? 'Chưa checkout' : '—'}
-                  </p>
-                  {selectedDayInfo.missingCheckout && (
-                    <p className="mt-0.5 text-xs font-semibold text-amber-600">
-                      Cần checkout để chốt giờ làm
-                    </p>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Nguồn & Trạng thái</p>
-                  <p className="mt-1 text-sm font-black text-slate-900 dark:text-slate-100">
-                    {selectedDayInfo.primaryRecord ? sourceLabel(selectedDayInfo.primaryRecord) : 'Chưa phát sinh'}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {selectedDayInfo.primaryRecord
-                      ? statusLabel(selectedDayInfo.primaryRecord)
-                      : selectedDayInfo.leave
-                      ? `Nghỉ: ${LEAVE_TYPE_CONFIG[selectedDayInfo.leave.leave_type]?.label}`
-                      : selectedDayInfo.holidayName
-                      ? selectedDayInfo.holidayName
-                      : selectedDayInfo.weight === 0
-                      ? 'Ngày nghỉ hàng tuần'
-                      : selectedDayInfo.isFuture
-                      ? 'Chưa tới ngày làm việc'
-                      : 'Không có bản ghi chấm công'}
-                  </p>
-                </div>
-
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Đơn từ / Tăng ca</p>
-                  <div className="mt-1 space-y-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    {selectedDayInfo.leave && (
-                      <p className="text-violet-700 dark:text-violet-300">
-                        • {LEAVE_TYPE_CONFIG[selectedDayInfo.leave.leave_type]?.label}
-                        {selectedDayInfo.leave.half_day ? ' (Nửa ngày)' : ' (Cả ngày)'}
-                      </p>
-                    )}
-                    {selectedDayInfo.otHoursApproved > 0 && (
-                      <p className="text-orange-700 dark:text-orange-300">
-                        • OT đã duyệt: +{selectedDayInfo.otHoursApproved}h
-                      </p>
-                    )}
-                    {selectedDayInfo.otHoursPending > 0 && (
-                      <p className="text-amber-700 dark:text-amber-300">
-                        • OT chờ duyệt: +{selectedDayInfo.otHoursPending}h
-                      </p>
-                    )}
-                    {!selectedDayInfo.leave && selectedDayInfo.otHoursApproved === 0 && selectedDayInfo.otHoursPending === 0 && (
-                      <p className="text-slate-400">Không có đơn từ ngày này</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            ))}</div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Danh sách chi tiết từng ngày có chấm công trong tháng */}
-      <Card className="overflow-hidden border-2 border-slate-400 dark:border-slate-600 shadow-sm">
-        <div className="flex items-center justify-between gap-2 border-b-2 border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-5 py-4 sm:px-6">
-          <div className="flex items-center gap-2">
-            <History className="h-5 w-5 text-slate-500" />
-            <div>
-              <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Nhật ký vào / ra tháng {monthLabel}</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Danh sách các lượt chấm công ghi nhận trong tháng, mới nhất ở trên.</p>
-            </div>
-          </div>
-          <Badge className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold">
-            {monthRecords.length} lượt
-          </Badge>
-        </div>
-        {monthRecords.length === 0 ? <div className="px-5 py-12 text-center text-sm font-semibold text-slate-500">Tháng {monthLabel} chưa có dữ liệu chấm công.</div> : (
-          <div className="divide-y divide-slate-300 dark:divide-slate-700 bg-white dark:bg-slate-900 font-semibold">{monthRecords.map((record) => (
-            <div key={record.id} className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"><Clock className="h-4.5 w-4.5" /></div>
-                <div>
-                  <p className="font-black text-sm text-slate-900 dark:text-slate-100">{formatDate(record.date)}</p>
-                  <p className="mt-0.5 text-xs font-semibold text-slate-600 dark:text-slate-400">
-                    {!record.check_in_time && record.check_out_time
-                      ? `Chưa vào · Ra ${formatTime(record.check_out_time)}`
-                      : `Vào ${formatTime(record.check_in_time)}${record.check_out_time ? ` · Ra ${formatTime(record.check_out_time)}` : ' · Thiếu checkout'}`}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge className="bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold">{sourceLabel(record)}</Badge>
-                <Badge className={
-                  !record.check_in_time && record.check_out_time
-                    ? 'bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-bold'
-                    : record.approved_by_lead
-                    ? 'bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 font-bold'
-                    : 'bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 font-bold'
-                }>
-                  {!record.check_in_time && record.check_out_time ? 'Chờ máy chấm công' : record.approved_by_lead ? 'Đã xác nhận' : 'Chờ đối soát'}
-                </Badge>
-              </div>
-            </div>
-          ))}</div>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
 
 function InfoRow({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return <div className="flex items-center gap-3 rounded-xl border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-3"><span className="text-slate-400">{icon}</span><div className="min-w-0"><p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p><p className="truncate text-sm font-black text-slate-900 dark:text-slate-100">{value}</p></div></div>;
+  return <div className="flex items-center gap-3 rounded-none border-2 border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-3"><span className="flex-shrink-0 text-slate-600">{icon}</span><div className="min-w-0 flex-1"><p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">{label}</p><p className="break-words text-sm font-black leading-snug text-slate-900 dark:text-slate-100">{value}</p></div></div>;
 }

@@ -90,10 +90,9 @@ export function EmployeeDocumentVault({ employee, actorId, canManage, mode = 'do
 
   const DocIcon = isContracts ? FileSignature : FileText;
 
-  return <section className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-    {!isContracts && <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
-      <h4 className="font-bold text-slate-900">Hồ sơ cần chuẩn bị khi nhận việc</h4>
-      <p className="mt-1 text-xs text-slate-600">Hoàn thiện trong tuần đầu tiên nhận việc.</p>
+  return <section className="rounded-none border border-slate-200 bg-slate-50/60 p-4">
+    {!isContracts && <div className="mb-4 rounded-none border border-amber-200 bg-amber-50/70 p-4">
+      <h4 className="font-bold text-slate-900">Hồ sơ nhận việc</h4>
       <ol className="mt-3 grid gap-2 sm:grid-cols-2">
         {REQUIRED_ONBOARDING_DOCUMENTS.map((item, index) => (
           <li key={item} className="flex gap-2 text-sm text-slate-700">
@@ -105,30 +104,30 @@ export function EmployeeDocumentVault({ employee, actorId, canManage, mode = 'do
     <div className="flex items-center justify-between gap-3">
       <div>
         <h4 className="font-bold text-slate-900">{isContracts ? 'Hợp đồng lao động' : 'Thông tin giấy tờ'}</h4>
-        <p className="text-xs text-slate-500">{documents.length} {isContracts ? 'hợp đồng' : 'giấy tờ lưu tập trung theo nhân viên'}</p>
+        <p className="text-xs text-slate-600">{documents.length} {isContracts ? 'hợp đồng' : 'giấy tờ lưu tập trung theo nhân viên'}</p>
       </div>
       {canManage && <Button size="sm" onClick={() => { setForm(emptyForm); setOpen(true); }}><Plus className="h-4 w-4" />{isContracts ? 'Thêm hợp đồng' : 'Thêm giấy tờ'}</Button>}
     </div>
-    {error ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Kho hồ sơ chưa sẵn sàng: {error}</p>
-      : documents.length === 0 ? <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500"><DocIcon className="mx-auto mb-2 h-6 w-6 text-slate-400" />{isContracts ? 'Chưa có hợp đồng nào.' : 'Chưa có giấy tờ nào.'}</div>
-      : <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">{documents.map((doc) => {
+    {error ? <p className="mt-3 rounded-none border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">Kho hồ sơ chưa sẵn sàng: {error}</p>
+      : documents.length === 0 ? <div className="mt-3 rounded-none border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-600"><DocIcon className="mx-auto mb-2 h-6 w-6 text-slate-600" />{isContracts ? 'Chưa có hợp đồng nào.' : 'Chưa có giấy tờ nào.'}</div>
+      : <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-none border border-slate-200 bg-white">{documents.map((doc) => {
         const status = isContracts ? contractStatus(doc) : null;
         return <div key={doc.id} className="flex items-center gap-3 p-3">
           <DocIcon className="h-5 w-5 shrink-0 text-indigo-500" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-slate-800">{doc.title}</p>
             {isContracts
-              ? <p className="text-xs text-slate-500">
+              ? <p className="text-xs text-slate-600">
                   {doc.document_number ? `Số ${doc.document_number} · ` : ''}
                   {doc.issue_date ? `Hiệu lực ${formatVnDate(doc.issue_date)}` : 'Chưa có ngày hiệu lực'}
                   {doc.expiry_date ? ` → ${formatVnDate(doc.expiry_date)}` : ''}
                 </p>
-              : <p className="text-xs text-slate-500">{EMPLOYEE_DOCUMENT_TYPE_LABELS[doc.document_type]} · {formatFileSize(doc.size_bytes)}{doc.expiry_date ? ` · Hết hạn ${formatVnDate(doc.expiry_date)}` : ''}</p>}
+              : <p className="text-xs text-slate-600">{EMPLOYEE_DOCUMENT_TYPE_LABELS[doc.document_type]} · {formatFileSize(doc.size_bytes)}{doc.expiry_date ? ` · Hết hạn ${formatVnDate(doc.expiry_date)}` : ''}</p>}
             {status && <Badge className={`mt-1 ${status.className}`}>{status.label}</Badge>}
           </div>
-          <button onClick={() => void openDocument(doc)} title="Xem" className="p-2 text-slate-400 hover:text-indigo-600"><Eye className="h-4 w-4" /></button>
-          <button onClick={() => void openDocument(doc, true)} title="Tải xuống" className="p-2 text-slate-400 hover:text-indigo-600"><Download className="h-4 w-4" /></button>
-          {canManage && <button onClick={() => void remove(doc)} title="Xóa" className="p-2 text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
+          <button onClick={() => void openDocument(doc)} title="Xem" className="p-2 text-slate-600 hover:text-indigo-600"><Eye className="h-4 w-4" /></button>
+          <button onClick={() => void openDocument(doc, true)} title="Tải xuống" className="p-2 text-slate-600 hover:text-indigo-600"><Download className="h-4 w-4" /></button>
+          {canManage && <button onClick={() => void remove(doc)} title="Xóa" className="p-2 text-slate-600 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>}
         </div>;
       })}</div>}
     <Modal open={open} onClose={() => setOpen(false)} title={`${isContracts ? 'Thêm hợp đồng' : 'Thêm giấy tờ'} - ${employee.name}`}>
@@ -140,8 +139,7 @@ export function EmployeeDocumentVault({ employee, actorId, canManage, mode = 'do
           <Input label={isContracts ? 'Ngày hiệu lực' : 'Ngày cấp'} type="date" value={form.issueDate} required={isContracts} onChange={(e) => setForm({ ...form, issueDate: e.target.value })} />
           <Input label="Ngày hết hạn" type="date" min={form.issueDate || undefined} value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} />
         </div>
-        {isContracts && <p className="-mt-2 text-xs text-slate-500">Bỏ trống ngày hết hạn nếu là hợp đồng không xác định thời hạn.</p>}
-        <Input label="File (tối đa 10 MB)" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp" onChange={(e) => setForm({ ...form, file: e.target.files?.[0] || null })} required />
+                <Input label="File (tối đa 10 MB)" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp" onChange={(e) => setForm({ ...form, file: e.target.files?.[0] || null })} required />
         <Textarea label="Ghi chú" rows={3} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
         <div className="flex gap-3"><Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Hủy</Button><Button type="submit" disabled={saving} className="flex-1"><Upload className="h-4 w-4" />{saving ? 'Đang tải...' : 'Lưu'}</Button></div>
       </form>

@@ -26,6 +26,7 @@ import { fetchProfileMap } from '@/lib/profileDirectory';
 import { supabase } from '@/lib/supabase';
 import { formatDate, getTodayString } from '@/lib/utils';
 import type { DailyAssignment, Task } from '@/types';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 const STATUS_STYLE: Record<string, { label: string; className: string }> = {
   pending: { label: 'Cần làm', className: 'bg-slate-100 text-slate-700' },
@@ -53,6 +54,7 @@ export function StaffAssignments() {
 
   const [assignments, setAssignments] = useState<DailyAssignment[]>([]);
   const [projectTasks, setProjectTasks] = useState<Task[]>([]);
+  const pg = usePagination(projectTasks, PAGE_SIZE_LIST, [projectTasks.length]);
   const [loading, setLoading] = useState(true);
   const [weekOffset, setWeekOffset] = useState(0);
   const [submitTarget, setSubmitTarget] = useState<DailyAssignment | null>(null);
@@ -188,26 +190,17 @@ export function StaffAssignments() {
 
   return (
     <div className="space-y-4">
-      <Card><CardContent className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-bold text-slate-800">Việc được giao</h2>
-          <p className="mt-1 text-xs text-slate-500">Gồm việc hằng ngày và tác vụ dự án được giao cho bạn.</p>
-        </div>
-        <Badge className="bg-indigo-50 text-indigo-700">{assignments.length + projectTasks.length} việc</Badge>
-      </CardContent></Card>
-
       <Card>
         <CardContent>
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-slate-800">Tác vụ dự án của tôi</h3>
-              <p className="mt-1 text-xs text-slate-500">Các tác vụ do dự án phân công cho bạn.</p>
+              <h3 className="font-semibold text-slate-800">Tác vụ dự án</h3>
             </div>
             <Badge className="bg-indigo-50 text-indigo-700">{projectTasks.length}</Badge>
           </div>
-          {projectTasks.length === 0 ? <p className="py-5 text-center text-sm text-slate-400">Chưa có tác vụ dự án được giao.</p> : (
+          {projectTasks.length === 0 ? <p className="py-5 text-center text-sm text-slate-600">Chưa có tác vụ dự án được giao.</p> : (
             <ul className="divide-y divide-slate-100">
-              {projectTasks.map((task) => {
+              {pg.rows.map((task) => {
                 const status = task.status === 'todo' ? { label: 'Cần làm', style: 'bg-slate-100 text-slate-700' }
                   : task.status === 'in_progress' ? { label: 'Đang làm', style: 'bg-blue-100 text-blue-700' }
                   : task.status === 'in_review' ? { label: 'Đang duyệt', style: 'bg-amber-100 text-amber-700' }
@@ -215,17 +208,18 @@ export function StaffAssignments() {
                 return <li key={task.id} className="flex flex-wrap items-center gap-2 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-slate-800">{task.title}</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{task.project?.name || 'Dự án'}{task.due_date ? ` · Hạn ${formatDate(task.due_date)}` : ''}</p>
+                    <p className="mt-0.5 text-xs text-slate-600">{task.project?.name || 'Dự án'}{task.due_date ? ` · Hạn ${formatDate(task.due_date)}` : ''}</p>
                   </div>
                   <Badge className={status.style}>{status.label}</Badge>
                   <Link
                     to={`/staff/kanban?project=${encodeURIComponent(task.project_id)}&task=${encodeURIComponent(task.id)}`}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-none border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
                   >
                     {task.status === 'in_progress' ? 'Nộp task' : 'Mở Kanban'}
                   </Link>
                 </li>;
               })}
+              <li className="list-none"><Pagination className="pt-3" page={pg.page} total={pg.total} size={pg.size} noun="tác vụ" setPage={pg.setPage} /></li>
             </ul>
           )}
         </CardContent>
@@ -253,7 +247,6 @@ export function StaffAssignments() {
         <EmptyState
           icon={<ClipboardList className="h-8 w-8" />}
           title="Tuần này chưa có việc nào được giao"
-          description="Quản lý giao việc cho ngày nào thì việc hiện ở đúng ngày đó."
         />
       ) : (
         days.map((date) => {
@@ -270,8 +263,8 @@ export function StaffAssignments() {
                 }`}>
                   <Clock className="h-3.5 w-3.5" />
                   {formatDate(dateStr)}
-                  {isToday && <span className="rounded bg-indigo-600 px-1.5 py-0.5 text-[10px] text-white">HÔM NAY</span>}
-                  <span className="font-normal text-slate-400">({items.length} việc)</span>
+                  {isToday && <span className="rounded-none bg-indigo-600 px-1.5 py-0.5 text-[11px] text-white">HÔM NAY</span>}
+                  <span className="font-normal text-slate-600">({items.length} việc)</span>
                 </p>
 
                 <ul className="divide-y divide-slate-50">
@@ -282,7 +275,7 @@ export function StaffAssignments() {
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-semibold text-slate-800">{item.title}</span>
                           {item.description && (
-                            <span className="mt-0.5 block text-xs leading-relaxed text-slate-500">{item.description}</span>
+                            <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">{item.description}</span>
                           )}
                           {/* Ly do bi tra lai: thu duy nhat cho biet phai sua
                               gi truoc khi gui lai. */}
@@ -329,15 +322,13 @@ export function StaffAssignments() {
         size="md"
       >
         <div className="space-y-4">
-          <p className="text-xs leading-relaxed text-slate-500">
-            Ghi lại kết quả hoặc vướng mắc để quản lý xác nhận nhanh hơn. Không bắt buộc.
-          </p>
+
           <textarea
             value={submitNote}
             onChange={(event) => setSubmitNote(event.target.value)}
             rows={4}
             placeholder="VD: Đã giao đủ 12 đơn, còn 1 đơn khách hẹn mai."
-            className="w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-500"
+            className="w-full rounded-none border border-slate-300 p-3 text-sm outline-none focus:border-indigo-500"
           />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setSubmitTarget(null)} disabled={sending}>Hủy</Button>

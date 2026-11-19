@@ -4,8 +4,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { EmployeeDocumentVault } from '@/components/profile/EmployeeDocumentVault';
 import { displayIdentifier } from '@/lib/identity';
-import { formatDate } from '@/lib/utils';
+import { formatDate, formatTenure } from '@/lib/utils';
 import type { Profile } from '@/types';
+import { Tabs } from '@/components/ui/Tabs';
 
 type ProfileTab = 'info' | 'contracts' | 'documents';
 
@@ -23,8 +24,8 @@ const STATUS_BADGE: Record<string, string> = {
 
 function Field({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
   return (
-    <div className={`rounded-xl border border-slate-200 p-3 ${wide ? 'sm:col-span-2' : ''}`}>
-      <dt className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</dt>
+    <div className={`rounded-none border border-slate-200 p-3 ${wide ? 'sm:col-span-2' : ''}`}>
+      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-600">{label}</dt>
       <dd className="mt-1 break-words text-sm font-medium text-slate-800">{children}</dd>
     </div>
   );
@@ -67,38 +68,24 @@ export function EmployeeProfileModal({
     <Modal open={!!user} onClose={onClose} title={`Hồ sơ nhân sự${user?.employee_code ? ` · ${user.employee_code}` : ''}`} size="xl">
       {user && (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-start gap-4 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50 p-4">
+          <div className="flex flex-wrap items-start gap-4 rounded-none bg-gradient-to-br from-slate-50 to-indigo-50 p-4">
             <Avatar name={user.name} url={user.avatar_url} size="lg" />
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-lg font-bold text-slate-900">{user.name}</h3>
-              <p className="text-sm text-slate-500">{positionName} · {user.department || unitName}</p>
+              <p className="text-sm text-slate-600">{positionName} · {user.department || unitName}</p>
               <div className="mt-1.5 flex flex-wrap items-center gap-2">
                 <Badge className={STATUS_BADGE[user.employment_status || 'active'] || 'bg-emerald-100 text-emerald-800'}>{statusLabel}</Badge>
                 {!user.is_active && <Badge className="bg-slate-200 text-slate-600">Tài khoản đã vô hiệu</Badge>}
               </div>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-500">Ngày vào</p>
+              <p className="text-xs text-slate-600">Ngày vào</p>
               <p className="text-sm font-bold text-slate-800">{user.hire_date ? formatDate(user.hire_date) : 'Chưa cập nhật'}</p>
+              {user.hire_date && <p className="mt-0.5 text-xs text-slate-600">Thâm niên: {formatTenure(user.hire_date)}</p>}
             </div>
           </div>
 
-          <div role="tablist" className="flex gap-1 overflow-x-auto border-b border-slate-200">
-            {TABS.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={tab === item.key}
-                onClick={() => setTab(item.key)}
-                className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold transition-colors ${
-                  tab === item.key ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+          <Tabs items={TABS} value={tab} onChange={setTab} />
 
           {tab === 'info' && (
             <div className="space-y-4">
@@ -108,8 +95,8 @@ export function EmployeeProfileModal({
                 <Field label="Tài khoản & Trạng thái">
                   <span className="flex flex-wrap items-center justify-between gap-1">
                     <span>
-                      <span className={user.is_active ? 'text-emerald-600' : 'text-slate-500'}>{user.is_active ? 'Hoạt động' : 'Đã vô hiệu'}</span>
-                      <span className="mx-1 text-slate-300">·</span>{statusLabel}
+                      <span className={user.is_active ? 'text-emerald-600' : 'text-slate-600'}>{user.is_active ? 'Hoạt động' : 'Đã vô hiệu'}</span>
+                      <span className="mx-1 text-slate-600">·</span>{statusLabel}
                     </span>
                     {statusAction}
                   </span>
@@ -119,12 +106,12 @@ export function EmployeeProfileModal({
                 <Field label="Nơi ở hiện tại">{user.current_address || 'Chưa cập nhật'}</Field>
                 <Field label="Học vấn" wide>{[user.school_name, user.major, user.graduation_year].filter(Boolean).join(' · ') || 'Chưa cập nhật'}</Field>
               </dl>
-              <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <section className="rounded-none border border-slate-200 bg-white p-4">
                 <h4 className="text-sm font-bold text-slate-900">Công việc tại tổ chức</h4>
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
-                  <div><p className="text-xs text-slate-500">Đơn vị</p><p className="font-semibold text-slate-800">{unitName}</p></div>
-                  <div><p className="text-xs text-slate-500">Vị trí</p><p className="font-semibold text-slate-800">{positionName}</p></div>
-                  <div><p className="text-xs text-slate-500">Quản lý trực tiếp</p><p className="font-semibold text-slate-800">{managerName}</p></div>
+                  <div><p className="text-xs text-slate-600">Đơn vị</p><p className="font-semibold text-slate-800">{unitName}</p></div>
+                  <div><p className="text-xs text-slate-600">Vị trí</p><p className="font-semibold text-slate-800">{positionName}</p></div>
+                  <div><p className="text-xs text-slate-600">Quản lý trực tiếp</p><p className="font-semibold text-slate-800">{managerName}</p></div>
                 </div>
               </section>
             </div>

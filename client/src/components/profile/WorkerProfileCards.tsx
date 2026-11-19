@@ -56,11 +56,11 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
         <CardContent className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none bg-slate-100 text-slate-600">
                 <IdCard className="h-4 w-4" />
               </div>
               <div>
-                <p className="text-xs text-slate-500">Mã lao động</p>
+                <p className="text-xs text-slate-600">Mã lao động</p>
                 <p className="font-mono text-sm font-bold text-slate-800">{worker.code}</p>
               </div>
             </div>
@@ -88,7 +88,7 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs font-semibold text-slate-600">Tiến trình</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-600">
                   Bước {stageIndex + 1}/{WORKER_STAGE_ORDER.length}
                 </p>
               </div>
@@ -103,21 +103,19 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
                   />
                 ))}
               </div>
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-xs text-slate-600">
                 Giai đoạn hiện tại: <strong className="text-slate-700">{status.label}</strong>
               </p>
             </div>
           )}
 
           {worker.note && (
-            <p className="rounded-xl bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
+            <p className="rounded-none bg-slate-50 px-3.5 py-2.5 text-xs leading-relaxed text-slate-600">
               <strong className="text-slate-700">Ghi chú từ HR:</strong> {worker.note}
             </p>
           )}
 
-          <p className="text-xs text-slate-400">
-            Thông tin do bộ phận tuyển dụng quản lý. Nếu có sai sót, liên hệ HR để được cập nhật.
-          </p>
+
         </CardContent>
       </Card>
 
@@ -128,7 +126,7 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
         </CardHeader>
         <CardContent className="space-y-3">
           {problemCount > 0 && (
-            <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
+            <div className="flex items-start gap-2.5 rounded-none border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
               <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
               <span>
                 {problemCount} giấy tờ đã hết hạn hoặc sắp hết hạn trong {EXPIRY_WARNING_DAYS} ngày
@@ -138,7 +136,7 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
           )}
 
           {sortedDocuments.length === 0 ? (
-            <p className="py-4 text-center text-sm text-slate-400">
+            <p className="py-4 text-center text-sm text-slate-600">
               Chưa có giấy tờ nào được ghi nhận.
             </p>
           ) : (
@@ -151,13 +149,13 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
                       <p className="text-sm font-semibold text-slate-800">
                         {WORKER_DOCUMENT_LABEL[document.document_type] ?? document.document_type}
                       </p>
-                      <p className="mt-0.5 font-mono text-xs text-slate-500">{document.document_number}</p>
-                      <p className="mt-0.5 text-xs text-slate-400">
+                      <p className="mt-0.5 font-mono text-xs text-slate-600">{document.document_number}</p>
+                      <p className="mt-0.5 text-xs text-slate-600">
                         {document.issue_date ? `Cấp ${formatDate(document.issue_date)}` : 'Chưa rõ ngày cấp'}
                         {document.expiry_date ? ` · Hết hạn ${formatDate(document.expiry_date)}` : ''}
                       </p>
                       {document.note && (
-                        <p className="mt-1 text-xs leading-relaxed text-slate-400">{document.note}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-600">{document.note}</p>
                       )}
                     </div>
                     <ExpiryBadge state={state} days={days} />
@@ -184,7 +182,7 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
                     <p className="text-sm font-medium text-slate-700">
                       {WORKER_STATUS_LABEL[log.status]?.label ?? log.status}
                     </p>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-600">
                       {new Date(log.changed_at).toLocaleString('vi-VN')}
                       {log.note ? ` · ${log.note}` : ''}
                     </p>
@@ -202,13 +200,13 @@ export function WorkerProfileCards({ data }: { data: OwnWorkerProfile }) {
 function Field({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | null }) {
   return (
     <div className="flex items-start gap-3 py-2.5">
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500">
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none bg-slate-100 text-slate-600">
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-xs text-slate-600">{label}</p>
         <p className="break-words text-sm font-medium text-slate-800">
-          {value || <span className="text-slate-400">Chưa có</span>}
+          {value || <span className="text-slate-600">Chưa có</span>}
         </p>
       </div>
     </div>
@@ -217,7 +215,7 @@ function Field({ icon, label, value }: { icon: React.ReactNode; label: string; v
 
 function ExpiryBadge({ state, days }: { state: ReturnType<typeof expiryState>['state']; days: number | null }) {
   if (state === 'none') {
-    return <Badge className="flex-shrink-0 bg-slate-100 text-slate-500">Không có hạn</Badge>;
+    return <Badge className="flex-shrink-0 bg-slate-100 text-slate-600">Không có hạn</Badge>;
   }
   if (state === 'expired') {
     return (

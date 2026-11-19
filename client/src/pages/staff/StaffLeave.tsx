@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AttendanceRequestPanel } from '@/components/attendance/AttendanceRequestPanel';
-import { Plus, CalendarOff, Edit3, Trash2, TriangleAlert, RotateCcw, History, Sparkles } from 'lucide-react';
+import { Eye, Plus, CalendarOff, Edit3, Trash2, TriangleAlert, RotateCcw, History, Sparkles } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -16,12 +16,15 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import {
-  LEAVE_TYPE_CONFIG, leaveStatusLabel, countWorkingDays, calculateLedgerBalance, defaultLeaveDate,
+  LEAVE_TYPE_CONFIG, leaveStatusLabel, leaveRequestDetail, countWorkingDays, calculateLedgerBalance, defaultLeaveDate,
 } from '@/lib/leave';
 import { formatDate } from '@/lib/utils';
 import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from '@/lib/workSchedule';
 import { fetchManagerIds, notifyUsers } from '@/lib/assignments';
 import type { LeaveCancellationRequest, LeaveLedgerEntry, LeaveRequest, LeaveType } from '@/types';
+import { Tabs } from '@/components/ui/Tabs';
+import { RequestDetailModal, type RequestDetail } from '@/components/ui/RequestDetailModal';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 export function StaffLeave() {
   const { profile } = useAuth();
@@ -30,6 +33,7 @@ export function StaffLeave() {
   const [section, setSection] = useState<'attendance' | 'leave'>('attendance');
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const pg = usePagination(requests, PAGE_SIZE_LIST, [section]);
   const [ledger, setLedger] = useState<LeaveLedgerEntry[]>([]);
   const [cancellations, setCancellations] = useState<LeaveCancellationRequest[]>([]);
   const [cancellationSupported, setCancellationSupported] = useState(true);
@@ -48,6 +52,7 @@ export function StaffLeave() {
   const [holidays, setHolidays] = useState<ReadonlySet<string>>(new Set());
   const [cancelTarget, setCancelTarget] = useState<LeaveRequest | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [detail, setDetail] = useState<RequestDetail | null>(null);
   const [form, setForm] = useState({
     leave_type: 'annual' as LeaveType,
     start_date: defaultLeaveDate(),
@@ -313,29 +318,7 @@ export function StaffLeave() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="font-display text-2xl font-extrabold text-slate-900">Đơn từ của tôi</h1>
-        <p className="mt-1 text-sm text-slate-500">Gửi và theo dõi tất cả yêu cầu cá nhân tại một nơi.</p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => setSection('attendance')}
-          className={`rounded-2xl border-2 p-4 text-left transition-all ${section === 'attendance' ? 'border-blue-400 bg-blue-50/80 ring-2 ring-blue-200 dark:border-blue-500 dark:bg-blue-950/40' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600'}`}
-        >
-          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Đơn chấm công & làm thêm</span>
-          <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Đi muộn, về sớm, OT ngày thường / nghỉ / lễ, ca đêm — duyệt xong tự vào công và lương.</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setSection('leave')}
-          className={`rounded-2xl border-2 p-4 text-left transition-all ${section === 'leave' ? 'border-emerald-400 bg-emerald-50/80 ring-2 ring-emerald-200 dark:border-emerald-500 dark:bg-emerald-950/40' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-600'}`}
-        >
-          <span className="text-sm font-black text-slate-900 dark:text-slate-100">Đơn nghỉ phép</span>
-          <span className="mt-1 block text-xs font-medium text-slate-600 dark:text-slate-400">Xem quỹ phép, gửi đơn nghỉ hoặc xin hủy lịch đã duyệt.</span>
-        </button>
-      </div>
+      <Tabs items={[{ key: 'attendance', label: 'Đơn chấm công & làm thêm' }, { key: 'leave', label: 'Đơn nghỉ phép' }] as const} value={section} onChange={setSection} />
 
       {section === 'attendance' ? (
         <AttendanceRequestPanel mode="mine" />
@@ -351,9 +334,9 @@ export function StaffLeave() {
               <p className="flex items-center gap-1.5 text-sm font-bold text-slate-700 dark:text-slate-300"><Sparkles className="h-4 w-4 text-emerald-500" />Quỹ phép năm</p>
               <p className="font-display text-4xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">
                 {balance.remaining}
-                <span className="text-lg font-semibold text-slate-400"> / {balance.quota} ngày</span>
+                <span className="text-lg font-semibold text-slate-600"> / {balance.quota} ngày</span>
               </p>
-              <p className="mt-1 text-xs text-slate-500">Số dư khả dụng sau khi trừ các đơn đã duyệt.</p>
+              <p className="mt-1 text-xs text-slate-600">Số dư khả dụng sau khi trừ các đơn đã duyệt.</p>
             </div>
             <Button onClick={openCreate}>
               <Plus className="w-4 h-4" />
@@ -374,16 +357,16 @@ export function StaffLeave() {
             />
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-            <span className="rounded-xl bg-emerald-50 px-3 py-2 font-medium text-emerald-700"><span className="mb-1 block h-2 w-2 rounded-full bg-emerald-500" />Đã dùng <strong className="block text-base">{balance.used}</strong></span>
-            <span className="rounded-xl bg-amber-50 px-3 py-2 font-medium text-amber-700"><span className="mb-1 block h-2 w-2 rounded-full bg-amber-400" />Chờ duyệt <strong className="block text-base">{balance.pending}</strong></span>
-            <span className="rounded-xl bg-slate-100 px-3 py-2 font-medium text-slate-600"><span className="mb-1 block h-2 w-2 rounded-full bg-slate-300" />Còn lại <strong className="block text-base">{balance.remaining}</strong></span>
+            <span className="rounded-none bg-emerald-50 px-3 py-2 font-medium text-emerald-700"><span className="mb-1 block h-2 w-2 rounded-full bg-emerald-500" />Đã dùng <strong className="block text-base">{balance.used}</strong></span>
+            <span className="rounded-none bg-amber-50 px-3 py-2 font-medium text-amber-700"><span className="mb-1 block h-2 w-2 rounded-full bg-amber-400" />Chờ duyệt <strong className="block text-base">{balance.pending}</strong></span>
+            <span className="rounded-none bg-slate-100 px-3 py-2 font-medium text-slate-600"><span className="mb-1 block h-2 w-2 rounded-full bg-slate-300" />Còn lại <strong className="block text-base">{balance.remaining}</strong></span>
           </div>
           {ledger.length > 0 && (
             <div className="mt-4 border-t border-slate-200 dark:border-slate-700 pt-3">
               <p className="mb-2 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300"><History className="h-3.5 w-3.5" />Phát sinh gần nhất</p>
               <div className="flex flex-wrap gap-2">
                 {ledger.slice(0, 4).map((entry) => (
-                  <span key={entry.id} className="rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
+                  <span key={entry.id} className="rounded-none bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-2.5 py-1 text-xs text-slate-700 dark:text-slate-300 font-semibold">
                     {entry.note || entry.entry_type}: <strong className={Number(entry.days) > 0 ? 'text-emerald-700' : 'text-red-600'}>{Number(entry.days) > 0 ? '+' : ''}{Number(entry.days)}</strong>
                   </span>
                 ))}
@@ -399,7 +382,6 @@ export function StaffLeave() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-slate-300 dark:border-slate-700 px-5 py-4 sm:px-6">
             <div>
               <h2 className="font-display text-lg font-bold text-slate-900 dark:text-slate-100">Đơn nghỉ phép</h2>
-              <p className="mt-0.5 text-xs text-slate-500">Theo dõi trạng thái duyệt và xử lý yêu cầu.</p>
             </div>
             {!loading && requests.length > 0 && <Badge className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold border border-slate-300 dark:border-slate-700">{requests.length} đơn</Badge>}
           </div>
@@ -411,12 +393,11 @@ export function StaffLeave() {
             <EmptyState
               icon={<CalendarOff className="w-8 h-8" />}
               title="Chưa có đơn nghỉ phép"
-              description="Gửi đơn xin nghỉ để quản lý duyệt."
               action={<Button onClick={openCreate}><Plus className="w-4 h-4" />Xin nghỉ phép</Button>}
             />
           ) : (
             <div className="divide-y divide-slate-300 dark:divide-slate-700">
-              {requests.map((request) => {
+              {pg.rows.map((request) => {
                 const type = LEAVE_TYPE_CONFIG[request.leave_type];
                 const status = leaveStatusLabel(request);
                 const cancellation = cancellations.find((item) => item.leave_request_id === request.id);
@@ -437,7 +418,7 @@ export function StaffLeave() {
                       </p>
                       {request.reason && <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{request.reason}</p>}
                       {request.status === 'pending' && request.approval_stage === 'HR' && (
-                        <p className="text-xs text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1 rounded-lg mt-1.5 flex items-center gap-1.5 font-bold w-fit">
+                        <p className="text-xs text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 px-2.5 py-1 rounded-none mt-1.5 flex items-center gap-1.5 font-bold w-fit">
                           <Sparkles className="w-3.5 h-3.5 flex-shrink-0 text-indigo-600" />
                           Đã qua duyệt của quản lý trực tiếp · Đang chờ Nhân sự/HR chốt
                         </p>
@@ -450,20 +431,23 @@ export function StaffLeave() {
                       )}
                     </div>
 
+                    <Button size="sm" variant="outline" onClick={() => setDetail(leaveRequestDetail(request, profile))}>
+                      <Eye className="h-4 w-4" />Chi tiết
+                    </Button>
                     {/* Đơn đã duyệt hoặc bị từ chối thì khóa — sửa được sẽ phá vỡ kết quả duyệt. */}
                     {request.status === 'pending' && (
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => openEdit(request)}
                           title="Sửa đơn"
-                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDelete(request)}
                           title="Hủy đơn"
-                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -479,12 +463,15 @@ export function StaffLeave() {
               })}
             </div>
           )}
+              <Pagination page={pg.page} total={pg.total} size={pg.size} noun="đơn" setPage={pg.setPage} />
         </CardContent>
       </Card>
 
+      <RequestDetailModal detail={detail} onClose={() => setDetail(null)} />
+
       <Modal open={!!cancelTarget} onClose={() => { setCancelTarget(null); setCancelReason(''); }} title="Yêu cầu hủy phép đã duyệt">
         <div className="space-y-4">
-          <p className="text-sm text-slate-600">Quản lý cần duyệt yêu cầu này trước khi lịch nghỉ được hủy và số ngày phép được hoàn lại.</p>
+
           <Textarea label="Lý do hủy" value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} rows={3} placeholder="VD: Kế hoạch công việc thay đổi, tôi đi làm lại bình thường." />
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => { setCancelTarget(null); setCancelReason(''); }} className="flex-1">Đóng</Button>
@@ -537,21 +524,19 @@ export function StaffLeave() {
                 type="checkbox"
                 checked={form.half_day}
                 onChange={(e) => setForm({ ...form, half_day: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="w-4 h-4 rounded-none border-slate-300 text-blue-600 focus:ring-blue-500"
               />
               <span className="text-sm text-slate-600">Chỉ nghỉ nửa ngày</span>
             </label>
           )}
 
-          <div className="flex items-start gap-3 text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm leading-relaxed">
-            <CalendarOff className="w-4.5 h-4.5 text-slate-500 flex-shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 text-slate-600 bg-slate-50 border border-slate-200 rounded-none p-3.5 text-sm leading-relaxed">
+            <CalendarOff className="w-4.5 h-4.5 text-slate-600 flex-shrink-0 mt-0.5" />
             <span>
               Số ngày tính công: <strong className="text-slate-800">{requestedDays}</strong>
               {rawDays > 0 && ' — đã trừ thứ Bảy và Chủ nhật.'}
               <br />
-              <span className="text-xs text-slate-500">
-                Chưa trừ ngày lễ. Nếu đơn vắt qua dịp lễ, người duyệt sẽ điều chỉnh lại.
-              </span>
+
             </span>
           </div>
 
@@ -566,7 +551,7 @@ export function StaffLeave() {
           {/* Chặn sớm ngay trên nút thay vì để bấm rồi mới báo lỗi — cho người
               dùng biết TẠI SAO chưa gửi được. */}
           {requestedDays <= 0 && (
-            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-none px-3 py-2">
               Khoảng đã chọn không có ngày làm việc nào (toàn thứ Bảy/Chủ nhật). Chọn lại ngày để gửi đơn.
             </p>
           )}

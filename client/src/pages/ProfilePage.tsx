@@ -47,13 +47,13 @@ function ReadOnlyRow({ icon, label, value, hint }: {
 }) {
   return (
     <div className="flex items-start gap-3 py-2.5">
-      <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0">
+      <div className="w-9 h-9 rounded-none bg-slate-100 text-slate-600 flex items-center justify-center flex-shrink-0">
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-xs text-slate-600">{label}</p>
         <div className="text-sm font-medium text-slate-800 break-words">{value}</div>
-        {hint && <p className="text-xs text-slate-400 mt-0.5">{hint}</p>}
+        {hint && <p className="text-xs text-slate-600 mt-0.5">{hint}</p>}
       </div>
     </div>
   );
@@ -161,7 +161,7 @@ export function ProfilePage() {
 
           <div className="flex-1 min-w-0">
             <p className="text-lg font-display font-bold text-slate-800 truncate">{profile.name}</p>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-600">
               {ROLE_LABELS[profile.role] ?? profile.role}
               {profile.department && ` · ${profile.department}`}
             </p>
@@ -189,7 +189,7 @@ export function ProfilePage() {
           {/* Ghi chú về ảnh nằm cạnh nút tải ảnh. Trước đây nó bị đặt dưới ô
               "Số điện thoại" ở thẻ bên dưới, nên đọc như một ràng buộc của
               trường số điện thoại. */}
-          <p className="w-full text-xs text-slate-500">
+          <p className="w-full text-xs text-slate-600">
             Ảnh tối đa {Math.round(AVATAR_MAX_BYTES / 1024 / 1024)} MB, định dạng JPG/PNG/WEBP/GIF.
           </p>
         </CardContent>
@@ -256,7 +256,7 @@ export function ProfilePage() {
           <ReadOnlyRow
             icon={<Building2 className="w-4 h-4" />}
             label="Phòng ban"
-            value={profile.department || <span className="text-slate-400">Chưa đặt</span>}
+            value={profile.department || <span className="text-slate-600">Chưa đặt</span>}
           />
           <ReadOnlyRow
             icon={<CalendarDays className="w-4 h-4" />}
@@ -308,12 +308,12 @@ export function ProfilePage() {
         <CardContent>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-none bg-slate-100 text-slate-600 flex items-center justify-center">
                 <KeyRound className="w-4 h-4" />
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-800">Mật khẩu</p>
-                <p className="text-xs text-slate-500">Đổi mật khẩu cần nhập lại mật khẩu hiện tại.</p>
+                <p className="text-xs text-slate-600">Đổi mật khẩu cần nhập lại mật khẩu hiện tại.</p>
               </div>
             </div>
             <Button variant="outline" onClick={() => navigate('/change-password')}>

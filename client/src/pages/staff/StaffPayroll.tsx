@@ -114,10 +114,9 @@ export function StaffPayroll() {
         <Card className="!rounded-none">
           <CardContent className="py-12 text-center">
             <LockKeyhole className="mx-auto h-11 w-11 text-emerald-500" />
-            <h2 className="mt-3 font-display text-lg font-bold text-slate-800">Phiếu lương tháng {monthLabel} đã phát hành</h2>
-            <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-              Phát hành lúc {formatDateTime(status.publishedAt)}. Để bảo mật, xác thực lại để mở chi tiết — phiên xem có hiệu lực
-              {' '}{status.reauthWindowMinutes} phút.
+            <h2 className="mt-3 font-display text-lg font-bold text-slate-800">Phiếu lương {monthLabel}</h2>
+            <p className="mx-auto mt-1 max-w-md text-sm text-slate-600">
+              Phát hành lúc {formatDateTime(status.publishedAt)}
             </p>
             {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
             <Button className="mt-4" theme="staff" onClick={() => setUnlockOpen(true)}>
@@ -129,12 +128,12 @@ export function StaffPayroll() {
         <Card className="!rounded-none">
           <CardContent className="py-12 text-center">
             {status?.inProgress
-              ? <Hourglass className="mx-auto h-11 w-11 text-amber-400" />
-              : <WalletCards className="mx-auto h-11 w-11 text-slate-300" />}
+              ? <Hourglass className="mx-auto h-11 w-11 text-amber-600" />
+              : <WalletCards className="mx-auto h-11 w-11 text-slate-600" />}
             <h2 className="mt-3 font-display text-lg font-bold text-slate-800">
               {status?.inProgress ? `Bảng lương tháng ${monthLabel} đang được hoàn tất` : `Chưa có phiếu lương tháng ${monthLabel}`}
             </h2>
-            <p className="mx-auto mt-1 max-w-lg text-sm text-slate-500">
+            <p className="mx-auto mt-1 max-w-lg text-sm text-slate-600">
               {status?.inProgress
                 ? 'Phiếu lương sẽ hiện ở đây khi kỳ lương được duyệt chi và công ty xác nhận đã chi trả. Bạn sẽ nhận được thông báo.'
                 : 'Kỳ lương tháng này chưa được tính hoặc bạn không có phiếu trong kỳ.'}
@@ -235,10 +234,6 @@ function PayslipView({ payslip, lines, paperLines, layout, monthLabel, employeeN
         </CardContent>
       </Card>
 
-      <p className="flex items-start gap-2 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400 no-print">
-        <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0" />
-        Phiếu đã được duyệt chi và không thay đổi. Nếu thấy sai sót, liên hệ HR/C&B — điều chỉnh sẽ ghi vào kỳ lương sau.
-      </p>
     </>
   );
 }
@@ -250,7 +245,7 @@ function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: st
       <CardContent className="flex items-center gap-3 py-5">
         <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-none ${tones[tone]} print:hidden`}>{icon}</span>
         <div className="min-w-0">
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">{label}</p>
           <p className="mt-1 truncate text-lg font-black tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
         </div>
       </CardContent>

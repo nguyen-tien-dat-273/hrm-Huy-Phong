@@ -191,24 +191,24 @@ export function StaffReports() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
                 {monthTotals.total === 0 ? (
-                  <p className="flex items-center gap-2.5 text-sm text-slate-400 py-6">
+                  <p className="flex items-center gap-2.5 text-sm text-slate-600 py-6">
                     <ClipboardList className="w-5 h-5" />
                     Tháng {monthLabel} bạn chưa được giao công việc nào.
                   </p>
                 ) : (
                   <>
                     <div className="grid grid-cols-3 gap-3">
-                      <div className="rounded-xl bg-slate-50 p-4 text-center">
+                      <div className="rounded-none bg-slate-50 p-4 text-center">
                         <p className="text-2xl font-extrabold text-slate-800">{monthTotals.total}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Được giao</p>
+                        <p className="text-xs text-slate-600 mt-0.5">Được giao</p>
                       </div>
-                      <div className="rounded-xl bg-emerald-50 p-4 text-center">
+                      <div className="rounded-none bg-emerald-50 p-4 text-center">
                         <p className="text-2xl font-extrabold text-emerald-600">{monthTotals.approved}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Đã xác nhận</p>
+                        <p className="text-xs text-slate-600 mt-0.5">Đã xác nhận</p>
                       </div>
-                      <div className="rounded-xl bg-blue-50 p-4 text-center">
+                      <div className="rounded-none bg-blue-50 p-4 text-center">
                         <p className="text-2xl font-extrabold text-blue-600">{monthTotals.rate}%</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Tỷ lệ hoàn thành</p>
+                        <p className="text-xs text-slate-600 mt-0.5">Tỷ lệ hoàn thành</p>
                       </div>
                     </div>
                     <div className="mt-4">
@@ -229,7 +229,7 @@ export function StaffReports() {
               </div>
 
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase mb-2 px-1">Tỷ lệ hoàn thành 6 tháng gần nhất</p>
+                <p className="text-xs font-semibold text-slate-600 uppercase mb-2 px-1">Tỷ lệ hoàn thành 6 tháng gần nhất</p>
                 <ResponsiveContainer width="100%" height={180}>
                   <BarChart data={monthlyTrend}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -254,7 +254,7 @@ export function StaffReports() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
-          <CardHeader><CardTitle>Tác vụ hoàn thành theo tuần</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Tác vụ theo tuần</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={weeklyData}>
@@ -285,10 +285,10 @@ export function StaffReports() {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>Giờ làm việc (7 ngày gần nhất)</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Giờ làm 7 ngày</CardTitle></CardHeader>
         <CardContent>
           {attendanceData.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-8">Chưa có dữ liệu chấm công</p>
+            <p className="text-sm text-slate-600 text-center py-8">Chưa có dữ liệu chấm công</p>
           ) : (
             <ResponsiveContainer width="100%" height={260}>
               <LineChart data={attendanceData}>
