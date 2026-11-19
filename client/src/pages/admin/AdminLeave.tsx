@@ -5,6 +5,7 @@ import { CountBadge } from '@/components/ui/CountBadge';
 import { useNavBadges } from '@/contexts/NavBadgeContext';
 import { AttendanceRequestPanel } from '@/components/attendance/AttendanceRequestPanel';
 import { Check, Eye, X, TriangleAlert } from 'lucide-react';
+import { SIGN_HINT_CONFIRM, STANDARD_RECIPIENTS } from '@/lib/requestForm';
 import { RequestDetailModal, type RequestDetail } from '@/components/ui/RequestDetailModal';
 import { Pager, clampPage } from '@/components/payroll/Pager';
 import { Dropdown, type DropdownOption } from '@/components/ui/Dropdown';
@@ -306,6 +307,21 @@ export function AdminLeave() {
         { label: 'Lý do hủy', value: item.reason },
         ...(item.review_note ? [{ label: 'Phản hồi', value: item.review_note }] : []),
       ],
+      form: {
+        title: 'ĐƠN XIN HỦY PHÉP',
+        department: person?.department,
+        recipients: STANDARD_RECIPIENTS,
+        info: [
+          { label: 'Họ và tên', value: person?.name ?? 'Nhân viên' },
+          { label: 'Lịch nghỉ cần hủy', value: item.leave ? `${formatDate(item.leave.start_date)} → ${formatDate(item.leave.end_date)}` : '' },
+        ],
+        reason: { label: 'Lý do hủy', value: item.reason },
+        signers: [
+          { role: 'Nhân sự / HR', hint: SIGN_HINT_CONFIRM },
+          { role: 'Quản lý trực tiếp', hint: SIGN_HINT_CONFIRM },
+          { role: 'Người làm đơn', name: person?.name },
+        ],
+      },
     });
   };
 

@@ -240,6 +240,24 @@ export function hoursPerDay(schedule: WorkSchedule | null): number | null {
   return minutes > 0 ? Math.round((minutes / 60) * 100) / 100 : null;
 }
 
+/**
+ * Khung giờ phải có mặt khi nghỉ nửa ngày: nghỉ sáng thì vào từ đầu buổi chiều,
+ * nghỉ chiều thì ra lúc hết buổi sáng. Buổi sáng/chiều chia đôi giờ làm thực.
+ * Trả phút trong ngày.
+ */
+export function halfDayWindow(
+  schedule: WorkSchedule,
+  leavePeriod: 'morning' | 'afternoon',
+): { startMin: number; endMin: number } {
+  const start = clockMinutes(schedule.start_time);
+  let end = clockMinutes(schedule.end_time);
+  if (end <= start) end += 24 * 60;
+  const half = (end - start - schedule.break_minutes) / 2;
+  return leavePeriod === 'morning'
+    ? { startMin: Math.round(start + half + schedule.break_minutes), endMin: end }
+    : { startMin: start, endMin: Math.round(start + half) };
+}
+
 // ---------------------------------------------------------------------------
 // Đo đi muộn và về sớm
 // ---------------------------------------------------------------------------

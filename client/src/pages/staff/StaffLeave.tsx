@@ -23,6 +23,7 @@ import { EMPTY_SCHEDULES, fetchWorkSchedules, type ScheduleSet } from '@/lib/wor
 import { fetchManagerIds, notifyUsers } from '@/lib/assignments';
 import type { LeaveCancellationRequest, LeaveLedgerEntry, LeaveRequest, LeaveType } from '@/types';
 import { Tabs } from '@/components/ui/Tabs';
+import { FilterChips } from '@/components/ui/FilterChips';
 import { RequestDetailModal, type RequestDetail } from '@/components/ui/RequestDetailModal';
 import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
@@ -58,6 +59,7 @@ export function StaffLeave() {
     start_date: defaultLeaveDate(),
     end_date: defaultLeaveDate(),
     half_day: false,
+    half_day_period: 'afternoon' as 'morning' | 'afternoon',
     reason: '',
   });
 
@@ -117,6 +119,7 @@ export function StaffLeave() {
       start_date: defaultLeaveDate(),
       end_date: defaultLeaveDate(),
       half_day: false,
+      half_day_period: 'afternoon',
       reason: '',
     });
     setModalOpen(true);
@@ -129,6 +132,7 @@ export function StaffLeave() {
       start_date: request.start_date,
       end_date: request.end_date,
       half_day: request.half_day,
+      half_day_period: request.half_day_period ?? 'afternoon',
       reason: request.reason ?? '',
     });
     setModalOpen(true);
@@ -204,6 +208,7 @@ export function StaffLeave() {
       end_date: form.end_date,
       days: requestedDays,
       half_day: isSingleDay && form.half_day,
+      half_day_period: isSingleDay && form.half_day ? form.half_day_period : null,
       reason: form.reason.trim() || null,
     };
 
@@ -519,15 +524,20 @@ export function StaffLeave() {
           </div>
 
           {isSingleDay && (
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={form.half_day}
-                onChange={(e) => setForm({ ...form, half_day: e.target.checked })}
-                className="w-4 h-4 rounded-none border-slate-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm text-slate-600">Chỉ nghỉ nửa ngày</span>
-            </label>
+            <FilterChips
+              label="Thời gian nghỉ"
+              items={[
+                { key: 'full', label: 'Cả ngày' },
+                { key: 'morning', label: 'Nghỉ sáng' },
+                { key: 'afternoon', label: 'Nghỉ chiều' },
+              ] as const}
+              value={form.half_day ? form.half_day_period : 'full'}
+              onChange={(key) => setForm({
+                ...form,
+                half_day: key !== 'full',
+                half_day_period: key === 'full' ? 'afternoon' : key,
+              })}
+            />
           )}
 
           <div className="flex items-start gap-3 text-slate-600 bg-slate-50 border border-slate-200 rounded-none p-3.5 text-sm leading-relaxed">

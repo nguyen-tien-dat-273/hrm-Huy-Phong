@@ -45,6 +45,8 @@ interface DayCell {
   onLeave: boolean;
   /** Đơn nghỉ nửa ngày — vẫn là ngày có phép nhưng chỉ tính 0.5 công. */
   halfLeave: boolean;
+  /** Buổi được nghỉ khi nghỉ nửa ngày; ngưỡng giờ công của ngày đó giảm một nửa. */
+  halfPeriod: 'morning' | 'afternoon' | null;
 }
 
 interface EmployeeRow {
@@ -142,7 +144,11 @@ interface TimesheetRowProps {
   showMetrics: boolean;
   visibleDays: number[];
   weekendFlags: boolean[];
+  /** Ngày lễ của công ty — không bị tô đỏ vắng. */
+  holidayFlags: boolean[];
   todayIdx: number;
+  /** Số cột ngày đã qua hẳn (chưa gồm hôm nay) — chỉ ngày đã qua mới có thể "vắng". */
+  pastDays: number;
   standardHours: number;
   canEdit: boolean;
   canManage?: boolean;
@@ -154,7 +160,7 @@ interface TimesheetRowProps {
  * làm trang vẽ lại nhưng dòng nào dữ liệu không đổi thì React bỏ qua, không dựng lại hàng nghìn ô.
  */
 const TimesheetRow = memo(function TimesheetRow({
-  row: r, showMetrics, visibleDays, weekendFlags, todayIdx, standardHours, canEdit, canManage = canEdit, onEditCell,
+  row: r, showMetrics, visibleDays, weekendFlags, holidayFlags, todayIdx, pastDays, standardHours, canEdit, canManage = canEdit, onEditCell,
 }: TimesheetRowProps) {
   return (
     <tr className="group transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-800/60">
@@ -166,12 +172,19 @@ const TimesheetRow = memo(function TimesheetRow({
       </td>
       {visibleDays.map((i) => {
         const d = r.days[i];
-        const enough = (d.hours ?? 0) >= standardHours;
-        const tone = d.missingCheckIn ? 'bg-slate-300 text-slate-800 dark:bg-slate-700 dark:text-slate-200'
-          : d.missingCheckout ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
-          : d.checkoutTime ? (enough ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300')
+        // Nghỉ nửa ngày thì chỉ cần đủ nửa giờ công của buổi còn lại.
+        const needHours = d.halfLeave ? standardHours / 2 : standardHours;
+        const enough = (d.hours ?? 0) >= needHours;
+        const periodLabel = d.halfPeriod === 'morning' ? 'sáng' : d.halfPeriod === 'afternoon' ? 'chiều' : '';
+        const workedDay = d.missingCheckIn || d.missingCheckout || !!d.checkoutTime;
+        // Vắng: ngày làm việc đã qua, không có giờ chấm công, không nghỉ cả ngày.
+        const absent = !workedDay && !(d.onLeave && !d.halfLeave) && !weekendFlags[i] && !holidayFlags[i] && i < pastDays;
+        const tone = d.missingCheckout ? 'bg-orange-400 text-orange-950 dark:bg-orange-700/80 dark:text-orange-50'
+          : d.missingCheckIn ? 'bg-yellow-300 text-yellow-950 dark:bg-yellow-700/70 dark:text-yellow-50'
+          : d.checkoutTime ? (enough ? 'bg-emerald-300 text-emerald-950 dark:bg-emerald-700/70 dark:text-emerald-50' : 'bg-yellow-300 text-yellow-950 dark:bg-yellow-700/70 dark:text-yellow-50')
+          : absent ? 'bg-red-300 text-red-950 dark:bg-red-800/70 dark:text-red-50'
           : d.onLeave ? 'bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300'
-          : weekendFlags[i] ? 'bg-slate-100/80 dark:bg-slate-800/50' : '';
+          : weekendFlags[i] || holidayFlags[i] ? 'bg-slate-100/80 dark:bg-slate-800/50' : '';
         return (
           <td
             key={i}
@@ -179,7 +192,8 @@ const TimesheetRow = memo(function TimesheetRow({
               d.missingCheckIn ? `Ra ${formatTime(d.checkoutTime)} · Chưa check-in (chờ máy chấm công)`
                 : d.missingCheckout ? `Vào ${formatTime(d.checkInTime)} · thiếu check-out`
                 : d.checkoutTime ? `Vào ${formatTime(d.checkInTime)} · Ra ${formatTime(d.checkoutTime)} · ${d.hours ?? 0} giờ công`
-                : d.onLeave ? (d.halfLeave ? 'Nghỉ phép nửa ngày (đã duyệt)' : 'Nghỉ phép đã duyệt') : '',
+                : absent ? 'Vắng' : d.onLeave ? 'Nghỉ phép đã duyệt' : '',
+              d.halfLeave ? `Nghỉ phép nửa ngày${periodLabel ? ` (nghỉ ${periodLabel})` : ''}` : '',
               canEdit ? 'Bấm để sửa giờ vào / ra' : canManage ? 'Bấm để xem chi tiết giờ vào / ra (chỉ xem)' : '',
             ].filter(Boolean).join('\n') || undefined}
             onClick={canManage ? () => onEditCell(r.profile, i, d) : undefined}
@@ -187,8 +201,9 @@ const TimesheetRow = memo(function TimesheetRow({
           >
             {d.missingCheckIn ? (
               d.checkoutTime ? formatTime(d.checkoutTime) : '—'
-            ) : d.missingCheckout ? '!'
+            ) : d.missingCheckout ? formatTime(d.checkInTime)
               : d.checkoutTime ? formatTime(d.checkoutTime)
+              : absent ? ''
               : d.onLeave ? (d.halfLeave ? '½' : 'P')
               : <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">·</span>}
           </td>
@@ -228,6 +243,7 @@ export function AdminTimesheet() {
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [assignments, setAssignments] = useState<DailyAssignment[]>([]);
   const [metrics, setMetrics] = useState<Map<string, TimesheetMetrics> | null>(null);
+  const [holidays, setHolidays] = useState<ReadonlySet<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -264,7 +280,7 @@ export function AdminTimesheet() {
     const seq = ++loadSeq.current;
     if (!silent) setLoading(true);
 
-    const [profRes, attRes, leaveRes, asgRes, periodRes, exceptionRes, metricMap] = await Promise.all([
+    const [profRes, attRes, leaveRes, asgRes, periodRes, exceptionRes, metricMap, holidayRes] = await Promise.all([
       supabase.from('profiles_directory').select('*').eq('is_active', true).order('name'),
       // Bảng công chính thức dùng cùng tập dữ liệu với Payroll.
       fetchAllRows<Attendance>((from, to) => supabase
@@ -287,6 +303,7 @@ export function AdminTimesheet() {
       supabase.from('timesheet_periods').select('id, month_start, status, locked_at').eq('month_start', monthStartStr).maybeSingle(),
       supabase.from('attendance').select('id, user_id, date, status, approved_by_lead, check_in_time, check_out_time').gte('date', monthStartStr).lte('date', monthEndStr).or('status.eq.active,approved_by_lead.eq.false,check_out_time.is.null'),
       fetchTimesheetMetrics(monthStartStr),
+      supabase.from('company_holidays').select('holiday_date').eq('is_active', true).gte('holiday_date', monthStartStr).lte('holiday_date', monthEndStr),
     ]);
 
     if (seq !== loadSeq.current) return;
@@ -312,6 +329,7 @@ export function AdminTimesheet() {
     setPeriodSupported(!periodRes.error);
     setPending((exceptionRes.data || []) as PendingRecord[]);
     setMetrics(metricMap);
+    setHolidays(new Set(holidayRes.error ? [] : ((holidayRes.data || []) as { holiday_date: string }[]).map((h) => h.holiday_date)));
     setLoading(false);
   };
 
@@ -340,6 +358,12 @@ export function AdminTimesheet() {
     () => Array.from({ length: daysInMonth }, (_, i) => [0, 6].includes(new Date(monthStart.getFullYear(), monthStart.getMonth(), i + 1).getDay())),
     [daysInMonth, monthStart],
   );
+  const holidayFlags = useMemo(
+    () => Array.from({ length: daysInMonth }, (_, i) => holidays.has(toDateString(new Date(monthStart.getFullYear(), monthStart.getMonth(), i + 1)))),
+    [daysInMonth, monthStart, holidays],
+  );
+  /** Tháng đã qua: cả tháng; tháng này: tới hôm qua; tháng sau: chưa ngày nào. */
+  const pastDays = todayIdx >= 0 ? todayIdx : monthStartStr < toDateString(startOfMonth(now)) ? daysInMonth : 0;
   const showToday = () => {
     setMonthStart(startOfMonth(new Date()));
     setPage(0);
@@ -397,6 +421,7 @@ export function AdminTimesheet() {
         missingCheckIn: false,
         onLeave: false,
         halfLeave: false,
+        halfPeriod: null,
       }));
 
       // Nghỉ phép duyệt: đánh dấu ngày thường trong khoảng đơn
@@ -407,7 +432,7 @@ export function AdminTimesheet() {
             const ds = dayStrs[i];
             if (ds >= lv.start_date && ds <= lv.end_date && !weekend[i]) {
               days[i].onLeave = true;
-              if (lv.half_day) days[i].halfLeave = true;
+              if (lv.half_day) { days[i].halfLeave = true; days[i].halfPeriod = lv.half_day_period; }
             }
           }
         }
@@ -631,7 +656,7 @@ export function AdminTimesheet() {
     const dayHeaders = Array.from({ length: daysInMonth }, (_, i) => String(i + 1));
     const sheet1: (string | number)[][] = [
       [`BẢNG CÔNG THÁNG ${monthLabel}`],
-      [`Ký hiệu: HH:mm = giờ checkout cuối ngày (ô xám: chưa check-in) · P = nghỉ phép · P/2 = nghỉ nửa ngày · ! = thiếu checkout · trống = vắng`],
+      [`Ký hiệu: HH:mm = giờ checkout cuối ngày (ô cam: chỉ có giờ vào; ô xám: chưa check-in) · P = nghỉ phép · P/2 = nghỉ nửa ngày · ô đỏ trống = vắng`],
       [],
       ['STT', 'Phòng ban', 'Mã nhân viên', 'Tên nhân viên', ...dayHeaders, 'Ngày công', 'Giờ công', 'Nghỉ phép', 'Việc xong/giao'],
       ...rows.map((r, i) => [
@@ -949,7 +974,9 @@ export function AdminTimesheet() {
                         showMetrics={!!metrics}
                         visibleDays={visibleDays}
                         weekendFlags={weekendFlags}
+                        holidayFlags={holidayFlags}
                         todayIdx={todayIdx}
+                        pastDays={pastDays}
                         standardHours={standardHoursPerDay}
                         canEdit={canEdit}
                         canManage={canManage}
@@ -980,10 +1007,11 @@ export function AdminTimesheet() {
           )}
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-slate-300 dark:border-slate-700 px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 no-print">
-            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-emerald-100 px-1 text-[11px] font-black text-emerald-800">17:30</span> checkout, đủ giờ công</span>
-            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-orange-100 px-1 text-[11px] font-black text-orange-800">15:00</span> checkout, chưa đủ giờ công</span>
+            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-emerald-300 px-1 text-[11px] font-black text-emerald-950">17:30</span> đủ công</span>
+            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-yellow-300 px-1 text-[11px] font-black text-yellow-950">15:00</span> chưa đủ giờ</span>
+            <span className="flex items-center gap-1.5"><span className="h-4 w-4 bg-red-300" /> vắng</span>
             <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-slate-300 dark:bg-slate-700 px-1 text-[11px] font-black text-slate-800 dark:text-slate-200">17:30</span> checkout nhưng chưa check-in</span>
-            <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-amber-100 text-[11px] font-black text-amber-800">!</span> thiếu checkout</span>
+            <span className="flex items-center gap-1.5"><span className="flex h-4 items-center justify-center bg-orange-400 px-1 text-[11px] font-black text-orange-950">08:00</span> chỉ có giờ vào</span>
             <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-violet-100 text-[11px] font-black text-violet-800">P</span> nghỉ phép</span>
             <span className="flex items-center gap-1.5"><span className="h-4 w-4 border border-slate-300 bg-slate-100 dark:bg-slate-800" /> cuối tuần</span>
             {metrics && <span className="text-slate-600 dark:text-slate-400">Các cột từ “OT thường” đến “Lễ” là số sẽ tự điền sang bảng lương khi khoá kỳ công.</span>}

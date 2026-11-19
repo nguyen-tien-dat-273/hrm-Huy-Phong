@@ -5,6 +5,7 @@
 import type { LeaveLedgerEntry, LeaveRequest, LeaveStatus, LeaveType } from '@/types';
 import { formatDate, toDateString } from './utils';
 import type { RequestDetail } from '@/components/ui/RequestDetailModal';
+import { SIGN_HINT_CONFIRM, STANDARD_RECIPIENTS } from '@/lib/requestForm';
 import { dayWeight, type ScheduleSet } from './workSchedule';
 
 export const LEAVE_TYPE_CONFIG: Record<LeaveType, { label: string; color: string; dot: string; paid: boolean }> = {
@@ -134,6 +135,9 @@ export function leaveRequestDetail(
 ): RequestDetail {
   const status = request.is_cancelled ? 'Đã hủy' : leaveStatusLabel(request).label;
   const name = applicant?.name ?? 'Nhân viên';
+  const halfDayNote = (r: LeaveRequest) => !r.half_day ? ''
+    : r.half_day_period === 'morning' ? ' (nghỉ sáng)'
+    : r.half_day_period === 'afternoon' ? ' (nghỉ chiều)' : ' (nửa ngày)';
   return {
     title: 'Đơn nghỉ phép',
     applicant: name,
@@ -144,7 +148,7 @@ export function leaveRequestDetail(
       { label: 'Loại nghỉ', value: LEAVE_TYPE_CONFIG[request.leave_type].label },
       { label: 'Từ ngày', value: formatDate(request.start_date) },
       { label: 'Đến ngày', value: formatDate(request.end_date) },
-      { label: 'Số ngày', value: `${Number(request.days)}${request.half_day ? ' (nửa ngày)' : ''}` },
+      { label: 'Số ngày', value: `${Number(request.days)}${halfDayNote(request)}` },
       { label: 'Lý do', value: request.reason ?? '' },
       ...(approvers.manager ? [{ label: 'Quản lý duyệt', value: approvers.manager }] : []),
       ...(approvers.final ? [{ label: 'Người chốt', value: approvers.final }] : []),
@@ -155,5 +159,23 @@ export function leaveRequestDetail(
       { role: 'Quản lý trực tiếp', name: approvers.manager, signedAt: request.manager_approved_by ? request.manager_approved_at : null },
       { role: 'Nhân sự / HR', name: approvers.final, signedAt: request.status === 'approved' ? request.approved_at : null },
     ],
+    form: {
+      title: 'ĐƠN XIN NGHỈ PHÉP',
+      department: applicant?.department,
+      recipients: STANDARD_RECIPIENTS,
+      info: [
+        { label: 'Họ và tên', value: name },
+        { label: 'Loại nghỉ', value: LEAVE_TYPE_CONFIG[request.leave_type].label },
+        { label: 'Nghỉ từ ngày', value: formatDate(request.start_date) },
+        { label: 'Đến hết ngày', value: formatDate(request.end_date) },
+        { label: 'Số ngày nghỉ', value: `${Number(request.days)}${halfDayNote(request)}` },
+      ],
+      reason: { label: 'Lý do xin nghỉ', value: request.reason ?? '' },
+      signers: [
+        { role: 'Nhân sự / HR', hint: SIGN_HINT_CONFIRM, name: approvers.final, signedAt: request.status === 'approved' ? request.approved_at : null },
+        { role: 'Quản lý trực tiếp', hint: SIGN_HINT_CONFIRM, name: approvers.manager, signedAt: request.manager_approved_by ? request.manager_approved_at : null },
+        { role: 'Người làm đơn', name },
+      ],
+    },
   };
 }

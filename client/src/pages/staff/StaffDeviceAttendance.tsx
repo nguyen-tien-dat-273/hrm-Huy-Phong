@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatDate, formatTime, getTodayString, toDateString } from '@/lib/utils';
 import { LEAVE_TYPE_CONFIG } from '@/lib/leave';
-import { EMPTY_SCHEDULES, fetchWorkSchedules, dayWeight, monthStandardDays, scheduleForDate, type ScheduleSet } from '@/lib/workSchedule';
+import { EMPTY_SCHEDULES, fetchWorkSchedules, dayWeight, monthStandardDays, scheduleForDate, halfDayWindow, type ScheduleSet } from '@/lib/workSchedule';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -304,7 +304,8 @@ export function StaffDeviceAttendance() {
         const sched = scheduleForDate(schedules, iso);
         if (sched) {
           const actualMin = timeMinutes(earliestIn);
-          const schedMin = clockMinutes(sched.start_time);
+          const win = leave?.half_day && leave.half_day_period ? halfDayWindow(sched, leave.half_day_period) : null;
+          const schedMin = win ? win.startMin : clockMinutes(sched.start_time);
           const grace = sched.grace_minutes || 0;
           const diff = actualMin - schedMin - grace;
           if (diff > 0) {
@@ -672,19 +673,16 @@ export function StaffDeviceAttendance() {
             {/* Chú thích màu sắc trên quyển lịch */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-none border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/40 px-3.5 py-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-none bg-emerald-500" /> Đủ công (1.0)
+                <span className="h-3 w-3 rounded-none bg-emerald-400" /> Đủ công
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-none bg-teal-400" /> Nửa công (0.5)
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-none bg-amber-400" /> Thiếu checkout / Chờ máy
+                <span className="h-3 w-3 rounded-none bg-yellow-400" /> Thiếu checkout / Chờ máy
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded-none bg-violet-500" /> Nghỉ phép (P)
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-none bg-rose-400" /> Vắng mặt
+                <span className="h-3 w-3 rounded-none bg-red-500" /> Vắng mặt
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-3 w-3 rounded-none border border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-800" /> Ngày nghỉ / Chủ nhật
@@ -715,29 +713,29 @@ export function StaffDeviceAttendance() {
                   let badgeEl: ReactNode = null;
 
                   if (d.statusKind === 'worked_full') {
-                    cellBg = 'bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100/70';
+                    cellBg = 'bg-emerald-200 dark:bg-emerald-900/60 hover:bg-emerald-300';
                     badgeEl = <span className="rounded-none bg-emerald-600 px-1.5 py-0.5 text-[11px] font-extrabold leading-none tabular-nums text-white">1</span>;
                   } else if (d.statusKind === 'worked_half') {
-                    cellBg = 'bg-teal-50/70 dark:bg-teal-950/30 hover:bg-teal-100/70';
+                    cellBg = 'bg-emerald-200 dark:bg-emerald-900/60 hover:bg-emerald-300';
                     badgeEl = <span className="rounded-none bg-teal-600 px-1.5 py-0.5 text-[11px] font-extrabold leading-none tabular-nums text-white">0.5</span>;
                   } else if (d.statusKind === 'missing_checkout') {
-                    cellBg = 'bg-amber-50/80 dark:bg-amber-950/40 hover:bg-amber-100/70';
+                    cellBg = 'bg-yellow-200 dark:bg-yellow-900/60 hover:bg-yellow-300';
                   } else if (d.statusKind === 'missing_checkin') {
-                    cellBg = 'bg-amber-50/60 dark:bg-amber-950/30 hover:bg-amber-100/60';
+                    cellBg = 'bg-yellow-200 dark:bg-yellow-900/60 hover:bg-yellow-300';
                     badgeEl = <span className="rounded-none bg-slate-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">Chờ máy</span>;
                   } else if (d.statusKind === 'leave') {
                     cellBg = 'bg-violet-50/80 dark:bg-violet-950/35 hover:bg-violet-100/70';
                     badgeEl = (
                       <span className="rounded-none bg-violet-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">
-                        {d.leave?.half_day ? 'P/2' : 'Phép'}
+                        {d.leave?.half_day ? (d.leave.half_day_period === 'morning' ? 'Nghỉ sáng' : d.leave.half_day_period === 'afternoon' ? 'Nghỉ chiều' : 'P/2') : 'Phép'}
                       </span>
                     );
                   } else if (d.statusKind === 'holiday') {
                     cellBg = 'bg-pink-50/70 dark:bg-pink-950/30 hover:bg-pink-100/70';
                     badgeEl = <span className="rounded-none bg-pink-600 px-1.5 py-0.5 text-[11px] font-extrabold text-white">Lễ</span>;
                   } else if (d.statusKind === 'absent') {
-                    cellBg = 'bg-rose-50/50 dark:bg-rose-950/20 hover:bg-rose-100/50';
-                    badgeEl = <span className="rounded-none bg-rose-100 dark:bg-rose-900/50 px-1.5 py-0.5 text-[11px] font-bold text-rose-700 dark:text-rose-300">Vắng</span>;
+                    cellBg = 'bg-red-200 dark:bg-red-900/60 hover:bg-red-300';
+                    badgeEl = <span className="rounded-none bg-red-600 px-1.5 py-0.5 text-[11px] font-bold text-white">Vắng</span>;
                   } else if (d.statusKind === 'off') {
                     cellBg = 'bg-slate-50/90 dark:bg-slate-800/40 hover:bg-slate-100/80';
                   }
@@ -892,7 +890,7 @@ export function StaffDeviceAttendance() {
                       {selectedDayInfo.leave && (
                         <p className="text-violet-700 dark:text-violet-300">
                           • {LEAVE_TYPE_CONFIG[selectedDayInfo.leave.leave_type]?.label}
-                          {selectedDayInfo.leave.half_day ? ' (Nửa ngày)' : ' (Cả ngày)'}
+                          {selectedDayInfo.leave.half_day ? (selectedDayInfo.leave.half_day_period === 'morning' ? ' (Nghỉ sáng)' : selectedDayInfo.leave.half_day_period === 'afternoon' ? ' (Nghỉ chiều)' : ' (Nửa ngày)') : ' (Cả ngày)'}
                         </p>
                       )}
                       {selectedDayInfo.otHoursApproved > 0 && (

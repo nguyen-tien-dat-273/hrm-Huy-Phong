@@ -143,6 +143,8 @@ export interface LeaveRequest {
   days: number;
   /** Nghỉ nửa ngày — chỉ hợp lệ khi đơn gói gọn trong một ngày. */
   half_day: boolean;
+  /** Buổi được nghỉ khi `half_day`; null khi nghỉ cả ngày. */
+  half_day_period: 'morning' | 'afternoon' | null;
   reason: string | null;
   status: LeaveStatus;
   approved_by: string | null;

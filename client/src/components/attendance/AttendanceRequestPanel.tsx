@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Check, Clock3, Eye, Plus, TriangleAlert, X } from 'lucide-react';
+import { STANDARD_RECIPIENTS, attendanceSigners, type RequestForm } from '@/lib/requestForm';
 import { RequestDetailModal, type RequestDetail } from '@/components/ui/RequestDetailModal';
 import { ITEMS_PER_PAGE, Pager, clampPage } from '@/components/payroll/Pager';
 import { Dropdown } from '@/components/ui/Dropdown';
@@ -57,6 +58,49 @@ const TYPE_LABEL: Record<RequestType, string> = {
   OT_HOLIDAY: 'OT ngày lễ',
   NIGHT_WORK: 'Làm thêm ca đêm',
 };
+
+const FORM_TITLE: Record<RequestType, string> = {
+  LATE_ARRIVAL: 'GIẤY ĐỀ NGHỊ ĐI MUỘN',
+  EARLY_LEAVE: 'GIẤY ĐỀ NGHỊ VỀ SỚM',
+  OVERTIME: 'GIẤY ĐỀ NGHỊ TĂNG CA',
+  OT_WEEKDAY: 'GIẤY ĐỀ NGHỊ TĂNG CA',
+  OT_WEEKEND: 'GIẤY ĐỀ NGHỊ TĂNG CA',
+  OT_HOLIDAY: 'GIẤY ĐỀ NGHỊ TĂNG CA',
+  NIGHT_WORK: 'GIẤY ĐỀ NGHỊ TĂNG CA',
+};
+
+/** Bố cục giấy in / Word của một đơn chấm công — đơn tăng ca theo đúng mẫu công ty. */
+function attendanceForm(row: AttendanceRequest, applicant: string, department?: string | null): RequestForm {
+  const duration = row.minutes != null ? `${row.minutes} phút` : row.hours != null ? `${Number(row.hours)} giờ` : '';
+  const base = { department, recipients: STANDARD_RECIPIENTS, signers: attendanceSigners(applicant) };
+  if (HOUR_TYPES.includes(row.request_type)) {
+    return {
+      ...base,
+      title: FORM_TITLE[row.request_type],
+      info: [
+        { label: 'Họ và tên', value: applicant },
+        { label: 'Ngày tăng ca', value: formatDate(row.work_date) },
+        { label: 'Loại tăng ca', value: TYPE_LABEL[row.request_type] },
+      ],
+      reason: { label: 'Lý do tăng ca', value: row.reason },
+      table: {
+        header: ['STT', 'Nội dung công việc', 'Thời gian\n(Từ … giờ … đến … giờ …)'],
+        widths: ['8%', '56%', '36%'],
+        rows: [['1', row.reason, duration]],
+      },
+    };
+  }
+  return {
+    ...base,
+    title: FORM_TITLE[row.request_type],
+    info: [
+      { label: 'Họ và tên', value: applicant },
+      { label: 'Ngày', value: formatDate(row.work_date) },
+      { label: row.request_type === 'LATE_ARRIVAL' ? 'Thời gian đi muộn' : 'Thời gian về sớm', value: duration },
+    ],
+    reason: { label: 'Lý do', value: row.reason },
+  };
+}
 
 /** Loại chọn được khi gửi đơn mới. "Làm thêm giờ" (OVERTIME) chỉ còn để hiện đơn cũ. */
 const SUBMIT_TYPES: RequestType[] = ['LATE_ARRIVAL', 'EARLY_LEAVE', 'OT_WEEKDAY', 'OT_WEEKEND', 'OT_HOLIDAY', 'NIGHT_WORK'];
@@ -269,6 +313,7 @@ export function AttendanceRequestPanel({ mode, square = false }: { mode: 'mine' 
         { label: 'Lý do', value: row.reason },
         ...(row.review_note ? [{ label: 'Phản hồi', value: row.review_note }] : []),
       ],
+      form: attendanceForm(row, applicant, person?.department),
     });
   };
   const rowPeople = ordered.map((row) => personOf(row.user_id));

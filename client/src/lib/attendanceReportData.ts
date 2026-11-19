@@ -13,7 +13,7 @@
 import { endOfMonth, format, getDaysInMonth, startOfMonth } from 'date-fns';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
-import { fetchWorkSchedules, scheduleForDate, dayWeight, monthStandardDays, type ScheduleSet } from '@/lib/workSchedule';
+import { fetchWorkSchedules, scheduleForDate, halfDayWindow, dayWeight, monthStandardDays, type ScheduleSet } from '@/lib/workSchedule';
 import { toDateString } from '@/lib/utils';
 import type { Attendance, LeaveRequest, LeaveType, LeaveStatus, Profile } from '@/types';
 
@@ -468,10 +468,14 @@ export async function loadAttendanceReportWorkspace(
         if (!schedule) continue;
         if (dayWeight(schedules, a.date, holidayDates) === 0) continue; // Ngày nghỉ
 
+        // Ngày nghỉ nửa buổi: đo theo buổi còn lại, không theo cả ca.
+        const halfLeave = pLeaves.find((l) => l.half_day && l.half_day_period && l.start_date <= a.date && l.end_date >= a.date);
+        const win = halfLeave?.half_day_period ? halfDayWindow(schedule, halfLeave.half_day_period) : null;
+
         // Đo đi muộn
         if (a.check_in_time) {
           const actualMin = timeMinutes(a.check_in_time);
-          const schedMin = clockMinutes(schedule.start_time);
+          const schedMin = win ? win.startMin : clockMinutes(schedule.start_time);
           const grace = schedule.grace_minutes || 0;
           const diff = actualMin - schedMin - grace;
 
@@ -520,7 +524,7 @@ export async function loadAttendanceReportWorkspace(
         // Đo về sớm
         if (a.check_out_time) {
           const actualOut = timeMinutes(a.check_out_time);
-          const schedOut = clockMinutes(schedule.end_time);
+          const schedOut = win ? win.endMin : clockMinutes(schedule.end_time);
           if (actualOut < schedOut) {
             const earlyDiff = schedOut - actualOut;
             earlyCount++;
@@ -986,12 +990,16 @@ export async function loadDailyAttendanceReport(dateStr: string): Promise<DailyA
       let lateMinutes = 0;
       let earlyMinutes = 0;
       if (schedule && weight > 0) {
+        // Nghỉ nửa ngày: giờ vào/ra chuẩn là của buổi còn lại.
+        const win = leave?.half_day && leave.half_day_period ? halfDayWindow(schedule, leave.half_day_period) : null;
+        const startMin = win ? win.startMin : clockMinutes(schedule.start_time);
+        const endMin = win ? win.endMin : clockMinutes(schedule.end_time);
         if (checkIn) {
-          const diff = timeMinutes(checkIn) - clockMinutes(schedule.start_time) - (schedule.grace_minutes || 0);
+          const diff = timeMinutes(checkIn) - startMin - (schedule.grace_minutes || 0);
           if (diff > 0) lateMinutes = diff;
         }
         if (checkOut) {
-          const diff = clockMinutes(schedule.end_time) - timeMinutes(checkOut);
+          const diff = endMin - timeMinutes(checkOut);
           if (diff > 0) earlyMinutes = diff;
         }
       }
@@ -1018,7 +1026,7 @@ export async function loadDailyAttendanceReport(dateStr: string): Promise<DailyA
         missingCheckout: !!checkIn && !checkOut,
         lateMinutes,
         earlyMinutes,
-        leaveLabel: leave ? `${LEAVE_TYPE_LABEL[leave.leave_type] ?? 'Nghỉ phép'}${leave.half_day ? ' (nửa ngày)' : ''}` : null,
+        leaveLabel: leave ? `${LEAVE_TYPE_LABEL[leave.leave_type] ?? 'Nghỉ phép'}${leave.half_day ? (leave.half_day_period === 'morning' ? ' (nghỉ sáng)' : leave.half_day_period === 'afternoon' ? ' (nghỉ chiều)' : ' (nửa ngày)') : ''}` : null,
         requests,
         otApprovedHours: Math.round(approved
           .filter((r) => OT_REQUEST_TYPES.includes(r.request_type))

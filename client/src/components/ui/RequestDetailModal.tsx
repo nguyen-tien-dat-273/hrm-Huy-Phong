@@ -1,12 +1,13 @@
 // Chi tiết một đơn từ (nghỉ phép, đi muộn, làm thêm, hủy phép…) kèm In và Xuất Excel.
 // Mọi loại đơn dùng chung hộp này: chỉ cần đưa danh sách "mục – nội dung".
 import { useState } from 'react';
-import { FileSpreadsheet, Printer } from 'lucide-react';
+import { FileSpreadsheet, FileText, Printer } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/contexts/ToastContext';
 import { exportExcel } from '@/lib/tableExport';
 import { printTables } from '@/lib/tablePrint';
+import { exportRequestFormDoc, printRequestForm, type RequestForm } from '@/lib/requestForm';
 
 export interface RequestDetail {
   /** Tên loại đơn, vd. "Đơn nghỉ phép". */
@@ -16,6 +17,8 @@ export interface RequestDetail {
   status: string;
   fields: { label: string; value: string }[];
   signers?: { role: string; name?: string | null; signedAt?: string | null }[];
+  /** Bố cục giấy khi in / xuất Word. */
+  form?: RequestForm;
 }
 
 export function RequestDetailModal({ detail, onClose }: { detail: RequestDetail | null; onClose: () => void }) {
@@ -28,6 +31,7 @@ export function RequestDetailModal({ detail, onClose }: { detail: RequestDetail 
 
   const print = async () => {
     try {
+      if (detail.form) { await printRequestForm(detail.form); return; }
       await printTables({
         title: detail.title,
         tables: [{ header: ['Mục', 'Nội dung'], rows }],
@@ -37,6 +41,10 @@ export function RequestDetailModal({ detail, onClose }: { detail: RequestDetail 
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Không in được đơn.', 'error');
     }
+  };
+
+  const word = () => {
+    if (detail.form) exportRequestFormDoc(detail.form, slug);
   };
 
   const excel = async () => {
@@ -71,6 +79,7 @@ export function RequestDetailModal({ detail, onClose }: { detail: RequestDetail 
       </dl>
       <div className="mt-5 flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={() => void excel()} disabled={busy}><FileSpreadsheet className="h-4 w-4" />Xuất Excel</Button>
+        {detail.form && <Button variant="outline" onClick={word}><FileText className="h-4 w-4" />Xuất Word</Button>}
         <Button onClick={() => void print()}><Printer className="h-4 w-4" />In đơn</Button>
       </div>
     </Modal>
