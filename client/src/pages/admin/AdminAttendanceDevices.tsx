@@ -266,7 +266,7 @@ export function AdminAttendanceDevices() {
     setBusy(false);
     if (saveError) {
       return toast(/column .* does not exist|schema cache/i.test(saveError.message || '')
-        ? 'Chưa cập nhật cơ sở dữ liệu. Chạy supabase/paste-thong-tin-ket-noi-may.sql và supabase/paste-che-do-adms.sql trên Supabase.'
+        ? 'Cơ sở dữ liệu chưa được cập nhật đủ cho tính năng này. Liên hệ người quản trị hệ thống.'
         : `Không lưu được thiết bị: ${describeDbError(saveError)}`, 'error');
     }
     closeDeviceModal();
@@ -300,7 +300,7 @@ export function AdminAttendanceDevices() {
     if (syncError) {
       // Migration chua chay thi bao dung viec can lam, dung de nguoi dung doan.
       return toast(/does not exist|schema cache/i.test(syncError.message || '')
-        ? 'Chưa bật tính năng này. Chạy supabase/paste-cap-nhat-dong-bo.sql trên Supabase.'
+        ? 'Cơ sở dữ liệu chưa được cập nhật đủ cho tính năng này. Liên hệ người quản trị hệ thống.'
         : `Không yêu cầu được đồng bộ: ${describeDbError(syncError)}`, 'error');
     }
     toast('Đã gửi lệnh. Bridge sẽ đọc máy trong vài chục giây.', 'success');
@@ -355,12 +355,8 @@ export function AdminAttendanceDevices() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-slate-900">Máy chấm công</h1>
-          <p className="mt-1 text-sm text-slate-500">Ronald Jack/ZKTeco · máy tự đẩy dữ liệu lên HRM, hoặc bridge nội bộ · qua HTTPS</p>
-        </div>
-        <div className="flex gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        <div className="flex flex-wrap gap-2">
           <AttendanceFileImport deviceId={selected?.id || ''} profiles={profiles} mappings={mappings} onImported={loadData} />
           <Button variant="outline" onClick={loadData}><RefreshCw className="h-4 w-4" />Làm mới</Button>
           <Button onClick={openCreate}><Plus className="h-4 w-4" />Thêm máy</Button>
@@ -368,14 +364,14 @@ export function AdminAttendanceDevices() {
       </div>
 
       {devices.length === 0 ? (
-        <Card><CardContent className="py-12"><EmptyState icon={<Cpu className="h-9 w-9" />} title="Chưa có máy chấm công" description="Thêm máy Ronald Jack đầu tiên rồi tạo token để máy đẩy dữ liệu lên HRM." /></CardContent></Card>
+        <Card><CardContent className="py-12"><EmptyState icon={<Cpu className="h-9 w-9" />} title="Chưa có máy chấm công" /></CardContent></Card>
       ) : (
         <>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {devices.map((device) => (
-              <button key={device.id} onClick={() => setSelectedId(device.id)} className={`min-w-56 rounded-xl border p-3 text-left transition ${selected?.id === device.id ? 'border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
+              <button key={device.id} onClick={() => setSelectedId(device.id)} className={`min-w-56 rounded-none border p-3 text-left transition ${selected?.id === device.id ? 'border-indigo-300 bg-indigo-50 ring-2 ring-indigo-100' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
                 <div className="flex items-center justify-between gap-2"><span className="font-semibold text-slate-900">{device.name}</span><StatusBadge status={device.last_sync_status} /></div>
-                <p className="mt-1 text-xs text-slate-500">{device.model || 'Chưa khai báo model'} · {device.location?.name || 'Chưa gắn địa điểm'} · {linkKindLabel(device)}</p>
+                <p className="mt-1 text-xs text-slate-600">{device.model || 'Chưa khai báo model'} · {device.location?.name || 'Chưa gắn địa điểm'} · {linkKindLabel(device)}</p>
               </button>
             ))}
           </div>
@@ -385,14 +381,14 @@ export function AdminAttendanceDevices() {
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><Wifi className="h-5 w-5 text-indigo-600" />{adms ? 'Trạng thái kết nối' : 'Trạng thái bridge'}</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="rounded-xl bg-slate-50 p-4 text-sm">
-                    <div className="flex items-center justify-between"><span className="text-slate-500">Đồng bộ gần nhất</span><strong className="text-slate-800">{selected.last_sync_at ? formatDateTime(selected.last_sync_at) : 'Chưa đồng bộ'}</strong></div>
-                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Thông báo</span><span className="max-w-64 text-right text-slate-700">{selected.last_sync_message || '—'}</span></div>
-                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">Serial</span><span className="text-slate-700">{selected.serial_number || '—'}</span></div>
-                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-500">{adms ? 'Máy báo danh' : 'Bridge báo danh'}</span><DeviceHeartbeat lastSeenAt={selected.last_seen_at} adms={adms} /></div>
+                  <div className="rounded-none bg-slate-50 p-4 text-sm">
+                    <div className="flex items-center justify-between"><span className="text-slate-600">Đồng bộ gần nhất</span><strong className="text-slate-800">{selected.last_sync_at ? formatDateTime(selected.last_sync_at) : 'Chưa đồng bộ'}</strong></div>
+                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-600">Thông báo</span><span className="max-w-64 text-right text-slate-700">{selected.last_sync_message || '—'}</span></div>
+                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-600">Serial</span><span className="text-slate-700">{selected.serial_number || '—'}</span></div>
+                    <div className="mt-2 flex items-center justify-between"><span className="text-slate-600">{adms ? 'Máy báo danh' : 'Bridge báo danh'}</span><DeviceHeartbeat lastSeenAt={selected.last_seen_at} adms={adms} /></div>
                   </div>
                   {!adms && selected.sync_requested_at && (
-                    <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+                    <div className="flex items-start gap-2 rounded-none border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
                       <Activity className="mt-0.5 h-4 w-4 shrink-0 animate-pulse" />
                       <span>Đã gửi lệnh lúc {formatDateTime(selected.sync_requested_at)} — đang chờ bridge nhận. Bridge hỏi lệnh mỗi 20 giây.</span>
                     </div>
@@ -436,30 +432,26 @@ export function AdminAttendanceDevices() {
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><TriangleAlert className="h-5 w-5 text-amber-500" />Mã chưa ánh xạ</CardTitle></CardHeader>
                 <CardContent>
-                  {unmappedCodes.length === 0 ? <p className="text-sm text-slate-500">Không có mã lỗi ánh xạ.</p> : <div className="flex flex-wrap gap-2">{unmappedCodes.map((code) => <button key={code} onClick={() => setMappingUserId(code)} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-xs font-semibold text-amber-800">{code}</button>)}</div>}
+                  {unmappedCodes.length === 0 ? <p className="text-sm text-slate-600">Không có mã lỗi ánh xạ.</p> : <div className="flex flex-wrap gap-2">{unmappedCodes.map((code) => <button key={code} onClick={() => setMappingUserId(code)} className="rounded-none border border-amber-200 bg-amber-50 px-3 py-1.5 font-mono text-xs font-semibold text-amber-800">{code}</button>)}</div>}
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader><CardTitle className="flex items-center gap-2"><Activity className="h-5 w-5 text-indigo-600" />Lịch sử đồng bộ</CardTitle></CardHeader>
                 <CardContent>
-                  {selectedRuns.length === 0 ? (
-                    adms
-                      ? <p className="text-sm text-slate-500">Chưa nhận dữ liệu lần nào từ máy. Chấm công một lần trên máy rồi bấm “Làm mới”; mã không có trong danh sách nhân viên sẽ hiện ở “Mã chưa ánh xạ”.</p>
-                      : <p className="text-sm text-slate-500">Bridge chưa đồng bộ lần nào. Bấm “Đồng bộ ngay”, hoặc chạy <code className="rounded bg-slate-100 px-1">pnpm attendance:sync</code> trên máy chạy bridge.</p>
-                  ) : (
+                  {selectedRuns.length === 0 ? null : (
                     <ul className="space-y-2">
                       {selectedRuns.slice(0, 8).map((run) => (
-                        <li key={run.id} className="rounded-xl border border-slate-200 p-3 text-sm">
+                        <li key={run.id} className="rounded-none border border-slate-200 p-3 text-sm">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-slate-500">{formatDateTime(run.started_at)}</span>
+                            <span className="text-slate-600">{formatDateTime(run.started_at)}</span>
                             <StatusBadge status={run.status === 'RUNNING' ? null : run.status} />
                           </div>
                           <p className="mt-1 text-slate-700">
                             nhận {run.received_count} · mới {run.inserted_count} · xử lý {run.processed_count}
                             {run.unmapped_count > 0 && <span className="text-amber-700"> · chưa ánh xạ {run.unmapped_count}</span>}
                           </p>
-                          {run.message && <p className={`mt-1 break-words text-xs ${run.status === 'ERROR' ? 'font-semibold text-red-700' : 'text-slate-500'}`}>{run.message}</p>}
+                          {run.message && <p className={`mt-1 break-words text-xs ${run.status === 'ERROR' ? 'font-semibold text-red-700' : 'text-slate-600'}`}>{run.message}</p>}
                         </li>
                       ))}
                     </ul>
@@ -479,7 +471,7 @@ export function AdminAttendanceDevices() {
                   </Select>
                   <Button onClick={createMapping} disabled={busy || !mappingUserId.trim() || !mappingProfileId}>Thêm</Button>
                 </div>
-                <div className="overflow-x-auto rounded-xl border-2 border-slate-400 dark:border-slate-600 shadow-sm">
+                <div className="overflow-x-auto rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
                   <table className="w-full text-sm border-collapse">
                     <thead className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-left text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
                       <tr>
@@ -496,13 +488,13 @@ export function AdminAttendanceDevices() {
                           <td className="border-l border-slate-300 dark:border-slate-700 px-4 py-3 font-black text-slate-900 dark:text-slate-100 text-sm">{mapping.profile?.name}</td>
                           <td className="border-l border-slate-300 dark:border-slate-700 px-4 py-3 font-bold text-slate-600 dark:text-slate-400 text-sm">{mapping.profile?.employee_code || '—'}</td>
                           <td className="border-l border-slate-300 dark:border-slate-700 px-3 py-3">
-                            <button onClick={() => deleteMapping(mapping.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors" aria-label="Xóa ánh xạ">
+                            <button onClick={() => deleteMapping(mapping.id)} className="rounded-none p-2 text-slate-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400 transition-colors" aria-label="Xóa ánh xạ">
                               <Trash2 className="h-4 w-4" />
                             </button>
                           </td>
                         </tr>
                       ))}
-                      {selectedMappings.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-sm font-bold text-slate-500">Mã máy trùng mã nhân viên sẽ tự nhận. Chỉ cần thêm các trường hợp khác mã.</td></tr>}
+                      {selectedMappings.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-sm font-bold text-slate-600">Mã máy trùng mã nhân viên sẽ tự nhận. Chỉ cần thêm các trường hợp khác mã.</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -518,9 +510,9 @@ export function AdminAttendanceDevices() {
           dòng. Tự ẩn khi chưa chạy migration hoặc chưa có lô nào. */}
       <AttendanceImportHistory profiles={profiles} />
 
-      <Modal open={deviceModal} onClose={closeDeviceModal} title={editingId ? 'Sửa máy chấm công' : 'Thêm máy chấm công'} size="xl">
+      <Modal open={deviceModal} onClose={closeDeviceModal} title={editingId ? 'Sửa máy' : 'Thêm máy'} size="xl">
         <div className="space-y-5">
-          <fieldset className="rounded-xl border border-slate-300 p-4 dark:border-slate-700">
+          <fieldset className="rounded-none border border-slate-300 p-4 dark:border-slate-700">
             <legend className="px-2 text-sm font-bold text-slate-700 dark:text-slate-300">Thông tin kết nối</legend>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-4">
@@ -553,11 +545,11 @@ export function AdminAttendanceDevices() {
                 </Select>}
                 <Input label="License" value={deviceForm.license} onChange={(event) => setDeviceForm({ ...deviceForm, license: event.target.value })} placeholder="1437" />
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={deviceForm.use_web_address} onChange={(event) => setDeviceForm({ ...deviceForm, use_web_address: event.target.checked })} />
+                  <input type="checkbox" className="h-4 w-4 rounded-none border-slate-300" checked={deviceForm.use_web_address} onChange={(event) => setDeviceForm({ ...deviceForm, use_web_address: event.target.checked })} />
                   Sử dụng địa chỉ web
                 </label>
                 <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  <input type="checkbox" className="h-4 w-4 rounded border-slate-300" checked={deviceForm.is_active} onChange={(event) => setDeviceForm({ ...deviceForm, is_active: event.target.checked })} />
+                  <input type="checkbox" className="h-4 w-4 rounded-none border-slate-300" checked={deviceForm.is_active} onChange={(event) => setDeviceForm({ ...deviceForm, is_active: event.target.checked })} />
                   Cho phép sử dụng
                 </label>
               </div>
@@ -567,19 +559,13 @@ export function AdminAttendanceDevices() {
             <Input label="Model" value={deviceForm.model} onChange={(event) => setDeviceForm({ ...deviceForm, model: event.target.value })} placeholder="ZMM510_TFT" />
             <Select label="Địa điểm" value={deviceForm.location_id} onChange={(event) => setDeviceForm({ ...deviceForm, location_id: event.target.value })}><option value="">Chưa gắn địa điểm</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</Select>
           </div>
-          {formAdms ? (
-            <p className="text-xs leading-5 text-slate-500">Với cách này, HRM không nối vào máy mà chính máy gọi lên HRM, nên không cần IP, Port hay Comm Key. Điều cần chính xác là <strong>Serial</strong> của máy: nó phải có trong biến ATTENDANCE_DEVICE_SERIALS trên máy chủ. Trên máy chấm công, mục Cài đặt máy chủ đám mây dùng cổng <strong>443</strong> (bật HTTPS) hoặc <strong>80</strong> (tắt HTTPS), không dùng cổng 8081 mặc định. Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng nhận dữ liệu máy này.</p>
-          ) : (
-            <p className="text-xs leading-5 text-slate-500">Bridge tự lấy IP, Port, kiểu kết nối và Comm Key từ đây ở mỗi lần đồng bộ (ô nào để trống thì dùng file cấu hình trên máy chạy bridge). Máy khai là “Vào” hoặc “Ra” thì mọi lần quét được tính theo hướng đó. Bỏ tích “Cho phép sử dụng” sẽ ngừng đồng bộ máy này.</p>
-          )}
           <div className="flex justify-end gap-2"><Button variant="outline" onClick={closeDeviceModal}>Hủy</Button><Button onClick={saveDevice} disabled={busy || !deviceForm.name.trim()}>{editingId ? 'Lưu' : 'Tạo thiết bị'}</Button></div>
         </div>
       </Modal>
 
       <Modal open={!!issuedToken} onClose={() => setIssuedToken(null)} title="Token bridge — chỉ hiển thị một lần">
         <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" /><p className="text-sm text-emerald-900">Sao chép token vào biến <code>ATTENDANCE_BRIDGE_TOKEN</code> trên máy tính bridge. Token mới hết hạn sau 90 ngày; token cũ còn hiệu lực tối đa 7 ngày để chuyển cấu hình. HRM không thể hiển thị lại token này.</p></div>
-          <div className="flex items-center gap-2 rounded-xl bg-slate-950 p-3"><code className="min-w-0 flex-1 break-all text-xs text-emerald-300">{issuedToken}</code><button onClick={() => { navigator.clipboard.writeText(issuedToken || ''); toast('Đã sao chép token.', 'success'); }} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><Clipboard className="h-4 w-4" /></button></div>
+          <div className="flex items-center gap-2 rounded-none bg-slate-950 p-3"><code className="min-w-0 flex-1 break-all text-xs text-emerald-300">{issuedToken}</code><button onClick={() => { navigator.clipboard.writeText(issuedToken || ''); toast('Đã sao chép token.', 'success'); }} className="rounded-none p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><Clipboard className="h-4 w-4" /></button></div>
           <Button className="w-full" onClick={() => setIssuedToken(null)}>Tôi đã lưu token</Button>
         </div>
       </Modal>
@@ -591,7 +577,7 @@ export function AdminAttendanceDevices() {
 // giong het nhau tren man hinh. Moc bao danh nay tach duoc hai truong hop.
 // May ADMS bao danh ~60 giay mot lan nen cung nguong 2 phut la du chac.
 function DeviceHeartbeat({ lastSeenAt, adms }: { lastSeenAt: string | null; adms: boolean }) {
-  if (!lastSeenAt) return <span className="text-slate-500">{adms ? 'Chưa thấy máy' : 'Chưa thấy bridge'}</span>;
+  if (!lastSeenAt) return <span className="text-slate-600">{adms ? 'Chưa thấy máy' : 'Chưa thấy bridge'}</span>;
   const minutes = Math.round((Date.now() - new Date(lastSeenAt).getTime()) / 60_000);
   if (minutes <= 2) return <span className="font-semibold text-emerald-700">{adms ? 'Đang kết nối' : 'Đang chạy'}</span>;
   if (minutes < 60) return <span className="font-semibold text-amber-700">{minutes} phút trước</span>;
@@ -601,7 +587,7 @@ function DeviceHeartbeat({ lastSeenAt, adms }: { lastSeenAt: string | null; adms
 function ConnectionTestResult({ test, hostname }: { test: ConnectionTest; hostname: string }) {
   if (test.phase === 'waiting') {
     return (
-      <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+      <div className="flex items-start gap-2 rounded-none border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
         <Activity className="mt-0.5 h-4 w-4 shrink-0 animate-pulse" />
         <span>Đang chờ máy báo danh ({test.seconds}/{TEST_WINDOW_SECONDS} giây). Lưu cấu hình máy chủ đám mây trên máy chấm công (khởi động lại máy nếu máy yêu cầu), máy sẽ báo danh trong vòng 1 phút.</span>
       </div>
@@ -609,23 +595,23 @@ function ConnectionTestResult({ test, hostname }: { test: ConnectionTest; hostna
   }
   if (test.phase === 'ok') {
     return (
-      <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+      <div className="flex items-start gap-2 rounded-none border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
         <span>Máy đã kết nối: báo danh lúc {test.seenAt ? formatDateTime(test.seenAt) : '—'}. Quét thử một lần rồi bấm “Làm mới” để xem lần quét về “Lịch sử đồng bộ”.</span>
       </div>
     );
   }
   return (
-    <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+    <div role="alert" className="rounded-none border border-red-200 bg-red-50 p-3 text-sm text-red-900">
       <p className="flex items-start gap-2 font-semibold"><XCircle className="mt-0.5 h-4 w-4 shrink-0" />Không kết nối được</p>
       <p className="mt-1 pl-6">{test.message}{test.checklist && (test.lastSeen
         ? ` Lần cuối thấy máy: ${formatDateTime(test.lastSeen)} — máy từng kết nối nhưng nay im lặng.`
         : ' Máy chưa từng báo danh với HRM.')}</p>
       {test.checklist && <ol className="mt-2 list-decimal space-y-1 pl-9 text-xs leading-5">
-        <li>Trên máy: Thiết lập liên kết › Cài đặt máy chủ đám mây, địa chỉ <code className="rounded bg-white/70 px-1">{hostname}</code>, bật tên miền. Cổng <strong>443</strong> khi bật HTTPS, hoặc <strong>80</strong> khi tắt HTTPS. Cổng 8081 mặc định của máy không dùng được.</li>
-        <li>Nếu bật HTTPS mà máy im lặng, thử tắt HTTPS (cổng 80), khởi động lại máy rồi bấm kiểm tra lại.</li>
-        <li>Serial khai ở đây phải trùng Serial thật của máy, và máy chủ phải có Serial đó trong biến ATTENDANCE_DEVICE_SERIALS (đổi biến xong cần triển khai lại).</li>
-        <li>Đã đủ ba điều trên mà vẫn im lặng thì nhiều khả năng máy không bắt tay được HTTPS với máy chủ này. Chuyển “Cách kết nối” sang Bridge.</li>
+        <li>Trên máy: Thiết lập liên kết › Cài đặt máy chủ đám mây, địa chỉ <code className="rounded-none bg-white/70 px-1">{hostname}</code> (bật tên miền) hoặc địa chỉ IP của máy chủ, cổng <strong>80</strong>, <strong>tắt HTTPS</strong>. Cổng 8081 mặc định của máy không dùng được.</li>
+        <li>Đổi cài đặt xong thì khởi động lại máy chấm công rồi bấm kiểm tra lại.</li>
+        <li>Serial khai ở đây phải trùng Serial thật của máy, và máy chủ phải có Serial đó trong biến ATTENDANCE_DEVICE_SERIALS (đổi biến xong cần khởi động lại HRM trên máy chủ).</li>
+        <li>Đã đủ ba điều trên mà vẫn im lặng: kiểm tra máy chấm công có ra được Internet không (mạng công ty, cổng mạng của máy). Không được nữa thì chuyển “Cách kết nối” sang Bridge.</li>
       </ol>}
     </div>
   );
@@ -634,7 +620,7 @@ function ConnectionTestResult({ test, hostname }: { test: ConnectionTest; hostna
 function InfoRow({ label, value }: { label: string; value: string | number | null | undefined }) {
   return (
     <>
-      <dt className="text-slate-500">{label}</dt>
+      <dt className="text-slate-600">{label}</dt>
       <dd className="break-words text-right font-semibold text-slate-800 dark:text-slate-200">{value === null || value === undefined || value === '' ? '—' : value}</dd>
     </>
   );

@@ -27,6 +27,8 @@ import { describeDbError } from '@/lib/dbError';
 import { hasAdminFunction } from '@/lib/permissions';
 import { formatDateTime } from '@/lib/utils';
 import type { AuditLog } from '@/types';
+import { FilterChips } from '@/components/ui/FilterChips';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 const PAGE_SIZE = 50;
 
@@ -138,6 +140,7 @@ export function AdminAudit() {
       );
     });
   }, [logs, filter, search]);
+  const pg = usePagination(shown, PAGE_SIZE_TABLE, [filter, search, limit]);
 
   if (!allowed) {
     return (
@@ -147,7 +150,7 @@ export function AdminAudit() {
             <ShieldAlert className="w-6 h-6 text-amber-500 flex-shrink-0" />
             <div>
               <p className="font-medium text-slate-800">Chỉ Quản trị viên và Ban giám đốc</p>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm text-slate-600 mt-1">
                 Nhật ký chứa thông tin lương của toàn công ty nên không mở theo quyền lẻ.
                 Hàng rào thật nằm ở database (RLS), không chỉ ở màn hình này.
               </p>
@@ -160,32 +163,11 @@ export function AdminAudit() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-        <ClipboardList className="w-5 h-5 text-slate-500 flex-shrink-0 mt-0.5" />
-        <p className="text-sm text-slate-600">
-          Ghi tự động ở tầng database — mọi thay đổi lương, quyền và cấu hình đều để lại vết,
-          kể cả khi thực hiện ngoài giao diện này. <strong>Không ai sửa hay xoá được</strong> nhật ký.
-        </p>
-      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`h-9 px-4 rounded-xl text-sm font-medium transition-colors ${
-                filter === f.key
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
-                  : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        <FilterChips value={filter} onChange={setFilter} items={FILTERS} />
         <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none" />
           <Input
             placeholder="Tìm theo nội dung hoặc tên…"
             value={search}
@@ -205,11 +187,10 @@ export function AdminAudit() {
             <EmptyState
               icon={<ClipboardList className="w-8 h-8" />}
               title="Chưa có thao tác nào được ghi"
-              description="Nhật ký sẽ có dòng đầu tiên ngay khi ai đó sửa lương, đổi quyền hoặc đổi cấu hình."
             />
           ) : (
             <div className="divide-y divide-slate-50">
-              {shown.map((log) => {
+              {pg.rows.map((log) => {
                 const cfg = ACTION_CONFIG[log.action] ?? {
                   label: log.action,
                   color: 'bg-slate-100 text-slate-700',
@@ -219,19 +200,19 @@ export function AdminAudit() {
                   <div key={log.id} className="flex flex-wrap items-start gap-2.5 px-3 py-2 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors text-xs">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                        <Badge className={`${cfg.color} text-[10px] px-1.5 py-0`}>
+                        <Badge className={`${cfg.color} text-[11px] px-1.5 py-0`}>
                           <span className="inline-flex items-center gap-1">{cfg.icon}{cfg.label}</span>
                         </Badge>
                         <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
                           {log.actor_name || 'Không rõ'}
                         </span>
                         {log.target_name && log.target_user_id !== log.actor_id && (
-                          <span className="text-[11px] text-slate-400">→ {log.target_name}</span>
+                          <span className="text-[11px] text-slate-600">→ {log.target_name}</span>
                         )}
                       </div>
                       <p className="text-xs text-slate-600 dark:text-slate-300 break-words">{log.summary}</p>
                     </div>
-                    <span className="text-[11px] text-slate-400 whitespace-nowrap">
+                    <span className="text-[11px] text-slate-600 whitespace-nowrap">
                       {formatDateTime(log.created_at)}
                     </span>
                   </div>
@@ -239,6 +220,7 @@ export function AdminAudit() {
               })}
             </div>
           )}
+            <Pagination page={pg.page} total={pg.total} size={pg.size} noun="thao tác" setPage={pg.setPage} />
         </CardContent>
       </Card>
 

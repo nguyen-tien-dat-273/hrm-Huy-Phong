@@ -15,6 +15,7 @@ import { useConfirm } from '@/contexts/ConfirmContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { displayIdentifier, isInternalEmail, validateIdentifier } from '@/lib/identity';
 import { describeDbError } from '@/lib/dbError';
+import { formatDate, formatTenure } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { PERMISSION_FUNCTIONS } from '@/config/permissionCoverage';
 import {
@@ -25,6 +26,7 @@ import {
   type AdminPermission,
 } from '@/lib/permissions';
 import type { EmploymentStatus, Profile, SystemRole } from '@/types';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 const employmentStatusOptions: Record<EmploymentStatus, string> = {
   onboarding: 'Đang tiếp nhận',
@@ -207,6 +209,7 @@ export function AdminUsers() {
     const matchesAssignment = assignmentFilter === 'all' || !user.unit_id;
     return matchesSearch && matchesDepartment && matchesAssignment;
   });
+  const pg = usePagination(filtered, PAGE_SIZE_TABLE, [search, department, assignmentFilter]);
   const unassignedCount = users.filter((user) => !user.unit_id).length;
 
   const openPayslip = (user: Profile) => {
@@ -490,8 +493,7 @@ export function AdminUsers() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-display font-bold text-slate-900">Hồ sơ nhân sự</h2>
-          <p className="text-sm text-slate-500 mt-1">Tra cứu thông tin cá nhân, tình trạng làm việc và giấy tờ ({users.length} nhân sự)</p>
+          <p className="text-sm font-semibold text-slate-900">{users.length} nhân sự</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {fullAdmin && <Button theme="admin" onClick={openCreateProfile}><Plus className="h-4 w-4" />Thêm hồ sơ nhân sự</Button>}
@@ -504,17 +506,17 @@ export function AdminUsers() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+      <div className="rounded-none border border-slate-200 bg-white p-4 shadow-card">
         <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_15rem_auto] sm:items-center">
           <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm tên, mã nhân viên, email hoặc số điện thoại" className="w-full h-11 pl-10 pr-3.5 rounded-xl border border-slate-200 bg-slate-50/60 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm tên, mã nhân viên, email hoặc số điện thoại" className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15" />
           </div>
           <Select aria-label="Lọc theo phòng ban" value={department} onChange={(event) => setDepartment(event.target.value)}>
             <option value="Tất cả">Tất cả phòng ban</option>
             {departments.map((item) => <option key={item} value={item}>{item}</option>)}
           </Select>
-          <button type="button" onClick={() => setAssignmentFilter((current) => current === 'all' ? 'unassigned' : 'all')} aria-pressed={assignmentFilter === 'unassigned'} className={`whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold border transition-colors ${assignmentFilter === 'unassigned' ? 'border-amber-500 bg-amber-500 text-white shadow-sm' : 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300'}`}>
+          <button type="button" onClick={() => setAssignmentFilter((current) => current === 'all' ? 'unassigned' : 'all')} aria-pressed={assignmentFilter === 'unassigned'} className={`whitespace-nowrap rounded-none px-3.5 py-1.5 text-xs font-semibold border transition-colors ${assignmentFilter === 'unassigned' ? 'border-amber-500 bg-amber-500 text-white shadow-sm' : 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300'}`}>
             Chưa phân công ({unassignedCount})
           </button>
         </div>
@@ -523,26 +525,29 @@ export function AdminUsers() {
       <Card>
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-10 text-center text-sm text-slate-400">Đang tải hồ sơ nhân sự…</div>
+            <div className="p-10 text-center text-sm text-slate-600">Đang tải hồ sơ nhân sự…</div>
           ) : filtered.length === 0 ? (
-            <EmptyState title="Không tìm thấy nhân sự" description="Thử đổi từ khóa hoặc bộ lọc phòng ban." />
+            <EmptyState title="Không tìm thấy nhân sự" />
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[620px] text-left text-xs">
                 <thead className="bg-[#fdf2f4] dark:bg-[#201114] text-xs uppercase tracking-wider font-black text-[#5c0f16] dark:text-[#fde8ea] border-b-2 border-[#bf1f2b] dark:border-[#e66a76] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
-                  <tr><th className="px-3 py-1.5 font-black">Nhân sự</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Phòng ban</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Điện thoại</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Tình trạng</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-1.5 text-right font-black">Hồ sơ</th></tr>
+                  <tr><th className="px-3 py-1.5 font-black">Nhân sự</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Phòng ban</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Điện thoại</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Ngày vào làm</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Thâm niên</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-2.5 py-1.5 font-black">Tình trạng</th><th className="border-l border-[#eed5d8] dark:border-[#4a1c22] px-3 py-1.5 text-right font-black">Hồ sơ</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filtered.map((user) => (
+                  {pg.rows.map((user) => (
                     <tr key={user.id} className="transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/50">
                       <td className="px-3 py-1.5">
                         <div className="min-w-0">
                           <p className="truncate text-xs font-bold text-slate-900 dark:text-slate-100">{user.name}</p>
-                          <p className="truncate text-[10px] text-slate-500">{displayIdentifier(user.email)}</p>
+                          <p className="truncate text-[11px] text-slate-600">{displayIdentifier(user.email)}</p>
                         </div>
                       </td>
                       <td className="px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">{user.department || 'Chưa phân phòng ban'}</td>
                       <td className="px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">{user.phone || '—'}</td>
+                      <td className="whitespace-nowrap px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">{formatDate(user.hire_date ?? null)}</td>
+                      <td className="whitespace-nowrap px-2.5 py-1.5 text-xs text-slate-600 dark:text-slate-300">{formatTenure(user.hire_date)}</td>
                       <td className="px-2.5 py-1.5"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${user.employment_status === 'terminated' || !user.is_active ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' : user.employment_status === 'probation' || user.employment_status === 'onboarding' ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400'}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{employmentStatusOptions[user.employment_status || 'active']}{!user.unit_id ? ' · Chưa xếp phòng ban' : ''}</span></td>
                       <td className="px-3 py-1.5 text-right"><Button size="sm" variant="outline" onClick={() => setViewingUser(user)}>Xem hồ sơ</Button></td>
                     </tr>
@@ -550,6 +555,8 @@ export function AdminUsers() {
                 </tbody>
               </table>
             </div>
+              <Pagination page={pg.page} total={pg.total} size={pg.size} noun="nhân sự" setPage={pg.setPage} />
+            </>
           )}
         </CardContent>
       </Card>
@@ -597,24 +604,6 @@ export function AdminUsers() {
             spellCheck={false}
             placeholder="nguyenvana"
           />
-          {!editingUser && (
-            <>
-              <div className="flex items-start gap-3 text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-sm leading-relaxed">
-                <AtSign className="w-4.5 h-4.5 text-slate-500 flex-shrink-0 mt-0.5" />
-                <span>
-                  Nhập <strong>tên đăng nhập</strong> nếu nhân viên không có email — không cần hộp thư thật.
-                  Nhập <strong>email thật</strong> nếu muốn liên lạc qua email sau này.
-                </span>
-              </div>
-              <div className="flex items-start gap-3 text-blue-700 bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-sm leading-relaxed">
-                <KeyRound className="w-4.5 h-4.5 text-blue-600 flex-shrink-0 mt-0.5" />
-                <span>
-                  Hệ thống sẽ tự sinh <strong>mật khẩu tạm</strong> và hiển thị một lần sau khi tạo.
-                  Nhân viên bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên.
-                </span>
-              </div>
-            </>
-          )}
           {fullAdmin ? (
             <Select
               label="Vai trò (phân quyền)"
@@ -625,11 +614,7 @@ export function AdminUsers() {
                 <option key={role.code} value={role.code}>{role.name}</option>
               ))}
             </Select>
-          ) : (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              Tài khoản được ủy quyền chỉ có thể tạo và cập nhật <strong>Nhân viên</strong>. Admin/CEO quản lý vai trò và quyền truy cập.
-            </div>
-          )}
+          ) : null}
           <Input
             label={editingUser?.unit_id ? 'Phòng ban (theo cơ cấu)' : 'Phòng ban tạm thời'}
             value={editingUser?.unit_id ? unitName(editingUser.unit_id) : form.department}
@@ -637,10 +622,8 @@ export function AdminUsers() {
             disabled={!!editingUser?.unit_id}
             placeholder="Sẽ đồng bộ sau khi gán cơ cấu"
           />
-          {!editingUser?.unit_id && <p className="-mt-2 text-xs text-slate-500">Phòng ban chính thức được lấy từ Cơ cấu tổ chức → Phân công nhân sự.</p>}
-
-          {editingUser && <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-            <div><p className="text-sm font-bold text-slate-800">Thông tin cá nhân & học vấn</p><p className="mt-0.5 text-xs text-slate-500">HR cập nhật tại một nơi; dữ liệu được dùng lại cho các nghiệp vụ nhân sự.</p></div>
+          {editingUser && <div className="space-y-4 rounded-none border border-slate-200 bg-slate-50/60 p-4">
+            <div><p className="text-sm font-bold text-slate-800">Thông tin cá nhân & học vấn</p></div>
             <div className="grid gap-4 sm:grid-cols-2"><div>
                 <Input
                   label="Mã nhân viên"
@@ -649,28 +632,23 @@ export function AdminUsers() {
                   disabled={!fullAdmin}
                   placeholder={fullAdmin ? 'Để trống nếu chưa cấp mã' : undefined}
                 />
-                {fullAdmin && <p className="mt-1.5 text-xs text-slate-500">Đặt trùng mã trên máy chấm công thì ngày công tự khớp về đúng người, khỏi khai ánh xạ.</p>}
-              </div><Input label="Số điện thoại" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /><Input label="Quê quán" value={form.hometown} onChange={(e) => setForm({ ...form, hometown: e.target.value })} /><Input label="Nơi ở hiện tại" value={form.current_address} onChange={(e) => setForm({ ...form, current_address: e.target.value })} /></div>
+                              </div><Input label="Số điện thoại" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /><Input label="Quê quán" value={form.hometown} onChange={(e) => setForm({ ...form, hometown: e.target.value })} /><Input label="Nơi ở hiện tại" value={form.current_address} onChange={(e) => setForm({ ...form, current_address: e.target.value })} /></div>
             <Input label="Địa chỉ thường trú" value={form.permanent_address} onChange={(e) => setForm({ ...form, permanent_address: e.target.value })} />
             <div className="grid gap-4 sm:grid-cols-2"><Select label="Trình độ học vấn" value={form.education_level || ''} onChange={(e) => setForm({ ...form, education_level: e.target.value as Profile['education_level'] | '' })}><option value="">Chưa cập nhật</option><option value="HIGH_SCHOOL">THPT</option><option value="VOCATIONAL">Trung cấp / Nghề</option><option value="COLLEGE">Cao đẳng</option><option value="UNIVERSITY">Đại học</option><option value="POSTGRADUATE">Sau đại học</option><option value="OTHER">Khác</option></Select><Input label="Trường / Cơ sở đào tạo" value={form.school_name} onChange={(e) => setForm({ ...form, school_name: e.target.value })} /><Input label="Chuyên ngành" value={form.major} onChange={(e) => setForm({ ...form, major: e.target.value })} /><Input label="Năm tốt nghiệp" type="number" min="1950" max="2100" value={form.graduation_year} onChange={(e) => setForm({ ...form, graduation_year: e.target.value })} /></div>
           </div>}
 
           {editingUser ? (
-            <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+            <div className="rounded-none border border-indigo-100 bg-indigo-50/60 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">Cơ cấu tổ chức & tuyến quản lý</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-600">
-                    Đây là dữ liệu dùng chung với module Cơ cấu tổ chức. Chỉnh tại một nơi để chấm công,
-                    phê duyệt và báo cáo không bị lệch dữ liệu.
-                  </p>
                 </div>
                 <Building2 className="h-5 w-5 shrink-0 text-indigo-500" />
               </div>
               <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                <div className="rounded-xl bg-white/80 p-2.5"><dt className="text-slate-400">Đơn vị</dt><dd className="mt-0.5 font-semibold text-slate-700">{unitName(editingUser.unit_id)}</dd></div>
-                <div className="rounded-xl bg-white/80 p-2.5"><dt className="text-slate-400">Vị trí</dt><dd className="mt-0.5 font-semibold text-slate-700">{positionName(editingUser.position_id)}</dd></div>
-                <div className="rounded-xl bg-white/80 p-2.5"><dt className="text-slate-400">Quản lý trực tiếp</dt><dd className="mt-0.5 font-semibold text-slate-700">{managerName(editingUser.manager_id)}</dd></div>
+                <div className="rounded-none bg-white/80 p-2.5"><dt className="text-slate-600">Đơn vị</dt><dd className="mt-0.5 font-semibold text-slate-700">{unitName(editingUser.unit_id)}</dd></div>
+                <div className="rounded-none bg-white/80 p-2.5"><dt className="text-slate-600">Vị trí</dt><dd className="mt-0.5 font-semibold text-slate-700">{positionName(editingUser.position_id)}</dd></div>
+                <div className="rounded-none bg-white/80 p-2.5"><dt className="text-slate-600">Quản lý trực tiếp</dt><dd className="mt-0.5 font-semibold text-slate-700">{managerName(editingUser.manager_id)}</dd></div>
               </dl>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 pt-3 border-t border-indigo-100">
                 <Input label="Ngày vào làm" type="date" value={form.hire_date} onChange={(event) => setForm({ ...form, hire_date: event.target.value })} />
@@ -687,12 +665,11 @@ export function AdminUsers() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+            <div className="space-y-3 rounded-none border border-indigo-100 bg-indigo-50/60 p-4">
               <div className="flex items-start gap-3">
                 <Building2 className="mt-0.5 h-5 w-5 shrink-0 text-indigo-500" />
                 <div>
                   <p className="text-sm font-semibold text-slate-800">Phân công tổ chức</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-600">Có thể khai báo ngay hoặc bổ sung sau trong Cơ cấu tổ chức. Chức danh và quản lý sẽ được lọc theo đơn vị đã chọn.</p>
                 </div>
               </div>
               <Select
@@ -773,36 +750,14 @@ export function AdminUsers() {
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Quyền vào khu quản trị
             </label>
-            <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-500">
-              Quyền hiệu lực được tổng hợp từ <strong>vai trò nghiệp vụ</strong>, <strong>mẫu quyền theo vị trí</strong> trong Cơ cấu tổ chức và quyền lẻ (nếu có). Không cần cấp trùng ở nhiều nơi.
-            </p>
             {editingUser && (
               <div className="mb-3">
                 <EffectivePermissions profile={editingUser} />
               </div>
             )}
             <StaffFunctionSummary />
-            {form.access_role_code === 'teamlead' ? (
-              <div className="flex items-start gap-3 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-sm leading-relaxed">
-                <ShieldCheck className="w-4.5 h-4.5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <span>
-                  <strong>Trưởng nhóm</strong> quản lý thành viên, giao việc và theo dõi nghỉ phép
-                  phép / ca — <strong>chỉ trong dự án được giao làm lead</strong>. Sau khi tạo, hãy vào
-                  trang <strong>Quản lý Dự án</strong> để chỉ định họ làm trưởng nhóm của dự án.
-                </span>
-              </div>
-            ) : form.access_role_code === DEPARTMENT_HEAD_ROLE_CODE ? (
-              <div className="flex items-start gap-3 text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-sm leading-relaxed">
-                <ShieldCheck className="w-4.5 h-4.5 text-amber-600 flex-shrink-0 mt-0.5" />
-                <span>
-                  <strong>Trưởng phòng</strong> duyệt ngày công, đơn từ và giao việc —{' '}
-                  <strong>chỉ cho nhân sự thuộc đơn vị mình phụ trách</strong> (và các đơn vị trực thuộc).
-                  Sau khi tạo, hãy vào <strong>Cơ cấu tổ chức</strong> để chỉ định họ làm người phụ trách
-                  của phòng; chưa chỉ định thì họ chưa thấy nhân sự nào.
-                </span>
-              </div>
-            ) : selectedAccessRole && form.access_role_code !== 'staff' ? (
-              <div className="flex items-start gap-3 text-blue-700 bg-blue-50 border border-blue-200 rounded-xl p-3.5 text-sm leading-relaxed">
+            {form.access_role_code === 'teamlead' || form.access_role_code === DEPARTMENT_HEAD_ROLE_CODE ? null : selectedAccessRole && form.access_role_code !== 'staff' ? (
+              <div className="flex items-start gap-3 text-blue-700 bg-blue-50 border border-blue-200 rounded-none p-3.5 text-sm leading-relaxed">
                 <ShieldCheck className="w-4.5 h-4.5 text-blue-600 flex-shrink-0 mt-0.5" />
                 <span>
                   Vai trò <strong>{selectedAccessRole.name}</strong> được cấp sẵn:{' '}
@@ -821,15 +776,9 @@ export function AdminUsers() {
               // mot cho khong go duoc quyen do - nguoi go tuong xong roi ma
               // thuc te van con. Gio chi con MOT cho cap: vi tri.
               <div className="space-y-3">
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-3">
+                <div className="rounded-none border border-indigo-200 bg-indigo-50/60 p-3">
                   <p className="flex items-start gap-2 text-xs leading-relaxed text-indigo-900">
                     <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-indigo-600" />
-                    <span>
-                      Quyền quản trị cấp theo <strong>vị trí</strong>, không cấp riêng cho từng
-                      tài khoản. Gán người này vào một vị trí ở{' '}
-                      <strong>Cơ cấu tổ chức → Phân công nhân sự</strong>, và đặt quyền cho vị
-                      trí đó ở <strong>Cơ cấu tổ chức → Vị trí</strong>.
-                    </span>
                   </p>
                   {editingUser && (
                     <p className="mt-2 border-t border-indigo-200/70 pt-2 text-xs text-indigo-800">
@@ -847,7 +796,7 @@ export function AdminUsers() {
                     RA cho go duoc, thay vi an di roi de no am tham cap quyen
                     ma khong man hinh nao noi toi. */}
                 {form.permissions.length > 0 && (
-                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <div className="rounded-none border border-amber-200 bg-amber-50 p-3">
                     <p className="flex items-start gap-2 text-xs leading-relaxed text-amber-900">
                       <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
                       <span>
@@ -861,22 +810,18 @@ export function AdminUsers() {
                     <button
                       type="button"
                       onClick={() => setForm({ ...form, permissions: [] })}
-                      className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
+                      className="mt-2 rounded-none border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 transition hover:bg-amber-100"
                     >
                       Gỡ hết quyền lẻ
                     </button>
                   </div>
                 )}
               </div>
-            ) : (
-              <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
-                Không cấp quyền quản trị cho tài khoản mới. Admin/CEO có thể bổ sung quyền sau.
-              </p>
-            )}
+            ) : null}
           </div>
 
           {editingUser && currentUser && editingUser.id === currentUser.id && (
-            <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3.5 text-sm leading-relaxed">
+            <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-none p-3.5 text-sm leading-relaxed">
               <ShieldAlert className="w-4.5 h-4.5 text-amber-600 flex-shrink-0 mt-0.5" />
               <span>
                 Đây là tài khoản bạn đang đăng nhập. Không thể tự đổi vai trò hoặc quyền của
@@ -900,7 +845,7 @@ export function AdminUsers() {
         title={`Cấp mật khẩu tạm - ${resetTarget?.name || ''}`}
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm leading-relaxed">
+          <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-none p-4 text-sm leading-relaxed">
             <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <div>
               <p className="font-semibold mb-0.5">Mật khẩu hiện tại sẽ bị vô hiệu ngay lập tức</p>
@@ -925,7 +870,7 @@ export function AdminUsers() {
         title={issued?.kind === 'create' ? 'Tài khoản đã được tạo' : 'Đã cấp mật khẩu tạm mới'}
       >
         <div className="space-y-4">
-          <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm leading-relaxed">
+          <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-none p-4 text-sm leading-relaxed">
             <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
             <span>
               Mật khẩu này chỉ hiển thị <strong>một lần duy nhất</strong>. Hãy copy và gửi cho{' '}
@@ -933,9 +878,9 @@ export function AdminUsers() {
             </span>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-200">
+          <div className="rounded-none border border-slate-200 bg-slate-50 divide-y divide-slate-200">
             <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <span className="text-xs font-medium text-slate-600 uppercase tracking-wider">
                 {issued && isInternalEmail(issued.email) ? 'Tên đăng nhập' : 'Email'}
               </span>
               <span className="text-sm font-medium text-slate-800 break-all">
@@ -943,7 +888,7 @@ export function AdminUsers() {
               </span>
             </div>
             <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mật khẩu tạm</span>
+              <span className="text-xs font-medium text-slate-600 uppercase tracking-wider">Mật khẩu tạm</span>
               <span className="text-base font-mono font-semibold text-slate-900 tracking-wide">
                 {issued?.tempPassword}
               </span>

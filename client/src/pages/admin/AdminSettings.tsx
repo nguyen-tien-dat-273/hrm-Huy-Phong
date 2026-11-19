@@ -48,6 +48,7 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { PERMISSION_FUNCTIONS } from '@/config/permissionCoverage';
 import { ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
+import { Tabs } from '@/components/ui/Tabs';
 import {
   Bell, CalendarCheck, CheckCircle2, Clock, Loader2, Pencil, Plus, Shield, Trash2,
 } from 'lucide-react';
@@ -86,12 +87,12 @@ function Toggle({
   return (
     <div className="flex items-center justify-between gap-4 py-2">
       <div className="flex items-center gap-3">
-        <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border ${iconTone}`}>
+        <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-none border ${iconTone}`}>
           {icon}
         </div>
         <div>
           <p className="text-sm font-medium text-slate-800">{title}</p>
-          <p className="text-xs leading-relaxed text-slate-500">{desc}</p>
+          <p className="text-xs leading-relaxed text-slate-600">{desc}</p>
         </div>
       </div>
       <label className="relative inline-flex flex-shrink-0 cursor-pointer items-center">
@@ -116,6 +117,7 @@ export function AdminSettings() {
   // Bản nháp cục bộ: người dùng chỉnh thoải mái rồi mới bấm Lưu.
   const [draft, setDraft] = useState<AppSettings>(settings);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<'org' | 'roles' | 'rules' | 'security'>('org');
   const [roles, setRoles] = useState<AccessRole[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [roleFunctionsSupported, setRoleFunctionsSupported] = useState(true);
@@ -256,7 +258,7 @@ export function AdminSettings() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 py-12 text-slate-500">
+      <div className="flex items-center gap-2 py-12 text-slate-600">
         <Loader2 className="h-5 w-5 animate-spin" />
         Đang tải cấu hình…
       </div>
@@ -265,7 +267,9 @@ export function AdminSettings() {
 
   return (
     <div className="max-w-3xl space-y-6 pb-28">
+      <Tabs items={[{ key: 'org', label: 'Tổ chức' }, { key: 'roles', label: 'Vai trò' }, { key: 'rules', label: 'Vận hành' }, { key: 'security', label: 'Bảo mật' }] as const} value={tab} onChange={setTab} />
       {/* ---------------------------------------------------------------- */}
+      {tab === 'org' && (
       <Card>
         <CardHeader>
           <CardTitle>Thông tin tổ chức</CardTitle>
@@ -277,10 +281,7 @@ export function AdminSettings() {
               value={draft.orgName}
               onChange={(e) => update({ orgName: e.target.value })}
             />
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              Hiển thị trên thanh bên và tiêu đề tab trình duyệt. Trang đăng nhập vẫn giữ tên sản
-              phẩm vì chưa đăng nhập thì chưa đọc được cấu hình.
-            </p>
+
           </div>
           <div>
             <Input
@@ -298,21 +299,17 @@ export function AdminSettings() {
               value={draft.phone}
               onChange={(e) => update({ phone: e.target.value })}
             />
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              Hai mục trên hiện ở trang <strong>Hồ sơ cá nhân</strong> và <strong>Phiếu lương</strong>{' '}
-              của nhân viên — những chỗ hệ thống bảo họ "liên hệ HR". Để trống thì khối liên hệ tự ẩn.
-            </p>
           </div>
         </CardContent>
       </Card>
+      )}
 
+      {tab === 'roles' && (
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
             <CardTitle>Vai trò nghiệp vụ</CardTitle>
-            <p className="mt-1 text-sm text-slate-500">
-              Tạo vai trò theo vị trí thực tế; nhân sự được gán vai trò sẽ kế thừa quyền tương ứng.
-            </p>
+
           </div>
           {canManageRoles && (
             <Button theme="admin" onClick={openNewRole} className="shrink-0">
@@ -322,9 +319,9 @@ export function AdminSettings() {
         </CardHeader>
         <CardContent>
           {rolesLoading ? (
-            <div className="flex items-center gap-2 py-5 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải vai trò…</div>
+            <div className="flex items-center gap-2 py-5 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" /> Đang tải vai trò…</div>
           ) : roles.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+            <p className="rounded-none border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
               Chưa có dữ liệu vai trò. Hãy chạy migration <code>system_access_roles</code> trên Supabase.
             </p>
           ) : (
@@ -339,15 +336,15 @@ export function AdminSettings() {
                         {role.is_system ? 'Mặc định hệ thống' : 'Tùy chỉnh'}
                       </Badge>
                     </div>
-                    {role.description && <p className="mt-1 text-sm text-slate-500">{role.description}</p>}
+                    {role.description && <p className="mt-1 text-sm text-slate-600">{role.description}</p>}
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {role.permissions.length === 0 ? <span className="text-xs text-slate-400">Chỉ khu nhân viên</span> : role.permissions.map((permission) => (
+                      {role.permissions.length === 0 ? <span className="text-xs text-slate-600">Chỉ khu nhân viên</span> : role.permissions.map((permission) => (
                         <span key={permission} className="rounded-full bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-600">
                           {PERMISSION_LABELS[permission as AdminPermission]?.label ?? permission}
                         </span>
                       ))}
                     </div>
-                    {(role.permissions.length > 0 || (role.function_permissions?.length || 0) > 0) && <p className="mt-2 text-[11px] text-slate-400">Bao phủ {role.permissions.reduce((total, permission) => total + (PERMISSION_FUNCTIONS[permission as AdminPermission]?.length || 0), 0)} chức năng module và {(role.function_permissions?.length || 0)} chức năng nâng cao.</p>}
+                    {(role.permissions.length > 0 || (role.function_permissions?.length || 0) > 0) && <p className="mt-2 text-[11px] text-slate-600">Bao phủ {role.permissions.reduce((total, permission) => total + (PERMISSION_FUNCTIONS[permission as AdminPermission]?.length || 0), 0)} chức năng module và {(role.function_permissions?.length || 0)} chức năng nâng cao.</p>}
                   </div>
                   {canManageRoles && (
                     <div className="flex shrink-0 gap-1">
@@ -367,7 +364,9 @@ export function AdminSettings() {
           )}
         </CardContent>
       </Card>
+      )}
 
+      {tab === 'rules' && (
       <Card>
         <CardHeader>
           <CardTitle>Quy tắc vận hành</CardTitle>
@@ -390,18 +389,20 @@ export function AdminSettings() {
           />
         </CardContent>
       </Card>
+      )}
 
       <ReminderRulesCard />
 
       {/* Bảo mật: nêu đúng cơ chế đang chạy. Trước đây chỗ này là công tắc 2FA
           giả — bật lên báo "Đã lưu" mà hệ thống không có 2FA nào cả. */}
+      {tab === 'security' && (
       <Card>
         <CardHeader>
           <CardTitle>Bảo mật</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-start gap-3">
-            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-none border border-emerald-100 bg-emerald-50 text-emerald-700">
               <Shield className="h-5 w-5" />
             </div>
             <ul className="space-y-1.5 text-sm leading-relaxed text-slate-600">
@@ -424,13 +425,14 @@ export function AdminSettings() {
                 chính mình. Phiếu đã duyệt được đóng băng, còn kỳ đang xử lý hiển thị rõ là tạm tính.
               </li>
               <li className="flex gap-2">
-                <CalendarCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
+                <CalendarCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-600" />
                 Phân quyền được thi hành ở tầng database (RLS), không chỉ ẩn nút trên giao diện.
               </li>
             </ul>
           </div>
         </CardContent>
       </Card>
+      )}
 
       <Modal open={roleModalOpen} onClose={() => setRoleModalOpen(false)} title={editingRole ? 'Chỉnh sửa vai trò' : 'Thêm vai trò nghiệp vụ'} size="lg">
         <form onSubmit={saveRole} className="space-y-4">
@@ -464,14 +466,14 @@ export function AdminSettings() {
             <div className="space-y-4">
               {PERMISSION_GROUPS.map((group) => (
                 <div key={group.label}>
-                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-400">{group.label}</p>
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">{group.label}</p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {group.permissions.map((permission) => {
                       const checked = roleForm.permissions.includes(permission);
                       return (
-                        <label key={permission} className={`flex cursor-pointer items-start gap-2.5 rounded-xl border p-3 transition-colors ${checked ? 'border-indigo-300 bg-indigo-50/60' : 'border-slate-200 hover:bg-slate-50'}`}>
-                          <input type="checkbox" checked={checked} onChange={() => toggleRolePermission(permission)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                          <span className="min-w-0"><span className="block text-sm font-medium text-slate-800">{PERMISSION_LABELS[permission].label}</span><span className="block text-xs text-slate-500">{PERMISSION_LABELS[permission].desc}</span><PermissionFunctionList permission={permission} /></span>
+                        <label key={permission} className={`flex cursor-pointer items-start gap-2.5 rounded-none border p-3 transition-colors ${checked ? 'border-indigo-300 bg-indigo-50/60' : 'border-slate-200 hover:bg-slate-50'}`}>
+                          <input type="checkbox" checked={checked} onChange={() => toggleRolePermission(permission)} className="mt-0.5 h-4 w-4 rounded-none border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                          <span className="min-w-0"><span className="block text-sm font-medium text-slate-800">{PERMISSION_LABELS[permission].label}</span><span className="block text-xs text-slate-600">{PERMISSION_LABELS[permission].desc}</span><PermissionFunctionList permission={permission} /></span>
                         </label>
                       );
                     })}

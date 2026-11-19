@@ -10,6 +10,7 @@ import { formatFileSize } from '@/lib/documents';
 import { EMPLOYEE_DOCUMENT_TYPE_LABELS } from '@/lib/employeeDocuments';
 import { supabase } from '@/lib/supabase';
 import type { EmployeeDocument, Profile } from '@/types';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 /**
  * F01.04: kho giấy tờ nhân viên. Kho hồ sơ ứng viên đã bỏ cùng luồng ứng
@@ -51,6 +52,7 @@ export function AdminDocumentRepository() {
     const employee = employeeById.get(doc.employee_id);
     return employee && (!normalized || [employee.name, employee.department, employee.employee_code, doc.title, doc.file_name, EMPLOYEE_DOCUMENT_TYPE_LABELS[doc.document_type]].some((value) => value?.toLocaleLowerCase('vi').includes(normalized)));
   });
+  const pg = usePagination(filteredDocs, PAGE_SIZE_LIST, [query]);
 
   const openFile = async (doc: EmployeeDocument, download = false) => {
     const { data, error: urlError } = await supabase.storage.from('employee-documents').createSignedUrl(doc.storage_path, 60, { download: download ? doc.file_name : false });
@@ -59,9 +61,9 @@ export function AdminDocumentRepository() {
   };
 
   return <section className="space-y-5">
-    <header><p className="text-xs font-bold uppercase tracking-[.18em] text-indigo-600">Tổ chức & nhân sự</p><h1 className="mt-1 text-2xl font-bold text-slate-900">Kho hồ sơ giấy tờ</h1><p className="mt-1 text-sm text-slate-500">Tra cứu hồ sơ và giấy tờ nhân viên theo quyền được cấp.</p></header>
-    <Card><CardContent className="flex items-center gap-3 py-4"><Search className="h-4 w-4 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm nhân viên hoặc tài liệu…" className="w-full text-sm outline-none placeholder:text-slate-400" /></CardContent></Card>
-    {error && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Không tải được một phần kho hồ sơ: {error}</div>}
-    {loading ? <p className="py-8 text-center text-sm text-slate-500">Đang tải hồ sơ…</p> : filteredDocs.length === 0 ? <EmptyState icon={<FileText className="h-7 w-7" />} title="Chưa tìm thấy tài liệu nhân viên" /> : <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><div className="divide-y divide-slate-100">{filteredDocs.map((doc) => { const employee = employeeById.get(doc.employee_id)!; return <div key={doc.id} className="flex flex-wrap items-center gap-3 p-4"><FileText className="h-5 w-5 shrink-0 text-indigo-500" /><div className="min-w-0 flex-1"><p className="font-semibold text-slate-800">{doc.title}</p><p className="mt-1 text-xs text-slate-500">{employee.name} · {employee.employee_code || 'Chưa cấp mã'} · {employee.department || 'Chưa có phòng ban'}</p><p className="mt-1 text-xs text-slate-500">{EMPLOYEE_DOCUMENT_TYPE_LABELS[doc.document_type]} · {doc.file_name} · {formatFileSize(doc.size_bytes)}</p></div>{doc.expiry_date && <Badge className="bg-amber-50 text-amber-700">Hết hạn {new Date(doc.expiry_date).toLocaleDateString('vi-VN')}</Badge>}<button title="Mở tài liệu" onClick={() => void openFile(doc)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-indigo-700"><ExternalLink className="h-4 w-4" /></button><button title="Tải tài liệu" onClick={() => void openFile(doc, true)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-indigo-700"><Download className="h-4 w-4" /></button></div>; })}</div></div>}
+        <Card><CardContent className="flex items-center gap-3 py-4"><Search className="h-4 w-4 text-slate-600" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm nhân viên hoặc tài liệu…" className="w-full text-sm outline-none placeholder:text-slate-600" /></CardContent></Card>
+    {error && <div role="alert" className="rounded-none border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Không tải được một phần kho hồ sơ: {error}</div>}
+    {loading ? <p className="py-8 text-center text-sm text-slate-600">Đang tải hồ sơ…</p> : filteredDocs.length === 0 ? <EmptyState icon={<FileText className="h-7 w-7" />} title="Chưa tìm thấy tài liệu nhân viên" /> : <div className="overflow-hidden rounded-none border border-slate-200 bg-white"><div className="divide-y divide-slate-100">{pg.rows.map((doc) => { const employee = employeeById.get(doc.employee_id)!; return <div key={doc.id} className="flex flex-wrap items-center gap-3 p-4"><FileText className="h-5 w-5 shrink-0 text-indigo-500" /><div className="min-w-0 flex-1"><p className="font-semibold text-slate-800">{doc.title}</p><p className="mt-1 text-xs text-slate-600">{employee.name} · {employee.employee_code || 'Chưa cấp mã'} · {employee.department || 'Chưa có phòng ban'}</p><p className="mt-1 text-xs text-slate-600">{EMPLOYEE_DOCUMENT_TYPE_LABELS[doc.document_type]} · {doc.file_name} · {formatFileSize(doc.size_bytes)}</p></div>{doc.expiry_date && <Badge className="bg-amber-50 text-amber-700">Hết hạn {new Date(doc.expiry_date).toLocaleDateString('vi-VN')}</Badge>}<button title="Mở tài liệu" onClick={() => void openFile(doc)} className="rounded-none p-2 text-slate-600 hover:bg-slate-100 hover:text-indigo-700"><ExternalLink className="h-4 w-4" /></button><button title="Tải tài liệu" onClick={() => void openFile(doc, true)} className="rounded-none p-2 text-slate-600 hover:bg-slate-100 hover:text-indigo-700"><Download className="h-4 w-4" /></button></div>; })}</div></div>}
+    <Pagination page={pg.page} total={pg.total} size={pg.size} noun="tài liệu" setPage={pg.setPage} />
   </section>;
 }

@@ -397,14 +397,14 @@ export function AdminProjectDetail() {
   // Lỗi tải phải phân biệt với "dự án không tồn tại" — hai nguyên nhân khác nhau.
   if (loadError) {
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl">
+      <div className="bg-white border border-slate-200 rounded-none">
         <ErrorState message={loadError} onRetry={() => id && loadData(id)} />
       </div>
     );
   }
 
   if (!project) {
-    return <EmptyState title="Không tìm thấy dự án" description="Dự án có thể đã bị xóa." />;
+    return <EmptyState title="Không tìm thấy dự án" />;
   }
 
   const availableProfiles = allProfiles.filter((p) => !members.some((m) => m.user_id === p.id));
@@ -445,7 +445,7 @@ export function AdminProjectDetail() {
 
   return (
     <div className="space-y-5">
-      <button onClick={() => navigate('/admin/projects')} className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+      <button onClick={() => navigate('/admin/projects')} className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-700 transition-colors">
         <ArrowLeft className="w-4 h-4" />
         Quay lại danh sách dự án
       </button>
@@ -461,8 +461,8 @@ export function AdminProjectDetail() {
                 {PROJECT_STATUS_CONFIG[project.status].label}
               </Badge>
             </div>
-            <p className="text-sm text-slate-500 max-w-2xl">{project.description || 'Không có mô tả'}</p>
-            <div className="flex items-center gap-4 mt-3 text-xs text-slate-500">
+            <p className="text-sm text-slate-600 max-w-2xl">{project.description || 'Không có mô tả'}</p>
+            <div className="flex items-center gap-4 mt-3 text-xs text-slate-600">
               <span className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" />{formatDate(project.start_date)} → {formatDate(project.end_date)}</span>
               <span>Khách hàng: {project.client || '—'}</span>
             </div>
@@ -487,7 +487,7 @@ export function AdminProjectDetail() {
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-all duration-200 ${
               tab === t.key
                 ? 'border-blue-500 text-blue-600 font-semibold'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-200'
+                : 'border-transparent text-slate-600 hover:text-slate-700 hover:border-slate-200'
             }`}
           >
             {t.icon && <t.icon className="w-4 h-4" />}
@@ -500,15 +500,15 @@ export function AdminProjectDetail() {
       {tab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card hover className="p-5">
-            <p className="text-sm text-slate-500 mb-1">Tổng tác vụ</p>
+            <p className="text-sm text-slate-600 mb-1">Tổng tác vụ</p>
             <p className="font-display text-3xl font-extrabold text-slate-800">{tasks.length}</p>
           </Card>
           <Card hover className="p-5">
-            <p className="text-sm text-slate-500 mb-1">Đã hoàn thành</p>
+            <p className="text-sm text-slate-600 mb-1">Đã hoàn thành</p>
             <p className="font-display text-3xl font-extrabold text-emerald-600">{tasks.filter((t) => t.status === 'done').length}</p>
           </Card>
 	          <Card hover className="p-5">
-	            <p className="text-sm text-slate-500 mb-1">Thành viên</p>
+	            <p className="text-sm text-slate-600 mb-1">Thành viên</p>
 	            <p className="font-display text-3xl font-extrabold text-slate-800">{members.length}</p>
 	          </Card>
 
@@ -522,16 +522,16 @@ export function AdminProjectDetail() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {milestones.length === 0 ? (
-                  <div className="md:col-span-2 text-sm text-slate-400 italic py-8 border border-dashed border-slate-200 rounded-2xl text-center bg-slate-50/50">
+                  <div className="md:col-span-2 text-sm text-slate-600 italic py-8 border border-dashed border-slate-200 rounded-none text-center bg-slate-50/50">
                     Chưa thiết lập mốc quan trọng (Tác vụ mức Cao/Khẩn cấp)
                   </div>
                 ) : (
                   milestones.map(m => (
-                    <div key={m.id} className="flex items-center gap-4 p-4 bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+                    <div key={m.id} className="flex items-center gap-4 p-4 bg-white border border-slate-100 rounded-none shadow-sm hover:shadow-md transition-all group">
                       <div className={`w-1.5 h-12 rounded-full ${m.status === 'done' ? 'bg-emerald-500' : 'bg-orange-500'} group-hover:scale-y-110 transition-transform`} />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-slate-800 truncate">{m.title}</p>
-                        <p className="text-xs text-slate-500 mt-1">Hạn chót: {formatDate(m.due_date)}</p>
+                        <p className="text-xs text-slate-600 mt-1">Hạn chót: {formatDate(m.due_date)}</p>
                       </div>
                       <Badge className={TASK_STATUSES.find(s => s.value === m.status)?.color}>
                         {TASK_STATUSES.find(s => s.value === m.status)?.label}
@@ -561,7 +561,7 @@ export function AdminProjectDetail() {
 	            </Button>
 	          </div>
 	          {tasks.length === 0 ? (
-	            <Card><EmptyState title="Chưa có tác vụ" description="Tạo tác vụ đầu tiên cho dự án này." /></Card>
+	            <Card><EmptyState title="Chưa có tác vụ" /></Card>
 	          ) : (
 	            <div className="space-y-2">
 	              {tasks.map((task) => {
@@ -579,7 +579,7 @@ export function AdminProjectDetail() {
 	                          </Badge>
 	                          <Badge className={priority.color}>{priority.label}</Badge>
 	                          {task.due_date && (
-	                            <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-slate-400'}`}>
+	                            <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-slate-600'}`}>
 	                              Hạn: {formatDate(task.due_date)}
 	                            </span>
 	                          )}
@@ -592,7 +592,7 @@ export function AdminProjectDetail() {
 	                            const over = ratio !== null && ratio > 100;
 	                            return (
 	                              <span
-	                                className={`text-xs font-medium ${over ? 'text-red-600' : 'text-slate-500'}`}
+	                                className={`text-xs font-medium ${over ? 'text-red-600' : 'text-slate-600'}`}
 	                                title={task.estimated_hours ? `Ước lượng ${formatWorkHours(Number(task.estimated_hours))}` : 'Chưa có ước lượng'}
 	                              >
 	                                {formatWorkHours(actual)}
@@ -604,7 +604,7 @@ export function AdminProjectDetail() {
 	                          {assignee && (
 	                            <div className="flex items-center gap-1.5">
 	                              <Avatar name={assignee.name} url={assignee.avatar_url} size="sm" />
-	                              <span className="text-xs text-slate-500">{assignee.name}</span>
+	                              <span className="text-xs text-slate-600">{assignee.name}</span>
 	                            </div>
 	                          )}
 	                        </div>
@@ -623,14 +623,14 @@ export function AdminProjectDetail() {
 	                        <button
 	                          onClick={() => openEditTask(task)}
 	                          title="Sửa tác vụ"
-	                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+	                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
 	                        >
 	                          <Edit3 className="w-4 h-4" />
 	                        </button>
 	                        <button
 	                          onClick={() => handleDeleteTask(task)}
 	                          title="Xóa tác vụ"
-	                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+	                          className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors"
 	                        >
 	                          <Trash2 className="w-4 h-4" />
 	                        </button>
@@ -666,11 +666,11 @@ export function AdminProjectDetail() {
                   <div
                     key={column.value}
                     id={column.value}
-                    className="bg-slate-50 rounded-2xl p-3 min-h-[500px] flex flex-col border border-slate-200/50 w-[85vw] flex-shrink-0 md:w-auto md:flex-shrink"
+                    className="bg-slate-50 rounded-none p-3 min-h-[500px] flex flex-col border border-slate-200/50 w-[85vw] flex-shrink-0 md:w-auto md:flex-shrink"
                   >
-                    <div className={`flex items-center justify-between mb-3 px-1 border-t-4 ${column.accent} rounded-t-lg pt-2`}>
+                    <div className={`flex items-center justify-between mb-3 px-1 border-t-4 ${column.accent} rounded-t-none pt-2`}>
                       <h3 className="text-sm font-bold text-slate-700">{column.label}</h3>
-                      <span className="text-xs font-bold text-slate-500 bg-white px-2.5 py-0.5 rounded-full shadow-sm">
+                      <span className="text-xs font-bold text-slate-600 bg-white px-2.5 py-0.5 rounded-full shadow-sm">
                         {columnTasks.length}
                       </span>
                     </div>
@@ -701,7 +701,7 @@ export function AdminProjectDetail() {
 
             <DragOverlay>
               {activeTaskId ? (
-                <div className="bg-white p-4 rounded-xl shadow-2xl border-2 border-blue-500 opacity-90 w-72 rotate-3">
+                <div className="bg-white p-4 rounded-none shadow-2xl border-2 border-blue-500 opacity-90 w-72 rotate-3">
                   <p className="text-sm font-bold text-slate-800">{tasks.find(t => t.id === activeTaskId)?.title}</p>
                 </div>
               ) : null}
@@ -736,7 +736,7 @@ export function AdminProjectDetail() {
             </div>
           )}
           {members.length === 0 ? (
-            <Card><EmptyState title="Chưa có thành viên" description="Thêm thành viên để phân công công việc." /></Card>
+            <Card><EmptyState title="Chưa có thành viên" /></Card>
           ) : (
             <Card>
               <CardContent className="p-0">
@@ -746,7 +746,7 @@ export function AdminProjectDetail() {
                       <Avatar name={m.profile?.name || ''} url={m.profile?.avatar_url} size="md" />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">{m.profile?.name}</p>
-                        <p className="text-xs text-slate-500">{m.profile?.employee_code || m.profile?.department || 'Thành viên dự án'}</p>
+                        <p className="text-xs text-slate-600">{m.profile?.employee_code || m.profile?.department || 'Thành viên dự án'}</p>
                       </div>
                       <Badge className={getMemberRoleView(m).color}>
                         {getMemberRoleView(m).label}
@@ -756,14 +756,14 @@ export function AdminProjectDetail() {
                           <button
                             onClick={() => openEditMember(m)}
                             title="Sửa vai trò"
-                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleRemoveMember(m.id)}
                             title="Xóa thành viên"
-                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -832,12 +832,6 @@ export function AdminProjectDetail() {
               onChange={(e) => setTaskForm({ ...taskForm, due_date: e.target.value })}
             />
           </div>
-          {!editingTask && <p className="-mt-2 text-xs text-slate-500">Deadline nhập theo ngày dd/MM/yyyy, áp dụng đến 23:59 GMT+7.</p>}
-          {editingTask && (
-            <p className="text-xs text-slate-500">
-              Muốn đổi hạn chót, người được giao gửi yêu cầu gia hạn. Project lead duyệt trong tab Tác vụ.
-            </p>
-          )}
           <Select
             label="Mức ưu tiên"
             value={taskForm.priority}
@@ -874,9 +868,9 @@ export function AdminProjectDetail() {
             </Select>
           )}
           {editingMember && (
-            <div className="p-3 rounded-lg bg-slate-50">
+            <div className="p-3 rounded-none bg-slate-50">
               <p className="text-sm font-medium text-slate-800">{editingMember.profile?.name}</p>
-              <p className="text-xs text-slate-500">{editingMember.profile?.employee_code || editingMember.profile?.department || 'Thành viên dự án'}</p>
+              <p className="text-xs text-slate-600">{editingMember.profile?.employee_code || editingMember.profile?.department || 'Thành viên dự án'}</p>
             </div>
           )}
           <Select
@@ -917,18 +911,18 @@ function SortableTaskItem({ task, assignee, canMove, onEdit, onDelete, review }:
     <div
       ref={setNodeRef}
       style={style}
-      className={`bg-white p-3 rounded-xl border border-slate-200 shadow-sm group ${isDragging ? 'z-50 opacity-50 shadow-2xl' : 'hover:shadow-md'}`}
+      className={`bg-white p-3 rounded-none border border-slate-200 shadow-sm group ${isDragging ? 'z-50 opacity-50 shadow-2xl' : 'hover:shadow-md'}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div {...attributes} {...listeners} className="mt-1 cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500">
+        <div {...attributes} {...listeners} className="mt-1 cursor-grab active:cursor-grabbing text-slate-600 hover:text-slate-600">
           <GripVertical className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-slate-800 leading-tight mb-2">{task.title}</p>
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className={`text-[10px] px-1.5 py-0 ${priority.color}`}>{priority.label}</Badge>
+            <Badge className={`text-[11px] px-1.5 py-0 ${priority.color}`}>{priority.label}</Badge>
             {task.due_date && (
-              <span className={`text-[10px] flex items-center gap-1 ${isOverdue(task.due_date, task.status) ? 'text-red-500 font-bold' : 'text-slate-400'}`}>
+              <span className={`text-[11px] flex items-center gap-1 ${isOverdue(task.due_date, task.status) ? 'text-red-500 font-bold' : 'text-slate-600'}`}>
                 <Clock className="w-3 h-3" /> {formatDate(task.due_date)}
               </span>
             )}
@@ -936,14 +930,14 @@ function SortableTaskItem({ task, assignee, canMove, onEdit, onDelete, review }:
           {assignee && (
             <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-50">
               <Avatar name={assignee.name} url={assignee.avatar_url} size="xs" />
-              <span className="text-[10px] text-slate-500 truncate">{assignee.name}</span>
+              <span className="text-[11px] text-slate-600 truncate">{assignee.name}</span>
             </div>
           )}
           {review && (
             <button
               type="button"
               onClick={review.open}
-              className={`mt-2 w-full rounded-lg px-2 py-1.5 text-xs font-semibold transition-colors ${
+              className={`mt-2 w-full rounded-none px-2 py-1.5 text-xs font-semibold transition-colors ${
                 review.mine
                   ? 'bg-amber-500 text-white hover:bg-amber-600'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -955,8 +949,8 @@ function SortableTaskItem({ task, assignee, canMove, onEdit, onDelete, review }:
         </div>
       </div>
       {(onEdit || onDelete) && <div className="flex justify-end gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-        {onEdit && <button onClick={onEdit} className="p-1 text-slate-400 hover:text-blue-600"><Edit3 className="w-3.5 h-3.5" /></button>}
-        {onDelete && <button onClick={onDelete} className="p-1 text-slate-400 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}
+        {onEdit && <button onClick={onEdit} className="p-1 text-slate-600 hover:text-blue-600"><Edit3 className="w-3.5 h-3.5" /></button>}
+        {onDelete && <button onClick={onDelete} className="p-1 text-slate-600 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>}
       </div>}
     </div>
   );

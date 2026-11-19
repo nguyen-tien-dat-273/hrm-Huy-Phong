@@ -28,6 +28,7 @@ import {
 import { AttendanceDailyReport } from '@/components/attendance/AttendanceDailyReport';
 import { EmployeeAttendanceModal } from '@/components/attendance/EmployeeAttendanceModal';
 import type { ExportOptions } from '@/lib/tableExport';
+import { Tabs } from '@/components/ui/Tabs';
 
 type TabKey = 'charts' | 'summary' | 'daily';
 
@@ -252,9 +253,6 @@ export function AdminAttendanceReports() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3 dark:border-slate-800 no-print">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100 uppercase">
-              Báo cáo công & Chuyên cần
-            </h1>
             <span
               className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${
                 data.periodStatus === 'LOCKED'
@@ -267,7 +265,7 @@ export function AdminAttendanceReports() {
               {data.periodStatus === 'LOCKED' ? 'Kỳ đã khóa' : data.periodStatus === 'REVIEW' ? 'Đang đối soát' : 'Đang mở'}
             </span>
           </div>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">
             Tổng hợp dữ liệu công, giờ làm, chuyên cần, OT và nghỉ phép tháng {data.monthLabel}.
           </p>
         </div>
@@ -285,7 +283,7 @@ export function AdminAttendanceReports() {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {/* Thẻ 1: Tổng ngày công */}
           <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
               <span className="font-semibold uppercase tracking-wider text-[11px]">Tổng ngày công</span>
               <CalendarDays className="h-3.5 w-3.5 text-indigo-600" />
             </div>
@@ -293,22 +291,22 @@ export function AdminAttendanceReports() {
               <span className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 {data.totalWorkDays}
               </span>
-              <span className="text-xs text-slate-400">công</span>
+              <span className="text-xs text-slate-600">công</span>
             </div>
-            <div className="mt-1.5 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-1.5 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
               <span>TB: <strong className="text-slate-700 dark:text-slate-200">{data.avgWorkDays}</strong> / {data.standardDays}d</span>
               <span className="font-semibold text-indigo-600 dark:text-indigo-400">
                 {data.standardDays > 0 ? Math.round((data.avgWorkDays / data.standardDays) * 100) : 0}%
               </span>
             </div>
-            <div className="mt-1 text-[11px] text-slate-400">
+            <div className="mt-1 text-[11px] text-slate-600">
               Tổng giờ làm: {data.totalWorkHours}h
             </div>
           </div>
 
           {/* Thẻ 2: Đi muộn & Về sớm */}
           <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
               <span className="font-semibold uppercase tracking-wider text-[11px]">Đi muộn & Về sớm</span>
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
             </div>
@@ -316,19 +314,19 @@ export function AdminAttendanceReports() {
               <span className={`text-xl font-bold ${data.totalLateIncidents > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}`}>
                 {data.totalLateIncidents}
               </span>
-              <span className="text-xs text-slate-400">lượt ({data.totalLateMinutes}p)</span>
+              <span className="text-xs text-slate-600">lượt ({data.totalLateMinutes}p)</span>
             </div>
-            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
               {data.lateExcusedCount} có phép · <strong className="text-red-600 dark:text-red-400">{data.lateUnexcusedCount} vi phạm</strong>
             </div>
-            <div className="mt-1 text-[11px] text-slate-400">
+            <div className="mt-1 text-[11px] text-slate-600">
               {data.lateAfterCutoffCount > 0 ? `${data.lateAfterCutoffCount} lượt sau 9h` : '0 lượt vào sau 9h'}
             </div>
           </div>
 
           {/* Thẻ 3: Làm thêm giờ OT */}
           <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
               <span className="font-semibold uppercase tracking-wider text-[11px]">Làm thêm giờ (OT)</span>
               <Flame className="h-3.5 w-3.5 text-orange-600" />
             </div>
@@ -336,19 +334,19 @@ export function AdminAttendanceReports() {
               <span className={`text-xl font-bold ${data.totalOtHours > 0 ? 'text-orange-600 dark:text-orange-400' : 'text-slate-900 dark:text-slate-100'}`}>
                 {data.totalOtHours}
               </span>
-              <span className="text-xs text-slate-400">giờ</span>
+              <span className="text-xs text-slate-600">giờ</span>
             </div>
-            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
               {data.employeesWithOt} nhân sự · {data.approvedOtHours}h đã duyệt
             </div>
-            <div className="mt-1 text-[11px] text-slate-400">
+            <div className="mt-1 text-[11px] text-slate-600">
               {data.otHoursWeekday}h ngày (150%) · {data.otHoursWeekend}h nghỉ (200%)
             </div>
           </div>
 
           {/* Thẻ 4: Nghỉ phép & Vắng mặt */}
           <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
               <span className="font-semibold uppercase tracking-wider text-[11px]">Nghỉ phép</span>
               <Briefcase className="h-3.5 w-3.5 text-violet-600" />
             </div>
@@ -356,19 +354,19 @@ export function AdminAttendanceReports() {
               <span className="text-xl font-bold text-slate-900 dark:text-slate-100">
                 {data.totalLeaveDays}
               </span>
-              <span className="text-xs text-slate-400">ngày</span>
+              <span className="text-xs text-slate-600">ngày</span>
             </div>
-            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
               {data.employeesWithLeave} người nghỉ · {data.leaveDaysAnnual} phép năm
             </div>
-            <div className="mt-1 text-[11px] text-slate-400">
+            <div className="mt-1 text-[11px] text-slate-600">
               Ốm: {data.leaveDaysSick}d · Không lương: {data.leaveDaysUnpaid}d
             </div>
           </div>
 
           {/* Thẻ 5: Tỷ lệ đúng giờ */}
           <div className="border border-slate-200 bg-white p-3.5 dark:border-slate-800 dark:bg-slate-900 rounded-none shadow-2xs">
-            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
               <span className="font-semibold uppercase tracking-wider text-[11px]">Tỷ lệ đúng giờ</span>
               <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
             </div>
@@ -377,40 +375,17 @@ export function AdminAttendanceReports() {
                 {data.avgPunctualityRate}%
               </span>
             </div>
-            <div className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="mt-1.5 text-xs text-slate-600 dark:text-slate-400">
               {data.countExcellent} Xuất sắc · {data.countGood} Tốt · <strong className="text-red-600 dark:text-red-400">{data.countWarning} Lưu ý</strong>
             </div>
-            <div className="mt-1 text-[11px] text-slate-400">
+            <div className="mt-1 text-[11px] text-slate-600">
               Quên checkout: {data.totalMissingCheckouts} lần
             </div>
           </div>
         </div>
       )}
 
-      {/* Tabs chuyển đổi: Biểu đồ trước, Bảng tổng hợp công sau - Style vuông vức */}
-      <div className="flex border-b border-slate-200 dark:border-slate-800 no-print" role="tablist">
-        {TAB_ITEMS.map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setActiveTab(tab.key)}
-              className={`inline-flex shrink-0 items-center gap-2 border-b-2 -mb-px px-5 py-3 text-xs font-bold uppercase tracking-wider transition-colors rounded-none ${
-                isActive
-                  ? 'border-indigo-600 bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs font-extrabold'
-                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <Tabs items={TAB_ITEMS} value={activeTab} onChange={setActiveTab} />
 
       {/* TAB 1: BIỂU ĐỒ & PHÂN TÍCH (AUTO-PICKED / HIỂN THỊ ĐẦU TIÊN) */}
       {activeTab === 'charts' && (
@@ -419,7 +394,7 @@ export function AdminAttendanceReports() {
           <div className="border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 rounded-none p-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
-                Thống kê có mặt & Đi muộn theo ngày trong tháng {data.monthLabel}
+                Có mặt và đi muộn
               </h3>
               <div className="flex items-center gap-4 text-xs">
                 <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
@@ -476,25 +451,25 @@ export function AdminAttendanceReports() {
               <div className="flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <Clock className="h-4 w-4 text-orange-600" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
-                  Làm thêm giờ (OT) nhiều nhất
+                  OT nhiều nhất
                 </h3>
               </div>
               <div className="mt-2 divide-y divide-slate-100 dark:divide-slate-800/60 max-h-[380px] overflow-y-auto">
                 {topOtEmployees.length === 0 ? (
-                  <p className="py-6 text-center text-xs text-slate-400">Không có nhân sự nào làm thêm trong tháng.</p>
+                  <p className="py-6 text-center text-xs text-slate-600">Không có nhân sự nào làm thêm trong tháng.</p>
                 ) : (
                   topOtEmployees.map((r) => (
                     <div key={r.profile.id} className="flex items-center justify-between py-1.5">
                       <div className="min-w-0 pr-2">
                         <p className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{r.profile.name}</p>
-                        <p className="text-[10px] text-slate-400 truncate">{r.profile.department || '—'}</p>
+                        <p className="text-[11px] text-slate-600 truncate">{r.profile.department || '—'}</p>
                       </div>
 
                       <div className="text-right flex-shrink-0">
                         <span className="font-mono text-xs font-bold text-orange-600 dark:text-orange-400">
                           +{r.otHoursTotal}h
                         </span>
-                        <p className="text-[10px] text-slate-400">{r.otCount} lượt OT</p>
+                        <p className="text-[11px] text-slate-600">{r.otCount} lượt OT</p>
                       </div>
                     </div>
                   ))
@@ -518,14 +493,14 @@ export function AdminAttendanceReports() {
                     <div key={r.profile.id} className="flex items-center justify-between py-1.5">
                       <div className="min-w-0 pr-2">
                         <p className="font-bold text-xs text-slate-800 dark:text-slate-100 truncate">{r.profile.name}</p>
-                        <p className="text-[10px] text-slate-400 truncate">{r.profile.department || '—'}</p>
+                        <p className="text-[11px] text-slate-600 truncate">{r.profile.department || '—'}</p>
                       </div>
 
                       <div className="text-right flex-shrink-0">
                         <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400">
                           {r.lateCount} lần ({r.lateMinutes}p)
                         </span>
-                        <p className="text-[10px] text-slate-400">
+                        <p className="text-[11px] text-slate-600">
                           {r.lateUnexcusedCount > 0 ? `${r.lateUnexcusedCount} vi phạm` : 'Có phép'}
                         </p>
                       </div>
@@ -547,13 +522,13 @@ export function AdminAttendanceReports() {
           <div className="flex flex-wrap items-center justify-between gap-2.5 border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 rounded-none no-print">
             <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-full sm:w-60">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-600" />
                 <input
                   type="text"
                   placeholder="Tìm theo tên hoặc mã NV…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-8 w-full border border-slate-200 bg-white pl-8 pr-2.5 text-xs outline-none focus:border-indigo-500 rounded-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  className="h-9 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
                 />
               </div>
 
@@ -587,7 +562,7 @@ export function AdminAttendanceReports() {
               </div>
             </div>
 
-            <div className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="text-xs text-slate-600 dark:text-slate-400">
               Tổng số: <strong>{filteredRollups.length}</strong> / {data.rollups.length} nhân sự
             </div>
           </div>
@@ -596,10 +571,9 @@ export function AdminAttendanceReports() {
           {filteredRollups.length === 0 ? (
             <EmptyState
               title="Không tìm thấy nhân sự nào"
-              description="Hãy thử đổi từ khóa tìm kiếm hoặc bỏ bớt các tiêu chí lọc."
             />
           ) : (
-            <div className="border-2 border-slate-400 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-xl overflow-hidden shadow-sm">
+            <div className="border-2 border-slate-400 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-none overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">
@@ -610,7 +584,7 @@ export function AdminAttendanceReports() {
                       >
                         <div className="flex items-center gap-1">
                           <span>Nhân viên</span>
-                          <ArrowUpDown className="h-3 w-3 text-slate-400" />
+                          <ArrowUpDown className="h-3 w-3 text-slate-600" />
                         </div>
                       </th>
                       <th
@@ -619,7 +593,7 @@ export function AdminAttendanceReports() {
                       >
                         <div className="flex items-center justify-center gap-1">
                           <span>Ngày công</span>
-                          <ArrowUpDown className="h-3 w-3 text-slate-400" />
+                          <ArrowUpDown className="h-3 w-3 text-slate-600" />
                         </div>
                       </th>
                       <th
@@ -628,7 +602,7 @@ export function AdminAttendanceReports() {
                       >
                         <div className="flex items-center justify-end gap-1">
                           <span>Tổng giờ</span>
-                          <ArrowUpDown className="h-3 w-3 text-slate-400" />
+                          <ArrowUpDown className="h-3 w-3 text-slate-600" />
                         </div>
                       </th>
                       <th
@@ -637,7 +611,7 @@ export function AdminAttendanceReports() {
                       >
                         <div className="flex items-center justify-center gap-1">
                           <span>Đi muộn</span>
-                          <ArrowUpDown className="h-3 w-3 text-slate-400" />
+                          <ArrowUpDown className="h-3 w-3 text-slate-600" />
                         </div>
                       </th>
                       <th
@@ -646,7 +620,7 @@ export function AdminAttendanceReports() {
                       >
                         <div className="flex items-center justify-center gap-1">
                           <span>Làm thêm (OT)</span>
-                          <ArrowUpDown className="h-3 w-3 text-slate-400" />
+                          <ArrowUpDown className="h-3 w-3 text-slate-600" />
                         </div>
                       </th>
                       <th
@@ -655,7 +629,7 @@ export function AdminAttendanceReports() {
                       >
                         <div className="flex items-center justify-center gap-1">
                           <span>Nghỉ phép</span>
-                          <ArrowUpDown className="h-3 w-3 text-slate-400" />
+                          <ArrowUpDown className="h-3 w-3 text-slate-600" />
                         </div>
                       </th>
                       <th className="px-2 py-1.5 text-center">Quên checkout</th>
@@ -665,7 +639,7 @@ export function AdminAttendanceReports() {
                       >
                         <div className="flex items-center justify-center gap-1">
                           <span>Đúng giờ</span>
-                          <ArrowUpDown className="h-3 w-3 text-slate-400" />
+                          <ArrowUpDown className="h-3 w-3 text-slate-600" />
                         </div>
                       </th>
                       <th className="px-2 py-1.5 text-center">Kỷ luật</th>
@@ -688,12 +662,12 @@ export function AdminAttendanceReports() {
                                   {r.profile.name}
                                 </p>
                                 {r.profile.employee_code && (
-                                  <span className="border border-slate-300 bg-slate-100 px-1 py-0 font-mono text-[10px] font-bold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 rounded">
+                                  <span className="border border-slate-300 bg-slate-100 px-1 py-0 font-mono text-[11px] font-bold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 rounded-none">
                                     {r.profile.employee_code}
                                   </span>
                                 )}
                               </div>
-                              <p className="truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                              <p className="truncate text-[11px] font-medium text-slate-600 dark:text-slate-400">
                                 {r.profile.department || '—'}
                               </p>
                             </div>
@@ -704,7 +678,7 @@ export function AdminAttendanceReports() {
                             <div className="inline-flex flex-col items-center">
                               <div className="flex items-baseline gap-1 font-mono font-black text-xs text-slate-900 dark:text-slate-100">
                                 <span>{r.workDays}</span>
-                                <span className="text-[10px] text-slate-400">/ {r.standardDays}</span>
+                                <span className="text-[11px] text-slate-600">/ {r.standardDays}</span>
                               </div>
                               <div className="h-1.5 w-12 overflow-hidden bg-slate-200 dark:bg-slate-700 rounded-full mt-0.5">
                                 <div
@@ -734,13 +708,13 @@ export function AdminAttendanceReports() {
                                   {r.lateCount} lần ({r.lateMinutes}p)
                                 </span>
                                 {r.lateAfterCutoffCount > 0 && (
-                                  <span className="mt-0.5 text-[10px] font-black text-red-600 dark:text-red-400">
+                                  <span className="mt-0.5 text-[11px] font-black text-red-600 dark:text-red-400">
                                     {r.lateAfterCutoffCount} sau 9h
                                   </span>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
+                              <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>
                             )}
                           </td>
 
@@ -751,7 +725,7 @@ export function AdminAttendanceReports() {
                                 +{r.otHoursTotal}h
                               </span>
                             ) : (
-                              <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
+                              <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>
                             )}
                           </td>
 
@@ -763,13 +737,13 @@ export function AdminAttendanceReports() {
                                   {r.leaveDaysTotal}d
                                 </span>
                                 {r.leaveDaysUnpaid > 0 && (
-                                  <span className="mt-0.5 text-[10px] font-bold text-slate-500">
+                                  <span className="mt-0.5 text-[11px] font-bold text-slate-600">
                                     ({r.leaveDaysUnpaid}d ko lương)
                                   </span>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-slate-400 dark:text-slate-500 font-bold">—</span>
+                              <span className="text-slate-600 dark:text-slate-400 font-bold">—</span>
                             )}
                           </td>
 
@@ -780,7 +754,7 @@ export function AdminAttendanceReports() {
                                 {r.missingCheckoutCount}
                               </span>
                             ) : (
-                              <span className="text-slate-400 dark:text-slate-500 font-bold">0</span>
+                              <span className="text-slate-600 dark:text-slate-400 font-bold">0</span>
                             )}
                           </td>
 
@@ -811,7 +785,7 @@ export function AdminAttendanceReports() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-6 text-[10px] rounded-lg px-2 shadow-2xs"
+                              className="h-6 text-[11px] rounded-none px-2 shadow-2xs"
                               onClick={() => setSelectedRollup(r)}
                             >
                               <Eye className="h-3 w-3" /> Chi tiết

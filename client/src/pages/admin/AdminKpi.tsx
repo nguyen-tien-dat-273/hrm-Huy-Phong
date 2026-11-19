@@ -76,7 +76,7 @@ export function AdminKpi({ section }: { section: KpiSection }) {
     return (
       <Card className="!rounded-none">
         <CardContent>
-          <p className="flex items-start gap-2.5 py-4 text-sm leading-relaxed text-slate-500">
+          <p className="flex items-start gap-2.5 py-4 text-sm leading-relaxed text-slate-600">
             <ShieldAlert className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
             Bạn chưa được cấp chức năng cho mục <strong className="text-slate-700">{meta.title}</strong>.
           </p>

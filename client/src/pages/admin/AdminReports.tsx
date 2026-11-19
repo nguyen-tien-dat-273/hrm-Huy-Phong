@@ -18,6 +18,7 @@ import { fetchProfileMap } from '@/lib/profileDirectory';
 import { toDateString } from '@/lib/utils';
 import type { DailyAssignment, Project, Task, Profile, Attendance } from '@/types';
 import { AdminWorkforceReports } from '@/pages/admin/AdminWorkforceReports';
+import { Tabs } from '@/components/ui/Tabs';
 
 /** Một dòng trong bảng xếp hạng hoàn thành công việc của tháng. */
 interface MemberMonthStats {
@@ -225,7 +226,7 @@ function OperationalReports() {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <CardTitle>
               Hoàn thành công việc giao — tháng {monthLabel}
-              <span className="ml-2 text-xs font-normal text-slate-400">
+              <span className="ml-2 text-xs font-normal text-slate-600">
                 tính trên công việc quản lý giao theo ngày
               </span>
             </CardTitle>
@@ -238,7 +239,7 @@ function OperationalReports() {
           ) : monthError ? (
             <ErrorState message={monthError} onRetry={loadMonthAssignments} />
           ) : monthTotals.total === 0 ? (
-            <p className="flex items-center justify-center gap-2.5 text-sm text-slate-400 py-10">
+            <p className="flex items-center justify-center gap-2.5 text-sm text-slate-600 py-10">
               <ClipboardList className="w-5 h-5" />
               Tháng {monthLabel} chưa có công việc nào được giao.
             </p>
@@ -246,21 +247,21 @@ function OperationalReports() {
             <>
               {/* KPI của tháng */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                <div className="rounded-xl bg-slate-50 p-4">
+                <div className="rounded-none bg-slate-50 p-4">
                   <p className="text-2xl font-extrabold text-slate-800">{monthTotals.total}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Việc được giao</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Việc được giao</p>
                 </div>
-                <div className="rounded-xl bg-emerald-50 p-4">
+                <div className="rounded-none bg-emerald-50 p-4">
                   <p className="text-2xl font-extrabold text-emerald-600">{monthTotals.approved}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Đã xác nhận hoàn thành</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Đã xác nhận hoàn thành</p>
                 </div>
-                <div className="rounded-xl bg-blue-50 p-4">
+                <div className="rounded-none bg-blue-50 p-4">
                   <p className="text-2xl font-extrabold text-blue-600">{monthTotals.rate}%</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Tỷ lệ hoàn thành</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Tỷ lệ hoàn thành</p>
                 </div>
-                <div className="rounded-xl bg-red-50 p-4">
+                <div className="rounded-none bg-red-50 p-4">
                   <p className="text-2xl font-extrabold text-red-500">{monthTotals.rejected}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Đang cần làm lại</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Đang cần làm lại</p>
                 </div>
               </div>
 
@@ -270,10 +271,10 @@ function OperationalReports() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-slate-100">
-                        <th className="text-left text-xs font-semibold text-slate-500 uppercase px-3 py-2.5">Thành viên</th>
-                        <th className="text-center text-xs font-semibold text-slate-500 uppercase px-2 py-2.5">Giao</th>
-                        <th className="text-center text-xs font-semibold text-slate-500 uppercase px-2 py-2.5">Xong</th>
-                        <th className="text-left text-xs font-semibold text-slate-500 uppercase px-3 py-2.5 w-2/5">Tỷ lệ</th>
+                        <th className="text-left text-xs font-semibold text-slate-600 uppercase px-3 py-2.5">Thành viên</th>
+                        <th className="text-center text-xs font-semibold text-slate-600 uppercase px-2 py-2.5">Giao</th>
+                        <th className="text-center text-xs font-semibold text-slate-600 uppercase px-2 py-2.5">Xong</th>
+                        <th className="text-left text-xs font-semibold text-slate-600 uppercase px-3 py-2.5 w-2/5">Tỷ lệ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
@@ -284,7 +285,7 @@ function OperationalReports() {
                               <Avatar name={m.name} url={m.avatar_url} size="sm" />
                               <div className="min-w-0">
                                 <p className="text-sm font-medium text-slate-800 truncate">{m.name}</p>
-                                <p className="text-xs text-slate-400 truncate">{m.department || '—'}</p>
+                                <p className="text-xs text-slate-600 truncate">{m.department || '—'}</p>
                               </div>
                             </div>
                           </td>
@@ -314,7 +315,7 @@ function OperationalReports() {
 
                 {/* Việc được xác nhận theo ngày trong tháng */}
                 <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase mb-2 px-1">Việc hoàn thành theo ngày</p>
+                  <p className="text-xs font-semibold text-slate-600 uppercase mb-2 px-1">Việc hoàn thành theo ngày</p>
                   <ResponsiveContainer width="100%" height={230}>
                     <BarChart data={dailyApproved}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -338,11 +339,11 @@ function OperationalReports() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Sức khỏe nhân sự (Hiệu suất)</CardTitle>
+            <CardTitle>Hiệu suất nhân sự</CardTitle>
           </CardHeader>
           <CardContent>
             {hrHealthData.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-20">Chưa đủ dữ liệu hiệu suất</p>
+              <p className="text-sm text-slate-600 text-center py-20">Chưa đủ dữ liệu hiệu suất</p>
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
@@ -413,7 +414,7 @@ function OperationalReports() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Ngân sách dự án (triệu VNĐ)</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Ngân sách dự án</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={budgetData}>
@@ -436,25 +437,7 @@ export function AdminReports() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Phân hệ báo cáo">
-        {[
-          { key: 'workforce', label: 'Báo cáo nhân sự & lương' },
-          { key: 'operations', label: 'Báo cáo vận hành hiện có' },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            aria-selected={section === tab.key}
-            onClick={() => setSection(tab.key as 'workforce' | 'operations')}
-            className={`min-h-10 rounded-xl px-4 text-sm font-semibold transition ${
-              section === tab.key ? 'bg-indigo-600 text-white shadow-sm' : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs label="Phân hệ báo cáo" items={[{ key: 'workforce', label: 'Nhân sự & lương' }, { key: 'operations', label: 'Vận hành' }] as const} value={section} onChange={setSection} />
       {section === 'workforce' ? <AdminWorkforceReports /> : <OperationalReports />}
     </div>
   );

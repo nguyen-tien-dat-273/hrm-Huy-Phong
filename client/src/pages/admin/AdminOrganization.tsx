@@ -5,6 +5,7 @@ import {
   Search, ShieldCheck, Trash2, UserCog, UserMinus, UsersRound, X,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
+import { Dropdown } from '@/components/ui/Dropdown';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -26,6 +27,8 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { ADMIN_FUNCTION_CODES, ADMIN_FUNCTIONS, ADMIN_PERMISSIONS, PERMISSION_LABELS, isFullAdmin, type AdminFunctionCode, type AdminPermission } from '@/lib/permissions';
 import { MODULES_BY_PERMISSION } from '@/config/navigation';
+import { Tabs } from '@/components/ui/Tabs';
+import { FilterChips } from '@/components/ui/FilterChips';
 import type {
   EmploymentStatus, JobPosition, OrganizationUnit, OrganizationUnitType, Profile,
 } from '@/types';
@@ -123,6 +126,7 @@ export function AdminOrganization() {
   );
   const [collapsedUnits, setCollapsedUnits] = useState<Set<string>>(new Set());
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const [unitForm, setUnitForm] = useState({
     code: '', name: '', unit_type: 'department' as OrganizationUnitType, parent_id: '',
     /** Nguoi phu trach. Phan tu DAU TIEN la nguoi phu trach chinh. */
@@ -1310,10 +1314,9 @@ export function AdminOrganization() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4">
+      <section className="rounded-none border border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-sky-50 px-5 py-4">
         <p className="text-xs font-bold uppercase tracking-wider text-indigo-700">Tổ chức & nhân sự</p>
-        <h2 className="mt-1 text-xl font-bold text-slate-900">Quản lý phòng ban và thành viên</h2>
-        <p className="mt-1 text-sm text-slate-600">Tạo phòng ban trước, chọn phòng ban đó, rồi thêm nhân sự trực tiếp trong danh sách thành viên.</p>
+        <h2 className="mt-1 text-xl font-bold text-slate-900">Phòng ban</h2>
       </section>
       <div className="grid gap-3 sm:grid-cols-3">
         {/* Dang dung trong mot doanh nghiep thi ba con so nay phai la cua
@@ -1325,8 +1328,8 @@ export function AdminOrganization() {
           { label: 'Nhân sự đã gán đơn vị', value: activeCompany ? companyHeadcount(activeCompany) : users.filter((user) => user.unit_id).length, icon: UsersRound, color: 'text-emerald-600 bg-emerald-50' },
         ].map((item) => (
           <Card key={item.label}><CardContent className="flex items-center gap-4">
-            <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${item.color}`}><item.icon className="h-5 w-5" /></span>
-            <div><p className="text-2xl font-extrabold text-slate-900">{item.value}</p><p className="text-xs font-medium text-slate-500">{item.label}</p></div>
+            <span className={`flex h-11 w-11 items-center justify-center rounded-none ${item.color}`}><item.icon className="h-5 w-5" /></span>
+            <div><p className="text-2xl font-extrabold text-slate-900">{item.value}</p><p className="text-xs font-medium text-slate-600">{item.label}</p></div>
           </CardContent></Card>
         ))}
       </div>
@@ -1337,19 +1340,10 @@ export function AdminOrganization() {
             {/* Ba tab la ba goc nhin cua CUNG mot doanh nghiep, nen chi
                 hien sau khi da chon doanh nghiep. */}
             {activeCompany ? (
-              <div className="inline-flex rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Quản lý cơ cấu">
-                {([
-                  ['units', 'Phòng ban & nhân sự'], ['positions', 'Chức danh & quyền'], ['assignments', 'Phân công'],
-                ] as const).map(([value, label]) => (
-                  <button key={value} type="button" role="tab" aria-selected={effectiveTab === value} onClick={() => setTab(value)} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${effectiveTab === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{label}</button>
-                ))}
-              </div>
+              <Tabs label="Quản lý cơ cấu" items={[{ key: 'units', label: 'Phòng ban & nhân sự' }, { key: 'positions', label: 'Chức danh & quyền' }, { key: 'assignments', label: 'Phân công' }] as const} value={effectiveTab} onChange={setTab} />
             ) : (
               <div>
                 <h3 className="text-sm font-bold text-slate-800">Doanh nghiệp</h3>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Chọn một doanh nghiệp để làm việc với cây tổ chức, vị trí và nhân sự của riêng nó.
-                </p>
               </div>
             )}
             <Button theme="admin" onClick={() => effectiveTab === 'units' ? openNewUnit() : effectiveTab === 'positions' ? openNewPosition() : openAssignment()}>
@@ -1357,8 +1351,8 @@ export function AdminOrganization() {
             </Button>
           </div>
           <div className="relative mt-4">
-            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={activeCompany ? `Tìm trong ${activeCompany.name}...` : 'Tìm doanh nghiệp...'} className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-10 pr-4 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={activeCompany ? `Tìm trong ${activeCompany.name}...` : 'Tìm doanh nghiệp...'} className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15" />
           </div>
         </CardContent>
       </Card>
@@ -1372,16 +1366,13 @@ export function AdminOrganization() {
                       sách — nhìn hai thứ cùng lúc rất dễ tưởng mình đang sửa
                       doanh nghiệp này trong khi thao tác rơi vào cái kia. --- */}
               {!activeCompany ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="rounded-none border border-slate-200 bg-white p-4 shadow-sm">
                   <div>
                     <h3 className="text-sm font-bold text-slate-800">Chọn doanh nghiệp</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Bấm vào một doanh nghiệp để xem và dựng sơ đồ tổ chức bên trong.
-                    </p>
                   </div>
 
                   {companies.length === 0 ? (
-                    <p className="mt-4 rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                    <p className="mt-4 rounded-none border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-600">
                       Chưa có doanh nghiệp nào. Tạo pháp nhân trước, sau đó dựng chi nhánh và phòng
                       ban bên trong.
                     </p>
@@ -1395,7 +1386,7 @@ export function AdminOrganization() {
                              sai HTML vua lam ca the an theo nut ben trong. */
                           <div
                             key={company.id}
-                            className="group relative rounded-xl border-2 border-slate-200 transition hover:border-indigo-400 hover:shadow-md"
+                            className="group relative rounded-none border-2 border-slate-200 transition hover:border-indigo-400 hover:shadow-md"
                           >
                             <button
                               type="button"
@@ -1403,17 +1394,17 @@ export function AdminOrganization() {
                               className="block w-full p-4 text-left"
                             >
                               <span className="flex items-center gap-2.5 pr-16">
-                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-indigo-700">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-none bg-indigo-100 text-indigo-700">
                                   <Building2 className="h-5 w-5" />
                                 </span>
                                 <span className="min-w-0">
                                   <strong className="block truncate text-sm text-slate-900">{company.name}</strong>
-                                  <span className="block truncate text-[11px] text-slate-500">
+                                  <span className="block truncate text-[11px] text-slate-600">
                                     {company.code} · {UNIT_TYPES[company.unit_type]}
                                   </span>
                                 </span>
                               </span>
-                              <span className="mt-3 flex gap-4 border-t border-slate-100 pt-3 text-[11px] text-slate-500">
+                              <span className="mt-3 flex gap-4 border-t border-slate-100 pt-3 text-[11px] text-slate-600">
                                 <span><strong className="text-slate-800">{companyHeadcount(company)}</strong> nhân sự</span>
                                 <span><strong className="text-slate-800">{children.length}</strong> đơn vị trực thuộc</span>
                               </span>
@@ -1447,7 +1438,7 @@ export function AdminOrganization() {
                       Nhung cung khong xep chung voi doanh nghiep, vi nhin vao
                       se tuong cong ty co them mot phap nhan nua. */}
                   {orphanUnits.length > 0 && (
-                    <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/60 p-3.5">
+                    <div className="mt-5 rounded-none border border-amber-200 bg-amber-50/60 p-3.5">
                       <p className="flex items-start gap-1.5 text-xs font-bold text-amber-800">
                         <CircleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
                         {orphanUnits.length} đơn vị chưa thuộc doanh nghiệp nào
@@ -1459,10 +1450,10 @@ export function AdminOrganization() {
                       </p>
                       <div className="mt-3 space-y-2">
                         {orphanUnits.map((unit) => (
-                          <div key={unit.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2.5">
+                          <div key={unit.id} className="flex flex-wrap items-center gap-2 rounded-none border border-amber-200 bg-white px-3 py-2.5">
                             <span className="min-w-0 flex-1">
                               <strong className="block truncate text-xs text-slate-900">{unit.name}</strong>
-                              <span className="block truncate text-[11px] text-slate-500">
+                              <span className="block truncate text-[11px] text-slate-600">
                                 {unit.code} · {UNIT_TYPES[unit.unit_type]}
                               </span>
                             </span>
@@ -1498,19 +1489,19 @@ export function AdminOrganization() {
               ) : (
                 <>
                   {/* Dòng định vị: luôn thấy đang đứng trong doanh nghiệp nào. */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-slate-200 bg-white p-3 shadow-sm">
                     <div className="flex min-w-0 items-center gap-3">
                       <Button type="button" size="sm" variant="ghost" onClick={backToCompanies}>
                         <ChevronLeft className="h-4 w-4" />Doanh nghiệp
                       </Button>
                       <span className="h-5 w-px bg-slate-200" />
                       <span className="flex min-w-0 items-center gap-2">
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none bg-indigo-100 text-indigo-700">
                           <Building2 className="h-4 w-4" />
                         </span>
                         <span className="min-w-0">
                           <strong className="block truncate text-sm text-slate-900">{activeCompany.name}</strong>
-                          <span className="block truncate text-[11px] text-slate-500">
+                          <span className="block truncate text-[11px] text-slate-600">
                             {activeCompany.code} · {companyHeadcount(activeCompany)} nhân sự
                           </span>
                         </span>
@@ -1522,7 +1513,7 @@ export function AdminOrganization() {
                   </div>
 
                   {activeCompany.unit_type !== 'company' && activeCompany.unit_type !== 'group' && (
-                    <p className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
+                    <p className="flex items-start gap-2 rounded-none border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs leading-relaxed text-amber-800">
                       <CircleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span>
                         <strong>{activeCompany.name}</strong> đang khai loại là{' '}
@@ -1538,7 +1529,7 @@ export function AdminOrganization() {
                       "bang luong chia dung phong", nen no phai doi mat nguoi
                       dung chu khong de ho tu tim ra. */}
                   {managersOutsideTheirUnit.length > 0 && (
-                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-3.5">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border-2 border-amber-300 bg-amber-50 p-3.5">
                       <p className="flex min-w-0 items-start gap-2.5 text-xs leading-relaxed text-amber-900">
                         <CircleAlert className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
                         <span>
@@ -1569,38 +1560,26 @@ export function AdminOrganization() {
                     </div>
                   )}
 
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-slate-200 bg-white p-3 shadow-sm">
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setUnitScope('all')} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Tất cả ({unitIdsInCompany.size})</button>
-                  <button type="button" onClick={() => setUnitScope('attention')} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition ${unitScope === 'attention' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}><CircleAlert className="h-3.5 w-3.5" />Cần bổ sung ({attentionInCompany})</button>
+                  <button type="button" onClick={() => setUnitScope('all')} className={`rounded-none px-3 py-2 text-xs font-bold transition ${unitScope === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>Tất cả ({unitIdsInCompany.size})</button>
+                  <button type="button" onClick={() => setUnitScope('attention')} className={`inline-flex items-center gap-1.5 rounded-none px-3 py-2 text-xs font-bold transition ${unitScope === 'attention' ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}><CircleAlert className="h-3.5 w-3.5" />Cần bổ sung ({attentionInCompany})</button>
                   {/* Don vi da ngung hoat dong van ve trong so do kem nhan xam.
                       O nay de giau chung di khi khong con muon nhin. */}
                   {inactiveInCompany > 0 && (
-                    <label className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
+                    <label className="inline-flex items-center gap-1.5 rounded-none bg-slate-100 px-3 py-2 text-xs font-bold text-slate-600">
                       <input
                         type="checkbox"
                         checked={hideInactive}
                         onChange={(event) => setHideInactive(event.target.checked)}
-                        className="h-3.5 w-3.5 rounded border-slate-300"
+                        className="h-3.5 w-3.5 rounded-none border-slate-300"
                       />
                       Ẩn {inactiveInCompany} đơn vị ngừng hoạt động
                     </label>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Kiểu xem cơ cấu">
-                    {([['chart', 'Sơ đồ', LayoutGrid], ['list', 'Danh sách', List]] as const).map(([value, label, Icon]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={unitView === value}
-                        onClick={() => setUnitView(value)}
-                        className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold transition ${unitView === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                      >
-                        <Icon className="h-3.5 w-3.5" />{label}
-                      </button>
-                    ))}
-                  </div>
+                  <FilterChips label="Kiểu xem cơ cấu" value={unitView} onChange={setUnitView} items={[{ key: 'chart', label: 'Sơ đồ', icon: LayoutGrid }, { key: 'list', label: 'Danh sách', icon: List }] as const} />
                   <Button type="button" size="sm" variant="ghost" onClick={expandAllUnits}>Mở tất cả</Button>
                   <Button type="button" size="sm" variant="ghost" onClick={collapseAllUnits}>Thu gọn</Button>
                 </div>
@@ -1627,7 +1606,7 @@ export function AdminOrganization() {
                       membersOf={(unitId) => users.filter((user) => user.is_active && user.unit_id === unitId)}
                       needsAttention={(unitId) => attentionUnitIds.has(unitId)}
                       selectedId={selectedUnit?.id ?? null}
-                      onSelect={setSelectedUnitId}
+                      onSelect={(unitId) => { setSelectedUnitId(unitId); setDetailOpen(true); }}
                       collapsed={collapsedUnits}
                       onToggle={toggleUnit}
                       onAddChild={openChildUnit}
@@ -1643,18 +1622,18 @@ export function AdminOrganization() {
                         const isSelected = selectedUnit?.id === unit.id;
                         const needsAttention = attentionUnitIds.has(unit.id);
                         return <div key={unit.id} className={`group flex items-center gap-2 px-3 py-3 transition ${isSelected ? 'bg-indigo-50/70' : 'hover:bg-slate-50/80'}`} style={{ paddingLeft: `${12 + Math.min(unitDepth(unit), 5) * 20}px` }}>
-                          <button type="button" onClick={() => toggleUnit(unit.id)} disabled={children.length === 0} aria-label={children.length ? `${isCollapsed ? 'Mở' : 'Thu gọn'} ${unit.name}` : undefined} aria-expanded={children.length ? !isCollapsed : undefined} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-indigo-600 disabled:opacity-30">
+                          <button type="button" onClick={() => toggleUnit(unit.id)} disabled={children.length === 0} aria-label={children.length ? `${isCollapsed ? 'Mở' : 'Thu gọn'} ${unit.name}` : undefined} aria-expanded={children.length ? !isCollapsed : undefined} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-none text-slate-600 hover:bg-white hover:text-indigo-600 disabled:opacity-30">
                             {children.length === 0 ? <span className="h-1.5 w-1.5 rounded-full bg-slate-300" /> : isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           </button>
-                          <button type="button" onClick={() => setSelectedUnitId(unit.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${unit.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}><Building2 className="h-5 w-5" /></span>
+                          <button type="button" onClick={() => { setSelectedUnitId(unit.id); setDetailOpen(true); }} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-none ${unit.is_active ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}><Building2 className="h-5 w-5" /></span>
                             <span className="min-w-0 flex-1">
                               <span className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm text-slate-900">{unit.name}</strong><Badge className="bg-slate-100 text-slate-600">{UNIT_TYPES[unit.unit_type]}</Badge>{needsAttention && <CircleAlert className="h-4 w-4 text-amber-500" aria-label="Cần bổ sung thông tin" />}{!unit.is_active && <Badge className="bg-red-50 text-red-600">Ngừng hoạt động</Badge>}</span>
-                              <span className="mt-1 block truncate text-xs text-slate-500">{unit.code} · {manager ? `Phụ trách: ${manager.name}` : 'Chưa gán người phụ trách'}</span>
+                              <span className="mt-1 block truncate text-xs text-slate-600">{unit.code} · {manager ? `Phụ trách: ${manager.name}` : 'Chưa gán người phụ trách'}</span>
                             </span>
                             <span className="hidden shrink-0 items-center gap-3 text-right sm:flex">
-                              <span><strong className="block text-sm text-slate-800">{employeeCountByUnit.get(unit.id) || 0}</strong><small className="text-[10px] text-slate-400">nhân sự</small></span>
-                              <span><strong className="block text-sm text-slate-800">{positionCountByUnit.get(unit.id) || 0}</strong><small className="text-[10px] text-slate-400">vị trí</small></span>
+                              <span><strong className="block text-sm text-slate-800">{employeeCountByUnit.get(unit.id) || 0}</strong><small className="text-[11px] text-slate-600">nhân sự</small></span>
+                              <span><strong className="block text-sm text-slate-800">{positionCountByUnit.get(unit.id) || 0}</strong><small className="text-[11px] text-slate-600">vị trí</small></span>
                             </span>
                           </button>
                           <div className="hidden shrink-0 gap-1 group-hover:flex sm:flex">
@@ -1668,17 +1647,17 @@ export function AdminOrganization() {
                   )}
                 </CardContent></Card>
 
-                {selectedUnit && <Card><CardContent className="space-y-4">
+                <Modal open={detailOpen && !!selectedUnit} onClose={() => setDetailOpen(false)} title={selectedUnit?.name ?? 'Chi tiết đơn vị'} size="xl">{selectedUnit && <div className="space-y-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div><p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Chi tiết đơn vị</p><h3 className="mt-1 text-lg font-extrabold text-slate-900">{selectedUnit.name}</h3><p className="text-xs text-slate-500">{selectedUnit.code} · {UNIT_TYPES[selectedUnit.unit_type]}</p></div>
+                    <div><p className="text-sm font-semibold text-slate-700">{selectedUnit.code} · {UNIT_TYPES[selectedUnit.unit_type]}</p></div>
                     {!selectedUnit.is_active && <Badge className="bg-red-50 text-red-600">Ngừng hoạt động</Badge>}
                   </div>
                   <div className="grid grid-cols-3 gap-2 sm:max-w-md">
-                    {[['Nhân sự', employeeCountByUnit.get(selectedUnit.id) || 0], ['Vị trí', positionCountByUnit.get(selectedUnit.id) || 0], ['Đơn vị con', (childUnitsByParent.get(selectedUnit.id) || []).length]].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3 text-center"><strong className="block text-xl text-slate-900">{value}</strong><span className="text-[11px] text-slate-500">{label}</span></div>)}
+                    {[['Nhân sự', employeeCountByUnit.get(selectedUnit.id) || 0], ['Vị trí', positionCountByUnit.get(selectedUnit.id) || 0], ['Đơn vị con', (childUnitsByParent.get(selectedUnit.id) || []).length]].map(([label, value]) => <div key={label} className="rounded-none bg-slate-50 p-3 text-center"><strong className="block text-xl text-slate-900">{value}</strong><span className="text-[11px] text-slate-600">{label}</span></div>)}
                   </div>
                   <dl className="space-y-3 text-sm">
-                    <div><dt className="text-xs font-semibold text-slate-400">Đơn vị cấp trên</dt><dd className="mt-1 font-semibold text-slate-700">{selectedUnit.parent_id ? unitById.get(selectedUnit.parent_id)?.name || 'Không còn tồn tại' : 'Đơn vị gốc'}</dd></div>
-                    <div><dt className="text-xs font-semibold text-slate-400">Người phụ trách</dt><dd className={`mt-1 font-semibold ${selectedUnit.manager_id ? 'text-slate-700' : 'text-amber-600'}`}>{selectedUnit.manager_id ? userById.get(selectedUnit.manager_id)?.name || 'Không còn hoạt động' : 'Chưa gán'}</dd></div>
+                    <div><dt className="text-xs font-semibold text-slate-600">Đơn vị cấp trên</dt><dd className="mt-1 font-semibold text-slate-700">{selectedUnit.parent_id ? unitById.get(selectedUnit.parent_id)?.name || 'Không còn tồn tại' : 'Đơn vị gốc'}</dd></div>
+                    <div><dt className="text-xs font-semibold text-slate-600">Người phụ trách</dt><dd className={`mt-1 font-semibold ${selectedUnit.manager_id ? 'text-slate-700' : 'text-amber-600'}`}>{selectedUnit.manager_id ? userById.get(selectedUnit.manager_id)?.name || 'Không còn hoạt động' : 'Chưa gán'}</dd></div>
                   </dl>
                   {/* ---- Danh sach nhan su trong don vi ----
                        Truoc day chi co con SO "Nhan su: 3". Con so do khong
@@ -1701,20 +1680,17 @@ export function AdminOrganization() {
                     const nested = users.filter((user) => user.unit_id && childIds.has(user.unit_id));
 
                     return (
-                      <div className="rounded-xl border border-slate-200">
+                      <div className="rounded-none border border-slate-200">
                         <p className="flex items-center gap-2 border-b border-slate-100 px-3.5 py-2.5 text-xs font-bold text-slate-700">
                           <UsersRound className="h-3.5 w-3.5" />
                           Nhân sự thuộc {selectedUnit.name}
-                          <span className="font-normal text-slate-400">({direct.length})</span>
+                          <span className="font-normal text-slate-600">({direct.length})</span>
                         </p>
 
                         <div className="border-b border-slate-100 p-3">
-                          <Button size="sm" theme="admin" onClick={() => openAssignment(undefined, selectedUnit.id)}>
+                          <Button size="sm" theme="admin" onClick={() => { setDetailOpen(false); openAssignment(undefined, selectedUnit.id); }}>
                             <Plus className="h-4 w-4" />Thêm từ hồ sơ nhân sự
                           </Button>
-                          <p className="mt-2 text-xs text-slate-500">
-                            Tạo hồ sơ ở mục Hồ sơ nhân sự trước, rồi chọn hồ sơ có sẵn để thêm vào phòng ban.
-                          </p>
                         </div>
 
                         {/* ---- Nguoi phu trach chua thuoc don vi ----
@@ -1756,7 +1732,7 @@ export function AdminOrganization() {
                         })()}
 
                         {direct.length === 0 ? (
-                          <p className="px-3.5 py-3 text-xs leading-relaxed text-slate-500">
+                          <p className="px-3.5 py-3 text-xs leading-relaxed text-slate-600">
                             Phòng ban chưa có thành viên. Tạo hồ sơ ở mục <strong>Hồ sơ nhân sự</strong>, rồi bấm <strong>Thêm từ hồ sơ nhân sự</strong> để phân công người đó vào đây.
                           </p>
                         ) : (
@@ -1768,7 +1744,7 @@ export function AdminOrganization() {
                                   <span className="block truncate text-sm font-semibold text-slate-800">
                                     {person.name}
                                   </span>
-                                  <span className="block truncate text-[11px] text-slate-500">
+                                  <span className="block truncate text-[11px] text-slate-600">
                                     {positionById.get(person.position_id || '')?.title || 'Chưa gán vị trí'}
                                     {person.employee_code ? ` · ${person.employee_code}` : ''}
                                   </span>
@@ -1780,7 +1756,7 @@ export function AdminOrganization() {
                                   type="button"
                                   onClick={() => openAssignment(person)}
                                   aria-label={`Sửa phân công của ${person.name}`}
-                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-600"
                                 >
                                   <UserCog className="h-4 w-4" />
                                 </button>
@@ -1789,7 +1765,7 @@ export function AdminOrganization() {
                                   type="button"
                                   onClick={() => void removePersonFromUnit(person, selectedUnit)}
                                   aria-label={`Gỡ ${person.name} khỏi đơn vị`}
-                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                                  className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-red-50 hover:text-red-600"
                                 >
                                   <UserMinus className="h-4 w-4" />
                                 </button>
@@ -1798,29 +1774,21 @@ export function AdminOrganization() {
                           </ul>
                         )}
 
-                        {nested.length > 0 && (
-                          <p className="border-t border-slate-100 px-3.5 py-2.5 text-[11px] leading-relaxed text-slate-500">
-                            Thêm <strong className="text-slate-700">{nested.length} người</strong> ở các
-                            đơn vị trực thuộc. Khoản lương khai cho{' '}
-                            <strong className="text-slate-700">{selectedUnit.name}</strong> không áp cho
-                            họ — phải khai ở đúng đơn vị của họ.
-                          </p>
-                        )}
                       </div>
                     );
                   })()}
 
-                  {attentionUnitIds.has(selectedUnit.id) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><strong className="mb-1 block">Cần hoàn thiện</strong>{!selectedUnit.manager_id && <p>• Gán người phụ trách đơn vị.</p>}{(positionCountByUnit.get(selectedUnit.id) || 0) === 0 && <p>• Khai báo ít nhất một vị trí/chức danh.</p>}{!selectedUnit.is_active && <p>• Đơn vị đang ngừng hoạt động.</p>}</div>}
+                  {attentionUnitIds.has(selectedUnit.id) && <div className="rounded-none border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800"><strong className="mb-1 block">Cần hoàn thiện</strong>{!selectedUnit.manager_id && <p>• Gán người phụ trách đơn vị.</p>}{(positionCountByUnit.get(selectedUnit.id) || 0) === 0 && <p>• Khai báo ít nhất một vị trí/chức danh.</p>}{!selectedUnit.is_active && <p>• Đơn vị đang ngừng hoạt động.</p>}</div>}
                   <div className="grid grid-cols-2 gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openEditUnit(selectedUnit)}><Pencil className="h-4 w-4" />Chỉnh sửa</Button>
-                    <Button size="sm" theme="admin" onClick={() => openChildUnit(selectedUnit)}><Plus className="h-4 w-4" />Thêm cấp dưới</Button>
+                    <Button size="sm" variant="outline" onClick={() => { setDetailOpen(false); openEditUnit(selectedUnit); }}><Pencil className="h-4 w-4" />Chỉnh sửa</Button>
+                    <Button size="sm" theme="admin" onClick={() => { setDetailOpen(false); openChildUnit(selectedUnit); }}><Plus className="h-4 w-4" />Thêm cấp dưới</Button>
                   </div>
                   {/* Xóa để riêng một hàng, không xếp cạnh hai nút dùng thường
                       xuyên — bấm nhầm ở đây là mất một nhánh tổ chức. */}
-                  <Button size="sm" variant="danger" className="w-full" onClick={() => void removeUnit(selectedUnit)}>
+                  <Button size="sm" variant="danger" className="w-full" onClick={() => { setDetailOpen(false); void removeUnit(selectedUnit); }}>
                     <Trash2 className="h-4 w-4" />Xóa đơn vị này
                   </Button>
-                </CardContent></Card>}
+                </div>}</Modal>
               </div>
                 </>
               )}
@@ -1830,24 +1798,8 @@ export function AdminOrganization() {
               {/* Sơ đồ ĐƠN VỊ không trả lời được "ai cấp trên của ai" — phòng
                   ban vốn ngang hàng nhau. Thứ bậc nằm ở vị trí, qua trường
                   "Báo cáo cho vị trí", nên nó phải có sơ đồ riêng. */}
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                <p className="text-xs leading-relaxed text-slate-500">
-                  Vị trí là nơi gắn <strong className="text-slate-700">quyền sử dụng hệ thống</strong>.
-                  Đặt <em>Báo cáo cho vị trí</em> để dựng tuyến cấp trên – cấp dưới.
-                </p>
-                <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Kiểu xem vị trí">
-                  {([['chart', 'Tuyến báo cáo', LayoutGrid], ['list', 'Danh sách', List]] as const).map(([value, label, Icon]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      aria-pressed={positionView === value}
-                      onClick={() => setPositionView(value)}
-                      className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold transition ${positionView === value ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />{label}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-slate-200 bg-white p-3 shadow-sm">
+                <FilterChips label="Kiểu xem vị trí" value={positionView} onChange={setPositionView} items={[{ key: 'chart', label: 'Tuyến báo cáo', icon: LayoutGrid }, { key: 'list', label: 'Danh sách', icon: List }] as const} />
               </div>
 
               {positionView === 'chart' ? (
@@ -1866,8 +1818,8 @@ export function AdminOrganization() {
                 </CardContent></Card>
               ) : (
             <Card><CardContent className="p-0">
-              {visiblePositions.length === 0 ? <EmptyState icon={<BriefcaseBusiness className="h-8 w-8" />} title="Chưa có vị trí/chức danh" description="Khai báo vị trí sau khi đã có đơn vị tổ chức." /> : (
-                <div className="divide-y divide-slate-100">{visiblePositions.map((position) => <div key={position.id} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50/70"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><BriefcaseBusiness className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-900">{position.title}</strong>{position.is_manager && <Badge className="bg-amber-50 text-amber-700">Quản lý</Badge>}{(positionPermissions[position.id]?.length || 0) > 0 && <Badge className="bg-indigo-50 text-indigo-700">{positionPermissions[position.id].length} quyền module</Badge>}{(positionFunctionPermissions[position.id]?.length || 0) > 0 && <Badge className="bg-violet-50 text-violet-700">{positionFunctionPermissions[position.id].length} chức năng nâng cao</Badge>}{!position.is_active && <Badge className="bg-red-50 text-red-600">Ngừng hoạt động</Badge>}</div><p className="mt-1 text-xs text-slate-500">{position.code} · {unitById.get(position.unit_id)?.name || 'Đơn vị không còn tồn tại'}{position.reports_to_position_id ? ` · Báo cáo cho ${positionById.get(position.reports_to_position_id)?.title || 'vị trí cấp trên'}` : ''}</p></div><div className="flex gap-1"><Button variant="secondary" onClick={() => openEditPosition(position)} aria-label={`Sửa ${position.title}`}><Pencil className="h-4 w-4" /></Button><Button variant="danger" onClick={() => void removePosition(position)} aria-label={`Xóa ${position.title}`}><Trash2 className="h-4 w-4" /></Button></div></div>)}</div>
+              {visiblePositions.length === 0 ? <EmptyState icon={<BriefcaseBusiness className="h-8 w-8" />} title="Chưa có vị trí/chức danh" /> : (
+                <div className="divide-y divide-slate-100">{visiblePositions.map((position) => <div key={position.id} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50/70"><span className="flex h-10 w-10 items-center justify-center rounded-none bg-violet-50 text-violet-600"><BriefcaseBusiness className="h-5 w-5" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-900">{position.title}</strong>{position.is_manager && <Badge className="bg-amber-50 text-amber-700">Quản lý</Badge>}{(positionPermissions[position.id]?.length || 0) > 0 && <Badge className="bg-indigo-50 text-indigo-700">{positionPermissions[position.id].length} quyền module</Badge>}{(positionFunctionPermissions[position.id]?.length || 0) > 0 && <Badge className="bg-violet-50 text-violet-700">{positionFunctionPermissions[position.id].length} chức năng nâng cao</Badge>}{!position.is_active && <Badge className="bg-red-50 text-red-600">Ngừng hoạt động</Badge>}</div><p className="mt-1 text-xs text-slate-600">{position.code} · {unitById.get(position.unit_id)?.name || 'Đơn vị không còn tồn tại'}{position.reports_to_position_id ? ` · Báo cáo cho ${positionById.get(position.reports_to_position_id)?.title || 'vị trí cấp trên'}` : ''}</p></div><div className="flex gap-1"><Button variant="secondary" onClick={() => openEditPosition(position)} aria-label={`Sửa ${position.title}`}><Pencil className="h-4 w-4" /></Button><Button variant="danger" onClick={() => void removePosition(position)} aria-label={`Xóa ${position.title}`}><Trash2 className="h-4 w-4" /></Button></div></div>)}</div>
               )}
             </CardContent></Card>
               )}
@@ -1880,7 +1832,7 @@ export function AdminOrganization() {
                 const own = ownGrantsOf(user);
                 const count = own.permissions.length + own.function_permissions.length;
                 return count > 0 ? <Badge className="bg-violet-50 text-violet-700">+{count} quyền riêng</Badge> : null;
-              })()}</div><p className="mt-1 text-xs text-slate-500">{positionById.get(user.position_id || '')?.title || 'Chưa gán vị trí'} · {unitById.get(user.unit_id || '')?.name || user.department || 'Chưa gán đơn vị'}</p></div><div className="hidden text-right sm:block"><p className="text-xs font-semibold text-slate-600">{EMPLOYMENT_STATUSES[user.employment_status || 'active']}</p><p className="mt-1 text-[11px] text-slate-400">QL: {userById.get(user.manager_id || '')?.name || 'Chưa gán'}</p></div><UserCog className="h-4 w-4 text-slate-400" /></button>)}</div>}
+              })()}</div><p className="mt-1 text-xs text-slate-600">{positionById.get(user.position_id || '')?.title || 'Chưa gán vị trí'} · {unitById.get(user.unit_id || '')?.name || user.department || 'Chưa gán đơn vị'}</p></div><div className="hidden text-right sm:block"><p className="text-xs font-semibold text-slate-600">{EMPLOYMENT_STATUSES[user.employment_status || 'active']}</p><p className="mt-1 text-[11px] text-slate-600">QL: {userById.get(user.manager_id || '')?.name || 'Chưa gán'}</p></div><UserCog className="h-4 w-4 text-slate-600" /></button>)}</div>}
             </CardContent></Card>
           )}
 
@@ -1897,50 +1849,49 @@ export function AdminOrganization() {
               .filter((unit) => unit.is_active && !descendantsOfEditingUnit.has(unit.id))
               .map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
           </Select>
-          {!editingUnit && unitForm.unit_type !== 'company' && <p className="rounded-xl bg-indigo-50 px-3.5 py-3 text-xs leading-relaxed text-indigo-800">Sau khi tạo, phòng ban sẽ được chọn tự động. Bạn có thể thêm thành viên ngay trong phần chi tiết phòng ban.</p>}
           {editingUnit && <>
           {/* ---- Người phụ trách ----
                Hai vung tach bach: o tim mo ra KHO nguoi de chon, con ben
                duoi la nhung nguoi DA CHON. Tron hai thu vao mot danh sach
                thi muon biet don vi dang co ai phai doc het ca danh sach roi
                nhat ra nhung dong co dau tich. */}
-          <fieldset className="rounded-xl border border-slate-200 p-3">
+          <fieldset className="rounded-none border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Người phụ trách</legend>
-            <p className="text-xs leading-relaxed text-slate-500">
+            <p className="text-xs leading-relaxed text-slate-600">
               {multiManagerSupported
                 ? 'Chọn được nhiều người. Người đầu tiên là phụ trách chính — tên hiện trên sơ đồ tổ chức. Tất cả đều xem được chấm công và duyệt đơn của đơn vị này.'
                 : 'Chưa chạy migration 20261001100000 nên tạm thời chỉ chọn được một người.'}
             </p>
 
             <div className="relative mt-2">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
               <input
                 value={managerQuery}
                 onFocus={() => setManagerPickerOpen(true)}
                 onChange={(event) => { setManagerQuery(event.target.value); setManagerPickerOpen(true); }}
                 placeholder="Bấm để chọn người phụ trách…"
-                className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"
+                className="h-9 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
               />
             </div>
 
             {managerPickerOpen && (
-              <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 p-2">
+              <div className="mt-2 rounded-none border border-indigo-200 bg-indigo-50/40 p-2">
                 <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
-                  <span className="text-[11px] font-semibold text-slate-500">Bấm vào tên để chọn</span>
+                  <span className="text-[11px] font-semibold text-slate-600">Bấm vào tên để chọn</span>
                   {/* Dong bang nut chu khong phai blur: bam vao mot dong trong
                       danh sach cung la blur o tim, danh sach se sap ngay giua
                       luc dang chon. */}
                   <button
                     type="button"
                     onClick={() => { setManagerPickerOpen(false); setManagerQuery(''); }}
-                    className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                    className="rounded-none bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
                   >
                     Xong
                   </button>
                 </div>
                 <div className="max-h-48 space-y-0.5 overflow-y-auto">
                   {searchPeople(managerQuery).length === 0 && (
-                    <p className="px-2 py-3 text-xs text-slate-400">Không có ai khớp “{managerQuery}”.</p>
+                    <p className="px-2 py-3 text-xs text-slate-600">Không có ai khớp “{managerQuery}”.</p>
                   )}
                   {searchPeople(managerQuery).map((user) => {
                     const checked = unitForm.manager_ids.includes(user.id);
@@ -1962,14 +1913,14 @@ export function AdminOrganization() {
                             ? [...unitForm.member_ids, user.id]
                             : unitForm.member_ids,
                         })}
-                        className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${checked ? 'bg-white font-medium text-indigo-700' : 'text-slate-700 hover:bg-white/70'}`}
+                        className={`flex w-full items-center gap-2 rounded-none px-2 py-1.5 text-left text-sm transition ${checked ? 'bg-white font-medium text-indigo-700' : 'text-slate-700 hover:bg-white/70'}`}
                       >
-                        <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}`}>
+                        <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-none border ${checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}`}>
                           {checked && <Check className="h-3 w-3" />}
                         </span>
                         <span className="min-w-0 flex-1 truncate">{user.name}</span>
                         {user.employee_code && (
-                          <span className="flex-shrink-0 text-xs text-slate-400">{user.employee_code}</span>
+                          <span className="flex-shrink-0 text-xs text-slate-600">{user.employee_code}</span>
                         )}
                       </button>
                     );
@@ -1979,18 +1930,14 @@ export function AdminOrganization() {
             )}
 
             <div className="mt-2 space-y-1">
-              <p className="px-1 text-[11px] font-semibold text-slate-500">
+              <p className="px-1 text-[11px] font-semibold text-slate-600">
                 {unitForm.manager_ids.length === 0 ? 'Chưa chọn ai' : `Đã chọn ${unitForm.manager_ids.length} người`}
               </p>
-              {unitForm.manager_ids.length === 0 ? (
-                <p className="px-2 pb-1 text-xs text-slate-400">
-                  Bấm vào ô tìm bên trên để chọn người phụ trách.
-                </p>
-              ) : unitForm.manager_ids.map((id, index) => {
+              {unitForm.manager_ids.length === 0 ? null : unitForm.manager_ids.map((id, index) => {
                 const person = userById.get(id);
                 if (!person) return null;
                 return (
-                  <div key={id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-sm">
+                  <div key={id} className="flex items-center gap-2 rounded-none bg-slate-50 px-2.5 py-2 text-sm">
                     <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{person.name}</span>
                     {index === 0 ? (
                       <Badge className="bg-indigo-50 text-indigo-700">Phụ trách chính</Badge>
@@ -2001,7 +1948,7 @@ export function AdminOrganization() {
                           ...unitForm,
                           manager_ids: [id, ...unitForm.manager_ids.filter((item) => item !== id)],
                         })}
-                        className="flex-shrink-0 rounded-md px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-200 hover:text-slate-800"
+                        className="flex-shrink-0 rounded-none px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-200 hover:text-slate-800"
                       >
                         Đặt làm chính
                       </button>
@@ -2013,7 +1960,7 @@ export function AdminOrganization() {
                         manager_ids: unitForm.manager_ids.filter((item) => item !== id),
                       })}
                       aria-label={`Bỏ ${person.name} khỏi danh sách phụ trách`}
-                      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                      className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-red-50 hover:text-red-600"
                     >
                       <X className="h-4 w-4" />
                     </button>
@@ -2027,40 +1974,35 @@ export function AdminOrganization() {
                Khac han khoi Nguoi phu trach ngay tren: phu trach chi la mot
                cai ten tren so do, con day moi la `profiles.unit_id` - thu
                quyet dinh khoan luong khai cho don vi co ap cho ho hay khong. */}
-          <fieldset className="rounded-xl border border-slate-200 p-3">
+          <fieldset className="rounded-none border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Nhân sự thuộc đơn vị</legend>
-            <p className="text-xs leading-relaxed text-slate-500">
-              Chọn người rồi gán chức danh cho từng người. Bỏ chọn thì họ về trạng thái{' '}
-              <em>chưa gán đơn vị</em>, không bị xóa — nhưng cũng thôi nhận khoản lương khai
-              cho đơn vị.
-            </p>
 
             <div className="relative mt-2">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
               <input
                 value={memberQuery}
                 onFocus={() => setMemberPickerOpen(true)}
                 onChange={(event) => { setMemberQuery(event.target.value); setMemberPickerOpen(true); }}
                 placeholder="Bấm để thêm nhân sự vào đơn vị…"
-                className="h-10 w-full rounded-xl border border-slate-200 pl-9 pr-3 text-sm outline-none focus:border-indigo-500"
+                className="h-9 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/15"
               />
             </div>
 
             {memberPickerOpen && (
-              <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50/40 p-2">
+              <div className="mt-2 rounded-none border border-indigo-200 bg-indigo-50/40 p-2">
                 <div className="flex items-center justify-between gap-2 px-1 pb-1.5">
-                  <span className="text-[11px] font-semibold text-slate-500">Bấm vào tên để chọn</span>
+                  <span className="text-[11px] font-semibold text-slate-600">Bấm vào tên để chọn</span>
                   <button
                     type="button"
                     onClick={() => { setMemberPickerOpen(false); setMemberQuery(''); }}
-                    className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
+                    className="rounded-none bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100"
                   >
                     Xong
                   </button>
                 </div>
                 <div className="max-h-56 space-y-0.5 overflow-y-auto">
                   {searchPeople(memberQuery).length === 0 && (
-                    <p className="px-2 py-3 text-xs text-slate-400">Không có ai khớp “{memberQuery}”.</p>
+                    <p className="px-2 py-3 text-xs text-slate-600">Không có ai khớp “{memberQuery}”.</p>
                   )}
                   {searchPeople(memberQuery).map((user) => {
                     const checked = unitForm.member_ids.includes(user.id);
@@ -2075,16 +2017,16 @@ export function AdminOrganization() {
                             ? unitForm.member_ids.filter((id) => id !== user.id)
                             : [...unitForm.member_ids, user.id],
                         })}
-                        className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition ${checked ? 'bg-white font-medium text-indigo-700' : 'text-slate-700 hover:bg-white/70'}`}
+                        className={`flex w-full items-start gap-2 rounded-none px-2 py-1.5 text-left text-sm transition ${checked ? 'bg-white font-medium text-indigo-700' : 'text-slate-700 hover:bg-white/70'}`}
                       >
-                        <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}`}>
+                        <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-none border ${checked ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300'}`}>
                           {checked && <Check className="h-3 w-3" />}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate">
                             {user.name}
                             {user.employee_code && (
-                              <span className="ml-1.5 text-xs font-normal text-slate-400">{user.employee_code}</span>
+                              <span className="ml-1.5 text-xs font-normal text-slate-600">{user.employee_code}</span>
                             )}
                           </span>
                           {/* Dang o don vi khac: noi ro de nguoi dung biet minh
@@ -2118,28 +2060,24 @@ export function AdminOrganization() {
 
               return (
                 <div className="mt-2 space-y-1">
-                  <p className="px-1 text-[11px] font-semibold text-slate-500">
+                  <p className="px-1 text-[11px] font-semibold text-slate-600">
                     {unitForm.member_ids.length === 0
                       ? 'Chưa có ai trong đơn vị'
                       : `Đã chọn ${unitForm.member_ids.length}/${activeUsers.length} người`}
                   </p>
-                  {unitForm.member_ids.length === 0 ? (
-                    <p className="px-2 pb-1 text-xs text-slate-400">
-                      Bấm vào ô tìm bên trên để thêm nhân sự.
-                    </p>
-                  ) : (
+                  {unitForm.member_ids.length === 0 ? null : (
                     <div className="max-h-72 space-y-1 overflow-y-auto">
                       {unitForm.member_ids.map((id) => {
                         const person = userById.get(id);
                         if (!person) return null;
                         const moving = !!person.unit_id && person.unit_id !== editingUnit?.id;
                         return (
-                          <div key={id} className="rounded-lg bg-slate-50 px-2.5 py-2">
+                          <div key={id} className="rounded-none bg-slate-50 px-2.5 py-2">
                             <div className="flex items-center gap-2 text-sm">
                               <span className="min-w-0 flex-1 truncate font-medium text-slate-800">
                                 {person.name}
                                 {person.employee_code && (
-                                  <span className="ml-1.5 text-xs font-normal text-slate-400">{person.employee_code}</span>
+                                  <span className="ml-1.5 text-xs font-normal text-slate-600">{person.employee_code}</span>
                                 )}
                               </span>
                               <button
@@ -2149,7 +2087,7 @@ export function AdminOrganization() {
                                   member_ids: unitForm.member_ids.filter((item) => item !== id),
                                 })}
                                 aria-label={`Bỏ ${person.name} khỏi đơn vị`}
-                                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                                className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-red-50 hover:text-red-600"
                               >
                                 <X className="h-4 w-4" />
                               </button>
@@ -2160,24 +2098,22 @@ export function AdminOrganization() {
                               </p>
                             )}
                             {positionChoices.length === 0 ? (
-                              <p className="mt-1 text-[11px] text-slate-400">
+                              <p className="mt-1 text-[11px] text-slate-600">
                                 Đơn vị chưa có vị trí nào — thêm ở mục <em>Vị trí trong đơn vị</em> bên dưới.
                               </p>
                             ) : (
-                              <select
+                              <Dropdown
+                                compact
+                                className="mt-1"
                                 value={unitForm.member_positions[id] ?? ''}
-                                onChange={(event) => setUnitForm({
+                                placeholder="Chưa gán chức danh"
+                                onChange={(next) => setUnitForm({
                                   ...unitForm,
-                                  member_positions: { ...unitForm.member_positions, [id]: event.target.value },
+                                  member_positions: { ...unitForm.member_positions, [id]: next },
                                 })}
                                 aria-label={`Chức danh của ${person.name}`}
-                                className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-indigo-500"
-                              >
-                                <option value="">Chưa gán chức danh</option>
-                                {positionChoices.map((choice) => (
-                                  <option key={choice.value} value={choice.value}>{choice.label}</option>
-                                ))}
-                              </select>
+                                options={[{ value: '', label: 'Chưa gán chức danh' }, ...positionChoices.map((choice) => ({ value: choice.value, label: choice.label }))]}
+                              />
                             )}
                           </div>
                         );
@@ -2194,19 +2130,19 @@ export function AdminOrganization() {
                keo vi tri da ton tai ve day. Nguoi dung doc hai cai tieu de
                gan giong nhau roi phai tu doan cai nao lam gi. Gio gop lam mot:
                ben tren la nhung vi tri dang co, ben duoi go them vi tri moi. */}
-          <fieldset className="rounded-xl border border-slate-200 p-3">
+          <fieldset className="rounded-none border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Vị trí trong đơn vị</legend>
 
             {editingUnit && positions.filter((item) => item.unit_id === editingUnit.id && item.is_active).length > 0 && (
               <div className="mb-3 space-y-1">
                 {positions.filter((item) => item.unit_id === editingUnit.id && item.is_active).map((position) => (
-                  <div key={position.id} className="flex items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 text-sm">
-                    <BriefcaseBusiness className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                  <div key={position.id} className="flex items-center gap-2 rounded-none bg-slate-50 px-2.5 py-2 text-sm">
+                    <BriefcaseBusiness className="h-3.5 w-3.5 flex-shrink-0 text-slate-600" />
                     <span className="min-w-0 flex-1 truncate font-medium text-slate-800">{position.title}</span>
                     {(() => {
                       const holders = users.filter((user) => user.is_active && user.position_id === position.id);
                       return (
-                        <span className={`hidden shrink-0 text-[11px] sm:block ${holders.length ? 'text-slate-500' : 'text-amber-600'}`}>
+                        <span className={`hidden shrink-0 text-[11px] sm:block ${holders.length ? 'text-slate-600' : 'text-amber-600'}`}>
                           {holders.length === 0 ? 'Chưa ai giữ'
                             : holders.length === 1 ? holders[0].name
                               : `${holders.length} người`}
@@ -2222,7 +2158,7 @@ export function AdminOrganization() {
                       type="button"
                       onClick={() => { setUnitModal(false); openEditPosition(position); }}
                       aria-label={`Sửa ${position.title}`}
-                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-600"
                     >
                       <Pencil className="h-4 w-4" />
                     </button>
@@ -2233,7 +2169,7 @@ export function AdminOrganization() {
                       type="button"
                       onClick={() => void removePosition(position)}
                       aria-label={`Xóa ${position.title}`}
-                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -2242,13 +2178,10 @@ export function AdminOrganization() {
               </div>
             )}
 
-            <p className="text-xs leading-relaxed text-slate-500">
-              Gõ tên vị trí rồi tích quyền cho nó — lưu đơn vị là tạo luôn. Mã sinh tự động.
-            </p>
 
             <div className="mt-2 space-y-3">
               {unitForm.new_positions.map((item, index) => (
-                <div key={index} className="rounded-xl border border-slate-200 p-2.5">
+                <div key={index} className="rounded-none border border-slate-200 p-2.5">
                   <div className="flex items-center gap-2">
                     <input
                       value={item.title}
@@ -2259,9 +2192,9 @@ export function AdminOrganization() {
                         )),
                       })}
                       placeholder="VD: Trưởng phòng Kho vận"
-                      className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500"
+                      className="h-10 min-w-0 flex-1 rounded-none border border-slate-200 px-3 text-sm outline-none focus:border-indigo-500"
                     />
-                    <code className="hidden w-28 shrink-0 truncate font-mono text-[11px] text-slate-400 sm:block">
+                    <code className="hidden w-28 shrink-0 truncate font-mono text-[11px] text-slate-600 sm:block">
                       {item.title.trim() ? positionCodeFrom(item.title, positions.map((entry) => entry.code)) : ''}
                     </code>
                     <button
@@ -2271,7 +2204,7 @@ export function AdminOrganization() {
                         new_positions: unitForm.new_positions.filter((_, i) => i !== index),
                       })}
                       aria-label={`Bỏ vị trí thứ ${index + 1}`}
-                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-600"
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 transition hover:bg-red-50 hover:text-red-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -2280,7 +2213,7 @@ export function AdminOrganization() {
                   {/* Quyen khai ngay tai day: vi tri la NOI DUY NHAT cap quyen
                       quan tri, tao xong ma khong cap thi phai nho quay lai. */}
                   <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="mt-2">
-                    <p className="text-[11px] font-semibold text-slate-500">Mở được module nào trong khu quản trị</p>
+                    <p className="text-[11px] font-semibold text-slate-600">Mở được module nào trong khu quản trị</p>
                     {/* Mot hang mot quyen, khong con chip nam ngang: mot
                         quyen mo toi ba module, nhet het vao mot chip thi chip
                         dai hon ca o nhap ten vi tri. */}
@@ -2306,11 +2239,11 @@ export function AdminOrganization() {
                             })}
                             aria-pressed={on}
                             title={PERMISSION_LABELS[permission].desc}
-                            className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition ${
+                            className={`flex w-full items-start gap-2 rounded-none px-2.5 py-1.5 text-left transition ${
                               on ? 'bg-indigo-50 ring-1 ring-indigo-300' : 'bg-slate-50 hover:bg-slate-100'
                             }`}
                           >
-                            <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${
+                            <span className={`mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-none border ${
                               on ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-300 bg-white'
                             }`}
                             >
@@ -2325,7 +2258,7 @@ export function AdminOrganization() {
                               <span className={`block text-[11px] font-semibold leading-snug ${on ? 'text-indigo-900' : 'text-slate-700'}`}>
                                 {(MODULES_BY_PERMISSION[permission] ?? [PERMISSION_LABELS[permission].label]).join(' · ')}
                               </span>
-                              <span className="block text-[10px] leading-snug text-slate-400">
+                              <span className="block text-[11px] leading-snug text-slate-600">
                                 {PERMISSION_LABELS[permission].desc}
                               </span>
                             </span>
@@ -2333,12 +2266,6 @@ export function AdminOrganization() {
                         );
                       })}
                     </div>
-                    {item.permissions.length === 0 && (
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        Không tích gì thì vị trí này chỉ dùng khu nhân viên. Tên ở đây
-                        đúng bằng tên module ngoài màn chọn.
-                      </p>
-                    )}
                   </fieldset>
                 </div>
               ))}
@@ -2368,11 +2295,11 @@ export function AdminOrganization() {
           <div className="grid grid-cols-2 gap-3"><Input label="Mã vị trí" value={positionForm.code} onChange={(event) => setPositionForm({ ...positionForm, code: event.target.value })} placeholder="VD: SALES-MGR" required /><Input label="Tên vị trí" value={positionForm.title} onChange={(event) => setPositionForm({ ...positionForm, title: event.target.value })} required /></div>
           <Select label="Thuộc đơn vị" value={positionForm.unit_id} onChange={(event) => setPositionForm({ ...positionForm, unit_id: event.target.value })} required><option value="">Chọn đơn vị</option>{unitOptions.map((row) => <option key={row.unit.id} value={row.unit.id}>{unitOptionLabel(row)}</option>)}</Select>
           <Select label="Báo cáo cho vị trí" value={positionForm.reports_to_position_id} onChange={(event) => setPositionForm({ ...positionForm, reports_to_position_id: event.target.value })}><option value="">Không có</option>{companyPositions.filter((position) => position.is_active && position.id !== editingPosition?.id).map((position) => <option key={position.id} value={position.id}>{position.title} · {unitById.get(position.unit_id)?.name}</option>)}</Select>
-          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm font-medium text-slate-700"><input type="checkbox" checked={positionForm.is_manager} onChange={(event) => setPositionForm({ ...positionForm, is_manager: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-indigo-600" /><ShieldCheck className="h-4 w-4 text-indigo-500" />Đây là vị trí quản lý</label>
-          <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+          <label className="flex cursor-pointer items-center gap-3 rounded-none border border-slate-200 p-3 text-sm font-medium text-slate-700"><input type="checkbox" checked={positionForm.is_manager} onChange={(event) => setPositionForm({ ...positionForm, is_manager: event.target.checked })} className="h-4 w-4 rounded-none border-slate-300 text-indigo-600" /><ShieldCheck className="h-4 w-4 text-indigo-500" />Đây là vị trí quản lý</label>
+          <fieldset disabled={!canManagePositionPermissions || !positionPermissionsSupported} className="rounded-none border border-indigo-100 bg-indigo-50/50 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Quyền module mặc định</legend>
             <StaffFunctionSummary />
-            <div className="mt-2 grid gap-2 sm:grid-cols-2">{ADMIN_PERMISSIONS.map((permission) => <label key={permission} className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-white/70"><input type="checkbox" checked={positionForm.permissions.includes(permission)} onChange={(event) => setPositionForm({ ...positionForm, permissions: event.target.checked ? [...positionForm.permissions, permission] : positionForm.permissions.filter((item) => item !== permission) })} className="mt-0.5 h-4 w-4 accent-indigo-600" /><span className="min-w-0"><span className="font-medium">{(MODULES_BY_PERMISSION[permission] ?? [PERMISSION_LABELS[permission].label]).join(' · ')}</span><span className="block text-xs text-slate-500">{PERMISSION_LABELS[permission].desc}</span><PermissionFunctionList permission={permission} compact /></span></label>)}</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">{ADMIN_PERMISSIONS.map((permission) => <label key={permission} className="flex cursor-pointer items-start gap-2 rounded-none px-2 py-1.5 text-sm text-slate-700 hover:bg-white/70"><input type="checkbox" checked={positionForm.permissions.includes(permission)} onChange={(event) => setPositionForm({ ...positionForm, permissions: event.target.checked ? [...positionForm.permissions, permission] : positionForm.permissions.filter((item) => item !== permission) })} className="mt-0.5 h-4 w-4 accent-indigo-600" /><span className="min-w-0"><span className="font-medium">{(MODULES_BY_PERMISSION[permission] ?? [PERMISSION_LABELS[permission].label]).join(' · ')}</span><span className="block text-xs text-slate-600">{PERMISSION_LABELS[permission].desc}</span><PermissionFunctionList permission={permission} compact /></span></label>)}</div>
             <FunctionPermissionPicker selected={positionForm.function_permissions} onChange={(function_permissions) => setPositionForm({ ...positionForm, function_permissions, permissions: Array.from(new Set([...positionForm.permissions, ...function_permissions.map((code) => ADMIN_FUNCTIONS[code].module)])) })} disabled={!canManagePositionPermissions || !positionFunctionPermissionsSupported} />
             {!canManagePositionPermissions && <p className="mt-2 text-xs text-amber-700">Chỉ Admin/CEO mới được thay đổi mẫu quyền theo vị trí.</p>}
             {!positionPermissionsSupported && <p className="mt-2 text-xs text-amber-700">Hãy chạy migration mẫu quyền theo vị trí trên Supabase để bật chức năng này.</p>}
@@ -2390,7 +2317,6 @@ export function AdminOrganization() {
           <Select label="Vị trí/chức danh" value={assignmentForm.position_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, position_id: event.target.value })}><option value="">Chưa gán</option>{positionOptions.filter((position) => position.is_active).map((position) => <option key={position.id} value={position.id}>{position.title}</option>)}</Select>
           <div>
             <Select label="Quản lý trực tiếp" value={assignmentForm.manager_id} onChange={(event) => setAssignmentForm({ ...assignmentForm, manager_id: event.target.value })}><option value="">Chưa gán</option>{managerOptions.map((user) => <option key={user.id} value={user.id}>{user.name} · {unitById.get(user.unit_id || '')?.name}</option>)}</Select>
-            <p className="mt-1 text-xs text-slate-500">Chỉ hiển thị người đang hoạt động ở cùng đơn vị hoặc đơn vị cấp trên.</p>
           </div>
           <Select label="Trạng thái nhân sự" value={assignmentForm.employment_status} onChange={(event) => setAssignmentForm({ ...assignmentForm, employment_status: event.target.value as EmploymentStatus })}>{Object.entries(EMPLOYMENT_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
 
@@ -2398,7 +2324,7 @@ export function AdminOrganization() {
                Quyen thuong di theo VI TRI, nhung luon co nguoi can them dung
                mot chuc nang. Khong co khoi nay thi phai mo chuc nang do cho
                ca vi tri, keo theo tat ca nhung ai cung vi tri. */}
-          <fieldset disabled={!canManagePositionPermissions} className="rounded-xl border border-slate-200 p-3">
+          <fieldset disabled={!canManagePositionPermissions} className="rounded-none border border-slate-200 p-3">
             <legend className="px-1 text-sm font-semibold text-slate-700">Quyền trên hệ thống</legend>
 
             {/* Thua tu vi tri dang chon o tren: khong sua duoc o day, nhung
@@ -2410,18 +2336,18 @@ export function AdminOrganization() {
               const positionTitle = positionById.get(assignmentForm.position_id)?.title;
               if (!positionTitle) {
                 return (
-                  <p className="text-xs leading-relaxed text-slate-500">
+                  <p className="text-xs leading-relaxed text-slate-600">
                     Chưa chọn vị trí nên người này chưa thừa hưởng quyền nào.
                   </p>
                 );
               }
               return (
-                <div className="rounded-lg bg-slate-50 p-2.5">
-                  <p className="text-[11px] font-semibold text-slate-500">
+                <div className="rounded-none bg-slate-50 p-2.5">
+                  <p className="text-[11px] font-semibold text-slate-600">
                     Thừa hưởng từ vị trí <span className="text-slate-700">{positionTitle}</span>
                   </p>
                   {inheritedModules.length === 0 && inheritedFunctions.length === 0 ? (
-                    <p className="mt-1 text-xs text-slate-400">Vị trí này chưa được cấp quyền quản trị nào.</p>
+                    <p className="mt-1 text-xs text-slate-600">Vị trí này chưa được cấp quyền quản trị nào.</p>
                   ) : (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {inheritedModules.map((code) => (
@@ -2440,10 +2366,6 @@ export function AdminOrganization() {
               );
             })()}
 
-            <p className="mt-3 text-xs leading-relaxed text-slate-500">
-              Cấp thêm riêng cho người này — chỉ dùng khi họ cần nhiều hơn vị trí của mình.
-              Đổi vị trí thì quyền riêng vẫn theo người, không mất đi.
-            </p>
 
             <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
               {ADMIN_PERMISSIONS.map((permission) => {
@@ -2452,7 +2374,7 @@ export function AdminOrganization() {
                 return (
                   <label
                     key={permission}
-                    className={`flex items-start gap-2 rounded-lg px-2 py-1.5 text-sm ${inherited ? 'opacity-60' : 'cursor-pointer hover:bg-slate-50'}`}
+                    className={`flex items-start gap-2 rounded-none px-2 py-1.5 text-sm ${inherited ? 'opacity-60' : 'cursor-pointer hover:bg-slate-50'}`}
                   >
                     <input
                       type="checkbox"
@@ -2472,7 +2394,7 @@ export function AdminOrganization() {
                       <span className="font-medium">
                         {(MODULES_BY_PERMISSION[permission] ?? [PERMISSION_LABELS[permission].label]).join(' · ')}
                       </span>
-                      <span className="block text-xs text-slate-500">
+                      <span className="block text-xs text-slate-600">
                         {inherited ? 'Đã có sẵn từ vị trí' : PERMISSION_LABELS[permission].desc}
                       </span>
                     </span>

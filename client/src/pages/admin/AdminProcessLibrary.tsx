@@ -25,6 +25,7 @@ import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { formatDate } from '@/lib/utils';
 import { isFullAdmin } from '@/lib/permissions';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 const BUCKET = 'process-documents';
 
@@ -58,7 +59,7 @@ const STATUS_STYLE: Record<Status, { label: string; color: string }> = {
   DRAFT: { label: 'Bản nháp', color: 'bg-slate-100 text-slate-600' },
   ACTIVE: { label: 'Đang hiệu lực', color: 'bg-emerald-50 text-emerald-700' },
   SUPERSEDED: { label: 'Đã thay thế', color: 'bg-amber-50 text-amber-700' },
-  ARCHIVED: { label: 'Lưu trữ', color: 'bg-slate-100 text-slate-500' },
+  ARCHIVED: { label: 'Lưu trữ', color: 'bg-slate-100 text-slate-600' },
 };
 
 const BLANK = {
@@ -111,6 +112,7 @@ export function AdminProcessLibrary() {
     () => docs.filter((doc) => showSuperseded || doc.status !== 'SUPERSEDED'),
     [docs, showSuperseded],
   );
+  const pg = usePagination(visible, PAGE_SIZE_LIST, [visible.length]);
 
   // Chỉ bản đang hiệu lực mới được chọn làm "bản bị thay thế" — thay thế một
   // bản đã hết hiệu lực là thao tác vô nghĩa.
@@ -181,7 +183,7 @@ export function AdminProcessLibrary() {
         <p className="flex items-start gap-2.5 text-sm leading-relaxed text-amber-800">
           <TriangleAlert className="mt-0.5 h-5 w-5 flex-shrink-0" />
           Chưa chạy migration{' '}
-          <code className="rounded bg-amber-50 px-1.5 py-0.5 font-mono text-xs">
+          <code className="rounded-none bg-amber-50 px-1.5 py-0.5 font-mono text-xs">
             20260930120000_process_library.sql
           </code>.
         </p>
@@ -191,13 +193,7 @@ export function AdminProcessLibrary() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-slate-800">Thư viện quy trình</h2>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Quy trình, quy chế và hướng dẫn vận hành. Ban hành bản mới thì bản cũ tự hết hiệu lực.
-          </p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -219,11 +215,11 @@ export function AdminProcessLibrary() {
       ) : visible.length === 0 ? (
         <Card><CardContent>
           <div className="flex flex-col items-center gap-2 py-10 text-center">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-50 text-slate-300">
+            <span className="flex h-11 w-11 items-center justify-center rounded-none bg-slate-50 text-slate-600">
               <BookOpen className="h-5 w-5" />
             </span>
             <p className="text-sm font-semibold text-slate-600">Thư viện chưa có tài liệu nào</p>
-            <p className="max-w-sm text-xs leading-relaxed text-slate-400">
+            <p className="max-w-sm text-xs leading-relaxed text-slate-600">
               Ban hành quy trình, quy chế hoặc hướng dẫn đầu tiên. Tài liệu để trống đơn vị sẽ
               hiện cho toàn công ty.
             </p>
@@ -232,11 +228,11 @@ export function AdminProcessLibrary() {
       ) : (
         <Card><CardContent className="p-0">
           <ul className="divide-y divide-slate-50">
-            {visible.map((doc) => {
+            {pg.rows.map((doc) => {
               const status = STATUS_STYLE[doc.status];
               return (
                 <li key={doc.id} className="flex flex-wrap items-center gap-3 px-5 py-3.5">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-none bg-indigo-50 text-indigo-600">
                     <FileText className="h-4 w-4" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -245,7 +241,7 @@ export function AdminProcessLibrary() {
                       <Badge className="bg-slate-100 text-slate-600">{CATEGORY_LABEL[doc.category]}</Badge>
                       <Badge className={status.color}>{status.label}</Badge>
                     </p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
                       <span className="font-mono">{doc.code}</span>
                       <span>· {doc.version_label}</span>
                       <span>· hiệu lực {formatDate(doc.effective_from)}</span>
@@ -254,7 +250,7 @@ export function AdminProcessLibrary() {
                       </span>
                     </p>
                     {doc.summary && (
-                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-400">{doc.summary}</p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-600">{doc.summary}</p>
                     )}
                   </div>
                   <Button size="sm" variant="outline" onClick={() => setSelectedDoc(doc)}><Eye className="h-4 w-4" />Chi tiết</Button>
@@ -262,15 +258,16 @@ export function AdminProcessLibrary() {
               );
             })}
           </ul>
+          <Pagination page={pg.page} total={pg.total} size={pg.size} noun="tài liệu" setPage={pg.setPage} className="px-4 pb-3" />
         </CardContent></Card>
       )}
 
       <Modal open={!!selectedDoc} onClose={() => setSelectedDoc(null)} title={selectedDoc?.title || 'Chi tiết quy trình'} size="lg">
         {selectedDoc && <div className="space-y-4">
           <div className="flex flex-wrap gap-2"><Badge className="bg-slate-100 text-slate-700">{CATEGORY_LABEL[selectedDoc.category]}</Badge><Badge className={STATUS_STYLE[selectedDoc.status].color}>{STATUS_STYLE[selectedDoc.status].label}</Badge><Badge className="bg-indigo-50 text-indigo-700">{selectedDoc.version_label}</Badge></div>
-          <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt className="text-xs text-slate-500">Mã tài liệu</dt><dd className="mt-1 font-mono font-semibold">{selectedDoc.code}</dd></div><div><dt className="text-xs text-slate-500">Phạm vi</dt><dd className="mt-1 font-medium">{unitName(selectedDoc.unit_id)}</dd></div><div><dt className="text-xs text-slate-500">Ngày hiệu lực</dt><dd className="mt-1 font-medium">{formatDate(selectedDoc.effective_from)}</dd></div></dl>
+          <dl className="grid gap-3 rounded-none bg-slate-50 p-4 text-sm sm:grid-cols-3"><div><dt className="text-xs text-slate-600">Mã tài liệu</dt><dd className="mt-1 font-mono font-semibold">{selectedDoc.code}</dd></div><div><dt className="text-xs text-slate-600">Phạm vi</dt><dd className="mt-1 font-medium">{unitName(selectedDoc.unit_id)}</dd></div><div><dt className="text-xs text-slate-600">Ngày hiệu lực</dt><dd className="mt-1 font-medium">{formatDate(selectedDoc.effective_from)}</dd></div></dl>
           <div><h3 className="text-sm font-semibold text-slate-800">Nội dung / tóm tắt</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{selectedDoc.summary || 'Chưa có phần tóm tắt.'}</p></div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">{selectedDoc.file_name || 'Chưa đính kèm file'}</span>{selectedDoc.file_path && <Button variant="outline" onClick={() => void openFile(selectedDoc)}><FileText className="h-4 w-4" />Mở tài liệu đầy đủ</Button>}</div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="text-xs text-slate-600">{selectedDoc.file_name || 'Chưa đính kèm file'}</span>{selectedDoc.file_path && <Button variant="outline" onClick={() => void openFile(selectedDoc)}><FileText className="h-4 w-4" />Mở tài liệu đầy đủ</Button>}</div>
         </div>}
       </Modal>
 
@@ -299,9 +296,7 @@ export function AdminProcessLibrary() {
                 <option value="">Toàn công ty (liên phòng ban)</option>
                 {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
               </Select>
-              <p className="mt-1.5 text-xs text-slate-500">
-                Chọn một đơn vị thì chỉ người thuộc đơn vị đó và người phụ trách đọc được.
-              </p>
+
             </div>
           </div>
 
@@ -313,12 +308,6 @@ export function AdminProcessLibrary() {
                 <option key={doc.id} value={doc.id}>{doc.code} {doc.version_label} — {doc.title}</option>
               ))}
             </Select>
-            {draft.supersedes_id && (
-              <p className="mt-1.5 text-xs leading-relaxed text-amber-700">
-                Bản được chọn sẽ <strong>tự chuyển sang "Đã thay thế"</strong> ngay khi lưu.
-                Chỉ xảy ra nếu tài liệu này ban hành ở trạng thái Đang hiệu lực.
-              </p>
-            )}
           </div>
 
           <Select label="Trạng thái ban hành" value={draft.status}
@@ -333,10 +322,10 @@ export function AdminProcessLibrary() {
               type="file"
               accept=".pdf,.doc,.docx"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700"
+              className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-none file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700"
             />
             {file && (
-              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500">
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600">
                 <Upload className="h-3 w-3" /> {file.name}
               </p>
             )}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
+import { CountBadge } from '@/components/ui/CountBadge';
 import {
   ClipboardList, Plus, ChevronLeft, ChevronRight, Check, X, Inbox,
   Pencil, Trash2, CalendarDays, Copy,
@@ -25,6 +26,7 @@ import {
   ASSIGNMENT_STATUS_CONFIG, mondayOf, weekDates, dayLabel, weekRangeLabel, isToday, notifyUsers,
 } from '@/lib/assignments';
 import type { DailyAssignment, Profile, TaskPriority } from '@/types';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 interface AssignmentHistoryRow {
   id: number;
@@ -47,6 +49,7 @@ export function AdminAssignments() {
   const [staff, setStaff] = useState<Profile[]>([]);
   const [weekAssignments, setWeekAssignments] = useState<DailyAssignment[]>([]);
   const [queue, setQueue] = useState<DailyAssignment[]>([]);
+  const pg = usePagination(queue, PAGE_SIZE_LIST, [queue.length]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -517,12 +520,12 @@ export function AdminAssignments() {
   // Render
   // --------------------------------------------------------------------------
   if (loading) {
-    return <div className="bg-white border border-slate-200 rounded-2xl p-5"><TableSkeleton rows={6} /></div>;
+    return <div className="bg-white border border-slate-200 rounded-none p-5"><TableSkeleton rows={6} /></div>;
   }
 
   if (loadError) {
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl">
+      <div className="bg-white border border-slate-200 rounded-none">
         <ErrorState message={loadError} onRetry={loadData} />
       </div>
     );
@@ -534,9 +537,6 @@ export function AdminAssignments() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Giao việc theo ngày</h2>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Giao việc cho từng ngày hoặc cả tuần — nhân viên check-in sẽ thấy việc, làm xong gửi lại để bạn xác nhận.
-          </p>
         </div>
         <Button onClick={() => openAssign()}>
           <Plus className="w-4 h-4" /> Giao việc
@@ -549,11 +549,11 @@ export function AdminAssignments() {
           <div className="px-5 py-4 border-b border-amber-100 bg-gradient-to-r from-amber-50/80 to-white flex items-center gap-2">
             <Inbox className="w-5 h-5 text-amber-600" />
             <h3 className="text-base font-semibold text-slate-800">Chờ xác nhận</h3>
-            <Badge className="bg-amber-100 text-amber-700">{queue.length}</Badge>
+            <CountBadge count={queue.length} />
           </div>
           <CardContent className="p-0">
             <div className="divide-y divide-slate-50">
-              {queue.map((a) => (
+              {pg.rows.map((a) => (
                 <div key={a.id} className="px-5 py-4 flex items-start gap-4 flex-wrap sm:flex-nowrap">
                   <Avatar name={a.profile?.name ?? '?'} url={a.profile?.avatar_url} size="md" />
                   <div className="flex-1 min-w-0">
@@ -565,10 +565,10 @@ export function AdminAssignments() {
                         <CalendarDays className="w-3 h-3" /> {formatDate(a.work_date)}
                       </Badge>
                       <Badge className={PRIORITY_CONFIG[a.priority].color}>{PRIORITY_CONFIG[a.priority].label}</Badge>
-                      <span className="text-xs text-slate-400">Gửi lúc {formatTime(a.submitted_at)}</span>
+                      <span className="text-xs text-slate-600">Gửi lúc {formatTime(a.submitted_at)}</span>
                     </div>
                     {a.submit_note && (
-                      <p className="text-xs text-slate-500 mt-1.5 bg-slate-50 rounded-lg px-3 py-2">
+                      <p className="text-xs text-slate-600 mt-1.5 bg-slate-50 rounded-none px-3 py-2">
                         Ghi chú: {a.submit_note}
                       </p>
                     )}
@@ -589,6 +589,7 @@ export function AdminAssignments() {
                   </div>
                 </div>
               ))}
+              <Pagination className="px-4 pb-3" page={pg.page} total={pg.total} size={pg.size} noun="việc" setPage={pg.setPage} />
             </div>
           </CardContent>
         </Card>
@@ -599,7 +600,7 @@ export function AdminAssignments() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setWeekStart((w) => addDays(w, -7))}
-            className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
+            className="w-9 h-9 rounded-none border border-slate-200 bg-white flex items-center justify-center text-slate-600 hover:bg-slate-50"
             aria-label="Tuần trước"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -609,7 +610,7 @@ export function AdminAssignments() {
           </span>
           <button
             onClick={() => setWeekStart((w) => addDays(w, 7))}
-            className="w-9 h-9 rounded-xl border border-slate-200 bg-white flex items-center justify-center text-slate-500 hover:bg-slate-50"
+            className="w-9 h-9 rounded-none border border-slate-200 bg-white flex items-center justify-center text-slate-600 hover:bg-slate-50"
             aria-label="Tuần sau"
           >
             <ChevronRight className="w-4 h-4" />
@@ -625,7 +626,7 @@ export function AdminAssignments() {
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {Object.entries(ASSIGNMENT_STATUS_CONFIG).map(([key, cfg]) => (
-            <span key={key} className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span key={key} className="flex items-center gap-1.5 text-xs text-slate-600">
               <span className={`w-2 h-2 rounded-full ${cfg.dot}`} /> {cfg.label}
             </span>
           ))}
@@ -639,25 +640,24 @@ export function AdminAssignments() {
             <EmptyState
               icon={<ClipboardList className="w-8 h-8" />}
               title="Chưa có nhân viên"
-              description="Tạo tài khoản nhân viên trong Quản lý User trước, rồi quay lại giao việc."
             />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[700px] border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-slate-100 dark:border-slate-800">
-                    <th className="text-left text-xs font-semibold text-slate-500 uppercase px-2.5 py-1.5 w-32 sticky left-0 bg-white dark:bg-slate-900 z-10">
+                    <th className="text-left text-xs font-semibold text-slate-600 uppercase px-2.5 py-1.5 w-32 sticky left-0 bg-white dark:bg-slate-900 z-10">
                       Thành viên
                     </th>
                     {days.map((d) => (
                       <th
                         key={d.toISOString()}
                         className={`text-center text-xs font-semibold uppercase px-1.5 py-1.5 ${
-                          isToday(d) ? 'text-blue-600' : 'text-slate-500'
+                          isToday(d) ? 'text-blue-600' : 'text-slate-600'
                         }`}
                       >
                         {dayLabel(d)}
-                        {isToday(d) && <span className="block text-[10px] font-medium normal-case text-blue-500">Hôm nay</span>}
+                        {isToday(d) && <span className="block text-[11px] font-medium normal-case text-blue-500">Hôm nay</span>}
                       </th>
                     ))}
                   </tr>
@@ -668,7 +668,7 @@ export function AdminAssignments() {
                       <td className="px-2.5 py-1.5 sticky left-0 bg-white dark:bg-slate-900 z-10">
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{member.name}</p>
-                          <p className="text-[10px] text-slate-400 truncate">{member.department || '—'}</p>
+                          <p className="text-[11px] text-slate-600 truncate">{member.department || '—'}</p>
                         </div>
                       </td>
                       {days.map((d) => {
@@ -685,7 +685,7 @@ export function AdminAssignments() {
                                   <button
                                     key={a.id}
                                     onClick={() => openDetail(a)}
-                                    className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium ${cfg.color} hover:brightness-95 transition`}
+                                    className={`w-full text-left flex items-center gap-1.5 px-2 py-1.5 rounded-none text-xs font-medium ${cfg.color} hover:brightness-95 transition`}
                                     title={`${a.title} — ${cfg.label}`}
                                   >
                                     <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
@@ -695,7 +695,7 @@ export function AdminAssignments() {
                               })}
                               <button
                                 onClick={() => openAssign(member.id, d)}
-                                className="w-full flex items-center justify-center py-1 rounded-lg text-slate-300 hover:text-blue-500 hover:bg-blue-50 transition"
+                                className="w-full flex items-center justify-center py-1 rounded-none text-slate-600 hover:text-blue-500 hover:bg-blue-50 transition"
                                 aria-label={`Giao việc cho ${member.name} ${dayLabel(d)}`}
                               >
                                 <Plus className="w-3.5 h-3.5" />
@@ -729,12 +729,12 @@ export function AdminAssignments() {
                 {selMembers.size === staff.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
               </button>
             </div>
-            <div className="border border-slate-200 rounded-xl max-h-44 overflow-y-auto divide-y divide-slate-50">
+            <div className="border border-slate-200 rounded-none max-h-44 overflow-y-auto divide-y divide-slate-50">
               {staff.map((s) => (
                 <label key={s.id} className="flex items-center gap-3 px-3.5 py-2.5 cursor-pointer hover:bg-slate-50">
                   <input
                     type="checkbox"
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="w-4 h-4 rounded-none border-slate-300 text-blue-600 focus:ring-blue-500"
                     checked={selMembers.has(s.id)}
                     onChange={(e) => {
                       const next = new Set(selMembers);
@@ -744,7 +744,7 @@ export function AdminAssignments() {
                   />
                   <Avatar name={s.name} url={s.avatar_url} size="sm" />
                   <span className="text-sm text-slate-700">{s.name}</span>
-                  <span className="text-xs text-slate-400 ml-auto">{s.department || ''}</span>
+                  <span className="text-xs text-slate-600 ml-auto">{s.department || ''}</span>
                 </label>
               ))}
             </div>
@@ -761,7 +761,7 @@ export function AdminAssignments() {
                 <button
                   key={m.key}
                   onClick={() => setMode(m.key)}
-                  className={`h-9 px-4 rounded-xl text-sm font-medium transition-colors ${
+                  className={`h-9 px-4 rounded-none text-sm font-medium transition-colors ${
                     mode === m.key
                       ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/25'
                       : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -776,9 +776,6 @@ export function AdminAssignments() {
               <Input type="date" value={singleDate} onChange={(e) => setSingleDate(e.target.value)} />
             ) : (
               <div>
-                <p className="text-xs text-slate-500 mb-2">
-                  Tuần {weekRangeLabel(weekStart)} — chọn các ngày muốn giao (mỗi ngày tạo một phân công riêng):
-                </p>
                 <div className="flex gap-1.5 flex-wrap">
                   {days.map((d, i) => (
                     <button
@@ -789,14 +786,14 @@ export function AdminAssignments() {
                         if (next.has(i)) next.delete(i); else next.add(i);
                         setSelDays(next);
                       }}
-                      className={`flex flex-col items-center px-3 py-2 rounded-xl text-xs font-semibold border transition-colors ${
+                      className={`flex flex-col items-center px-3 py-2 rounded-none text-xs font-semibold border transition-colors ${
                         selDays.has(i)
                           ? 'bg-blue-600 text-white border-blue-600'
-                          : 'bg-white text-slate-500 border-slate-200 hover:border-blue-300'
+                          : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300'
                       }`}
                     >
                       {WEEKDAY_SHORT[i]}
-                      <span className={`text-[10px] font-normal ${selDays.has(i) ? 'text-blue-100' : 'text-slate-400'}`}>
+                      <span className={`text-[11px] font-normal ${selDays.has(i) ? 'text-blue-100' : 'text-slate-600'}`}>
                         {String(d.getDate()).padStart(2, '0')}/{String(d.getMonth() + 1).padStart(2, '0')}
                       </span>
                     </button>
@@ -806,10 +803,7 @@ export function AdminAssignments() {
                 {/* Việc riêng từng ngày. Bỏ trống = dùng nội dung chung bên dưới,
                     nên ai chỉ cần giao một việc lặp cả tuần thì không phải gõ gì thêm. */}
                 {selDays.size > 0 && (
-                  <div className="mt-3 rounded-xl border border-slate-200 divide-y divide-slate-100">
-                    <p className="px-3 py-2 text-xs text-slate-500 bg-slate-50 rounded-t-xl">
-                      Việc riêng từng ngày — để trống thì lấy theo ô <strong>Công việc</strong> bên dưới.
-                    </p>
+                  <div className="mt-3 rounded-none border border-slate-200 divide-y divide-slate-100">
                     {days.map((d, i) =>
                       selDays.has(i) ? (
                         <div key={i} className="flex items-center gap-2.5 px-3 py-2">
@@ -820,7 +814,7 @@ export function AdminAssignments() {
                             value={dayTitles[i] ?? ''}
                             onChange={(e) => setDayTitles((prev) => ({ ...prev, [i]: e.target.value }))}
                             placeholder={title.trim() || 'Việc của ngày này…'}
-                            className="flex-1 h-9 px-3 rounded-lg border border-slate-200 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500"
+                            className="flex-1 h-9 px-3 rounded-none border border-slate-300 text-sm text-slate-800 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
                           />
                         </div>
                       ) : null,
@@ -852,7 +846,7 @@ export function AdminAssignments() {
           </Select>
 
           <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               {selMembers.size > 0 && targets.length > 0
                 ? `Sẽ tạo ${selMembers.size * targets.length} phân công (${selMembers.size} thành viên × ${targets.length} ngày` +
                   `${new Set(targets.map((t) => t.title)).size > 1 ? `, ${new Set(targets.map((t) => t.title)).size} việc khác nhau` : ''})`
@@ -872,9 +866,9 @@ export function AdminAssignments() {
       <Modal open={!!rejectTarget} onClose={() => setRejectTarget(null)} title="Trả lại để làm lại" size="sm">
         <div className="space-y-4">
           {rejectTarget && (
-            <div className="p-3 rounded-lg bg-slate-50">
+            <div className="p-3 rounded-none bg-slate-50">
               <p className="text-sm font-medium text-slate-800">{rejectTarget.title}</p>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-600 mt-0.5">
                 {rejectTarget.profile?.name} · {formatDate(rejectTarget.work_date)}
               </p>
             </div>
@@ -910,7 +904,7 @@ export function AdminAssignments() {
                   <div>
                     <p className="text-base font-semibold text-slate-800">{detail.title}</p>
                     {detail.description && (
-                      <p className="text-sm text-slate-500 mt-1 whitespace-pre-line">{detail.description}</p>
+                      <p className="text-sm text-slate-600 mt-1 whitespace-pre-line">{detail.description}</p>
                     )}
                   </div>
                   <Badge className={ASSIGNMENT_STATUS_CONFIG[detail.status].color}>
@@ -919,20 +913,20 @@ export function AdminAssignments() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-0.5">Thành viên</p>
+                  <div className="bg-slate-50 rounded-none p-3">
+                    <p className="text-xs text-slate-600 mb-0.5">Thành viên</p>
                     <p className="font-medium text-slate-700">{detail.profile?.name ?? '—'}</p>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-0.5">Ngày làm</p>
+                  <div className="bg-slate-50 rounded-none p-3">
+                    <p className="text-xs text-slate-600 mb-0.5">Ngày làm</p>
                     <p className="font-medium text-slate-700">{formatDate(detail.work_date)}</p>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-0.5">Độ ưu tiên</p>
+                  <div className="bg-slate-50 rounded-none p-3">
+                    <p className="text-xs text-slate-600 mb-0.5">Độ ưu tiên</p>
                     <p className="font-medium text-slate-700">{PRIORITY_CONFIG[detail.priority].label}</p>
                   </div>
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-xs text-slate-400 mb-0.5">
+                  <div className="bg-slate-50 rounded-none p-3">
+                    <p className="text-xs text-slate-600 mb-0.5">
                       {detail.status === 'submitted' ? 'Gửi lúc' : detail.status === 'approved' ? 'Xác nhận lúc' : 'Cập nhật'}
                     </p>
                     <p className="font-medium text-slate-700">
@@ -946,29 +940,29 @@ export function AdminAssignments() {
                 </div>
 
                 {detail.submit_note && (
-                  <div className="text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  <div className="text-xs text-slate-600 bg-blue-50 border border-blue-100 rounded-none px-3 py-2">
                     Ghi chú của nhân viên: {detail.submit_note}
                   </div>
                 )}
                 {detail.status === 'rejected' && detail.review_note && (
-                  <div className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                  <div className="text-xs text-red-700 bg-red-50 border border-red-100 rounded-none px-3 py-2">
                     Lý do trả lại: {detail.review_note}
                   </div>
                 )}
 
                 <div className="border-t border-slate-100 pt-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Lịch sử thao tác</h3>
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Lịch sử thao tác</h3>
                   {historyLoading ? (
-                    <p className="mt-2 text-xs text-slate-400">Đang tải lịch sử…</p>
+                    <p className="mt-2 text-xs text-slate-600">Đang tải lịch sử…</p>
                   ) : historyRows.length === 0 ? (
-                    <p className="mt-2 text-xs text-slate-400">Chưa có lịch sử (các thay đổi trước khi áp dụng migration không được hồi tố).</p>
+                    <p className="mt-2 text-xs text-slate-600">Chưa có lịch sử (các thay đổi trước khi áp dụng migration không được hồi tố).</p>
                   ) : (
                     <ol className="mt-2 max-h-48 space-y-2 overflow-y-auto">
                       {historyRows.map((row) => (
-                        <li key={row.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                        <li key={row.id} className="rounded-none bg-slate-50 px-3 py-2 text-xs">
                           <p className="font-medium text-slate-700">
                             {historyNames.get(row.actor_id ?? '') ?? 'Hệ thống'}
-                            <span className="font-normal text-slate-400"> · {new Date(row.created_at).toLocaleString('vi-VN')}</span>
+                            <span className="font-normal text-slate-600"> · {new Date(row.created_at).toLocaleString('vi-VN')}</span>
                           </p>
                           <p className="mt-0.5 text-slate-600">{historySummary(row)}</p>
                         </li>

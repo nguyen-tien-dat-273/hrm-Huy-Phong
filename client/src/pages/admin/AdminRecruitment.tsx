@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CountBadge } from '@/components/ui/CountBadge';
 import { Link } from 'react-router-dom';
 import {
   AlertTriangle, ArrowRight, CheckCircle2, Clock3, FileText, FolderKanban, Plus, Search, Trash2, UserPlus, UserRoundCheck, UsersRound, XCircle,
@@ -17,6 +18,8 @@ import { fetchApproverIds, notifyUser, notifyUsers } from '@/lib/assignments';
 import { describeDbError } from '@/lib/dbError';
 import { hasPermission, isFullAdmin } from '@/lib/permissions';
 import { supabase } from '@/lib/supabase';
+import { FilterChips } from '@/components/ui/FilterChips';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 // Tuyển dụng nhân sự ngoài công ty (quyết định nhóm 20/10/2026, lệch SRS F01.03):
 // Trưởng phòng lập đề xuất -> HR kiểm tra -> BGĐ (Admin/CEO) phê duyệt ->
@@ -65,7 +68,7 @@ const requestStatus: Record<RequestStatus, { label: string; color: string }> = {
   REJECTED: { label: 'Từ chối', color: 'bg-red-100 text-red-700' },
   OPEN: { label: 'Đang tuyển', color: 'bg-emerald-100 text-emerald-700' },
   CLOSED: { label: 'Đã hoàn tất', color: 'bg-indigo-100 text-indigo-700' },
-  CANCELLED: { label: 'Đã hủy', color: 'bg-slate-100 text-slate-500' },
+  CANCELLED: { label: 'Đã hủy', color: 'bg-slate-100 text-slate-600' },
 };
 
 /** Vai trò dự án khi thêm nhân sự; trưởng dự án gán ở thông tin dự án. */
@@ -199,6 +202,7 @@ export function AdminRecruitment() {
     ['ALL', 'Tất cả'], ['SUBMITTED', 'Chờ HR'], ['PENDING_BOARD', 'Chờ BGĐ'], ['RETURNED', 'Trả về'], ['APPROVED', 'Đã duyệt'], ['OPEN', 'Đang tuyển'], ['CLOSED', 'Hoàn tất'], ['REJECTED', 'Từ chối / hủy'],
   ] as const).map(([key, label]) => ({ key, label, count: requests.filter((item) => requestFilterMatch(item, key)).length }));
   const visibleRequests = filteredRequests.filter((item) => requestFilterMatch(item, requestFilter));
+  const pg = usePagination(visibleRequests, PAGE_SIZE_LIST, [query, requestFilter]);
   const openHeadcount = requests.filter((item) => item.status === 'OPEN')
     .reduce((sum, item) => sum + Math.max(0, item.headcount - (hiresByRequest.get(item.id) || []).length), 0);
 
@@ -404,7 +408,6 @@ export function AdminRecruitment() {
       <div>
         <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600"><UserRoundCheck className="h-4 w-4" />Quản lý tuyển dụng</div>
         <h2 className="font-display text-xl font-bold text-slate-900">Tuyển dụng nhân sự</h2>
-        <p className="mt-1 text-sm text-slate-500">Trưởng phòng lập đề xuất → HR kiểm tra → BGĐ phê duyệt → BGĐ thêm nhân sự giải quyết đề xuất.</p>
       </div>
       <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất tuyển dụng</Button>
     </div>
@@ -412,8 +415,8 @@ export function AdminRecruitment() {
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {statCards.map((card) => (
         <button key={card.key} type="button" onClick={card.onClick} aria-pressed={card.active}
-          className={`rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:border-indigo-300 ${card.active ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200'}`}>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{card.label}</p>
+          className={`rounded-none border bg-white p-4 text-left shadow-sm transition hover:border-indigo-300 ${card.active ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200'}`}>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{card.label}</p>
           <p className={`mt-2 text-2xl font-bold ${card.color}`}>{card.value}</p>
         </button>
       ))}
@@ -422,57 +425,50 @@ export function AdminRecruitment() {
     <Card><CardContent className="space-y-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm font-semibold text-slate-700">Đề xuất tuyển dụng ({requests.length})</p>
-        <div className="relative w-full sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã, vị trí..." className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-indigo-400" /></div>
+        <div className="relative w-full sm:w-72"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm mã, vị trí..." className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15" /></div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {requestFilters.map((filter) => (
-          <button key={filter.key} type="button" onClick={() => setRequestFilter(filter.key)}
-            className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${requestFilter === filter.key ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-indigo-300'}`}>
-            {filter.label} <span className={requestFilter === filter.key ? 'text-indigo-100' : 'text-slate-400'}>{filter.count}</span>
-          </button>
-        ))}
-      </div>
+      <FilterChips value={requestFilter} onChange={setRequestFilter} items={requestFilters.map((filter) => ({ key: filter.key, label: filter.label, count: filter.count, alert: ((filter.key === 'SUBMITTED' && canReview) || (filter.key === 'PENDING_BOARD' && isBoard)) && filter.count > 0 }))} />
     </CardContent></Card>
 
-    {loading ? <Card><CardContent><p className="py-12 text-center text-sm text-slate-400">Đang tải đề xuất tuyển dụng...</p></CardContent></Card>
-      : loadError ? <Card><CardContent><div className="flex gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-800"><AlertTriangle className="h-5 w-5 shrink-0" /><div><p className="font-bold">Chưa thể đọc dữ liệu tuyển dụng</p><p className="mt-1">{loadError}</p></div></div></CardContent></Card>
-      : visibleRequests.length === 0 ? <Card><EmptyState icon={<UsersRound className="h-8 w-8" />} title={requests.length === 0 ? 'Chưa có đề xuất tuyển dụng' : 'Không có đề xuất phù hợp bộ lọc'} description="Trưởng bộ phận lập đề xuất; HR kiểm tra và trình Ban Giám đốc trong 24 giờ." action={requests.length === 0 ? <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất</Button> : undefined} /></Card>
-      : <div className="grid gap-4 xl:grid-cols-2">{visibleRequests.map((item) => {
+    {loading ? <Card><CardContent><p className="py-12 text-center text-sm text-slate-600">Đang tải đề xuất tuyển dụng...</p></CardContent></Card>
+      : loadError ? <Card><CardContent><div className="flex gap-3 rounded-none bg-amber-50 p-4 text-sm text-amber-800"><AlertTriangle className="h-5 w-5 shrink-0" /><div><p className="font-bold">Chưa thể đọc dữ liệu tuyển dụng</p><p className="mt-1">{loadError}</p></div></div></CardContent></Card>
+      : visibleRequests.length === 0 ? <Card><EmptyState icon={<UsersRound className="h-8 w-8" />} title={requests.length === 0 ? 'Chưa có đề xuất tuyển dụng' : 'Không có đề xuất phù hợp bộ lọc'} action={requests.length === 0 ? <Button theme="admin" onClick={() => setRequestOpen(true)}><Plus className="h-4 w-4" />Lập đề xuất</Button> : undefined} /></Card>
+      : <div className="grid gap-4 xl:grid-cols-2">{pg.rows.map((item) => {
         const deadline = item.status === 'SUBMITTED' ? deadlineText(item.review_due_at) : null;
         const itemHires = hiresByRequest.get(item.id) || [];
         const filled = itemHires.length;
         const showHires = ['OPEN', 'CLOSED'].includes(item.status) || filled > 0;
         return <Card key={item.id}><CardContent className="space-y-3">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1"><p className="break-words text-xs font-bold text-indigo-600">{item.code}</p><h3 className="mt-1 break-words font-display text-base font-bold text-slate-900">{item.title}</h3><p className="mt-1 break-words text-xs text-slate-500">{unitNames.get(item.unit_id || '') || 'Chưa chọn đơn vị'} · {positionNames.get(item.position_id || '') || 'Chưa gắn vị trí'}</p></div>
+            <div className="min-w-0 flex-1"><p className="break-words text-xs font-bold text-indigo-600">{item.code}</p><h3 className="mt-1 break-words font-display text-base font-bold text-slate-900">{item.title}</h3><p className="mt-1 break-words text-xs text-slate-600">{unitNames.get(item.unit_id || '') || 'Chưa chọn đơn vị'} · {positionNames.get(item.position_id || '') || 'Chưa gắn vị trí'}</p></div>
             <Badge className={`shrink-0 whitespace-nowrap ${requestStatus[item.status].color}`}>{requestStatus[item.status].label}</Badge>
           </div>
-          <div className="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-4">
-            <div className="min-w-0"><span className="block truncate text-slate-400">Số lượng</span><p className="mt-1 break-words font-bold text-slate-700">{item.headcount} người</p></div>
-            <div className="min-w-0"><span className="block truncate text-slate-400">Người phụ trách</span><p className="mt-1 break-words font-bold text-slate-700">{names.get(item.hiring_manager_id) || '—'}{canReview && !['CLOSED', 'CANCELLED', 'REJECTED'].includes(item.status) && <button type="button" className="ml-1.5 whitespace-nowrap text-xs font-semibold text-indigo-700 hover:underline" onClick={() => { setChangingOwner(item); setOwnerDraft(item.hiring_manager_id); }}>Đổi</button>}</p></div>
-            <div className="min-w-0"><span className="block truncate text-slate-400">Khoảng lương</span><p className="mt-1 break-words font-bold text-slate-700">{item.salary_min == null && item.salary_max == null ? 'Thỏa thuận' : <><span className="whitespace-nowrap">{money(item.salary_min)}</span> – <span className="whitespace-nowrap">{money(item.salary_max)}</span></>}</p></div>
-            <div className="min-w-0"><span className="block truncate text-slate-400">Đã tuyển</span><p className="mt-1 break-words font-bold text-slate-700">{filled}/{item.headcount} người</p></div>
+          <div className="grid grid-cols-2 gap-3 rounded-none bg-slate-50 p-3 text-xs sm:grid-cols-4">
+            <div className="min-w-0"><span className="block truncate text-slate-600">Số lượng</span><p className="mt-1 break-words font-bold text-slate-700">{item.headcount} người</p></div>
+            <div className="min-w-0"><span className="block truncate text-slate-600">Người phụ trách</span><p className="mt-1 break-words font-bold text-slate-700">{names.get(item.hiring_manager_id) || '—'}{canReview && !['CLOSED', 'CANCELLED', 'REJECTED'].includes(item.status) && <button type="button" className="ml-1.5 whitespace-nowrap text-xs font-semibold text-indigo-700 hover:underline" onClick={() => { setChangingOwner(item); setOwnerDraft(item.hiring_manager_id); }}>Đổi</button>}</p></div>
+            <div className="min-w-0"><span className="block truncate text-slate-600">Khoảng lương</span><p className="mt-1 break-words font-bold text-slate-700">{item.salary_min == null && item.salary_max == null ? 'Thỏa thuận' : <><span className="whitespace-nowrap">{money(item.salary_min)}</span> – <span className="whitespace-nowrap">{money(item.salary_max)}</span></>}</p></div>
+            <div className="min-w-0"><span className="block truncate text-slate-600">Đã tuyển</span><p className="mt-1 break-words font-bold text-slate-700">{filled}/{item.headcount} người</p></div>
           </div>
           <p className="line-clamp-2 break-words text-sm text-slate-600">{item.reason}</p>
-          {showHires && <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+          {showHires && <div className="rounded-none border border-emerald-100 bg-emerald-50/50 p-3">
             <div className="flex items-center justify-between gap-2">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-700"><FolderKanban className="h-3.5 w-3.5" />Nhân sự giải quyết đề xuất</p>
               <span className="text-xs font-semibold text-emerald-700">{filled}/{item.headcount}</span>
             </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded bg-emerald-100"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, Math.round(filled / Math.max(1, item.headcount) * 100))}%` }} /></div>
-            {itemHires.length === 0 ? <p className="mt-2 text-xs text-slate-500">Chưa thêm nhân sự nào.</p> : <ul className="mt-2 space-y-1.5">
+            <div className="mt-2 h-1.5 overflow-hidden rounded-none bg-emerald-100"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, Math.round(filled / Math.max(1, item.headcount) * 100))}%` }} /></div>
+            {itemHires.length === 0 ? <p className="mt-2 text-xs text-slate-600">Chưa thêm nhân sự nào.</p> : <ul className="mt-2 space-y-1.5">
               {itemHires.map((hire) => <li key={hire.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600">
                 <span className="min-w-0 break-words font-semibold text-slate-800">{names.get(hire.user_id) || 'Nhân sự'}</span>
                 <span className="min-w-0 break-words">→ {projectNames.get(hire.project_id) || 'Dự án'} · {roleLabel(hire.role_code)}</span>
-                <span className="ml-auto shrink-0 whitespace-nowrap text-slate-400">{new Date(hire.added_at).toLocaleDateString('vi-VN')}</span>
-                {isBoard && <button type="button" onClick={() => void removeHireRow(hire)} className="shrink-0 rounded p-1 text-slate-400 hover:bg-white hover:text-red-600" aria-label="Gỡ khỏi đề xuất"><XCircle className="h-3.5 w-3.5" /></button>}
+                <span className="ml-auto shrink-0 whitespace-nowrap text-slate-600">{new Date(hire.added_at).toLocaleDateString('vi-VN')}</span>
+                {isBoard && <button type="button" onClick={() => void removeHireRow(hire)} className="shrink-0 rounded-none p-1 text-slate-600 hover:bg-white hover:text-red-600" aria-label="Gỡ khỏi đề xuất"><XCircle className="h-3.5 w-3.5" /></button>}
               </li>)}
             </ul>}
           </div>}
-          {item.review_note && ["RETURNED", "REJECTED"].includes(item.status) && <p className="break-words rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700"><strong>{item.status === "RETURNED" ? "Cần điều chỉnh:" : "Lý do không phê duyệt:"}</strong> {item.review_note}</p>}
-          {item.status === "PENDING_BOARD" && item.hr_note && <p className="break-words rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800"><strong>HR ghi chú:</strong> {item.hr_note}</p>}
+          {item.review_note && ["RETURNED", "REJECTED"].includes(item.status) && <p className="break-words rounded-none bg-red-50 px-3 py-2 text-xs text-red-700"><strong>{item.status === "RETURNED" ? "Cần điều chỉnh:" : "Lý do không phê duyệt:"}</strong> {item.review_note}</p>}
+          {item.status === "PENDING_BOARD" && item.hr_note && <p className="break-words rounded-none bg-amber-50 px-3 py-2 text-xs text-amber-800"><strong>HR ghi chú:</strong> {item.hr_note}</p>}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
-            {deadline ? <span className={`flex min-w-0 items-center gap-1.5 break-words text-xs font-semibold ${deadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4 shrink-0" />{deadline.text} để HR kiểm tra & trình BGĐ</span> : <span className="min-w-0 break-words text-xs text-slate-400">Đề xuất bởi {names.get(item.requested_by) || 'người dùng'}</span>}
+            {deadline ? <span className={`flex min-w-0 items-center gap-1.5 break-words text-xs font-semibold ${deadline.overdue ? 'text-red-600' : 'text-amber-600'}`}><Clock3 className="h-4 w-4 shrink-0" />{deadline.text} để HR kiểm tra & trình BGĐ</span> : <span className="min-w-0 break-words text-xs text-slate-600">Đề xuất bởi {names.get(item.requested_by) || 'người dùng'}</span>}
             <div className="ml-auto flex flex-wrap justify-end gap-2">
               {item.attachment_path && <Button variant="outline" onClick={() => void openRequisitionFile(item)}><FileText className="h-4 w-4" />Tệp đề xuất</Button>}
               {canReview && item.status === 'SUBMITTED' && <Button theme="admin" onClick={() => openReview(item, 'hr')}>Kiểm tra & trình BGĐ</Button>}
@@ -486,12 +482,13 @@ export function AdminRecruitment() {
           </div>
         </CardContent></Card>;
       })}</div>}
+      <Pagination page={pg.page} total={pg.total} size={pg.size} noun="đề xuất" setPage={pg.setPage} />
 
-    <Modal open={requestOpen} onClose={() => setRequestOpen(false)} title="Lập đề xuất tuyển dụng" size="lg"><form onSubmit={createRequest} className="space-y-4"><Input label="Vị trí cần tuyển" minLength={TITLE_MIN} placeholder="VD: Nhân viên thiết kế" value={requestForm.title} onChange={(e) => setRequestForm({ ...requestForm, title: e.target.value })} required /><div className="grid gap-3 sm:grid-cols-2"><Select label="Đơn vị" value={requestForm.unit_id} onChange={(e) => setRequestForm({ ...requestForm, unit_id: e.target.value })}><option value="">Chọn đơn vị</option>{units.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Vị trí trong cơ cấu" value={requestForm.position_id} onChange={(e) => setRequestForm({ ...requestForm, position_id: e.target.value })}><option value="">Chọn vị trí</option>{positions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div><div className="grid gap-3 sm:grid-cols-3"><Input label="Số lượng" type="number" min="1" value={requestForm.headcount} onChange={(e) => setRequestForm({ ...requestForm, headcount: e.target.value })} required /><Select label="Người phụ trách tuyển" value={requestForm.hiring_manager_id || profile?.id || ''} onChange={(e) => setRequestForm({ ...requestForm, hiring_manager_id: e.target.value })}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}{person.id === profile?.id ? ' (tôi)' : ''}</option>)}</Select><Select label="Hình thức" value={requestForm.employment_type} onChange={(e) => setRequestForm({ ...requestForm, employment_type: e.target.value })}><option value="FULL_TIME">Toàn thời gian</option><option value="PART_TIME">Bán thời gian</option><option value="CONTRACT">Hợp đồng</option><option value="INTERN">Thực tập</option></Select><Input label="Ngày mong muốn" type="date" value={requestForm.desired_start_date} onChange={(e) => setRequestForm({ ...requestForm, desired_start_date: e.target.value })} /></div><div className="grid gap-3 sm:grid-cols-2"><Input label="Lương tối thiểu" type="number" min="0" value={requestForm.salary_min} onChange={(e) => setRequestForm({ ...requestForm, salary_min: e.target.value })} /><Input label="Lương tối đa" type="number" min="0" value={requestForm.salary_max} onChange={(e) => setRequestForm({ ...requestForm, salary_max: e.target.value })} /></div><Textarea label="Lý do và yêu cầu tuyển" minLength={REASON_MIN} placeholder="VD: Bổ sung 1 nhân viên thiết kế cho dự án mới, yêu cầu 1 năm kinh nghiệm Figma (tối thiểu 5 ký tự)" value={requestForm.reason} onChange={(e) => setRequestForm({ ...requestForm, reason: e.target.value })} required /><label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Tệp đề xuất theo mẫu Huy Phong<span className="ml-1 text-red-500">*</span></span><input type="file" accept=".pdf,.doc,.docx" required onChange={(e) => { const file = e.target.files?.[0] || null; const err = checkRequisitionFile(file); if (file && err) { toast(err, 'warning'); e.target.value = ''; setRequestFile(null); } else setRequestFile(file); }} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" /><span className="mt-1 block text-xs text-slate-500">.pdf, .doc, .docx · tối đa 20 MB</span></label><p className="rounded-xl bg-indigo-50 p-3 text-xs text-indigo-700">Sau khi gửi, HR tiếp nhận đề xuất và trình Ban Giám đốc xem xét, phê duyệt trong thời hạn 24 giờ.</p><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setRequestOpen(false)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi đề xuất'}</Button></div></form></Modal>
+    <Modal open={requestOpen} onClose={() => setRequestOpen(false)} title="Lập đề xuất tuyển dụng" size="lg"><form onSubmit={createRequest} className="space-y-4"><Input label="Vị trí cần tuyển" minLength={TITLE_MIN} placeholder="VD: Nhân viên thiết kế" value={requestForm.title} onChange={(e) => setRequestForm({ ...requestForm, title: e.target.value })} required /><div className="grid gap-3 sm:grid-cols-2"><Select label="Đơn vị" value={requestForm.unit_id} onChange={(e) => setRequestForm({ ...requestForm, unit_id: e.target.value })}><option value="">Chọn đơn vị</option>{units.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select><Select label="Vị trí trong cơ cấu" value={requestForm.position_id} onChange={(e) => setRequestForm({ ...requestForm, position_id: e.target.value })}><option value="">Chọn vị trí</option>{positions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div><div className="grid gap-3 sm:grid-cols-3"><Input label="Số lượng" type="number" min="1" value={requestForm.headcount} onChange={(e) => setRequestForm({ ...requestForm, headcount: e.target.value })} required /><Select label="Người phụ trách tuyển" value={requestForm.hiring_manager_id || profile?.id || ''} onChange={(e) => setRequestForm({ ...requestForm, hiring_manager_id: e.target.value })}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}{person.id === profile?.id ? ' (tôi)' : ''}</option>)}</Select><Select label="Hình thức" value={requestForm.employment_type} onChange={(e) => setRequestForm({ ...requestForm, employment_type: e.target.value })}><option value="FULL_TIME">Toàn thời gian</option><option value="PART_TIME">Bán thời gian</option><option value="CONTRACT">Hợp đồng</option><option value="INTERN">Thực tập</option></Select><Input label="Ngày mong muốn" type="date" value={requestForm.desired_start_date} onChange={(e) => setRequestForm({ ...requestForm, desired_start_date: e.target.value })} /></div><div className="grid gap-3 sm:grid-cols-2"><Input label="Lương tối thiểu" type="number" min="0" value={requestForm.salary_min} onChange={(e) => setRequestForm({ ...requestForm, salary_min: e.target.value })} /><Input label="Lương tối đa" type="number" min="0" value={requestForm.salary_max} onChange={(e) => setRequestForm({ ...requestForm, salary_max: e.target.value })} /></div><Textarea label="Lý do và yêu cầu tuyển" minLength={REASON_MIN} placeholder="VD: Bổ sung 1 nhân viên thiết kế cho dự án mới, yêu cầu 1 năm kinh nghiệm Figma (tối thiểu 5 ký tự)" value={requestForm.reason} onChange={(e) => setRequestForm({ ...requestForm, reason: e.target.value })} required /><label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Tệp đề xuất theo mẫu Huy Phong<span className="ml-1 text-red-500">*</span></span><input type="file" accept=".pdf,.doc,.docx" required onChange={(e) => { const file = e.target.files?.[0] || null; const err = checkRequisitionFile(file); if (file && err) { toast(err, 'warning'); e.target.value = ''; setRequestFile(null); } else setRequestFile(file); }} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-none file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" /><span className="mt-1 block text-xs text-slate-600">.pdf, .doc, .docx · tối đa 20 MB</span></label><div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setRequestOpen(false)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi đề xuất'}</Button></div></form></Modal>
 
     <Modal open={!!reviewing} onClose={() => setReviewing(null)} title={reviewMode === 'hr' ? 'HR kiểm tra đề xuất' : 'Ban Giám đốc phê duyệt'}><div className="space-y-4">
-      <p className="rounded-xl bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">{reviewMode === 'hr' ? 'Bước 1/2 · HR kiểm tra nội dung và tệp đề xuất, rồi trình Ban Giám đốc hoặc trả về để người lập điều chỉnh.' : 'Bước 2/2 · Chỉ triển khai tuyển dụng sau khi Ban Giám đốc phê duyệt.'}</p>
-      <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-600">{reviewing?.code}</p><p className="mt-1 break-words font-bold text-slate-900">{reviewing?.title}</p><p className="mt-1 break-words text-sm text-slate-500">{reviewing?.headcount} người · {reviewing?.reason}</p>
+      <p className="rounded-none bg-indigo-50 p-3 text-xs leading-relaxed text-indigo-700">{reviewMode === 'hr' ? 'Bước 1/2 · HR kiểm tra nội dung và tệp đề xuất, rồi trình Ban Giám đốc hoặc trả về để người lập điều chỉnh.' : 'Bước 2/2 · Chỉ triển khai tuyển dụng sau khi Ban Giám đốc phê duyệt.'}</p>
+      <div className="rounded-none bg-slate-50 p-3"><p className="text-xs font-bold text-indigo-600">{reviewing?.code}</p><p className="mt-1 break-words font-bold text-slate-900">{reviewing?.title}</p><p className="mt-1 break-words text-sm text-slate-600">{reviewing?.headcount} người · {reviewing?.reason}</p>
         {reviewing?.attachment_path ? <button type="button" onClick={() => reviewing && void openRequisitionFile(reviewing)} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 underline"><FileText className="h-4 w-4" />{reviewing.attachment_name || 'Tệp đề xuất'}</button> : <p className="mt-2 text-xs text-amber-700">Đề xuất cũ chưa có tệp đính kèm.</p>}
         {reviewMode === 'board' && reviewing?.hr_note && <p className="mt-2 text-xs text-slate-600"><strong>HR ghi chú:</strong> {reviewing.hr_note}</p>}
       </div>
@@ -507,7 +504,7 @@ export function AdminRecruitment() {
     </div></Modal>
 
     <Modal open={!!resubmitting} onClose={() => setResubmitting(null)} title="Sửa & gửi lại đề xuất" size="lg"><form onSubmit={saveResubmit} className="space-y-4">
-      {resubmitting?.review_note && <p className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700"><strong>Cần điều chỉnh:</strong> {resubmitting.review_note}</p>}
+      {resubmitting?.review_note && <p className="rounded-none bg-rose-50 p-3 text-sm text-rose-700"><strong>Cần điều chỉnh:</strong> {resubmitting.review_note}</p>}
       <Input label="Vị trí cần tuyển" minLength={TITLE_MIN} value={resubmitForm.title} onChange={(e) => setResubmitForm({ ...resubmitForm, title: e.target.value })} required />
       <div className="grid gap-3 sm:grid-cols-3">
         <Input label="Số lượng" type="number" min="1" value={resubmitForm.headcount} onChange={(e) => setResubmitForm({ ...resubmitForm, headcount: e.target.value })} required />
@@ -516,7 +513,7 @@ export function AdminRecruitment() {
       </div>
       <Input label="Ngày mong muốn" type="date" value={resubmitForm.desired_start_date} onChange={(e) => setResubmitForm({ ...resubmitForm, desired_start_date: e.target.value })} />
       <Textarea label="Lý do và yêu cầu tuyển" minLength={REASON_MIN} placeholder="Tối thiểu 5 ký tự" value={resubmitForm.reason} onChange={(e) => setResubmitForm({ ...resubmitForm, reason: e.target.value })} required />
-      <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Tệp đề xuất mới {resubmitting?.attachment_path ? '(bỏ trống để giữ tệp cũ)' : <span className="text-red-500">*</span>}</span><input type="file" accept=".pdf,.doc,.docx" onChange={(e) => setResubmitFile(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" /></label>
+      <label className="block"><span className="mb-1.5 block text-sm font-semibold text-slate-700">Tệp đề xuất mới {resubmitting?.attachment_path ? '(bỏ trống để giữ tệp cũ)' : <span className="text-red-500">*</span>}</span><input type="file" accept=".pdf,.doc,.docx" onChange={(e) => setResubmitFile(e.target.files?.[0] || null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-none file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-indigo-700" /></label>
       <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={() => setResubmitting(null)}>Hủy</Button><Button type="submit" theme="admin" disabled={saving}>{saving ? 'Đang gửi...' : 'Gửi lại'}</Button></div>
     </form></Modal>
 
@@ -528,12 +525,11 @@ export function AdminRecruitment() {
     <Modal open={!!changingOwner} onClose={() => setChangingOwner(null)} title="Đổi người phụ trách tuyển dụng"><div className="space-y-4">
       <p className="text-sm text-slate-600">{changingOwner?.code} · {changingOwner?.title}</p>
       <Select label="Người phụ trách" value={ownerDraft} onChange={(e) => setOwnerDraft(e.target.value)}>{people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}</Select>
-      <p className="text-xs text-slate-500">Người phụ trách nhận thông báo khi đề xuất được duyệt và khi có nhân sự được thêm vào dự án.</p>
       <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setChangingOwner(null)}>Hủy</Button><Button theme="admin" disabled={saving || !ownerDraft || ownerDraft === changingOwner?.hiring_manager_id} onClick={() => void saveOwner()}>Lưu</Button></div>
     </div></Modal>
 
     <Modal open={!!hiring} onClose={() => setHiring(null)} title="Thêm nhân sự giải quyết đề xuất"><form onSubmit={saveHire} className="space-y-4">
-      <div className="rounded-xl bg-slate-50 p-3 text-sm"><p className="text-xs font-bold text-indigo-600">{hiring?.code}</p><p className="font-semibold text-slate-900">{hiring?.title}</p><p className="mt-1 text-xs text-slate-500">Đã tuyển {(hiring && (hiresByRequest.get(hiring.id) || []).length) || 0}/{hiring?.headcount} người</p></div>
+      <div className="rounded-none bg-slate-50 p-3 text-sm"><p className="text-xs font-bold text-indigo-600">{hiring?.code}</p><p className="font-semibold text-slate-900">{hiring?.title}</p><p className="mt-1 text-xs text-slate-600">Đã tuyển {(hiring && (hiresByRequest.get(hiring.id) || []).length) || 0}/{hiring?.headcount} người</p></div>
       <Select label="Dự án" value={hireForm.project_id} onChange={(e) => setHireForm({ ...hireForm, project_id: e.target.value })} required>
         <option value="">Chọn dự án</option>
         {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
@@ -542,7 +538,6 @@ export function AdminRecruitment() {
         <option value="">Chọn nhân sự</option>
         {people.filter((person) => !(hiring && (hiresByRequest.get(hiring.id) || []).some((hire) => hire.user_id === person.id))).map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
       </Select>
-      <p className="-mt-2 text-xs text-slate-500">Nhân sự mới tuyển từ bên ngoài cần có tài khoản trước: <Link to="/admin/users" className="font-semibold text-indigo-700 underline">Hồ sơ nhân sự → Thêm người dùng</Link>.</p>
       <Select label="Vai trò trong dự án" value={hireForm.role_code} onChange={(e) => setHireForm({ ...hireForm, role_code: e.target.value })}>
         {HIRE_ROLES.map((role) => <option key={role.code} value={role.code}>{role.label}</option>)}
       </Select>

@@ -15,6 +15,7 @@ import { describeDbError } from '@/lib/dbError';
 import { formatVND } from '@/lib/utils';
 import { printTables } from '@/lib/tablePrint';
 import { supabase } from '@/lib/supabase';
+import { Tabs } from '@/components/ui/Tabs';
 
 type ReportKey = 'movement' | 'annual' | 'kpi' | 'insurance';
 type AnnualMetric = 'net' | 'gross' | 'insurance' | 'tax';
@@ -656,12 +657,12 @@ export function AdminWorkforceReports({
       <div className="rounded-none border border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-card px-4 py-2.5">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1.5" aria-label="Năm báo cáo">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 whitespace-nowrap">Năm:</span>
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 whitespace-nowrap">Năm:</span>
             <div className="inline-flex items-center rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
               <button
                 type="button"
                 onClick={() => setYear((y) => String(Math.max(2000, (Number(y) || 2026) - 1)))}
-                className="flex h-9 w-7 items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                className="flex h-9 w-7 items-center justify-center text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
                 aria-label="Năm trước"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
@@ -679,7 +680,7 @@ export function AdminWorkforceReports({
               <button
                 type="button"
                 onClick={() => setYear((y) => String(Math.min(2100, (Number(y) || 2026) + 1)))}
-                className="flex h-9 w-7 items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                className="flex h-9 w-7 items-center justify-center text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
                 aria-label="Năm sau"
               >
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -690,7 +691,6 @@ export function AdminWorkforceReports({
           {(report === 'kpi' ? canViewAllKpi : canViewPayroll) ? (
             <div className="w-56 sm:w-64">
               <Dropdown
-                square
                 compact
                 aria-label="Đơn vị / Phòng ban"
                 placeholder="Tất cả đơn vị"
@@ -705,7 +705,7 @@ export function AdminWorkforceReports({
             </div>
           ) : (
             <div className="inline-flex h-9 items-center gap-1.5 rounded-none border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 px-3 text-xs">
-              <span className="font-semibold text-slate-500 dark:text-slate-400">Đơn vị:</span>
+              <span className="font-semibold text-slate-600 dark:text-slate-400">Đơn vị:</span>
               <span className="font-bold text-slate-800 dark:text-slate-100 truncate max-w-[160px]">
                 {profile?.unit_id ? unitById.get(profile.unit_id) ?? 'Đơn vị của tôi' : 'Chỉ phiếu của tôi'}
               </span>
@@ -715,7 +715,7 @@ export function AdminWorkforceReports({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-md gap-2 text-xs font-semibold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs"
+            className="h-9 rounded-none gap-2 text-xs font-semibold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs"
             onClick={() => void exportExcel()}
             disabled={!hasReportPermission}
           >
@@ -725,7 +725,7 @@ export function AdminWorkforceReports({
           <Button
             variant="outline"
             size="sm"
-            className="h-9 rounded-md gap-2 text-xs font-semibold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs"
+            className="h-9 rounded-none gap-2 text-xs font-semibold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs"
             onClick={() => void printReport()}
             disabled={!hasReportPermission}
           >
@@ -733,7 +733,7 @@ export function AdminWorkforceReports({
           </Button>
 
           {canViewPayroll && (
-            <span className="ml-auto text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline-block">
+            <span className="ml-auto text-xs font-semibold text-slate-600 dark:text-slate-400 hidden sm:inline-block">
               Quy mô: <strong className="font-mono text-slate-800 dark:text-slate-200">{currentHeadcount}</strong> nhân sự
             </span>
           )}
@@ -746,24 +746,7 @@ export function AdminWorkforceReports({
         </div>
       ) : (
         <>
-          <div className="flex border-b border-slate-200 dark:border-slate-800" role="tablist" aria-label="Báo cáo quản trị">
-            {availableTabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={report === tab.key}
-                onClick={() => setReport(tab.key)}
-                className={`px-5 py-3 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 -mb-px rounded-none ${
-                  report === tab.key
-                    ? 'border-indigo-600 bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 font-extrabold shadow-sm'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <Tabs label="Báo cáo quản trị" items={availableTabs} value={report} onChange={setReport} />
 
           {report === 'movement' && canViewPayroll && (
             <MovementReport
@@ -836,11 +819,8 @@ function MovementReport({ rows, currentHeadcount, departmentRows, eventTrackingS
           <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
-                Biến động quỹ lương theo tháng (VNĐ)
+                Quỹ lương theo tháng
               </h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Xu hướng quỹ lương gộp và chi phí bảo hiểm doanh nghiệp đóng
-              </p>
             </div>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
@@ -894,7 +874,7 @@ function MovementReport({ rows, currentHeadcount, departmentRows, eventTrackingS
         <div className="border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 rounded-none p-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
-              Biến động nhân sự (Tuyển mới vs Nghỉ việc)
+              Tuyển mới và nghỉ việc
             </h3>
             <div className="flex items-center gap-3 text-xs">
               <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
@@ -1115,11 +1095,8 @@ function KpiReport({
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
-              Xu hướng % hoàn thành KPI & tỷ lệ đạt Khá - Giỏi 12 tháng năm {year}
+              KPI 12 tháng năm {year}
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Đường sóng thể hiện điểm KPI bình quân (%) và tỷ lệ nhân sự đạt từ mức Khá trở lên (xếp loại B, A, A+)
-            </p>
           </div>
           <div className="flex items-center gap-4 text-xs">
             <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
@@ -1128,7 +1105,7 @@ function KpiReport({
             <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
               <span className="h-2.5 w-2.5 rounded-full inline-block" style={{ backgroundColor: '#10B981' }} /> % Đạt Khá - Giỏi
             </span>
-            <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
+            <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
               <span className="w-4 border-b border-dashed border-rose-500 inline-block" /> Mốc 100%
             </span>
           </div>
@@ -1178,7 +1155,7 @@ function KpiReport({
       {rows.length > 0 && (
         <div className="border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 rounded-none p-4">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100 pb-3 border-b border-slate-100 dark:border-slate-800">
-            Điểm KPI trung bình theo đơn vị / phòng ban (%)
+            KPI theo phòng ban
           </h3>
           <div className="mt-4 h-60 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -1247,20 +1224,14 @@ function InsuranceReport({ rows }: {
         <SummaryCard icon={<ShieldCheck className="h-4 w-4" />} label="BH doanh nghiệp đóng (21.5%)" value={formatVND(employerInsuranceTotal)} />
         <SummaryCard icon={<Wallet className="h-4 w-4" />} label="Thuế TNCN đã khấu trừ" value={formatVND(taxTotal)} />
       </div>
-      <p className="rounded-none border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 px-4 py-2.5 text-xs text-slate-600 dark:text-slate-400">
-        Số liệu được trích xuất từ các kỳ lương đã được duyệt (APPROVED / PAID). Khoản bảo hiểm NLĐ trích 10.5% (BHXH 8%, BHYT 1.5%, BHTN 1%); Doanh nghiệp đóng 21.5% (BHXH 17.5%, BHYT 3%, BHTN 1%).
-      </p>
 
       {/* Biểu đồ cơ cấu nghĩa vụ Bảo hiểm & Thuế theo tháng - Biểu đồ sóng sánh monotone */}
       <div className="border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 rounded-none p-4">
         <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-100">
-              Cơ cấu nghĩa vụ bảo hiểm & thuế TNCN theo tháng (VNĐ)
+              Bảo hiểm và thuế TNCN
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Đường sóng biến động các khoản trích theo lương theo từng kỳ chi trả
-            </p>
           </div>
           <div className="flex items-center gap-3 text-xs">
             <span className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
@@ -1381,7 +1352,6 @@ function AnnualPayrollReport({ rows, metric, onMetricChange, query, onQueryChang
       <div className="flex flex-wrap items-center gap-3 rounded-none border border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 px-4 py-2.5">
         <div className="w-48">
           <Dropdown
-            square
             compact
             aria-label="Chỉ tiêu hiển thị theo tháng"
             value={metric}
@@ -1395,11 +1365,8 @@ function AnnualPayrollReport({ rows, metric, onMetricChange, query, onQueryChang
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder="Tìm mã, họ tên, phòng ban…"
           aria-label="Tìm nhân viên"
-          className="h-9 w-64 rounded-none border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
+          className="h-9 w-64 rounded-none border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-indigo-500"
         />
-        <span className="ml-auto text-[11px] text-slate-500 dark:text-slate-400">
-          Chỉ gồm các kỳ lương đã duyệt hoặc đã chi trả · ô “—” là tháng không có phiếu lương
-        </span>
       </div>
 
       <ReportTable title={`${metricLabel} theo tháng của từng nhân viên`} subtitle={`Năm ${year} · VNĐ`}>
@@ -1428,7 +1395,7 @@ function AnnualPayrollReport({ rows, metric, onMetricChange, query, onQueryChang
           ))}
         </tbody>
         {rows.length === 0 ? (
-          <tbody><tr><td colSpan={17} className="p-8 text-center text-slate-400 dark:text-slate-500">Chưa có phiếu lương đã duyệt trong năm {year}.</td></tr></tbody>
+          <tbody><tr><td colSpan={17} className="p-8 text-center text-slate-600 dark:text-slate-400">Chưa có phiếu lương đã duyệt trong năm {year}.</td></tr></tbody>
         ) : (
           <tfoot>
             <tr className="border-t-2 border-slate-300 dark:border-slate-600 bg-slate-100/90 dark:bg-slate-800 font-bold text-slate-900 dark:text-slate-100">
@@ -1457,7 +1424,7 @@ function AnnualPayrollReport({ rows, metric, onMetricChange, query, onQueryChang
         <tbody>
           {rows.map((row) => (
             <tr key={row.userId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
-              <Td align="left" bold>{row.name}{row.code ? <span className="ml-2 font-mono font-normal text-slate-400">{row.code}</span> : null}</Td>
+              <Td align="left" bold>{row.name}{row.code ? <span className="ml-2 font-mono font-normal text-slate-600">{row.code}</span> : null}</Td>
               <Td align="center" mono>{row.months.filter((v) => v != null).length}</Td>
               <Td align="right" mono>{formatVND(row.gross)}</Td>
               <Td align="right" mono>{formatVND(row.insurance)}</Td>
@@ -1537,7 +1504,7 @@ function SummaryCard({ icon, label, value }: { icon: ReactNode; label: string; v
         {icon}
       </span>
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</p>
+        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">{label}</p>
         <p className="mt-1 font-mono text-lg font-bold tabular-nums text-slate-900 dark:text-slate-100">{value}</p>
       </div>
     </div>
@@ -1549,7 +1516,7 @@ function ReportTable({ title, subtitle, children }: { title: string; subtitle?: 
     <div className="rounded-none border border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 shadow-card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 px-4 py-3">
         <p className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-100">{title}</p>
-        {subtitle && <span className="text-[11px] text-slate-400 dark:text-slate-500">{subtitle}</span>}
+        {subtitle && <span className="text-[11px] text-slate-600 dark:text-slate-400">{subtitle}</span>}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-xs tabular-nums text-slate-700 dark:text-slate-200">
@@ -1585,5 +1552,5 @@ function Td({ children, align = 'left', mono = false, bold = false, className = 
 }
 
 function EmptyTable({ message }: { message: string }) {
-  return <tbody><tr><td colSpan={8} className="p-8 text-center text-slate-400 dark:text-slate-500">{message}</td></tr></tbody>;
+  return <tbody><tr><td colSpan={8} className="p-8 text-center text-slate-600 dark:text-slate-400">{message}</td></tr></tbody>;
 }

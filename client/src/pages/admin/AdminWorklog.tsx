@@ -93,10 +93,10 @@ export function AdminWorklog() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
-          <button onClick={() => setAnchor(addDays(anchor, -7))} className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors" aria-label="Tuần trước">
+          <button onClick={() => setAnchor(addDays(anchor, -7))} className="p-2 rounded-none border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors" aria-label="Tuần trước">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button onClick={() => setAnchor(addDays(anchor, 7))} className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition-colors" aria-label="Tuần sau">
+          <button onClick={() => setAnchor(addDays(anchor, 7))} className="p-2 rounded-none border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors" aria-label="Tuần sau">
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
@@ -109,7 +109,7 @@ export function AdminWorklog() {
         )}
 
         {!loading && totalUnlogged > UNLOGGED_TOLERANCE_HOURS && (
-          <span className="ml-auto flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5">
+          <span className="ml-auto flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-none px-3 py-1.5">
             <TriangleAlert className="w-4 h-4" />
             {formatHours(Math.round(totalUnlogged * 10) / 10)} có mặt nhưng chưa khai
           </span>
@@ -129,16 +129,16 @@ export function AdminWorklog() {
               <table className="w-full border-collapse min-w-[650px] text-xs">
                 <thead>
                   <tr className="bg-slate-50/70 dark:bg-slate-800/70">
-                    <th className="text-left text-xs font-semibold text-slate-500 uppercase tracking-wider px-2.5 py-1.5 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 min-w-[130px]">
+                    <th className="text-left text-xs font-semibold text-slate-600 uppercase tracking-wider px-2.5 py-1.5 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10 min-w-[130px]">
                       Nhân viên
                     </th>
                     {days.map((d) => (
                       <th key={d.key} className="text-center text-xs font-semibold px-1 py-1.5 min-w-[65px]">
                         <span className="block text-slate-600 dark:text-slate-300">{d.weekdayLabel}</span>
-                        <span className="block text-[10px] font-normal text-slate-400">{d.label}</span>
+                        <span className="block text-[11px] font-normal text-slate-600">{d.label}</span>
                       </th>
                     ))}
-                    <th className="text-center text-xs font-semibold text-slate-500 uppercase tracking-wider px-1 py-1.5 min-w-[65px]">
+                    <th className="text-center text-xs font-semibold text-slate-600 uppercase tracking-wider px-1 py-1.5 min-w-[65px]">
                       Tổng
                     </th>
                   </tr>
@@ -152,7 +152,7 @@ export function AdminWorklog() {
                         <td className="px-2.5 py-1 sticky left-0 bg-white dark:bg-slate-900 z-10">
                           <div className="min-w-0">
                             <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">{person.name}</p>
-                            {person.department && <p className="text-[10px] text-slate-400 truncate">{person.department}</p>}
+                            {person.department && <p className="text-[11px] text-slate-600 truncate">{person.department}</p>}
                           </div>
                         </td>
 
@@ -170,10 +170,10 @@ export function AdminWorklog() {
                                   {formatHours(logged)}
                                 </span>
                               ) : (
-                                <span className={`text-sm ${unlogged ? 'text-amber-500' : 'text-slate-300'}`}>—</span>
+                                <span className={`text-sm ${unlogged ? 'text-amber-500' : 'text-slate-600'}`}>—</span>
                               )}
                               {unlogged && (
-                                <span className="block text-[10px] text-amber-600" title="Giờ có mặt theo chấm công">
+                                <span className="block text-[11px] text-amber-600" title="Giờ có mặt theo chấm công">
                                   có mặt {formatHours(present!)}
                                 </span>
                               )}
@@ -198,7 +198,7 @@ export function AdminWorklog() {
                       const dayTotal = staff.reduce((sum, p) => sum + loggedOn(p.id, d.key), 0);
                       return (
                         <td key={d.key} className="px-2 py-2.5 text-center">
-                          <span className={`text-sm font-semibold ${dayTotal === 0 ? 'text-slate-300' : 'text-slate-700'}`}>
+                          <span className={`text-sm font-semibold ${dayTotal === 0 ? 'text-slate-600' : 'text-slate-700'}`}>
                             {dayTotal > 0 ? formatHours(dayTotal) : '—'}
                           </span>
                         </td>
@@ -219,7 +219,7 @@ export function AdminWorklog() {
 
       <WorklogApprovalQueue weekStart={days[0].key} />
 
-      <p className="text-xs text-slate-400 leading-relaxed">
+      <p className="text-xs text-slate-600 leading-relaxed">
         Ô màu cam nghĩa là chấm công ghi nhận có mặt nhưng nhật ký khai ít hơn quá {UNLOGGED_TOLERANCE_HOURS} giờ.
         Ngày chưa tới và ngày chưa check-out không được tính.
       </p>
@@ -370,7 +370,7 @@ export function WorklogApprovalQueue({
               <h3 className="text-sm font-semibold text-slate-800">
                 Worklog chờ duyệt{weekStart ? ` · tuần từ ${weekStart}` : ' của dự án'}
               </h3>
-              <p className="mt-1 text-xs text-slate-500">Chỉ trưởng dự án duyệt; không ai tự duyệt worklog của mình.</p>
+
             </div>
             <Badge className="bg-amber-50 text-amber-700">{rows.length} chờ duyệt</Badge>
           </div>
@@ -379,7 +379,7 @@ export function WorklogApprovalQueue({
           ) : loadError ? (
             <ErrorState message={loadError} onRetry={() => void load()} />
           ) : rows.length === 0 ? (
-            <p className="text-sm text-slate-400">Không có worklog chờ duyệt trong tuần này hoặc tài khoản không có phạm vi duyệt.</p>
+            <p className="text-sm text-slate-600">Không có worklog chờ duyệt trong tuần này hoặc tài khoản không có phạm vi duyệt.</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {rows.map((row) => (
@@ -389,11 +389,11 @@ export function WorklogApprovalQueue({
                     <p className="text-sm font-semibold text-slate-800">
                       {names.get(row.user_id) ?? 'Nhân viên'} · {projects.get(row.project_id) ?? 'Dự án'}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-600">
                       Tuần từ {row.week_start} · gửi {new Date(row.created_at).toLocaleString('vi-VN')}
                     </p>
                     {row.submit_note && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{row.submit_note}</p>}
-                    <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
+                    <div className="mt-2 rounded-none bg-slate-50 px-3 py-2">
                       <p className="text-xs font-semibold text-slate-600">
                         {formatHours((entriesBySubmission.get(row.id) || []).reduce((sum, entry) => sum + Number(entry.hours), 0))} tổng giờ
                       </p>
@@ -401,7 +401,7 @@ export function WorklogApprovalQueue({
                         {(entriesBySubmission.get(row.id) || []).map((entry, index) => {
                           const task = Array.isArray(entry.task) ? entry.task[0] : entry.task;
                           return (
-                            <li key={`${entry.work_date}-${task?.id ?? index}`} className="text-xs text-slate-500">
+                            <li key={`${entry.work_date}-${task?.id ?? index}`} className="text-xs text-slate-600">
                               {formatDate(entry.work_date)} · {task?.title ?? 'Task'}: {formatHours(Number(entry.hours))}
                               {entry.note ? ` · ${entry.note}` : ''}
                             </li>

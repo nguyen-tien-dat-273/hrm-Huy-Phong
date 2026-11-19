@@ -1,6 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Tabs } from '@/components/ui/Tabs';
+import { FilterChips } from '@/components/ui/FilterChips';
+import { CountBadge } from '@/components/ui/CountBadge';
+import { useNavBadges } from '@/contexts/NavBadgeContext';
 import { AttendanceRequestPanel } from '@/components/attendance/AttendanceRequestPanel';
-import { Check, X, TriangleAlert } from 'lucide-react';
+import { Check, Eye, X, TriangleAlert } from 'lucide-react';
+import { RequestDetailModal, type RequestDetail } from '@/components/ui/RequestDetailModal';
 import { Pager, clampPage } from '@/components/payroll/Pager';
 import { Dropdown, type DropdownOption } from '@/components/ui/Dropdown';
 import { departmentOptions, passesPeopleFilter, personOptions } from '@/lib/peopleFilter';
@@ -16,7 +21,7 @@ import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
-import { LEAVE_TYPE_CONFIG, leaveStatusLabel } from '@/lib/leave';
+import { LEAVE_TYPE_CONFIG, leaveStatusLabel, leaveRequestDetail } from '@/lib/leave';
 import { fetchManagerIds, notifyUser, notifyUsers } from '@/lib/assignments';
 import { LeaveQuotaPanel } from '@/components/LeaveQuotaPanel';
 import { formatDate } from '@/lib/utils';
@@ -28,33 +33,6 @@ function Pill({ className, children }: { className: string; children: ReactNode 
   return <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${className}`}>{children}</span>;
 }
 
-/** Thanh chọn dạng phân đoạn vuông góc, dùng chung cho tab chính và bộ lọc trạng thái. */
-function Segmented<K extends string>({ items, value, onChange, label }: {
-  items: ReadonlyArray<{ key: K; label: string }>;
-  value: K;
-  onChange: (key: K) => void;
-  label: string;
-}) {
-  return (
-    <div className="inline-flex max-w-full overflow-x-auto rounded-none bg-slate-100 p-1" role="tablist" aria-label={label}>
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          role="tab"
-          aria-selected={value === item.key}
-          onClick={() => onChange(item.key)}
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-none px-3 py-1.5 text-sm font-semibold transition ${
-            value === item.key ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 const PER_PAGE = 10;
 const HEAD_ROW = 'border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]';
 const COL = 'border-l border-[#eed5d8] dark:border-[#4a1c22]';
@@ -64,35 +42,6 @@ const CANCEL_STATUS: Record<string, { label: string; color: string }> = {
   approved: { label: 'Đã duyệt hủy', color: 'bg-emerald-50 text-emerald-700' },
   rejected: { label: 'Đã từ chối', color: 'bg-red-50 text-red-700' },
 };
-
-/** Bộ lọc trạng thái kiểu gạch chân — khác thanh phân đoạn của nhóm đơn ở trên để không lẫn hai cấp lọc. */
-function StatusTabs<K extends string>({ items, value, onChange, label }: {
-  items: ReadonlyArray<{ key: K; label: string }>;
-  value: K;
-  onChange: (key: K) => void;
-  label: string;
-}) {
-  return (
-    <div className="flex gap-5 overflow-x-auto border-b border-slate-200" role="tablist" aria-label={label}>
-      {items.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          role="tab"
-          aria-selected={value === item.key}
-          onClick={() => onChange(item.key)}
-          className={`-mb-px shrink-0 border-b-2 px-0.5 pb-2.5 text-sm font-semibold transition ${
-            value === item.key
-              ? 'border-indigo-600 text-indigo-700'
-              : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-          }`}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Một ô lọc dạng Dropdown có ô gõ để tìm — cùng kiểu bộ lọc phòng ban ở Bảng lương tháng. */
 function FilterSelect({ label, value, options, onChange }: {
@@ -112,7 +61,7 @@ function PersonCell({ person, fallback }: { person?: Profile | null; fallback: s
   return (
     <div className="min-w-0">
       <p className="truncate text-xs font-bold text-slate-800 dark:text-slate-100">{person?.name || fallback}</p>
-      {person?.department && <p className="truncate text-[10px] text-slate-400">{person.department}</p>}
+      {person?.department && <p className="truncate text-[11px] text-slate-600">{person.department}</p>}
     </div>
   );
 }
@@ -124,6 +73,8 @@ export function AdminLeave() {
   const canReviewHr = hasPermission(profile, 'users');
   const canReviewLeave = hasPermission(profile, 'leave') || canReviewHr;
   const canManageLeave = hasPermission(profile, 'leave');
+  /** Số đơn chờ duyệt của từng nhóm — cùng nguồn với chấm đỏ trên sidebar. */
+  const { count: badgeCount, refresh: refreshBadges } = useNavBadges();
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [cancellations, setCancellations] = useState<LeaveCancellationRequest[]>([]);
@@ -142,6 +93,7 @@ export function AdminLeave() {
   const [personFilter, setPersonFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [page, setPage] = useState(1);
+  const [detail, setDetail] = useState<RequestDetail | null>(null);
 
   /** Một trung tâm cho mọi loại đơn đã có nghiệp vụ xử lý phía sau. */
   const [tab, setTab] = useState<'attendance' | 'requests' | 'cancellations' | 'quota'>(
@@ -214,6 +166,7 @@ export function AdminLeave() {
       : row)));
     setCancellationSupported(!cancellationResult.error);
     setLoading(false);
+    refreshBadges();
   };
 
   // Đi qua notifyUser để công tắc "Gửi thông báo tự động" trong Cấu hình có tác dụng.
@@ -340,8 +293,24 @@ export function AdminLeave() {
     loadRequests();
   };
 
-  const filters: { key: LeaveFilterKey; label: string }[] = [
-    { key: 'pending', label: 'Chờ duyệt (Tất cả)' },
+  const openCancelDetail = (item: LeaveCancellationRequest) => {
+    const person = item.leave?.profile;
+    setDetail({
+      title: 'Đơn hủy phép',
+      applicant: person?.name ?? 'Nhân viên',
+      status: CANCEL_STATUS[item.status].label,
+      fields: [
+        { label: 'Nhân sự', value: person?.name ?? 'Nhân viên' },
+        { label: 'Phòng ban', value: person?.department ?? '' },
+        { label: 'Lịch nghỉ cần hủy', value: item.leave ? `${formatDate(item.leave.start_date)} → ${formatDate(item.leave.end_date)}` : '' },
+        { label: 'Lý do hủy', value: item.reason },
+        ...(item.review_note ? [{ label: 'Phản hồi', value: item.review_note }] : []),
+      ],
+    });
+  };
+
+  const filters: { key: LeaveFilterKey; label: string; count?: number }[] = [
+    { key: 'pending', label: 'Chờ duyệt (Tất cả)', count: badgeCount('leave.requests') },
     { key: 'pending_manager', label: 'Chờ quản lý (Cấp 1)' },
     { key: 'pending_hr', label: 'Chờ HR (Cấp 2)' },
     { key: 'approved', label: 'Đã duyệt' },
@@ -369,14 +338,14 @@ export function AdminLeave() {
 
   return (
     <div className="space-y-4">
-      <Segmented
+      <Tabs
         label="Nhóm đơn"
         value={tab}
         onChange={setTab}
         items={[
-          ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đơn chấm công & làm thêm' }] : []),
-          ...(canReviewLeave ? [{ key: 'requests' as const, label: 'Nghỉ phép' }] : []),
-          ...(canManageLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép' }] : []),
+          ...(canReviewAttendance ? [{ key: 'attendance' as const, label: 'Đơn chấm công & làm thêm', count: badgeCount('leave.attendance'), alert: true }] : []),
+          ...(canReviewLeave ? [{ key: 'requests' as const, label: 'Nghỉ phép', count: badgeCount('leave.requests'), alert: true }] : []),
+          ...(canManageLeave && cancellationSupported ? [{ key: 'cancellations' as const, label: 'Hủy phép', count: badgeCount('leave.cancellations'), alert: true }] : []),
           ...(canManageLeave ? [{ key: 'quota' as const, label: 'Quỹ phép' }] : []),
         ]}
       />
@@ -396,7 +365,7 @@ export function AdminLeave() {
           <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm overflow-hidden">
             <CardContent className="p-0">
               {visibleCancellations.length === 0 ? (
-                <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
+                <p className="px-5 py-10 text-center text-sm font-semibold text-slate-600">
                   {cancellations.length === 0
                     ? 'Không có yêu cầu hủy phép nào. Yêu cầu hủy đơn đã duyệt sẽ xuất hiện tại đây.'
                     : 'Không có yêu cầu nào khớp bộ lọc.'}
@@ -424,16 +393,19 @@ export function AdminLeave() {
                             </td>
                             <td className="px-2 py-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
                               {item.reason}
-                              {item.review_note && <span className="mt-0.5 block text-slate-500">Phản hồi: {item.review_note}</span>}
+                              {item.review_note && <span className="mt-0.5 block text-slate-600">Phản hồi: {item.review_note}</span>}
                             </td>
                             <td className="px-2 py-1.5 text-center"><Pill className={state.color}>{state.label}</Pill></td>
                             <td className="px-2 py-1.5">
-                              {item.status === 'pending' ? (
-                                <div className="flex justify-center gap-1.5">
-                                  <Button size="sm" variant="success" onClick={() => reviewCancellation(item, 'approved')} disabled={busy}><Check className="h-3.5 w-3.5" />Duyệt</Button>
-                                  <Button size="sm" variant="danger" onClick={() => { setCancelRejectTarget(item); setCancelReviewNote(''); }} disabled={busy}><X className="h-3.5 w-3.5" />Từ chối</Button>
-                                </div>
-                              ) : <span className="block text-center text-xs text-slate-300">—</span>}
+                              <div className="flex justify-center gap-1.5">
+                                <Button size="sm" variant="outline" onClick={() => openCancelDetail(item)}><Eye className="h-3.5 w-3.5" />Chi tiết</Button>
+                                {item.status === 'pending' && (
+                                  <>
+                                    <Button size="sm" variant="success" onClick={() => reviewCancellation(item, 'approved')} disabled={busy}><Check className="h-3.5 w-3.5" />Duyệt</Button>
+                                    <Button size="sm" variant="danger" onClick={() => { setCancelRejectTarget(item); setCancelReviewNote(''); }} disabled={busy}><X className="h-3.5 w-3.5" />Từ chối</Button>
+                                  </>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -448,7 +420,7 @@ export function AdminLeave() {
         </>
       ) : (
       <>
-      <StatusTabs label="Lọc theo trạng thái" value={filter} onChange={setFilter} items={filters} />
+      <FilterChips label="Lọc theo trạng thái" value={filter} onChange={setFilter} items={filters} />
       <div className="flex flex-wrap items-center gap-3">
         <FilterSelect label="Lọc theo phòng ban" value={deptFilter} options={departmentOptions(requestPeople)}
           onChange={(value) => { setDeptFilter(value); setPersonFilter(''); }} />
@@ -464,7 +436,7 @@ export function AdminLeave() {
           ) : loadError ? (
             <ErrorState message={loadError} onRetry={loadRequests} />
           ) : visibleRequests.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm font-semibold text-slate-400">
+            <p className="px-5 py-10 text-center text-sm font-semibold text-slate-600">
               {requests.length === 0 ? 'Không có đơn nghỉ phép nào trong mục này.' : 'Không có đơn nào khớp bộ lọc.'}
             </p>
           ) : (
@@ -498,7 +470,7 @@ export function AdminLeave() {
                         </td>
                         <td className="px-2 py-1.5 text-center text-xs font-bold tabular-nums text-slate-700 dark:text-slate-200">{Number(request.days)}</td>
                         <td className="max-w-[200px] px-2 py-1.5 text-xs leading-snug text-slate-600 dark:text-slate-300">
-                          {request.reason || <span className="text-slate-300">—</span>}
+                          {request.reason || <span className="text-slate-600">—</span>}
                           {request.status === 'rejected' && request.reason_reject && (
                             <span className="mt-1 flex items-start gap-1 text-red-600">
                               <TriangleAlert className="mt-px h-3 w-3 flex-shrink-0" />
@@ -511,21 +483,24 @@ export function AdminLeave() {
                             {request.is_cancelled ? 'Đã hủy' : status.label}
                           </Pill>
                           {request.approval_stage === 'HR' && (
-                            <span className="mt-1 block leading-snug text-[10px] text-indigo-700 dark:text-indigo-400">
+                            <span className="mt-1 block leading-snug text-[11px] text-indigo-700 dark:text-indigo-400">
                               Cấp 1: <strong>{managerApprover?.name || 'Trưởng BP'}</strong>
                               {request.manager_approved_at ? ` (${formatDate(request.manager_approved_at)})` : ''} · chờ HR chốt
                             </span>
                           )}
                           {request.status === 'approved' && request.manager_approved_by && (
-                            <span className="mt-1 block leading-snug text-[10px] text-slate-500">
+                            <span className="mt-1 block leading-snug text-[11px] text-slate-600">
                               QL {managerApprover?.name || 'quản lý'} → HR {finalApprover?.name || 'Nhân sự'}
                             </span>
                           )}
                         </td>
                         <td className="px-2 py-1.5">
-                          {request.status !== 'pending' ? (
-                            <span className="block text-center text-xs text-slate-300">—</span>
-                          ) : canAct ? (
+                          <div className="mb-1.5 flex justify-center">
+                            <Button size="sm" variant="outline" onClick={() => setDetail(leaveRequestDetail(request, request.profile, { manager: managerApprover?.name, final: finalApprover?.name }))}>
+                              <Eye className="h-3.5 w-3.5" />Chi tiết
+                            </Button>
+                          </div>
+                          {request.status !== 'pending' ? null : canAct ? (
                             <div className="flex justify-center gap-1.5">
                               <Button size="sm" variant="success" onClick={() => handleApprove(request)} disabled={busy}>
                                 <Check className="h-3.5 w-3.5" />
@@ -564,6 +539,8 @@ export function AdminLeave() {
       </>
       )}
 
+      <RequestDetailModal detail={detail} onClose={() => setDetail(null)} />
+
       <Modal
         square
         open={!!rejectTarget}
@@ -579,10 +556,7 @@ export function AdminLeave() {
             rows={3}
             placeholder="VD: Trùng lịch bàn giao dự án, đề nghị dời sang tuần sau."
           />
-          <p className="text-xs text-slate-500 leading-relaxed">
-            Lý do sẽ được gửi kèm thông báo cho người xin nghỉ. Bắt buộc nhập — từ chối
-            mà không nói rõ vì sao sẽ khiến họ phải hỏi lại.
-          </p>
+
           <div className="flex gap-3 pt-1">
             <Button type="button" variant="outline" onClick={() => { setRejectTarget(null); setRejectReason(''); }} className="flex-1">
               Hủy

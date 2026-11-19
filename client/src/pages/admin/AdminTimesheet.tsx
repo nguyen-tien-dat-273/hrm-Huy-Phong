@@ -11,7 +11,7 @@ import { Dropdown } from '@/components/ui/Dropdown';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Textarea } from '@/components/ui/Input';
 import {
-  FullscreenPanel, FullscreenToggle, ScrollArrows, TableShell, scrollAreaClass, useColumnScroll,
+  FullscreenPanel, FullscreenToggle, ScrollArrows, TableShell, ZoomControl, scrollAreaClass, useColumnScroll, useCtrlWheelZoom, useTableZoom,
 } from '@/components/payroll/WideTable';
 import { normalizeText } from '@/lib/formulaTokens';
 import { useToast } from '@/contexts/ToastContext';
@@ -26,6 +26,7 @@ import { hasAdminFunction, isTeamlead } from '@/lib/permissions';
 import { fetchPayrollMonthClosed } from '@/lib/payrollData';
 import { fetchTimesheetMetrics, type TimesheetMetrics } from '@/lib/timesheetPayroll';
 import type { Attendance, AttendanceSession, DailyAssignment, LeaveRequest, Profile } from '@/types';
+import { Pagination, PAGE_SIZE_MATRIX } from '@/components/ui/Pagination';
 
 /** Một ô ngày trên bảng công. */
 interface DayCell {
@@ -78,7 +79,7 @@ const clock = (iso: string | null) => (iso ? format(new Date(iso), 'HH:mm') : ''
 type PeriodStatus = 'OPEN' | 'REVIEW' | 'LOCKED';
 const PERIOD_ORDER: PeriodStatus[] = ['OPEN', 'REVIEW', 'LOCKED'];
 const PERIOD_LABEL: Record<PeriodStatus, string> = { OPEN: 'Đang mở', REVIEW: 'Đang đối soát', LOCKED: 'Đã khóa' };
-const PAGE_SIZE = 50;
+const PAGE_SIZE = PAGE_SIZE_MATRIX;
 interface TimesheetPeriod { id: string; month_start: string; status: PeriodStatus; locked_at: string | null }
 
 const hoursBetween = (a: Attendance, sessionsByAttendance: Map<string, AttendanceSession[]>): number => {
@@ -160,7 +161,7 @@ const TimesheetRow = memo(function TimesheetRow({
       <td className="sticky left-0 z-10 w-[150px] min-w-[150px] max-w-[150px] bg-white dark:bg-slate-900 px-2.5 py-1 group-hover:bg-slate-100/80 dark:group-hover:bg-slate-800/80 border-r-2 border-slate-400 dark:border-slate-600 shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)] dark:shadow-[2px_0_4px_-1px_rgba(0,0,0,0.4)]">
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-black text-slate-900 dark:text-slate-100" title={r.profile.name}>{r.profile.name}</p>
-          <p className="truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400" title={r.profile.department || 'Chưa phân phòng ban'}>{r.profile.department || '—'}</p>
+          <p className="truncate text-[11px] font-semibold text-slate-600 dark:text-slate-400" title={r.profile.department || 'Chưa phân phòng ban'}>{r.profile.department || '—'}</p>
         </div>
       </td>
       {visibleDays.map((i) => {
@@ -189,7 +190,7 @@ const TimesheetRow = memo(function TimesheetRow({
             ) : d.missingCheckout ? '!'
               : d.checkoutTime ? formatTime(d.checkoutTime)
               : d.onLeave ? (d.halfLeave ? '½' : 'P')
-              : <span className="text-[11px] font-normal text-slate-300 dark:text-slate-600">·</span>}
+              : <span className="text-[11px] font-normal text-slate-600 dark:text-slate-400">·</span>}
           </td>
         );
       })}
@@ -202,7 +203,7 @@ const TimesheetRow = memo(function TimesheetRow({
             {r.asgDone}/{r.asgTotal}
           </span>
         ) : (
-          <span className="text-slate-400 dark:text-slate-600">—</span>
+          <span className="text-slate-600 dark:text-slate-400">—</span>
         )}
       </td>
       {showMetrics && PAYROLL_COLUMNS.map((column) => (
@@ -522,6 +523,8 @@ export function AdminTimesheet() {
   }, [pending, periodSupported, profiles]);
 
   const { scrollRef, edge, updateEdge, scrollColumns } = useColumnScroll([daysInMonth, visibleDays.length, pageRows.length, rows.length, full]);
+  const { zoom, setZoom } = useTableZoom('timesheet');
+  useCtrlWheelZoom(scrollRef, zoom, setZoom);
 
   const setPeriodStatus = async (status: PeriodStatus) => {
     if (status === 'LOCKED' && exceptions > 0) {
@@ -544,7 +547,9 @@ export function AdminTimesheet() {
   /** Kỳ công đã khoá thì giờ vào/ra không sửa nữa — sai sót xử lý bằng Điều chỉnh lương kỳ sau. */
   const canManage = hasAdminFunction(profile, 'admin.timesheet_lock') || isTeamlead(profile);
   const isLocked = periodStatus === 'LOCKED';
-  const canEdit = canManage && !isLocked;
+  /** Giờ vào/ra không còn sửa tay trên bảng công: chỉ xem chi tiết; dữ liệu đến từ máy chấm công. */
+  const viewOnly: boolean = true;
+  const canEdit = canManage && !viewOnly;
 
   const openEdit = (person: Profile, dayIndex: number, cell: DayCell) => {
     if (!canManage) return;
@@ -793,10 +798,10 @@ export function AdminTimesheet() {
 
   // --------------------------------------------------------------------------
   if (loading) {
-    return <div className="bg-white border border-slate-200 rounded-2xl p-5"><TableSkeleton rows={6} /></div>;
+    return <div className="bg-white border border-slate-200 rounded-none p-5"><TableSkeleton rows={6} /></div>;
   }
   if (loadError) {
-    return <div className="bg-white border border-slate-200 rounded-2xl"><ErrorState message={loadError} onRetry={loadData} /></div>;
+    return <div className="bg-white border border-slate-200 rounded-none"><ErrorState message={loadError} onRetry={loadData} /></div>;
   }
 
   const canLock = periodSupported && hasAdminFunction(profile, 'admin.timesheet_lock');
@@ -813,7 +818,7 @@ export function AdminTimesheet() {
               {index > 0 && <span className={`h-px w-3 ${index <= current ? 'bg-indigo-300' : 'bg-slate-200'}`} />}
               <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${index === current
                 ? 'bg-indigo-600 text-white'
-                : index < current ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-400'}`}>
+                : index < current ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
                 {PERIOD_LABEL[step]}
               </span>
             </span>
@@ -833,7 +838,7 @@ export function AdminTimesheet() {
             <Button variant="outline" onClick={() => setPeriodStatus('OPEN')} disabled={changingPeriod}><Unlock className="h-4 w-4" /> Mở lại kỳ</Button>
           )}
           {periodStatus === 'LOCKED' && payrollClosed && (
-            <span className="inline-flex h-9 items-center gap-1.5 bg-slate-100 px-3 text-xs font-semibold text-slate-500" title="Kỳ lương tháng này đã khoá — sai sót chấm công xử lý bằng Điều chỉnh lương kỳ sau.">
+            <span className="inline-flex h-9 items-center gap-1.5 bg-slate-100 px-3 text-xs font-semibold text-slate-600" title="Kỳ lương tháng này đã khoá — sai sót chấm công xử lý bằng Điều chỉnh lương kỳ sau.">
               <Lock className="h-3.5 w-3.5" /> Kỳ lương đã khoá — không mở lại kỳ công
             </span>
           )}
@@ -880,16 +885,17 @@ export function AdminTimesheet() {
               />
             </div>
             <div className="relative w-full sm:w-72">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
               <input
                 value={personFilter}
                 onChange={(event) => { setPersonFilter(event.target.value); setPage(0); }}
                 placeholder="Lọc theo tên nhân viên…"
                 aria-label="Lọc theo tên nhân viên"
-                className="h-10 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20"
+                className="h-11 w-full rounded-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 pl-10 pr-3.5 text-sm font-medium text-slate-900 dark:text-slate-100 placeholder:text-slate-600 outline-none transition hover:border-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-600/15"
               />
             </div>
-            <span className="ml-auto text-xs font-semibold text-slate-500 dark:text-slate-400">{filtered.length}/{rows.length} nhân sự</span>
+            <span className="ml-auto text-xs font-semibold text-slate-600 dark:text-slate-400">{filtered.length}/{rows.length} nhân sự</span>
+            <ZoomControl zoom={zoom} onChange={setZoom} />
             <FullscreenToggle full={full} onToggle={() => setFull((value) => !value)} />
           </div>
 
@@ -897,13 +903,12 @@ export function AdminTimesheet() {
             <EmptyState
               icon={<TableIcon className="h-8 w-8" />}
               title="Chưa có nhân sự"
-              description="Tạo tài khoản trong Quản lý User rồi quay lại đây."
             />
           ) : (
             <div className={full ? 'relative flex min-h-0 flex-1 flex-col' : 'relative'}>
-              <ScrollArrows edge={edge} onScroll={scrollColumns} stickyWidth={150} />
+              <ScrollArrows edge={edge} onScroll={scrollColumns} stickyWidth={150 * zoom} />
               <div ref={scrollRef} onScroll={updateEdge} className={scrollAreaClass(full)}>
-                <table className="w-full whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
+                <table style={{ zoom }} className="w-full whitespace-nowrap text-xs tabular-nums text-slate-900 dark:text-slate-100 border-collapse">
                   <thead>
                     <tr className="border-b-2 border-[#bf1f2b] dark:border-[#e66a76] bg-[#fdf2f4] dark:bg-[#201114] text-xs font-black text-[#5c0f16] dark:text-[#fde8ea]">
                       <th className="sticky left-0 top-0 z-30 w-[150px] min-w-[150px] max-w-[150px] bg-[#fdf2f4] dark:bg-[#201114] px-2.5 py-1.5 text-left border-r-2 border-[#eed5d8] dark:border-[#4a1c22] font-black uppercase tracking-wider text-[#5c0f16] dark:text-[#fde8ea] shadow-[inset_0_-2px_0_#bf1f2b] dark:shadow-[inset_0_-2px_0_#e66a76]">Nhân sự</th>
@@ -981,17 +986,9 @@ export function AdminTimesheet() {
             <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-amber-100 text-[11px] font-black text-amber-800">!</span> thiếu checkout</span>
             <span className="flex items-center gap-1.5"><span className="flex h-4 w-4 items-center justify-center bg-violet-100 text-[11px] font-black text-violet-800">P</span> nghỉ phép</span>
             <span className="flex items-center gap-1.5"><span className="h-4 w-4 border border-slate-300 bg-slate-100 dark:bg-slate-800" /> cuối tuần</span>
-            {metrics && <span className="text-slate-500 dark:text-slate-400">Các cột từ “OT thường” đến “Lễ” là số sẽ tự điền sang bảng lương khi khoá kỳ công.</span>}
+            {metrics && <span className="text-slate-600 dark:text-slate-400">Các cột từ “OT thường” đến “Lễ” là số sẽ tự điền sang bảng lương khi khoá kỳ công.</span>}
           </div>
-          {pageCount > 1 && (
-            <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 px-4 py-2 text-xs text-slate-500 dark:text-slate-400 no-print">
-              <span>Trang {currentPage + 1}/{pageCount}</span>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>Trước</Button>
-                <Button size="sm" variant="outline" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)}>Sau</Button>
-              </div>
-            </div>
-          )}
+          <Pagination page={currentPage + 1} total={filtered.length} size={PAGE_SIZE} noun="người" setPage={(value) => setPage(value - 1)} />
         </TableShell>
       </FullscreenPanel>
 
@@ -999,23 +996,18 @@ export function AdminTimesheet() {
         square
         open={!!edit}
         onClose={() => { if (!savingEdit) setEdit(null); }}
-        title={edit ? `${isLocked ? 'Xem chi tiết chấm công' : 'Sửa chấm công'} — ${edit.profile.name} · ${edit.date.slice(8, 10)}/${edit.date.slice(5, 7)}/${edit.date.slice(0, 4)}` : ''}
+        title={edit ? `${viewOnly ? 'Xem chi tiết chấm công' : 'Sửa chấm công'} — ${edit.profile.name} · ${edit.date.slice(8, 10)}/${edit.date.slice(5, 7)}/${edit.date.slice(0, 4)}` : ''}
         size="md"
       >
         {edit && (
-          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!isLocked) void saveEdit(); }}>
-            {isLocked && (
-              <p className="rounded-none border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
-                Kỳ công đã khóa — chỉ xem chi tiết giờ vào / giờ ra, không thể chỉnh sửa.
-              </p>
-            )}
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!viewOnly) void saveEdit(); }}>
             <div className="grid grid-cols-2 gap-3">
-              <Input label="Giờ vào" type="time" required value={edit.checkIn} className="!rounded-none" disabled={isLocked}
+              <Input label="Giờ vào" type="time" required value={edit.checkIn} className="!rounded-none" disabled={viewOnly}
                 onChange={(event) => setEdit({ ...edit, checkIn: event.target.value })} />
-              <Input label="Giờ ra" type="time" required value={edit.checkOut} className="!rounded-none" disabled={isLocked}
+              <Input label="Giờ ra" type="time" required value={edit.checkOut} className="!rounded-none" disabled={viewOnly}
                 onChange={(event) => setEdit({ ...edit, checkOut: event.target.value })} />
             </div>
-            {!isLocked ? (
+            {!viewOnly ? (
               <>
                 <Textarea className="!rounded-none" label="Lý do sửa" required rows={3} value={edit.reason}
                   placeholder="Ví dụ: máy chấm công lỗi, quên check-in…"
@@ -1045,7 +1037,6 @@ export function AdminTimesheet() {
             </li>
           ))}
         </ul>
-        {exceptions > 0 && <p className="mt-4 text-xs text-slate-500">Các bản ghi này chưa được tính vào bảng công chính thức.</p>}
       </Modal>
     </div>
   );

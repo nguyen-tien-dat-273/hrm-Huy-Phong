@@ -123,7 +123,7 @@ export function AdminOverview() {
             <AlertTriangle className="w-6 h-6 text-amber-500 flex-shrink-0" />
             <div>
               <p className="font-medium text-slate-800">Chỉ Quản trị viên và Ban giám đốc</p>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm text-slate-600 mt-1">
                 Tổng quan điều hành tổng hợp dữ liệu toàn bộ dự án của công ty nên không mở theo quyền lẻ.
               </p>
             </div>
@@ -146,7 +146,7 @@ export function AdminOverview() {
   return (
     <div className="space-y-5 sm:space-y-6">
       {/* ============ Mở đầu & hành động nhanh ============ */}
-      <section className="dashboard-hero relative overflow-hidden rounded-[1.75rem] border border-slate-200/70 px-5 py-6 shadow-card sm:px-7 sm:py-7 lg:px-8" aria-labelledby="overview-heading">
+      <section className="dashboard-hero relative overflow-hidden rounded-none border border-slate-200/70 px-5 py-6 shadow-card sm:px-7 sm:py-7 lg:px-8" aria-labelledby="overview-heading">
         <div className="dashboard-hero-orb" aria-hidden="true" />
         <div className="relative z-10 flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
@@ -154,7 +154,7 @@ export function AdminOverview() {
               <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/80 bg-white/75 px-2.5 py-1 shadow-sm backdrop-blur">
                 <Sparkles className="h-3.5 w-3.5" /> Trung tâm điều hành
               </span>
-              <span className="font-semibold normal-case tracking-normal text-slate-500 first-letter:uppercase">{todayLabel}</span>
+              <span className="font-semibold normal-case tracking-normal text-slate-600 first-letter:uppercase">{todayLabel}</span>
             </div>
             <h2 id="overview-heading" className="font-display text-2xl font-extrabold tracking-[-0.035em] text-slate-950 sm:text-3xl">
               {getGreeting()}, {displayName}
@@ -167,20 +167,20 @@ export function AdminOverview() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-3 rounded-2xl border border-white/80 bg-white/72 px-4 py-3 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-3 rounded-none border border-white/80 bg-white/72 px-4 py-3 shadow-sm backdrop-blur">
               <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-sm font-extrabold text-emerald-700 ring-1 ring-emerald-100">
                 {healthyRate}%
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-500">Sức khỏe danh mục</p>
+                <p className="text-xs font-semibold text-slate-600">Sức khỏe danh mục</p>
                 <p className="text-sm font-bold text-slate-900">{healthyProjects}/{live.length} dự án ổn định</p>
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => navigate('/admin/projects')} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md sm:flex-none">
+              <button onClick={() => navigate('/admin/projects')} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-none border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md sm:flex-none">
                 <Plus className="h-4 w-4" /> Dự án
               </button>
-              <button onClick={() => navigate('/admin/reports')} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:bg-slate-800 sm:flex-none">
+              <button onClick={() => navigate('/admin/reports')} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-none bg-slate-950 px-4 text-sm font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:-translate-y-0.5 hover:bg-slate-800 sm:flex-none">
                 <BarChart3 className="h-4 w-4" /> Báo cáo
               </button>
             </div>
@@ -209,7 +209,7 @@ export function AdminOverview() {
                 <CardTitle>
                   <span className="inline-flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-600" />Sức khỏe dự án</span>
                 </CardTitle>
-                <p className="mt-1 text-xs text-slate-500">Sắp xếp theo mức độ cần can thiệp</p>
+                <p className="mt-1 text-xs text-slate-600">Sắp xếp theo mức độ cần can thiệp</p>
               </div>
               <button onClick={() => navigate('/admin/projects')} className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 transition hover:text-indigo-800">
                 Xem tất cả <ArrowRight className="h-3.5 w-3.5" />
@@ -217,8 +217,7 @@ export function AdminOverview() {
             </CardHeader>
             <CardContent className="p-0">
               {live.length === 0 ? (
-                <EmptyState icon={<FolderKanban className="w-8 h-8" />} title="Chưa có dự án đang triển khai"
-                  description="Tạo dự án ở trang Quản lý Dự án để theo dõi tại đây." />
+                <EmptyState icon={<FolderKanban className="w-8 h-8" />} title="Chưa có dự án đang triển khai" />
               ) : (
                 <div className="divide-y divide-slate-50">
                   {portfolio.filter((ph) => isLiveProject(ph.project)).map((ph) => (
@@ -237,7 +236,7 @@ export function AdminOverview() {
             <CardHeader><CardTitle>Phân bố sức khỏe</CardTitle></CardHeader>
             <CardContent>
               {healthDist.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-6">Chưa có dữ liệu</p>
+                <p className="text-sm text-slate-600 text-center py-6">Chưa có dữ liệu</p>
               ) : (
                 <div className="flex items-center gap-4">
                   <div className="w-32 h-32 flex-shrink-0 relative">
@@ -251,7 +250,7 @@ export function AdminOverview() {
                     </ResponsiveContainer>
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                       <span className="text-2xl font-extrabold text-slate-800">{live.length}</span>
-                      <span className="text-[10px] text-slate-400 -mt-0.5">dự án</span>
+                      <span className="text-[11px] text-slate-600 -mt-0.5">dự án</span>
                     </div>
                   </div>
                   <div className="flex-1 space-y-2">
@@ -274,7 +273,7 @@ export function AdminOverview() {
             <CardHeader>
               <CardTitle>
                 <span className="inline-flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-amber-500" />Điểm cần xử lý</span>
-                {risks.length > 0 && <span className="ml-2 text-xs font-normal text-slate-400">{risks.length}</span>}
+                {risks.length > 0 && <span className="ml-2 text-xs font-normal text-slate-600">{risks.length}</span>}
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">
@@ -289,7 +288,7 @@ export function AdminOverview() {
                 <div className="flex flex-col items-center text-center py-8 px-5">
                   <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-2 ring-4 ring-emerald-50/60"><CheckCircle2 className="w-6 h-6 text-emerald-600" /></div>
                   <p className="text-sm font-medium text-slate-700">Mọi thứ đang ổn</p>
-                  <p className="text-xs text-slate-400">Không có dự án nào cần xử lý gấp.</p>
+                  <p className="text-xs text-slate-600">Không có dự án nào cần xử lý gấp.</p>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
@@ -299,9 +298,9 @@ export function AdminOverview() {
                       <span className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${HEALTH_CONFIG[r.level].dot}`} />
                       <span className="flex-1 min-w-0">
                         <span className="text-sm text-slate-700">{r.message}</span>
-                        <span className="block text-xs text-slate-400 truncate">{r.projectName}</span>
+                        <span className="block text-xs text-slate-600 truncate">{r.projectName}</span>
                       </span>
-                      <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0 mt-0.5" />
+                      <ChevronRight className="w-4 h-4 text-slate-600 flex-shrink-0 mt-0.5" />
                     </button>
                   ))}
                 </div>
@@ -318,7 +317,7 @@ export function AdminOverview() {
             </CardHeader>
             <CardContent className="p-0">
               {milestones.length === 0 ? (
-                <p className="text-sm text-slate-400 text-center py-8">Không có mốc nào sắp tới</p>
+                <p className="text-sm text-slate-600 text-center py-8">Không có mốc nào sắp tới</p>
               ) : (
                 <div className="divide-y divide-slate-50">
                   {milestones.map((m, i) => <MilestoneRow key={i} m={m} />)}
@@ -352,13 +351,13 @@ function KpiCard({ icon, value, label, hint, tone = 'blue' }: {
     <Card className="group relative overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lifted">
       <span className={`absolute inset-x-0 top-0 h-0.5 ${tones.line}`} />
       <CardContent className="flex items-start gap-4 px-5 py-5">
-        <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ring-1 ${tones.icon}`}>{icon}</span>
+        <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-none ring-1 ${tones.icon}`}>{icon}</span>
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <p className="text-sm font-semibold leading-tight text-slate-600">{label}</p>
             <p className="font-display text-3xl font-extrabold leading-none tracking-tight text-slate-950">{value}</p>
           </div>
-          <p className="mt-2 truncate text-xs text-slate-400">{hint}</p>
+          <p className="mt-2 truncate text-xs text-slate-600">{hint}</p>
         </div>
       </CardContent>
     </Card>
@@ -378,15 +377,15 @@ function ProjectHealthRow({ ph, onClick }: { ph: ProjectHealth; onClick: () => v
         <div className={`mt-1 h-10 w-1 flex-shrink-0 rounded-full transition-transform group-hover:scale-y-110 ${cfg.dot}`} />
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-3 mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PRJ-{ph.project.id.slice(0,4).toUpperCase()}</span>
+            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-widest">PRJ-{ph.project.id.slice(0,4).toUpperCase()}</span>
             <span className="text-sm font-bold text-slate-800 truncate">{ph.project.name}</span>
-            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-widest ${cfg.color}`}>{cfg.label}</span>
-            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${status.color}`}>{status.label}</span>
+            <span className={`px-1.5 py-0.5 rounded-none text-[11px] font-bold uppercase tracking-widest ${cfg.color}`}>{cfg.label}</span>
+            <span className={`px-1.5 py-0.5 rounded-none text-[11px] font-semibold ${status.color}`}>{status.label}</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 uppercase tracking-tighter">
                 <span>Tiến độ vận hành</span>
                 <span>{progressPct}%</span>
               </div>
@@ -403,7 +402,7 @@ function ProjectHealthRow({ ph, onClick }: { ph: ProjectHealth; onClick: () => v
               </div>
             </div>
             
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[10px] font-bold uppercase tracking-tight text-slate-400">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-bold uppercase tracking-tight text-slate-600">
               <div className="flex items-center gap-1.5">
                 <ClipboardList className="w-3 h-3" />
                 <span>{ph.doneTasks}/{ph.totalTasks} tác vụ</span>
@@ -421,7 +420,7 @@ function ProjectHealthRow({ ph, onClick }: { ph: ProjectHealth; onClick: () => v
             </div>
           </div>
         </div>
-        <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-600 transition-colors mt-2" />
+        <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors mt-2" />
       </div>
     </button>
   );
@@ -433,13 +432,13 @@ function MilestoneRow({ m }: { m: Milestone }) {
   const soon = m.daysUntil <= 3;
   return (
     <div className="flex items-start gap-3 px-5 py-3">
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>{icon}</div>
+      <div className={`w-8 h-8 rounded-none flex items-center justify-center flex-shrink-0 ${color}`}>{icon}</div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-slate-800 truncate">{m.title}</p>
-        <p className="text-xs text-slate-500 truncate">{m.projectName}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{formatEventTime(m.at)}</p>
+        <p className="text-xs text-slate-600 truncate">{m.projectName}</p>
+        <p className="text-xs text-slate-600 mt-0.5">{formatEventTime(m.at)}</p>
       </div>
-      <span className={`text-xs font-semibold whitespace-nowrap ${soon ? 'text-red-600' : 'text-slate-500'}`}>
+      <span className={`text-xs font-semibold whitespace-nowrap ${soon ? 'text-red-600' : 'text-slate-600'}`}>
         {m.daysUntil === 0 ? 'Hôm nay' : `${m.daysUntil}n nữa`}
       </span>
     </div>
@@ -451,7 +450,7 @@ function PendingChip({ icon, label, to, navigate }: {
 }) {
   return (
     <button onClick={() => navigate(to)} className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-blue-600 transition-colors">
-      <span className="text-slate-400">{icon}</span>{label}
+      <span className="text-slate-600">{icon}</span>{label}
     </button>
   );
 }

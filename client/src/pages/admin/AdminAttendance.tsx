@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { CountBadge } from '@/components/ui/CountBadge';
 import { Link } from 'react-router-dom';
 import { CheckCheck, Clock, LogOut, Table, Trash2 } from 'lucide-react';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
@@ -19,6 +20,9 @@ import { describeDbError } from '@/lib/dbError';
 import { fetchProfileMap } from '@/lib/profileDirectory';
 import { formatTime, getTodayString } from '@/lib/utils';
 import type { Attendance } from '@/types';
+import { MonthNav } from '@/components/ui/MonthNav';
+import { Pagination, usePagination } from '@/components/ui/Pagination';
+import { format, startOfMonth } from 'date-fns';
 
 const THU_TRONG_TUAN = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
@@ -48,19 +52,15 @@ export function AdminAttendance() {
   const [checkoutTarget, setCheckoutTarget] = useState<Attendance | 'bulk' | null>(null);
   const [checkoutTime, setCheckoutTime] = useState('17:30');
   const [savingCheckout, setSavingCheckout] = useState(false);
-  // Chấm công là dữ liệu theo ngày, nên bộ lọc cũng đi theo ngày. Ba nút cũ
-  // ("Hôm nay / Cần xử lý / Tất cả") không trả lời được câu hỏi hay gặp nhất là
-  // "ngày 03 ai đi làm", và "Tất cả" thì đổ hàng nghìn dòng không mốc thời gian.
-  const [scope, setScope] = useState<'day' | 'month'>('day');
-  const [day, setDay] = useState(getTodayString());
-  const [month, setMonth] = useState(getTodayString().slice(0, 7));
+  const [monthStart, setMonthStart] = useState(() => startOfMonth(new Date()));
+  const month = format(monthStart, 'yyyy-MM');
   // Trưởng nhóm duyệt được ngày công của phạm vi mình quản lý nhưng không đổi
   // quy tắc giờ làm dùng chung toàn công ty — khớp với guard của route cài đặt.
   const canConfigureAttendance = !isScopedManager(profile);
 
   useEffect(() => {
     loadAttendance();
-  }, [scope, day, month]);
+  }, [month]);
 
   // Nghe cả daily_assignments: quản lý xác nhận việc xong là cột "Công việc"
   // ở đây phải nhảy số theo.
@@ -97,16 +97,12 @@ export function AdminAttendance() {
       .select('*')
       .eq('check_in_method', 'DEVICE')
       .order('date', { ascending: false });
-    if (scope === 'day') {
-      query = query.eq('date', day);
-    } else {
-      // Ngày cuối tháng lấy bằng cách lùi một ngày từ mùng 1 tháng sau, để khỏi
-      // phải tự đếm 28/29/30/31.
-      const [y, m] = month.split('-').map(Number);
-      const last = new Date(y, m, 0);
-      const lastStr = `${month}-${String(last.getDate()).padStart(2, '0')}`;
-      query = query.gte('date', `${month}-01`).lte('date', lastStr);
-    }
+    // Ngày cuối tháng lấy bằng cách lùi một ngày từ mùng 1 tháng sau, để khỏi
+    // phải tự đếm 28/29/30/31.
+    const [y, m] = month.split('-').map(Number);
+    const last = new Date(y, m, 0);
+    const lastStr = `${month}-${String(last.getDate()).padStart(2, '0')}`;
+    query = query.gte('date', `${month}-01`).lte('date', lastStr);
     const { data, error } = await query;
     setLoadError(error ? describeDbError(error) : null);
 
@@ -162,6 +158,9 @@ export function AdminAttendance() {
     }
     return [...buckets.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1));
   }, [records]);
+
+  // Mỗi trang là một ngày: duyệt xong ngày này mới sang ngày kế.
+  const pg = usePagination(groupedByDay, 1, [month]);
 
   // Dựng mốc giờ ra từ ngày công + giờ người dùng gõ, theo múi giờ của TRÌNH
   // DUYỆT. Cố ý: cột giờ vào trên màn này cũng hiển thị theo giờ trình duyệt,
@@ -291,16 +290,8 @@ export function AdminAttendance() {
 
   return (
     <div className="space-y-5 attendance-module" data-module="attendance">
-      <div className="rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5">
-        <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Chấm công từ máy chấm công</p>
-        <p className="mt-0.5 text-xs text-slate-500">
-          Chỉ hiển thị ngày công do máy vân tay/khuôn mặt ghi lại. Đơn nghỉ phép, đi muộn,
-          về sớm và làm thêm xử lý ở <Link to="/admin/leave" className="font-semibold text-indigo-700 hover:underline">Trung tâm đơn từ</Link>.
-        </p>
-      </div>
-
       {legacyPending > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-amber-200 bg-amber-50 px-3.5 py-2.5">
           <p className="text-xs text-amber-900">
             Còn <strong>{legacyPending}</strong> ngày công cũ không đến từ máy và chưa được duyệt.
             Màn này đã lọc bỏ chúng, nên chúng sẽ không bao giờ được duyệt và không vào bảng lương.
@@ -309,13 +300,10 @@ export function AdminAttendance() {
       )}
 
       {canConfigureAttendance && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5">
-          <p className="text-xs text-slate-500">
-            Thiết lập giờ chuẩn và quy tắc vận hành dùng chung
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-none border border-slate-200 bg-white px-3.5 py-2.5">
           <Link
             to="/admin/attendance-settings"
-            className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-50"
+            className="inline-flex items-center rounded-none px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-50"
           >
             Mở thiết lập
           </Link>
@@ -323,45 +311,7 @@ export function AdminAttendance() {
       )}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {([
-            { key: 'day', label: 'Theo ngày' },
-            { key: 'month', label: 'Theo tháng' },
-          ] as { key: typeof scope; label: string }[]).map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setScope(item.key)}
-              className={`px-4 py-1.5 rounded text-[10px] font-bold uppercase tracking-widest transition-all duration-200 ${
-                scope === item.key
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-
-          {scope === 'day' ? (
-            <>
-              <input
-                type="date"
-                value={day}
-                onChange={(event) => setDay(event.target.value)}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
-              />
-              {day !== getTodayString() && (
-                <button onClick={() => setDay(getTodayString())} className="text-xs font-semibold text-indigo-700 hover:underline">
-                  Về hôm nay
-                </button>
-              )}
-            </>
-          ) : (
-            <input
-              type="month"
-              value={month}
-              onChange={(event) => setMonth(event.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none"
-            />
-          )}
+          <MonthNav value={monthStart} onChange={setMonthStart} compact square />
         </div>
         <div className="flex items-center gap-2">
           {missingCheckout.length > 0 && (
@@ -373,7 +323,8 @@ export function AdminAttendance() {
           {needConfirm.length > 0 && (
             <Button variant="outline" theme="admin" size="sm" onClick={handleApproveAllPending}>
               <CheckCheck className="w-4 h-4" />
-              Xác nhận {needConfirm.length} dòng
+              Xác nhận chấm công
+              <CountBadge count={needConfirm.length} />
             </Button>
           )}
           <Link to="/admin/timesheet">
@@ -392,7 +343,7 @@ export function AdminAttendance() {
           ) : loadError ? (
             <ErrorState message={loadError} onRetry={loadAttendance} />
           ) : records.length === 0 ? (
-            <EmptyState icon={<Clock className="w-8 h-8" />} title="Không có bản ghi" description="Chưa có dữ liệu chấm công trong mục này." />
+            <EmptyState icon={<Clock className="w-8 h-8" />} title="Không có bản ghi" />
           ) : (
             <div className="overflow-x-auto p-3 md:p-0">
               <table className="w-full table-cards border-collapse text-xs">
@@ -405,7 +356,7 @@ export function AdminAttendance() {
                     <th className="text-right text-xs font-black text-[#5c0f16] dark:text-[#fde8ea] uppercase tracking-wider px-3 py-1.5">Thao tác</th>
                   </tr>
                 </thead>
-                {groupedByDay.map(([date, rows]) => {
+                {pg.rows.map(([date, rows]) => {
                   const thieuGioRa = rows.filter((item) => !item.check_out_time).length;
                   const thieuGioVao = rows.filter((item) => !item.check_in_time).length;
                   return (
@@ -414,7 +365,7 @@ export function AdminAttendance() {
                         <td colSpan={5} className="px-3 py-1">
                           <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
                             <span className="text-xs font-black text-slate-900 dark:text-slate-100">{dayLabel(date)}</span>
-                            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">{rows.length} người</span>
+                            <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">{rows.length} người</span>
                             {thieuGioRa > 0 && (
                               <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400">{thieuGioRa} chưa có giờ ra</span>
                             )}
@@ -429,14 +380,14 @@ export function AdminAttendance() {
                           <td data-label="" className="px-3 py-1.5">
                             <div className="flex flex-col min-w-0">
                               <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{r.profile?.name || 'Chưa rõ nhân viên'}</span>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{r.profile?.department || '—'}</span>
+                              <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium truncate">{r.profile?.department || '—'}</span>
                             </div>
                           </td>
                           <td data-label="Giờ vào" className="px-2.5 py-1.5">
                             {r.check_in_time ? (
                               <span className="text-xs font-black tabular-nums text-slate-900 dark:text-slate-100">{formatTime(r.check_in_time)}</span>
                             ) : (
-                              <span className="inline-flex items-center rounded bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                              <span className="inline-flex items-center rounded-none bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 text-[11px] font-bold text-slate-700 dark:text-slate-300">
                                 Chưa check-in
                               </span>
                             )}
@@ -457,11 +408,11 @@ export function AdminAttendance() {
                           <td data-label="Công việc" className="px-2.5 py-1.5">
                             {(() => {
                               const p = asgProgress[r.user_id + '|' + r.date];
-                              if (!p) return <span className="text-xs text-slate-400">—</span>;
+                              if (!p) return <span className="text-xs text-slate-600">—</span>;
                               const done = p.approved === p.total;
                               return (
                                 <div className="flex items-center gap-1.5">
-                                  <span className={done ? 'text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400' : 'text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400'}>
+                                  <span className={done ? 'text-[11px] font-bold uppercase tracking-widest text-emerald-700 dark:text-emerald-400' : 'text-[11px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-400'}>
                                     {p.approved}/{p.total}
                                   </span>
                                   <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -476,21 +427,21 @@ export function AdminAttendance() {
                               {r.check_in_time && r.check_out_time && !r.approved_by_lead && (
                                 <button
                                   onClick={() => handleApprove(r)}
-                                  className="px-2 py-1 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-200 transition-colors"
+                                  className="px-2 py-1 rounded-none bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold hover:bg-emerald-200 transition-colors"
                                   title="Check-in từ HRM cần quản lý xác nhận mới vào bảng lương"
                                 >
                                   Xác nhận
                                 </button>
                               )}
                               {!r.check_in_time && r.check_out_time && (
-                                <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-500" title="Chờ bổ sung giờ vào từ máy chấm công">
+                                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400" title="Chờ bổ sung giờ vào từ máy chấm công">
                                   Chờ máy chấm công
                                 </span>
                               )}
                               <button
                                 onClick={() => handleDelete(r)}
                                 title="Xóa bản ghi"
-                                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                                className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -504,6 +455,7 @@ export function AdminAttendance() {
               </table>
             </div>
           )}
+          <Pagination className="px-4 pb-3" page={pg.page} total={pg.total} size={pg.size} noun="ngày" setPage={pg.setPage} />
         </CardContent>
       </Card>
 
@@ -531,11 +483,6 @@ export function AdminAttendance() {
             onChange={(e) => setCheckoutTime(e.target.value)}
           />
 
-          <p className="text-xs text-slate-500">
-            Máy chấm công chỉ ghi giờ vào, nên giờ ra nhập ở đây. Giá trị mặc định lấy từ ca
-            làm việc đang áp dụng. Bản ghi nào có giờ vào muộn hơn giờ này sẽ được bỏ qua chứ
-            không ghi đè thành số âm.
-          </p>
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setCheckoutTarget(null)}>Hủy</Button>

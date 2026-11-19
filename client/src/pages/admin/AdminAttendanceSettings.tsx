@@ -121,7 +121,7 @@ export function AdminAttendanceSettings() {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 py-12 text-slate-500">
+      <div className="flex items-center gap-2 py-12 text-slate-600">
         <Loader2 className="h-5 w-5 animate-spin" />
         Đang tải thiết lập…
       </div>

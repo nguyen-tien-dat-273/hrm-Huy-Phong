@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { CountBadge } from '@/components/ui/CountBadge';
 import { Check, Copy, Link2, Plus, UserCheck, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -8,6 +9,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { describeDbError } from '@/lib/dbError';
 import type { Profile } from '@/types';
+import { FilterChips } from '@/components/ui/FilterChips';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 interface OnboardingLink {
   id: string; code: string; label: string; is_active: boolean; expires_at: string | null; created_at: string;
@@ -115,32 +118,26 @@ export function AdminOnboarding() {
   };
 
   const shown = subs.filter((s) => filter === 'ALL' || s.status === filter);
+  const pg = usePagination(shown, PAGE_SIZE_LIST, [filter]);
   const pending = subs.filter((s) => s.status === 'PENDING').length;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Khai báo hồ sơ qua đường dẫn</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Gửi đường dẫn cho nhân viên mới tự khai báo. Hồ sơ về đây chờ duyệt; duyệt xong hệ thống tự cấp tài khoản và mật khẩu tạm.
-        </p>
-      </div>
-
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+      <section className="space-y-3 rounded-none border border-slate-200 bg-white p-4">
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-700"><Link2 className="h-4 w-4" /> Đường dẫn khai báo</h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="flex-1"><Input label="Tên đợt / nhóm" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="VD: Nhân viên mới tháng 11" /></div>
           <Button theme="admin" onClick={() => void createLink()}><Plus className="h-4 w-4" /> Tạo đường dẫn</Button>
         </div>
         <ul className="divide-y divide-slate-100">
-          {links.length === 0 && <li className="py-3 text-sm text-slate-400">Chưa có đường dẫn nào.</li>}
+          {links.length === 0 && <li className="py-3 text-sm text-slate-600">Chưa có đường dẫn nào.</li>}
           {links.map((l) => (
             <li key={l.id} className="flex flex-wrap items-center gap-2 py-2 text-sm">
               <span className="font-medium text-slate-800">{l.label}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs ${l.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
                 {l.is_active ? 'Đang mở' : 'Đã đóng'}
               </span>
-              <code className="min-w-0 flex-1 truncate text-xs text-slate-500">{linkUrl(l.code)}</code>
+              <code className="min-w-0 flex-1 truncate text-xs text-slate-600">{linkUrl(l.code)}</code>
               <Button variant="secondary" size="sm" onClick={() => void copy(l.code)}><Copy className="h-3.5 w-3.5" /> Sao chép</Button>
               <Button variant="secondary" size="sm" onClick={() => void toggleLink(l)}>{l.is_active ? 'Đóng' : 'Mở lại'}</Button>
             </li>
@@ -148,33 +145,27 @@ export function AdminOnboarding() {
         </ul>
       </section>
 
-      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+      <section className="space-y-3 rounded-none border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-sm font-bold text-slate-700">
             <UserCheck className="h-4 w-4" /> Hồ sơ đã khai báo {pending > 0 && <span className="rounded-full bg-amber-500 px-2 text-xs text-white">{pending} chờ duyệt</span>}
           </h2>
-          <div className="flex gap-1">
-            {(['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const).map((f) => (
-              <button key={f} onClick={() => setFilter(f)}
-                className={`rounded-lg px-3 py-1 text-xs font-medium ${filter === f ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                {f === 'ALL' ? 'Tất cả' : STATUS_LABEL[f]}
-              </button>
-            ))}
-          </div>
+          <FilterChips value={filter} onChange={setFilter} items={(['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const).map((f) => ({ key: f, label: f === 'ALL' ? 'Tất cả' : STATUS_LABEL[f], count: f === 'PENDING' ? pending : undefined, alert: f === 'PENDING' }))} />
         </div>
         <ul className="divide-y divide-slate-100">
-          {shown.length === 0 && <li className="py-3 text-sm text-slate-400">Không có hồ sơ.</li>}
-          {shown.map((s) => (
+          {shown.length === 0 && <li className="py-3 text-sm text-slate-600">Không có hồ sơ.</li>}
+          {pg.rows.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
               <div className="min-w-0 flex-1">
                 <p className="font-medium text-slate-800">{s.full_name}</p>
-                <p className="truncate text-xs text-slate-500">{s.email} · {new Date(s.submitted_at).toLocaleString('vi-VN')}</p>
+                <p className="truncate text-xs text-slate-600">{s.email} · {new Date(s.submitted_at).toLocaleString('vi-VN')}</p>
               </div>
               <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[s.status]}`}>{STATUS_LABEL[s.status]}</span>
               <Button variant="secondary" size="sm" onClick={() => setSelected(s)}>Xem</Button>
             </li>
           ))}
         </ul>
+        <Pagination page={pg.page} total={pg.total} size={pg.size} noun="hồ sơ" setPage={pg.setPage} />
       </section>
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title="Hồ sơ khai báo" size="lg">
@@ -213,7 +204,7 @@ export function AdminOnboarding() {
         {issued && (
           <div className="space-y-3 text-sm">
             <p>Tài khoản của <strong>{issued.name}</strong> đã được tạo. Mật khẩu tạm chỉ hiển thị một lần, hãy gửi cho nhân viên; họ sẽ phải đổi mật khẩu khi đăng nhập lần đầu.</p>
-            <div className="rounded-xl bg-slate-50 p-3 font-mono text-xs">
+            <div className="rounded-none bg-slate-50 p-3 font-mono text-xs">
               <p>Đăng nhập: {issued.email}</p>
               <p>Mật khẩu tạm: {issued.tempPassword}</p>
             </div>
@@ -231,7 +222,7 @@ export function AdminOnboarding() {
 function Row({ k, v }: { k: string; v: string | null | undefined }) {
   return (
     <div>
-      <dt className="text-xs text-slate-400">{k}</dt>
+      <dt className="text-xs text-slate-600">{k}</dt>
       <dd className="text-slate-800">{v || '—'}</dd>
     </div>
   );
