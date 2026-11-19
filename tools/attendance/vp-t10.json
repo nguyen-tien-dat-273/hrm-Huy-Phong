@@ -1,0 +1,132 @@
+[
+ {
+  "code": "NV001",
+  "name": "Lưu Vũ Phong",
+  "dept": "Ban giám đốc"
+ },
+ {
+  "code": "NV002",
+  "name": "Bùi Thị Nhân Huệ",
+  "dept": "Ban giám đốc"
+ },
+ {
+  "code": "NV004",
+  "name": "Lưu Thị Vượng",
+  "dept": "Phòng kế toán"
+ },
+ {
+  "code": "NV005",
+  "name": "Phạm Thị Thùy Dương",
+  "dept": "Phòng kế toán"
+ },
+ {
+  "code": "NV007",
+  "name": "Nguyễn Thị Mùi",
+  "dept": "Phòng kế toán"
+ },
+ {
+  "code": "NV009",
+  "name": "Lê Diệu Linh",
+  "dept": "Phòng kế toán"
+ },
+ {
+  "code": "NV034",
+  "name": "Nguyễn Thị Kim Dung",
+  "dept": "Phòng kế toán"
+ },
+ {
+  "code": "NV015",
+  "name": "Nguyễn Minh Tảo",
+  "dept": "Phòng KD Shop"
+ },
+ {
+  "code": "NV017",
+  "name": "Hồ Linh Chi",
+  "dept": "Phòng KD Shop"
+ },
+ {
+  "code": "NV018",
+  "name": "Nguyễn Huỳnh Đức",
+  "dept": "Phòng KD Shop"
+ },
+ {
+  "code": "NV032",
+  "name": "Lê Văn Lợi",
+  "dept": "Phòng KD Shop"
+ },
+ {
+  "code": "00044",
+  "name": "Hồ Văn Mạnh",
+  "dept": "Phòng KD Shop"
+ },
+ {
+  "code": "NV010",
+  "name": "Hà Thị Thu Trang",
+  "dept": "Phòng KD Nhà hàng"
+ },
+ {
+  "code": "NV011",
+  "name": "Vũ Thị Hòa",
+  "dept": "Phòng KD Nhà hàng"
+ },
+ {
+  "code": "NV013",
+  "name": "Vũ Thị Thanh Thúy",
+  "dept": "Phòng KD Nhà hàng"
+ },
+ {
+  "code": "NV014",
+  "name": "Lương Xuân Tùng",
+  "dept": "Phòng KD Nhà hàng"
+ },
+ {
+  "code": "NV041",
+  "name": "Nguyễn Thị Trang",
+  "dept": "Phòng KD Nhà hàng"
+ },
+ {
+  "code": "NV021",
+  "name": "Nguyễn Tuấn Đạt",
+  "dept": "Phòng Marketing"
+ },
+ {
+  "code": "NV023",
+  "name": "Nguyễn Thị Mai Anh",
+  "dept": "Phòng Marketing"
+ },
+ {
+  "code": "00042",
+  "name": "Lưu Thu Phương",
+  "dept": "Phòng Marketing"
+ },
+ {
+  "code": "NV048",
+  "name": "Lê Mai Linh",
+  "dept": "Phòng Marketing"
+ },
+ {
+  "code": "NV060",
+  "name": "Đỗ Hoàng Ngân",
+  "dept": "Phòng Marketing"
+ },
+ {
+  "code": "NV043",
+  "name": "Đinh Thị Kiều Oanh",
+  "dept": "Phòng Dự án"
+ },
+ {
+  "code": "NV025",
+  "name": "Nguyễn Đức Minh",
+  "dept": "Phòng XNK"
+ },
+ {
+  "code": "NV026",
+  "name": "Lưu Tiến Đức",
+  "dept": "Phòng XNK"
+ },
+ {
+  "code": "NV045",
+  "name": "Đào Quốc Khánh",
+  "dept": "Phòng XNK"
+ }
+]

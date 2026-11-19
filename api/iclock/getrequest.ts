@@ -27,6 +27,20 @@ const allowedSerials = new Set(
 
 const env = (...names: string[]) => names.map((name) => process.env[name]).find((value) => value && value.trim()) || '';
 
+/**
+ * Có người yêu cầu máy đẩy lại lịch sử (cột resend_from)? Nhận cờ một lần, trả ngày bắt đầu.
+ * Lỗi (chưa chạy migration…) thì coi như không có lệnh — máy vẫn nhận "OK".
+ */
+async function claimResend(serial: string): Promise<string | null> {
+  const supabaseUrl = env('SUPABASE_URL', 'VITE_SUPABASE_URL');
+  const serviceKey = env('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceKey) return null;
+  const { data, error } = await createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
+    .rpc('claim_attendance_device_resend_by_serial', { device_serial: serial });
+  if (error) { console.warn(`[iclock] ${serial}: không nhận được yêu cầu đẩy lại — ${error.message}`); return null; }
+  return typeof data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : null;
+}
+
 async function reportAlive(serial: string) {
   const supabaseUrl = env('SUPABASE_URL', 'VITE_SUPABASE_URL');
   const anonKey = env('SUPABASE_ANON_KEY', 'VITE_SUPABASE_ANON_KEY');
@@ -60,5 +74,11 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return response.status(403).send('ERROR: thiet bi chua dang ky');
   }
   await reportAlive(serial).catch((error) => console.warn(`[iclock] ${serial}: báo danh lỗi — ${error?.message || error}`));
+  const resendFrom = await claimResend(serial).catch(() => null);
+  if (resendFrom) {
+    const end = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    console.log(`[iclock] ${serial}: yêu cầu máy đẩy lại lịch sử từ ${resendFrom}`);
+    return response.status(200).send(`C:${Date.now() % 1_000_000}:DATA QUERY ATTLOG StartTime=${resendFrom} 00:00:00\tEndTime=${end} 23:59:59`);
+  }
   return response.status(200).send('OK');
 }
