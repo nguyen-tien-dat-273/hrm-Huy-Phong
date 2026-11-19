@@ -1,0 +1,90 @@
+# ============================================================================
+# Supabase tự host — bản RÚT GỌN cho VPS nhỏ (2–4 GB RAM).
+#
+# Lớp phủ lên docker-compose.yml chính thức của Supabase, viết cho đúng bản
+# self-hosted/v0.8.4 (install-supabase.sh ghim bản này). Đổi sang bản Supabase
+# khác thì phải đọc lại docker-compose.yml mới và kiểm lại file này.
+#
+# Cần Docker Compose ≥ 2.24.4 (dùng thẻ !reset / !override).
+#
+# Giữ:  db, auth, rest, realtime, storage, api-gw (Envoy)
+#       → đúng những gì HRM dùng: đăng nhập, truy vấn, thông báo thời gian thực, file.
+# Tắt hẳn:   functions (repo không có Edge Function), imgproxy (không dùng biến đổi
+#            ảnh), supavisor (không cho ai nối Postgres từ ngoài).
+# Bật khi cần: studio + meta (trang quản trị) — profile "admin":
+#            docker compose --profile admin up -d studio meta
+#            docker compose --profile admin stop studio meta
+# ============================================================================
+
+services:
+
+  # ---- Tắt hẳn --------------------------------------------------------------
+  functions:
+    profiles: ["disabled"]
+  imgproxy:
+    profiles: ["disabled"]
+  supavisor:
+    profiles: ["disabled"]
+
+  # ---- Chỉ bật khi quản trị -------------------------------------------------
+  studio:
+    profiles: ["admin"]
+    mem_limit: 1g
+  meta:
+    profiles: ["admin"]
+    mem_limit: 256m
+
+  # ---- Cổng API -------------------------------------------------------------
+  api-gw:
+    # Bản gốc chờ Studio "healthy" mới chạy; Studio đã tắt nên bỏ điều kiện này.
+    depends_on: !reset {}
+    # Bản gốc mở 0.0.0.0:8000 ra Internet (Docker vượt qua ufw). Ở đây chỉ mở trên
+    # 127.0.0.1 để vào Studio qua đường hầm SSH; người dùng đi qua Caddy (mạng Docker).
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    mem_limit: 192m
+
+  auth:
+    mem_limit: 192m
+    environment:
+      # Email mã xác minh (khôi phục mật khẩu) bằng tiếng Việt, có mã 6 số {{ .Token }}.
+      # Mẫu do container hrm phục vụ trong cùng mạng Docker.
+      GOTRUE_MAILER_TEMPLATES_MAGIC_LINK: ${MAILER_TEMPLATES_MAGIC_LINK:-http://hrm:8080/email-templates/ma-xac-minh.html}
+      GOTRUE_MAILER_SUBJECTS_MAGIC_LINK: ${MAILER_SUBJECTS_MAGIC_LINK:-Mã xác minh HRM}
+
+  rest:
+    mem_limit: 256m
+
+  realtime:
+    mem_limit: 512m
+
+  storage:
+    # Bỏ phụ thuộc imgproxy (đã tắt).
+    depends_on: !override
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    environment:
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+    mem_limit: 384m
+
+  db:
+    # Giữ nguyên 2 tham số của bản gốc, thêm cấu hình bộ nhớ cho máy nhỏ.
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
+      - -c
+      - shared_buffers=128MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=64MB
+    # Khi máy hết RAM, nhân Linux giết tiến trình khác trước Postgres.
+    oom_score_adj: -800
+    shm_size: 128m

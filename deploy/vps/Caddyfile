@@ -1,16 +1,47 @@
-# Caddy: tự xin & gia hạn chứng chỉ HTTPS (Let's Encrypt). Cần DNS của cả hai tên miền đã trỏ về IP VPS.
-# Biến lấy từ file .env.vps (xem .env.vps.example).
-
-{$HRM_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy hrm:8080
+# ============================================================================
+# Caddy: HTTPS tự động (Let's Encrypt) cho MỘT tên miền chứa cả HRM lẫn API Supabase.
+# Cần: bản ghi DNS của {$DOMAIN} trỏ về IP VPS, cổng 80 và 443 mở.
+#
+#   https://DOMAIN/auth/v1/*, /rest/v1/*, /realtime/v1/*, /storage/v1/* → Supabase (api-gw)
+#   https://DOMAIN/ (còn lại: giao diện, /api/*)                         → hrm
+#   http://DOMAIN/iclock/* và http://IP/iclock/*                          → hrm (máy chấm công)
+#
+# Trình duyệt gọi Supabase cùng tên miền với giao diện nên không cần CORS hay tên miền thứ hai.
+# ============================================================================
+{
+	servers {
+		# Tường lửa chỉ mở TCP 443; không quảng cáo HTTP/3 (UDP).
+		protocols h1 h2
+	}
 }
 
-# Máy chấm công chỉ nói HTTP thường, cổng 80, và không theo chuyển hướng 308 →
-# riêng đường /iclock/* phải được trả lời ngay trên HTTP, còn lại chuyển sang HTTPS.
-http://{$HRM_DOMAIN} {
-	@iclock path /iclock/*
-	handle @iclock {
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	@supabase path /auth/v1/* /rest/v1/* /realtime/v1/* /storage/v1/*
+	handle @supabase {
+		request_body {
+			# Storage giới hạn 50 MB mỗi file.
+			max_size 60MB
+		}
+		reverse_proxy api-gw:8000
+	}
+
+	handle {
+		reverse_proxy hrm:8080
+	}
+}
+
+# Máy chấm công chỉ nói HTTP thường cổng 80 và KHÔNG theo chuyển hướng 301/308:
+# riêng /iclock/* được trả lời ngay trên HTTP; mọi thứ khác chuyển sang HTTPS.
+# (Khai báo http:// tường minh nên Caddy không tự thêm chuyển hướng cho tên miền này.)
+http://{$DOMAIN} {
+	handle /iclock/* {
 		reverse_proxy hrm:8080
 	}
 	handle {
@@ -18,10 +49,12 @@ http://{$HRM_DOMAIN} {
 	}
 }
 
-# Cổng Supabase (Auth / REST / Storage / Realtime) mà trình duyệt gọi vào.
-{$API_DOMAIN} {
-	request_body {
-		max_size 60MB
+# Máy chấm công khai địa chỉ máy chủ bằng IP (không có tên miền) vẫn vào được.
+:80 {
+	handle /iclock/* {
+		reverse_proxy hrm:8080
 	}
-	reverse_proxy {$SUPABASE_GATEWAY}
+	handle {
+		respond "Not found" 404
+	}
 }

@@ -23,12 +23,19 @@
 //   inventory.json       số dòng từng bảng, bucket, extension, phiên bản Postgres
 //   SHA256SUMS, COMPLETE (COMPLETE chỉ có khi mọi bước đều thành công)
 //
+// Dùng được cho cả Supabase tự host trên VPS (deploy/vps/backup): SUPABASE_DB_URL trỏ
+// vào db:5432, BACKUP_DB_SSL=disable, SUPABASE_URL=http://api-gw:8000.
+//
+// File Storage không đổi (cùng bucket, tên, kích thước, updated_at) so với bản sao lưu
+// hoàn tất gần nhất trong cùng thư mục đầu ra được TẠO HARD LINK thay vì tải lại:
+// mỗi bản vẫn đầy đủ, độc lập, nhưng không tốn thêm ổ đĩa. Tắt: BACKUP_REUSE_PREVIOUS=0.
+//
 // Không in chuỗi kết nối hay khoá ra màn hình/log.
 // ============================================================================
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { mkdir, readdir, rename, stat, writeFile } from 'node:fs/promises';
+import { copyFile, link, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import pg from 'pg';
 
@@ -86,6 +93,34 @@ async function walk(dir, base = dir) {
   return out;
 }
 
+// Bản sao lưu hoàn tất gần nhất (tên thư mục dạng 20261113T190000Z, có COMPLETE).
+async function previousStorageIndex() {
+  if (process.env.BACKUP_REUSE_PREVIOUS === '0') return null;
+  let names;
+  try {
+    names = (await readdir(outRoot, { withFileTypes: true }))
+      .filter((e) => e.isDirectory() && /^\d{8}T\d{6}Z$/.test(e.name))
+      .map((e) => e.name)
+      .sort()
+      .reverse();
+  } catch {
+    return null;
+  }
+  for (const name of names) {
+    const dir = join(outRoot, name);
+    try {
+      await stat(join(dir, 'COMPLETE'));
+      const entries = JSON.parse(await readFile(join(dir, 'storage-index.json'), 'utf8'));
+      const map = new Map();
+      for (const e of entries) if (e.updated_at) map.set(`${e.bucket}\u0000${e.name}`, e);
+      return { dir, map };
+    } catch {
+      // bản này không có Storage hoặc chưa có updated_at — thử bản cũ hơn
+    }
+  }
+  return null;
+}
+
 // Tên file hợp lệ trên Windows; tên gốc vẫn nằm trong storage-index.json.
 // eslint-disable-next-line no-control-regex
 const safeSegment = (segment) => segment.replace(/[<>:"|?*\\\u0000-\u001f]/g, '_').replace(/[. ]+$/, '_') || '_';
@@ -129,7 +164,9 @@ async function main() {
   }
 
   const objects = (
-    await client.query(`select bucket_id, name, (metadata->>'size')::bigint as size from storage.objects order by 1, 2`)
+    await client.query(
+      `select bucket_id, name, (metadata->>'size')::bigint as size, updated_at, metadata->>'mimetype' as mimetype from storage.objects order by 1, 2`,
+    )
   ).rows;
   await client.end();
 
@@ -155,18 +192,39 @@ async function main() {
   } else if (!apiUrl || !serviceKey) {
     fail(`Storage có ${objects.length} file nhưng thiếu SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY để tải về.`);
   } else {
-    log(`Storage: tải ${objects.length} file…`);
+    const previous = await previousStorageIndex();
+    log(`Storage: ${objects.length} file${previous ? ` (đối chiếu với bản ${previous.dir.split(sep).pop()})` : ''}…`);
     let done = 0;
+    let reused = 0;
     const queue = [...objects];
     const worker = async () => {
       for (let item = queue.shift(); item; item = queue.shift()) {
         const rel = ['storage', safeSegment(item.bucket_id), ...item.name.split('/').map(safeSegment)].join('/');
         const dest = join(work, ...rel.split('/'));
+        const updatedAt = item.updated_at ? new Date(item.updated_at).toISOString() : null;
         try {
+          const prev = previous && updatedAt ? previous.map.get(`${item.bucket_id}\u0000${item.name}`) : null;
+          if (prev && prev.updated_at === updatedAt && item.size != null && Number(prev.size) === Number(item.size)) {
+            const source = join(previous.dir, ...prev.local.split('/'));
+            const info = await stat(source).catch(() => null);
+            if (info && info.size === Number(item.size)) {
+              await mkdir(dirname(dest), { recursive: true });
+              // Hard link (cùng ổ đĩa); không được thì chép.
+              await link(source, dest).catch(() => copyFile(source, dest));
+              storageIndex.push({ bucket: item.bucket_id, name: item.name, local: rel, size: info.size, sha256: prev.sha256, updated_at: updatedAt, mimetype: item.mimetype || undefined });
+              reused += 1;
+              done += 1;
+              if (done % 50 === 0 || done === objects.length) log(`  Storage ${done}/${objects.length}`);
+              continue;
+            }
+          }
           const url = `${apiUrl}/storage/v1/object/${encodeURIComponent(item.bucket_id)}/${item.name.split('/').map(encodeURIComponent).join('/')}`;
           let response;
           for (let attempt = 1; attempt <= 3; attempt += 1) {
-            response = await fetch(url, { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } });
+            // Khoá kiểu mới (sb_secret_…) không phải JWT: chỉ gửi trong `apikey`, không đặt vào
+            // Authorization. Khoá cũ (eyJ…) gửi cả hai như trước.
+            const headers = serviceKey.startsWith('sb_') ? { apikey: serviceKey } : { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey };
+            response = await fetch(url, { headers });
             if (response.ok || response.status < 500) break;
             await new Promise((r) => setTimeout(r, 1000 * attempt));
           }
@@ -183,6 +241,8 @@ async function main() {
             local: rel,
             size: buffer.length,
             sha256: createHash('sha256').update(buffer).digest('hex'),
+            updated_at: updatedAt,
+            mimetype: item.mimetype || undefined,
           });
         } catch (error) {
           storageFailures.push({ bucket: item.bucket_id, name: item.name, error: String(error.message || error) });
@@ -192,6 +252,7 @@ async function main() {
       }
     };
     await Promise.all(Array.from({ length: 4 }, worker));
+    if (reused) log(`  Tái dùng ${reused} file không đổi từ bản trước, tải mới ${storageIndex.length - reused}.`);
     storageIndex.sort((a, b) => (a.bucket + a.name).localeCompare(b.bucket + b.name));
     await writeFile(join(work, 'storage-index.json'), JSON.stringify(storageIndex, null, 2));
     if (storageFailures.length) {
@@ -225,8 +286,10 @@ async function main() {
   const total = (await Promise.all(files.map((f) => stat(join(finalDir, ...f.split('/'))).then((s) => s.size)))).reduce((a, b) => a + b, 0);
   log(`XONG: ${finalDir}`);
   log(`  ${files.length} file, ${(total / 1048576).toFixed(1)} MiB, ${storageIndex.length} file Storage.`);
-  log('  Nhắc: cấu hình Auth (SMTP, URL chuyển hướng, mẫu email), JWT secret và biến môi trường Vercel/Cloudflare');
-  log('  KHÔNG nằm trong database — phải ghi lại thủ công (xem docs/trien-khai-vps-mat-bao.md, mục 2).');
+  if (/\.supabase\.co$/i.test(apiUrl ? new URL(apiUrl).hostname : '')) {
+    log('  Nhắc: cấu hình Auth (SMTP, URL chuyển hướng, mẫu email), JWT secret và biến môi trường Vercel/Cloudflare');
+    log('  KHÔNG nằm trong database — phải ghi lại thủ công (xem README.md, mục 2).');
+  }
 }
 
 main().catch((error) => {

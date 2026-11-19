@@ -4,7 +4,6 @@ import { createServer } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import adminUsers from './dist/api/admin-users.js';
-import chatbot from './dist/api/chatbot.js';
 import googleMapsLocation from './dist/api/google-maps-location.js';
 import iclockCdata from './dist/api/iclock/cdata.js';
 import iclockDevicecmd from './dist/api/iclock/devicecmd.js';
@@ -20,7 +19,6 @@ const port = Number(process.env.PORT || 8080);
 
 const apiHandlers = new Map([
   ['/api/admin-users', adminUsers],
-  ['/api/chatbot', chatbot],
   ['/api/google-maps-location', googleMapsLocation],
   ['/api/password-recovery-v2', passwordRecoveryV2],
   ['/api/push-config', pushConfig],

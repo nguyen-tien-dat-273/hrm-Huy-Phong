@@ -24,8 +24,8 @@ Lần `secret put` đầu tiên wrangler hỏi có tạo Worker mới không: tr
 Cuối lệnh `deploy` in ra địa chỉ `https://hic.<tài-khoản>.workers.dev`.
 
 Biến tuỳ chọn, đặt bằng cùng cách: `ATTENDANCE_UTC_OFFSET` (mặc định `+07:00`),
-`RJ_IN_STATUS_CODES`, `RJ_OUT_STATUS_CODES`. Cũng cần đã chạy hai file
-`supabase/paste-che-do-adms.sql` và `supabase/paste-adms-khong-token.sql`.
+`RJ_IN_STATUS_CODES`, `RJ_OUT_STATUS_CODES`. Cơ sở dữ liệu phải có sẵn chế độ
+đồng bộ ADMS (đã nằm trong các migration của `supabase/migrations`).
 
 ## Muốn máy gọi bằng HTTP thường
 

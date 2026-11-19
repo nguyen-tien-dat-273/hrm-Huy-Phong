@@ -1,0 +1,121 @@
+# ============================================================================
+# HRM trên VPS: app (hrm) + Caddy (HTTPS) + sao lưu hằng đêm (backup).
+#
+# Chạy trong /opt/hrm (thư mục giải nén gói triển khai), cạnh file .env:
+#   ./hrm.sh up        (hoặc: docker compose up -d)
+#
+# Supabase là một project Compose riêng ở /opt/supabase (install-supabase.sh), cùng
+# mạng Docker `supabase_default`, nên ở đây gọi được db:5432 và api-gw:8000.
+#
+# Chỉ Caddy mở cổng ra Internet (80, 443). hrm chỉ mở trên 127.0.0.1 để kiểm tra.
+# ============================================================================
+name: hrm
+
+services:
+  hrm:
+    build: ./app
+    image: hrm-app:current
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 384m
+    environment:
+      PORT: 8080
+      SUPABASE_URL: http://api-gw:8000
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Thiếu SUPABASE_ANON_KEY trong .env}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Thiếu SUPABASE_SERVICE_ROLE_KEY trong .env}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:admin@example.com}
+      CRON_SECRET: ${CRON_SECRET:-}
+      REMINDER_INTERVAL_MINUTES: ${REMINDER_INTERVAL_MINUTES:-5}
+      REVERSE_GEOCODING_URL: ${REVERSE_GEOCODING_URL:-https://nominatim.openstreetmap.org}
+      APP_USER_AGENT: "${APP_USER_AGENT:-HuyPhongHRM/1.0}"
+      ATTENDANCE_DEVICE_SERIALS: ${ATTENDANCE_DEVICE_SERIALS:-}
+      ATTENDANCE_UTC_OFFSET: ${ATTENDANCE_UTC_OFFSET:-+07:00}
+      RJ_IN_STATUS_CODES: ${RJ_IN_STATUS_CODES:-}
+      RJ_OUT_STATUS_CODES: ${RJ_OUT_STATUS_CODES:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - supabase
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    depends_on:
+      - hrm
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?Thiếu DOMAIN trong .env (vd hrm.congty.vn)}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - supabase
+
+  backup:
+    build: ./backup
+    image: hrm-backup:current
+    restart: unless-stopped
+    init: true
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: supabase_admin
+      DB_NAME: postgres
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Thiếu POSTGRES_PASSWORD trong .env}
+      SUPABASE_URL: http://api-gw:8000
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Thiếu SUPABASE_SERVICE_ROLE_KEY trong .env}
+      BACKUP_HOUR: ${BACKUP_HOUR:-2}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      RCLONE_REMOTE: ${RCLONE_REMOTE:-}
+      BACKUP_REMOTE_KEEP_DAYS: ${BACKUP_REMOTE_KEEP_DAYS:-60}
+      BACKUP_PING_URL: ${BACKUP_PING_URL:-}
+      RCLONE_CONFIG: /secrets/rclone.conf
+      RCLONE_CACHE_DIR: /tmp/rclone
+      HOME: /tmp
+    volumes:
+      - ${BACKUP_DIR:-/opt/hrm-backups}:/backups
+      # rclone.conf (chép ra ngoài). Ghi được để rclone lưu lại token khi làm mới.
+      - ./secrets:/secrets
+    networks:
+      - supabase
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  supabase:
+    external: true
+    name: supabase_default

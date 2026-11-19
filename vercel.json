@@ -9,11 +9,6 @@
       "schedule": "0 1 * * *"
     }
   ],
-  "functions": {
-    "api/chatbot.ts": {
-      "maxDuration": 60
-    }
-  },
   "rewrites": [
     {
       "source": "/iclock/(.*)",
