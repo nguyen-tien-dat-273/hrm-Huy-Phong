@@ -58,7 +58,7 @@ export function PublicOnboardingPage() {
     setSent(true);
   };
 
-  if (loading) return <Shell><p className="py-16 text-center text-sm text-slate-400">Đang tải…</p></Shell>;
+  if (loading) return <Shell><p className="py-16 text-center text-sm text-slate-600">Đang tải…</p></Shell>;
 
   if (!link || !link.is_open) {
     return (
@@ -68,7 +68,6 @@ export function PublicOnboardingPage() {
           <h1 className="mt-3 text-lg font-bold text-slate-800">
             {link ? 'Đường dẫn đã đóng' : 'Không tìm thấy đường dẫn'}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">Vui lòng liên hệ bộ phận nhân sự để nhận đường dẫn mới.</p>
         </div>
       </Shell>
     );
@@ -80,9 +79,6 @@ export function PublicOnboardingPage() {
         <div className="py-16 text-center">
           <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" />
           <h1 className="mt-3 text-lg font-bold text-slate-800">Đã nhận hồ sơ của bạn</h1>
-          <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-slate-500">
-            Bộ phận nhân sự sẽ kiểm tra và duyệt hồ sơ. Sau khi duyệt, tài khoản đăng nhập sẽ được gửi cho bạn.
-          </p>
         </div>
       </Shell>
     );
@@ -94,7 +90,6 @@ export function PublicOnboardingPage() {
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Khai báo hồ sơ nhân viên</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">{link.label}</h1>
-          <p className="mt-1 text-sm text-slate-500">Điền chính xác thông tin bên dưới. Các ô có dấu * là bắt buộc.</p>
         </div>
 
         <Section title="Thông tin cá nhân">
@@ -152,7 +147,7 @@ export function PublicOnboardingPage() {
         </div>
 
         {error && (
-          <p className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-700">
+          <p className="flex items-start gap-2 rounded-none border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-700">
             <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
             {error}
           </p>
@@ -161,7 +156,7 @@ export function PublicOnboardingPage() {
         <Button theme="admin" className="w-full" onClick={() => void submit()} disabled={busy}>
           <Send className="h-4 w-4" /> {busy ? 'Đang gửi…' : 'Gửi hồ sơ'}
         </Button>
-        <p className="text-center text-xs leading-relaxed text-slate-400">
+        <p className="text-center text-xs leading-relaxed text-slate-600">
           Bằng việc gửi hồ sơ, bạn đồng ý để {APP_NAME} lưu trữ và xử lý thông tin trên cho mục đích quản lý nhân sự.
         </p>
       </div>
@@ -181,7 +176,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 px-4 py-10">
-      <div className="relative mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white px-6 shadow-sm">
+      <div className="relative mx-auto max-w-2xl rounded-none border border-slate-200 bg-white px-6 shadow-sm">
         {children}
       </div>
     </div>

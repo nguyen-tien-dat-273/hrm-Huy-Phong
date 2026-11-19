@@ -65,34 +65,34 @@ export function ResetPasswordPage() {
     <main className="flex min-h-screen items-center justify-center bg-ambient px-5 py-10">
       <div className="w-full max-w-md">
         <div className="mb-7 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 shadow-lg shadow-indigo-600/20">
+          <div className="flex h-11 w-11 items-center justify-center rounded-none bg-indigo-600 shadow-lg shadow-indigo-600/20">
             <Building2 className="h-6 w-6 text-white" />
           </div>
-          <div><p className="font-display text-lg font-bold text-slate-900">{APP_NAME}</p><p className="text-xs text-slate-500">Bảo vệ tài khoản</p></div>
+          <div><p className="font-display text-lg font-bold text-slate-900">{APP_NAME}</p><p className="text-xs text-slate-600">Bảo vệ tài khoản</p></div>
         </div>
 
-        <section className="rounded-3xl border border-white/80 bg-white/95 p-6 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] sm:p-8" aria-labelledby="reset-title">
-          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600"><KeyRound className="h-6 w-6" /></div>
+        <section className="rounded-none border border-white/80 bg-white/95 p-6 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] sm:p-8" aria-labelledby="reset-title">
+          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-none bg-indigo-50 text-indigo-600"><KeyRound className="h-6 w-6" /></div>
           <h1 id="reset-title" className="font-display text-2xl font-bold tracking-tight text-slate-950">Đặt mật khẩu mới</h1>
 
           {checking ? (
-            <div className="py-10 text-center" role="status"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-indigo-100 border-t-indigo-600" /><p className="mt-3 text-sm text-slate-500">Đang kiểm tra liên kết khôi phục…</p></div>
+            <div className="py-10 text-center" role="status"><span className="mx-auto block h-7 w-7 animate-spin rounded-full border-2 border-indigo-100 border-t-indigo-600" /><p className="mt-3 text-sm text-slate-600">Đang kiểm tra liên kết khôi phục…</p></div>
           ) : !ready ? (
             <div className="mt-5">
-              <div role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800">
+              <div role="alert" className="flex items-start gap-3 rounded-none border border-amber-200 bg-amber-50 p-4 text-amber-800">
                 <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
                 <div><p className="text-sm font-semibold">Liên kết không còn hiệu lực</p><p className="mt-1 text-sm leading-5">Liên kết có thể đã hết hạn hoặc đã được sử dụng. Hãy yêu cầu một liên kết mới.</p></div>
               </div>
-              <Link to="/forgot-password" className="mt-4 flex h-12 w-full items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700">Yêu cầu liên kết mới</Link>
+              <Link to="/forgot-password" className="mt-4 flex h-12 w-full items-center justify-center rounded-none bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700">Yêu cầu liên kết mới</Link>
             </div>
           ) : (
             <>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Chọn mật khẩu riêng, khó đoán và chưa dùng cho tài khoản khác.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Chọn mật khẩu riêng, khó đoán và chưa dùng cho tài khoản khác.</p>
               <form onSubmit={submit} className="mt-6 space-y-4">
                 <PasswordField label="Mật khẩu mới" value={password} onChange={setPassword} autoComplete="new-password" placeholder="Tối thiểu 8 ký tự, có chữ và số" showRules />
                 <PasswordField label="Xác nhận mật khẩu mới" value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" placeholder="Nhập lại mật khẩu mới" />
-                {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700">{error}</div>}
-                <button type="submit" disabled={loading} className="flex h-12 w-full items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 disabled:opacity-60">
+                {error && <div role="alert" className="rounded-none border border-red-200 bg-red-50 px-3.5 py-3 text-sm text-red-700">{error}</div>}
+                <button type="submit" disabled={loading} className="flex h-12 w-full items-center justify-center rounded-none bg-indigo-600 px-4 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 disabled:opacity-60">
                   {loading ? 'Đang cập nhật…' : 'Đặt mật khẩu mới'}
                 </button>
               </form>

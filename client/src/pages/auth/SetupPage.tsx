@@ -48,7 +48,7 @@ export function SetupPage() {
           <BrandMark />
           <div>
             <div className="font-[Space_Grotesk] text-lg font-semibold tracking-tight">{APP_SHORT_NAME}</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#C8754A]">People / Time / Work</div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#C8754A]">People / Time / Work</div>
           </div>
         </div>
         <div className="relative z-10 max-w-sm pb-8">
@@ -57,22 +57,22 @@ export function SetupPage() {
           <p className="mt-5 max-w-xs text-sm leading-6 text-[#C6D3DE]">Kết nối workspace với Supabase để dữ liệu nhân sự, chấm công và công việc đồng bộ trong một không gian duy nhất.</p>
           <div className="mt-8 flex items-center gap-3 text-xs text-[#C6D3DE]"><ShieldCheck className="h-4 w-4 text-[#C8754A]" /> Chỉ dùng publishable / anon key ở phía trình duyệt</div>
         </div>
-        <div className="relative z-10 flex items-center justify-between border-t border-white/10 pt-5 font-mono text-[10px] uppercase tracking-[0.16em] text-[#8EA5B7]"><span>HRM / ONLINE</span><span>v1.0</span></div>
+        <div className="relative z-10 flex items-center justify-between border-t border-white/10 pt-5 font-mono text-[11px] uppercase tracking-[0.16em] text-[#8EA5B7]"><span>HRM / ONLINE</span><span>v1.0</span></div>
       </aside>
 
       <main className="flex min-h-screen items-center bg-[#F7F3ED] px-6 py-10 text-[#102A43] sm:px-10 lg:px-16">
         <div className="mx-auto w-full max-w-xl">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <BrandMark small />
-            <div><div className="font-[Space_Grotesk] text-lg font-semibold">{APP_SHORT_NAME}</div><div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#C8754A]">System setup / 01</div></div>
+            <div><div className="font-[Space_Grotesk] text-lg font-semibold">{APP_SHORT_NAME}</div><div className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#C8754A]">System setup / 01</div></div>
           </div>
           <div className="mb-8 flex items-end justify-between gap-6">
             <div>
-              <div className="mb-3 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.18em] text-[#C8754A]"><span className="h-px w-8 bg-[#C8754A]" /> Connection</div>
+              <div className="mb-3 flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[#C8754A]"><span className="h-px w-8 bg-[#C8754A]" /> Connection</div>
               <h2 className="font-[Space_Grotesk] text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Kết nối Supabase</h2>
               <p className="mt-3 max-w-md text-sm leading-6 text-[#66798A]">Nhập thông tin API công khai để đồng bộ dữ liệu trên mọi máy chủ.</p>
             </div>
-            <div className="hidden rounded-full border border-[#D7DED9] bg-white px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[#66798A] sm:block">Required</div>
+            <div className="hidden rounded-full border border-[#D7DED9] bg-white px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-[#66798A] sm:block">Required</div>
           </div>
 
           <form onSubmit={handleSubmit} className="border-t border-[#D7DED9] pt-6">
@@ -80,12 +80,12 @@ export function SetupPage() {
               <label className="block">
                 <span className="mb-2 flex items-center gap-2 font-[Space_Grotesk] text-sm font-semibold"><Building2 className="h-4 w-4 text-[#C8754A]" /> Supabase URL</span>
                 <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://YOUR_PROJECT_REF.supabase.co" className="h-12 w-full border-b border-[#B9C5CC] bg-transparent px-0 text-sm text-[#102A43] outline-none transition-colors placeholder:text-[#9AA9B3] focus:border-[#C8754A]" />
-                <span className="mt-2 block font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A9AA5]">Project Settings / API / Project URL</span>
+                <span className="mt-2 block font-mono text-[11px] uppercase tracking-[0.12em] text-[#8A9AA5]">Project Settings / API / Project URL</span>
               </label>
               <label className="block">
                 <span className="mb-2 flex items-center gap-2 font-[Space_Grotesk] text-sm font-semibold"><KeyRound className="h-4 w-4 text-[#C8754A]" /> Publishable / Anon Key</span>
                 <input type="password" value={anonKey} onChange={(e) => setAnonKey(e.target.value)} placeholder="sb_publishable_... (hoac eyJhbGci... neu con dung key cu)" className="h-12 w-full border-b border-[#B9C5CC] bg-transparent px-0 text-sm text-[#102A43] outline-none transition-colors placeholder:text-[#9AA9B3] focus:border-[#C8754A]" />
-                <span className="mt-2 block font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A9AA5]">Project Settings / API / Publishable key</span>
+                <span className="mt-2 block font-mono text-[11px] uppercase tracking-[0.12em] text-[#8A9AA5]">Project Settings / API / Publishable key</span>
               </label>
             </div>
             <button type="submit" disabled={loading} className="mt-9 flex h-12 w-full items-center justify-center gap-2 bg-[#C8754A] px-5 font-[Space_Grotesk] text-sm font-semibold text-white shadow-[0_12px_24px_rgba(200,117,74,.2)] transition-all duration-200 hover:bg-[#B9643B] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">
@@ -93,7 +93,7 @@ export function SetupPage() {
             </button>
             {existing && <div className="mt-5 flex items-center gap-2 border border-[#C9DDD2] bg-[#EEF6F0] px-3 py-2.5 text-xs text-[#3D765A]"><CheckCircle2 className="h-4 w-4 flex-shrink-0" /> Đã có cấu hình. Thay đổi áp dụng sau khi tải lại trang.</div>}
           </form>
-          <p className="mt-8 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-[#8A9AA5]"><Database className="h-3.5 w-3.5" /> Không đặt service-role key trong trình duyệt</p>
+          <p className="mt-8 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[#8A9AA5]"><Database className="h-3.5 w-3.5" /> Không đặt service-role key trong trình duyệt</p>
         </div>
       </main>
     </div>

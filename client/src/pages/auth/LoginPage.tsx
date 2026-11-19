@@ -50,7 +50,7 @@ export function LoginPage() {
   };
 
   const inputCls = (hasError: boolean) =>
-    `peer w-full h-12 pl-11 pr-11 rounded-xl bg-slate-50/80 border text-sm text-slate-800 placeholder:text-slate-400 transition-all duration-200 focus:outline-none focus:ring-4 ${
+    `peer w-full h-12 pl-11 pr-11 rounded-none bg-slate-50/80 border text-sm text-slate-800 placeholder:text-slate-600 transition-all duration-200 focus:outline-none focus:ring-4 ${
       hasError
         ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
         : 'border-slate-200 focus:border-indigo-500 focus:ring-indigo-100 focus:bg-white'
@@ -98,24 +98,24 @@ export function LoginPage() {
         <div className="relative z-10 flex flex-col justify-between py-16 px-14 w-full">
           <div className="flex items-center gap-3 fade-up">
             {/* Nen panel trai mau toi, logo do phai dat tren o trang moi ro net. */}
-            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-white p-1 shadow-lg shadow-indigo-950/30">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-none bg-white p-1 shadow-lg shadow-indigo-950/30">
               <img src="/logo-mark.png?v=3" alt="" aria-hidden="true" className="h-full w-full object-contain" />
             </span>
             <div>
               <p className="text-xl font-bold tracking-tight text-white">HRM Huy Phong</p>
-              <p className="text-xs text-slate-400 mt-0.5">Hệ thống quản lý nhân sự</p>
+              <p className="text-xs text-slate-300 mt-0.5">Hệ thống quản lý nhân sự</p>
             </div>
           </div>
 
           <div className="space-y-12">
             <div className="fade-up delay-1">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-400/20 text-[10px] font-bold text-indigo-300 uppercase tracking-widest mb-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-400/20 text-[11px] font-bold text-indigo-300 uppercase tracking-widest mb-6">
                 Quản lý tập trung
               </div>
               <h1 className="font-display text-4xl xl:text-5xl font-bold leading-tight text-white mb-6">
                 Quản trị nhịp độ<br />nhân sự & dự án
               </h1>
-              <p className="text-base text-slate-400 max-w-sm leading-relaxed border-l border-slate-800 pl-6">
+              <p className="text-base text-slate-300 max-w-sm leading-relaxed border-l border-slate-800 pl-6">
                 Hệ thống hợp nhất chấm công, điều phối công việc và quản trị hiệu suất tập trung.
               </p>
             </div>
@@ -125,7 +125,7 @@ export function LoginPage() {
                 <div key={f.title} className="flex items-center gap-5 group">
                   <div className="w-1 h-8 bg-slate-700 group-hover:bg-indigo-500 transition-colors" />
                   <div>
-                    <p className="text-[10px] font-bold text-indigo-300 tracking-widest uppercase mb-0.5">{f.title}</p>
+                    <p className="text-[11px] font-bold text-indigo-300 tracking-widest uppercase mb-0.5">{f.title}</p>
                     <p className="text-sm text-slate-300 font-medium">{f.desc}</p>
                   </div>
                 </div>
@@ -133,7 +133,7 @@ export function LoginPage() {
             </div>
           </div>
 
-          <div className="text-xs text-slate-500 fade-up delay-3">
+          <div className="text-xs text-slate-300 fade-up delay-3">
             © {new Date().getFullYear()} {APP_NAME}. Bảo mật & tin cậy.
           </div>
         </div>
@@ -143,28 +143,27 @@ export function LoginPage() {
       <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-ambient px-5 py-8 sm:px-8 sm:py-12">
         <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-indigo-200/35 blur-3xl lg:hidden" />
         <div className="pointer-events-none absolute -bottom-32 -left-24 h-80 w-80 rounded-full bg-emerald-100/50 blur-3xl lg:hidden" />
-        <div className="relative w-full max-w-md rounded-3xl border border-white/80 bg-white/90 p-6 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-10 lg:max-w-sm lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+        <div className="relative w-full max-w-md rounded-none border border-white/80 bg-white/90 p-6 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-10 lg:max-w-sm lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
           <div className="flex items-center gap-3 mb-9 lg:hidden">
             <img src="/logo-mark.png?v=3" alt="" aria-hidden="true" className="h-10 w-10 flex-shrink-0 object-contain" />
-            <div><p className="text-lg font-bold text-slate-900">HRM Huy Phong</p><p className="text-xs text-slate-500">Không gian làm việc tập trung</p></div>
+            <div><p className="text-lg font-bold text-slate-900">HRM Huy Phong</p><p className="text-xs text-slate-600">Không gian làm việc tập trung</p></div>
           </div>
 
           <div className="fade-up">
-            <span className="mb-3 inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-700">Cổng nhân sự bảo mật</span>
+            <span className="mb-3 inline-flex rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.14em] text-indigo-700">Cổng nhân sự bảo mật</span>
             <h2 className="font-display text-3xl font-bold text-slate-950 mb-2 tracking-tight">Chào mừng trở lại</h2>
-            <p className="text-sm leading-6 text-slate-500 mb-8">Đăng nhập để tiếp tục công việc, chấm công và theo dõi các yêu cầu của bạn.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6 fade-up delay-1">
             {resetComplete && (
-              <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-medium text-emerald-700">
+              <div role="status" className="rounded-none border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm font-medium text-emerald-700">
                 Mật khẩu đã được cập nhật. Bạn có thể đăng nhập bằng mật khẩu mới.
               </div>
             )}
             <div className="space-y-1.5">
               <label htmlFor="login-identifier" className="block text-xs font-bold text-slate-600 uppercase tracking-wider">Tên đăng nhập</label>
               <div className="relative">
-                <AtSign className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${focused === 'identifier' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                <AtSign className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${focused === 'identifier' ? 'text-indigo-600' : 'text-slate-600'}`} />
                 <input
                   type="text"
                   id="login-identifier"
@@ -177,7 +176,7 @@ export function LoginPage() {
                   onFocus={() => setFocused('identifier')}
                   onBlur={() => setFocused(null)}
                   placeholder="admin_huyphong"
-                  className="w-full h-12 pl-10 pr-4 rounded-xl bg-white border border-slate-200 text-sm text-slate-900 shadow-sm placeholder:text-slate-300 hover:border-slate-300 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
+                  className="w-full h-12 pl-10 pr-4 rounded-none bg-white border border-slate-300 text-sm text-slate-900 shadow-sm placeholder:text-slate-600 hover:border-slate-300 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
                 />
               </div>
             </div>
@@ -190,7 +189,7 @@ export function LoginPage() {
                 </Link>
               </div>
               <div className="relative">
-                <Lock className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${focused === 'password' ? 'text-indigo-600' : 'text-slate-400'}`} />
+                <Lock className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${focused === 'password' ? 'text-indigo-600' : 'text-slate-600'}`} />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   id="login-password"
@@ -200,13 +199,13 @@ export function LoginPage() {
                   onBlur={() => setFocused(null)}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full h-12 pl-10 pr-10 rounded-xl bg-white border border-slate-200 text-sm text-slate-900 shadow-sm placeholder:text-slate-300 hover:border-slate-300 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
+                  className="w-full h-12 pl-10 pr-10 rounded-none bg-white border border-slate-300 text-sm text-slate-900 shadow-sm placeholder:text-slate-600 hover:border-slate-300 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all"
                 />
                 <button
                   type="button"
                   aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-none text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -214,7 +213,7 @@ export function LoginPage() {
             </div>
 
             {error && (
-              <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-700 fade-up">
+              <div role="alert" className="rounded-none border border-red-200 bg-red-50 px-3.5 py-3 text-xs font-medium text-red-700 fade-up">
                 {error}
               </div>
             )}
@@ -222,7 +221,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-12 bg-indigo-600 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 hover:shadow-xl transition-all active:translate-y-px disabled:opacity-60 flex items-center justify-center gap-2"
+              className="w-full h-12 bg-indigo-600 text-white text-sm font-semibold rounded-none shadow-lg shadow-indigo-600/20 hover:bg-indigo-700 hover:shadow-xl transition-all active:translate-y-px disabled:opacity-60 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -233,7 +232,7 @@ export function LoginPage() {
           </form>
 
           <div className="mt-7 pt-5 border-t border-slate-200/80 text-center fade-up delay-2">
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-600 leading-relaxed">
               Tài khoản được quản trị viên cấp. Nếu không đăng nhập được,<br className="hidden sm:block" /> hãy liên hệ bộ phận phụ trách nhân sự.
             </p>
           </div>

@@ -74,25 +74,25 @@ export function ChangePasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-6 py-12">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-2.5 mb-8">
-          <div className="w-11 h-11 bg-indigo-600 rounded-xl flex items-center justify-center">
+          <div className="w-11 h-11 bg-indigo-600 rounded-none flex items-center justify-center">
             <Building2 className="w-6 h-6 text-white" />
           </div>
           <span className="text-xl font-bold text-slate-800">{APP_NAME}</span>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-7 fade-up">
+        <div className="bg-white border border-slate-200 rounded-none shadow-sm p-7 fade-up">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-none bg-blue-50 flex items-center justify-center flex-shrink-0">
               <KeyRound className="w-5 h-5 text-blue-600" />
             </div>
             <h2 className="font-display text-2xl font-extrabold text-slate-900 tracking-tight">Đổi mật khẩu</h2>
           </div>
-          <p className="text-sm text-slate-500 mb-6">
+          <p className="text-sm text-slate-600 mb-6">
             {profile ? <>Tài khoản <strong className="text-slate-700">{displayIdentifier(profile.email)}</strong></> : 'Cập nhật mật khẩu cho tài khoản của bạn'}
           </p>
 
           {forced && (
-            <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5 fade-up">
+            <div className="flex items-start gap-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-none p-4 mb-5 fade-up">
               <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div className="text-sm leading-relaxed">
                 <p className="font-semibold mb-0.5">Bạn đang dùng mật khẩu tạm</p>
@@ -131,7 +131,7 @@ export function ChangePasswordPage() {
             />
 
             {error && (
-              <div className="flex items-center gap-2.5 text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 fade-up">
+              <div className="flex items-center gap-2.5 text-sm text-red-600 bg-red-50 border border-red-200 rounded-none px-4 py-3 fade-up">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                 {error}
               </div>
@@ -140,7 +140,7 @@ export function ChangePasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-12 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+              className="w-full h-12 bg-indigo-600 text-white text-sm font-semibold rounded-none hover:bg-indigo-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
             >
               {loading ? (
                 <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -152,13 +152,13 @@ export function ChangePasswordPage() {
 
           <div className="mt-6 pt-5 border-t border-slate-100 text-center">
             {forced ? (
-              <button onClick={handleSignOut} className="text-sm text-slate-500 hover:text-red-600 transition-colors">
+              <button onClick={handleSignOut} className="text-sm text-slate-600 hover:text-red-600 transition-colors">
                 Đăng xuất
               </button>
             ) : (
               <button
                 onClick={() => navigate(homePath)}
-                className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-600 transition-colors"
+                className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-blue-600 transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" /> Quay lại
               </button>
