@@ -1,9 +1,10 @@
-# hrm-Huy-Phong
+# HRM Huy Phong
 
-## Tài liệu
+Ứng dụng nhân sự: hồ sơ, chấm công (máy chấm công + HRM), bảng công, lương, KPI, tuyển dụng, đào tạo.
 
-- Production chạy frontend và API trên Vercel, dùng Supabase Cloud cho Auth, Database, Storage và Realtime.
-- [Thiết lập Supabase local để kiểm tra migration](docs/supabase-local-setup.md) — dùng database clone/cô lập, không link hoặc chạy migration trực tiếp lên production.
-- [Đánh giá đối chiếu SRS](docs/danh-gia-doi-chieu-srs-toan-du-an.md)
-- [Tích hợp máy chấm công Ronald Jack / ZKTeco](docs/may-cham-cong.md)
-- [Bàn giao Docker Compose](docs/docker-handover.md) — phương án self-hosted tùy chọn, không phải cấu hình production hiện tại.
+- `client/` giao diện React + Vite · `api/` hàm API (Node) · `server/` máy chủ chạy trong container
+- `supabase/` migration và cấu hình cơ sở dữ liệu (Postgres/Auth/Storage/Realtime)
+- `deploy/vps/` bộ cài và hướng dẫn triển khai lên VPS: **bắt đầu từ [deploy/vps/README.md](deploy/vps/README.md)**
+- `tools/` công cụ sao lưu, đóng gói, bridge máy chấm công
+
+Hiện tại production chạy trên Vercel + Supabase Cloud (+ Cloudflare Worker `cloudflare/iclock` nhận dữ liệu máy chấm công); đang chuyển sang VPS tự host.
