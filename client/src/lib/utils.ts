@@ -46,6 +46,23 @@ export function formatDate(dateStr: string | null): string {
   return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+/** Thâm niên tính từ ngày vào làm đến hôm nay, dạng "5 năm 3 tháng 12 ngày". */
+export function formatTenure(hireDate: string | null | undefined, today: Date = new Date()): string {
+  if (!hireDate) return '—';
+  const [y, m, d] = hireDate.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return '—';
+  let years = today.getFullYear() - y;
+  let months = today.getMonth() + 1 - m;
+  let days = today.getDate() - d;
+  if (days < 0) {
+    months -= 1;
+    days += new Date(today.getFullYear(), today.getMonth(), 0).getDate();
+  }
+  if (months < 0) { years -= 1; months += 12; }
+  if (years < 0) return '—';
+  return `${years} năm ${months} tháng ${days} ngày`;
+}
+
 export function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return '—';
   const date = new Date(dateStr);

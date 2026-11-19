@@ -99,11 +99,11 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         >
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" onClick={() => settle(false)} />
 
-          <div ref={dialogRef} className="modal-in relative bg-white rounded-3xl shadow-2xl ring-1 ring-slate-900/5 w-full max-w-md overflow-hidden">
+          <div ref={dialogRef} className="modal-in relative bg-white rounded-none shadow-2xl ring-1 ring-slate-900/5 w-full max-w-md overflow-hidden">
             <div className="p-6">
               <div className="flex items-start gap-4">
                 <div
-                  className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  className={`w-11 h-11 rounded-none flex items-center justify-center flex-shrink-0 ${
                     danger ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600'
                   }`}
                 >
@@ -112,7 +112,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 <div className="min-w-0 pt-0.5">
                   <h2 id={titleId} className="font-display text-lg font-bold tracking-tight text-slate-900">{options.title}</h2>
                   {options.message && (
-                    <div id={descriptionId} className="text-sm text-slate-500 mt-1.5 leading-relaxed">{options.message}</div>
+                    <div id={descriptionId} className="text-sm text-slate-600 mt-1.5 leading-relaxed">{options.message}</div>
                   )}
                 </div>
               </div>
@@ -125,7 +125,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 onClick={() => settle(true)}
-                className={`flex-1 h-11 rounded-xl text-sm font-semibold text-white shadow-sm transition-all active:translate-y-px ${
+                className={`flex-1 h-11 rounded-none text-sm font-semibold text-white shadow-sm transition-all active:translate-y-px ${
                   danger
                     ? 'bg-red-600 hover:bg-red-700'
                     : 'bg-indigo-600 hover:bg-indigo-700'

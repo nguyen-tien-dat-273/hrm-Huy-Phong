@@ -54,7 +54,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             role={t.type === 'error' ? 'alert' : 'status'}
-            className={`pointer-events-auto slide-in-right flex w-full items-start gap-3 rounded-2xl border border-slate-200 border-l-4 bg-white/95 px-4 py-3.5 shadow-lifted backdrop-blur-xl sm:min-w-[340px] sm:max-w-md ${borders[t.type]}`}
+            className={`pointer-events-auto slide-in-right flex w-full items-start gap-3 rounded-none border border-slate-200 border-l-4 bg-white/95 px-4 py-3.5 shadow-lifted backdrop-blur-xl sm:min-w-[340px] sm:max-w-md ${borders[t.type]}`}
           >
             {icons[t.type]}
             <span className="flex-1 text-sm font-medium leading-5 text-slate-700">{t.message}</span>
@@ -62,7 +62,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               onClick={() => removeToast(t.id)}
               aria-label="Đóng thông báo"
-              className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-none text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               <X className="w-4 h-4" />
             </button>

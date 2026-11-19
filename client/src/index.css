@@ -11,8 +11,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Space Grotesk', 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --font-sans: 'Be Vietnam Pro', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Be Vietnam Pro', 'Segoe UI', system-ui, sans-serif;
 
   /* --- Mau chinh cua he thong ---------------------------------------------
      Do thuong hieu Huy Phong (#BF1F2B, lay thang tu file logo cong ty).
@@ -75,7 +75,7 @@
 }
 
 html {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--font-sans);
   scroll-behavior: smooth;
 }
 
@@ -97,6 +97,17 @@ body {
 /* Control chưa có class nền (ô lọc, ô ngày, select...) mặc định trắng của trình
    duyệt. `:where` giữ specificity 0 nên class của từng ô vẫn thắng. */
 .dark { color-scheme: dark; }
+/* Đệm mặc định của thẻ nằm ở layer components để class tiện ích (p-0, py-12…) luôn thắng.
+   Viết `p-4 sm:p-5` thẳng trong class thì `sm:p-5` đè mất `p-0` ở màn hình lớn — bảng bị hở khỏi viền thẻ. */
+@layer components {
+  .card-pad { padding: 1rem; }
+  .card-head { padding: 1rem 1.25rem; }
+  @media (min-width: 640px) {
+    .card-pad { padding: 1.25rem; }
+    .card-head { padding: 1.25rem 1.5rem; }
+  }
+}
+
 @layer base {
   /* Đường kẻ đậm hơn và rõ nét cho tất cả các bảng */
   table {
@@ -482,7 +493,7 @@ table thead th[class*='sticky'] {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 9999px;
+  border-radius: 0;
   border: 2px solid transparent;
   background-clip: content-box;
 }
@@ -684,7 +695,7 @@ summary:focus-visible,
 [tabindex]:not([tabindex='-1']):focus-visible {
   outline: 2px solid #bf1f2b;
   outline-offset: 2px;
-  border-radius: 10px;
+  border-radius: 0;
 }
 
 /* Nút trên nền tối (sidebar admin, cột trái trang đăng nhập) cần viền sáng. */
@@ -700,7 +711,7 @@ summary:focus-visible,
   top: -4rem;
   z-index: 100;
   padding: 0.625rem 1rem;
-  border-radius: 0.75rem;
+  border-radius: 0;
   background: #1e293b;
   color: #fff;
   font-size: 0.875rem;
@@ -770,15 +781,6 @@ a,
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Thanh module o day man dien thoai che mat phan cuoi noi dung, nen trang
-   phai chua san cho. Chi tren man hep - tu tablet tro len nut quay ve
-   header nen khong con thanh day nao. */
-@media (max-width: 767px) {
-  main[data-bottom-launcher] {
-    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
-  }
-}
-
 /* Chừa chỗ cho thanh home của iPhone và tai thỏ. */
 .safe-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
@@ -803,7 +805,7 @@ a,
   }
   .table-cards tr {
     border: 1px solid var(--color-slate-200, #e2e8f0);
-    border-radius: 1rem;
+    border-radius: 0;
     padding: 0.25rem 0;
     margin-bottom: 0.75rem;
     background: #fff;

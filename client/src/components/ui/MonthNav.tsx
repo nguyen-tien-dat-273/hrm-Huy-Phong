@@ -31,15 +31,15 @@ export function MonthNav({ value, onChange, theme = 'admin', bare = false, compa
         bare
           ? `inline-flex items-center gap-1 ${className}`
           : compact
-          ? `inline-flex ${square ? 'h-8 rounded-none' : 'h-10 rounded-xl'} items-center gap-0.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-1 shadow-xs ${className}`
-          : `inline-flex items-center gap-1 ${square ? 'rounded-none' : 'rounded-xl'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-1 shadow-sm ${className}`
+          ? `inline-flex ${square ? 'h-8 rounded-none' : 'h-10 rounded-none'} items-center gap-0.5 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-1 shadow-xs ${className}`
+          : `inline-flex items-center gap-1 ${square ? 'rounded-none' : 'rounded-none'} border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-1 shadow-sm ${className}`
       }
       aria-label="Điều hướng tháng"
     >
       <button
         type="button"
         onClick={() => onChange(startOfMonth(addMonths(value, -1)))}
-        className={`flex ${compact ? (square ? 'h-6 w-6 rounded-none' : 'h-8 w-8 rounded-lg') : 'h-11 w-11 rounded-lg'} items-center justify-center text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+        className={`flex ${compact ? (square ? 'h-6 w-6 rounded-none' : 'h-8 w-8 rounded-none') : 'h-11 w-11 rounded-none'} items-center justify-center text-slate-600 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
         aria-label="Tháng trước"
       >
         <ChevronLeft className="w-3.5 h-3.5" />
@@ -50,7 +50,7 @@ export function MonthNav({ value, onChange, theme = 'admin', bare = false, compa
       <button
         type="button"
         onClick={() => onChange(startOfMonth(addMonths(value, 1)))}
-        className={`flex ${compact ? (square ? 'h-6 w-6 rounded-none' : 'h-8 w-8 rounded-lg') : 'h-11 w-11 rounded-lg'} items-center justify-center text-slate-500 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-35`}
+        className={`flex ${compact ? (square ? 'h-6 w-6 rounded-none' : 'h-8 w-8 rounded-none') : 'h-11 w-11 rounded-none'} items-center justify-center text-slate-600 dark:text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-35`}
         disabled={isCurrentMonth}
         aria-label="Tháng sau"
       >
@@ -61,7 +61,7 @@ export function MonthNav({ value, onChange, theme = 'admin', bare = false, compa
           <button
             type="button"
             onClick={() => onChange(startOfMonth(new Date()))}
-            className={`h-6 px-1.5 ${square ? 'rounded-none' : 'rounded-lg'} text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors`}
+            className={`h-6 px-1.5 ${square ? 'rounded-none' : 'rounded-none'} text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors`}
           >
             Tháng này
           </button>

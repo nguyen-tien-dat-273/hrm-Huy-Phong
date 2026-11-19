@@ -3,7 +3,7 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ className = '' }: SkeletonProps) {
-  return <div className={`skeleton rounded-xl ${className}`} />;
+  return <div className={`skeleton rounded-none ${className}`} />;
 }
 
 export function TableSkeleton({ rows = 5 }: { rows?: number }) {

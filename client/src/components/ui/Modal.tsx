@@ -69,7 +69,7 @@ export function Modal({ open, onClose, title, children, size = 'md', square = fa
         aria-modal="true"
         aria-labelledby={titleId}
         className={`modal-in relative bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-white/10 w-full flex flex-col overflow-hidden
-          ${square ? 'max-h-[92vh] sm:max-h-[90vh]' : 'rounded-t-3xl max-h-[92vh] sm:rounded-3xl sm:max-h-[90vh]'} ${sizes[size]}`}
+          ${square ? 'max-h-[92vh] sm:max-h-[90vh]' : 'rounded-t-none max-h-[92vh] sm:max-h-[90vh]'} ${sizes[size]}`}
       >
         {/* Thanh kéo — tín hiệu quen thuộc cho biết tấm này đóng được. */}
         <div className="sm:hidden flex justify-center pt-2.5 pb-1" aria-hidden="true">
@@ -81,7 +81,7 @@ export function Modal({ open, onClose, title, children, size = 'md', square = fa
           <button
             type="button"
             onClick={onClose}
-            className={`flex h-11 w-11 items-center justify-center ${square ? '' : 'rounded-xl'} text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+            className={`flex h-11 w-11 items-center justify-center ${square ? '' : 'rounded-none'} text-slate-600 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
             aria-label="Đóng"
           >
             <X className="w-5 h-5" />

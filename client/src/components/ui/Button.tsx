@@ -23,7 +23,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ...props
 }, ref) {
   const base =
-    `inline-flex shrink-0 items-center justify-center gap-2 ${square ? 'rounded-none' : 'rounded-xl'} font-semibold shadow-sm transition-all duration-200 active:translate-y-px disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-45 disabled:shadow-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`;
+    `inline-flex shrink-0 items-center justify-center gap-2 ${square ? 'rounded-none' : 'rounded-none'} font-semibold shadow-sm transition-all duration-200 active:translate-y-px disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-45 disabled:shadow-none focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2`;
 
   const sizes: Record<Size, string> = {
     xs: 'min-h-8 text-xs px-2.5 py-1',

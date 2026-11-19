@@ -9,7 +9,7 @@ interface CardProps {
 export function Card({ children, className = '', hover = false }: CardProps) {
   return (
     <div
-      className={`bg-white/95 dark:bg-slate-900/80 rounded-2xl border border-slate-300 dark:border-slate-700 shadow-card ${hover ? 'card-lift' : ''} ${className}`}
+      className={`bg-white/95 dark:bg-slate-900/80 rounded-none border border-slate-300 dark:border-slate-700 shadow-card ${hover ? 'card-lift' : ''} ${className}`}
     >
       {children}
     </div>
@@ -17,7 +17,7 @@ export function Card({ children, className = '', hover = false }: CardProps) {
 }
 
 export function CardHeader({ children, className = '' }: CardProps) {
-  return <div className={`px-5 py-4 sm:px-6 sm:py-5 border-b border-slate-200 dark:border-slate-700 ${className}`}>{children}</div>;
+  return <div className={`card-head border-b border-slate-200 dark:border-slate-700 ${className}`}>{children}</div>;
 }
 
 export function CardTitle({ children, className = '' }: CardProps) {
@@ -25,5 +25,5 @@ export function CardTitle({ children, className = '' }: CardProps) {
 }
 
 export function CardContent({ children, className = '' }: CardProps) {
-  return <div className={`p-4 sm:p-5 ${className}`}>{children}</div>;
+  return <div className={`card-pad ${className}`}>{children}</div>;
 }
