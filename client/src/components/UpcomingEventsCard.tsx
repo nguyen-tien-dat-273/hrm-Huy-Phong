@@ -55,24 +55,24 @@ export function UpcomingEventsCard() {
             const isLink = !!ev.location && /^https?:\/\//.test(ev.location);
             return (
               <div key={ev.id} className="flex items-start gap-3 px-5 py-3.5">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.color}`}>
+                <div className={`w-9 h-9 rounded-none flex items-center justify-center flex-shrink-0 ${cfg.color}`}>
                   {ev.type === 'meeting' ? <CalendarClock className="w-4.5 h-4.5" /> : <Bell className="w-4.5 h-4.5" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-slate-800">{ev.title}</span>
                     <Badge className={cfg.color}>{cfg.label}</Badge>
-                    {ev.project?.name && <span className="text-xs text-slate-400">· {ev.project.name}</span>}
+                    {ev.project?.name && <span className="text-xs text-slate-600">· {ev.project.name}</span>}
                   </div>
                   <p className="text-xs font-medium text-slate-600 mt-0.5">{formatEventTime(ev.start_at)}</p>
                   {ev.client_name && (
-                    <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400" /> {ev.client_name}
+                    <p className="text-xs text-slate-600 flex items-center gap-1.5 mt-0.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-600" /> {ev.client_name}
                     </p>
                   )}
                   {ev.location && (
-                    <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-                      {isLink ? <Video className="w-3.5 h-3.5 text-slate-400" /> : <MapPin className="w-3.5 h-3.5 text-slate-400" />}
+                    <p className="text-xs text-slate-600 flex items-center gap-1.5 mt-0.5">
+                      {isLink ? <Video className="w-3.5 h-3.5 text-slate-600" /> : <MapPin className="w-3.5 h-3.5 text-slate-600" />}
                       {isLink
                         ? <a href={ev.location!} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate">Link tham gia</a>
                         : <span className="truncate">{ev.location}</span>}

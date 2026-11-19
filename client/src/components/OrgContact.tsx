@@ -27,7 +27,7 @@ export function OrgContact({ prefix = 'Cần hỗ trợ, liên hệ', className 
   if (!email && !tel) return null;
 
   return (
-    <p className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 ${className}`}>
+    <p className={`flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-600 ${className}`}>
       <span>{prefix} {orgName}:</span>
       {email && (
         <a href={`mailto:${email}`} className="inline-flex items-center gap-1.5 font-medium text-slate-700 hover:text-indigo-600 hover:underline">

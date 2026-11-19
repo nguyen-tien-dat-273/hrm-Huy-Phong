@@ -56,24 +56,24 @@ class Boundary extends Component<Props, State> {
 
     return (
       <div className="flex min-h-64 flex-col items-center justify-center px-6 py-12 text-center">
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-red-200 bg-red-50 text-red-500 shadow-sm">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-none border border-red-200 bg-red-50 text-red-500 shadow-sm">
           <TriangleAlert className="h-8 w-8" />
         </div>
         <h3 className="font-display text-base font-bold text-slate-900">
           {isStaleBuild ? 'Trang chưa tải được bản mới' : 'Trang này đang lỗi'}
         </h3>
-        <p className="mt-1.5 max-w-md text-sm leading-relaxed text-slate-500">
+        <p className="mt-1.5 max-w-md text-sm leading-relaxed text-slate-600">
           {isStaleBuild
             ? 'Hệ thống vừa cập nhật. Tải lại trang để lấy bản mới nhất.'
             : 'Các trang khác vẫn dùng được bình thường — chọn ở thanh điều hướng. Nếu cần trang này, báo lại kèm nội dung lỗi bên dưới.'}
         </p>
-        <code className="mt-3 max-w-lg break-words rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+        <code className="mt-3 max-w-lg break-words rounded-none border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
           {error.message || String(error)}
         </code>
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-none border border-slate-300 px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
         >
           <RotateCw className="h-4 w-4" />
           Tải lại trang
@@ -108,4 +108,59 @@ export function PageErrorBoundary({ children }: Props) {
   // `key` đổi theo đường dẫn: chuyển trang là boundary được dựng lại, trạng
   // thái lỗi của trang cũ không dính sang trang mới.
   return <Boundary key={pathname}>{children}</Boundary>;
+}
+
+/**
+ * Lưới ngoài cùng, bao cả layout. Layout (thanh điều hướng, đầu trang) nằm
+ * NGOÀI PageErrorBoundary, nên lỗi lúc dựng layout ngay sau đăng nhập từng làm
+ * cả cây bị gỡ → trắng trang, phải F5 mới hết. Ở đây tự tải lại đúng MỘT lần
+ * (chống lặp bằng sessionStorage), nếu vẫn lỗi thì hiện nút thay vì trắng.
+ */
+const ROOT_RELOAD_KEY = 'hrm:root-error-reload';
+
+export class RootBoundary extends Component<Props, State> {
+  state: State = { error: null };
+
+  static getDerivedStateFromError(error: Error): State {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[RootBoundary]', error, info.componentStack);
+    try {
+      if (sessionStorage.getItem(ROOT_RELOAD_KEY) !== '1') {
+        sessionStorage.setItem(ROOT_RELOAD_KEY, '1');
+        window.location.reload();
+      }
+    } catch { /* sessionStorage bị chặn — để người dùng bấm nút */ }
+  }
+
+  componentDidUpdate() {
+    // Dựng lại được thì cho phép tự phục hồi lần sau.
+    if (!this.state.error) {
+      try { sessionStorage.removeItem(ROOT_RELOAD_KEY); } catch { /* bỏ qua */ }
+    }
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-6 text-center">
+        <TriangleAlert className="mb-3 h-10 w-10 text-red-500" />
+        <h1 className="text-base font-bold text-slate-900">Không mở được trang</h1>
+        <p className="mt-1 max-w-md text-sm text-slate-600">Bấm tải lại để tiếp tục.</p>
+        <code className="mt-3 max-w-lg break-words rounded-none border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+          {this.state.error.message || String(this.state.error)}
+        </code>
+        <button
+          type="button"
+          onClick={() => { try { sessionStorage.removeItem(ROOT_RELOAD_KEY); } catch { /* bỏ qua */ } window.location.reload(); }}
+          className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-none border border-slate-300 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          <RotateCw className="h-4 w-4" />
+          Tải lại trang
+        </button>
+      </div>
+    );
+  }
 }

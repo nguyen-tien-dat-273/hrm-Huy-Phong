@@ -126,7 +126,7 @@ export function ProjectEventsPanel({ projectId, canManage }: { projectId: string
     const cfg = EVENT_TYPE_CONFIG[ev.type];
     return (
       <div key={ev.id} className={`flex items-start gap-3 px-5 py-4 ${dim ? 'opacity-60' : ''} hover:bg-slate-50/60 transition-colors`}>
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.color}`}>
+        <div className={`w-10 h-10 rounded-none flex items-center justify-center flex-shrink-0 ${cfg.color}`}>
           {ev.type === 'meeting' ? <CalendarClock className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
         </div>
         <div className="flex-1 min-w-0">
@@ -135,31 +135,31 @@ export function ProjectEventsPanel({ projectId, canManage }: { projectId: string
             <Badge className={cfg.color}>{cfg.label}</Badge>
           </div>
           <p className="text-xs font-medium text-slate-600 flex items-center gap-1.5">
-            <CalendarClock className="w-3.5 h-3.5 text-slate-400" />
+            <CalendarClock className="w-3.5 h-3.5 text-slate-600" />
             {formatEventTime(ev.start_at)}
           </p>
           {ev.client_name && (
-            <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-              <Building2 className="w-3.5 h-3.5 text-slate-400" /> {ev.client_name}
+            <p className="text-xs text-slate-600 flex items-center gap-1.5 mt-0.5">
+              <Building2 className="w-3.5 h-3.5 text-slate-600" /> {ev.client_name}
             </p>
           )}
           {ev.location && (
-            <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
-              {/^https?:\/\//.test(ev.location) ? <Video className="w-3.5 h-3.5 text-slate-400" /> : <MapPin className="w-3.5 h-3.5 text-slate-400" />}
+            <p className="text-xs text-slate-600 flex items-center gap-1.5 mt-0.5">
+              {/^https?:\/\//.test(ev.location) ? <Video className="w-3.5 h-3.5 text-slate-600" /> : <MapPin className="w-3.5 h-3.5 text-slate-600" />}
               {/^https?:\/\//.test(ev.location)
                 ? <a href={ev.location} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline truncate">{ev.location}</a>
                 : <span className="truncate">{ev.location}</span>}
             </p>
           )}
-          {ev.description && <p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap">{ev.description}</p>}
-          {ev.creator && <p className="text-[11px] text-slate-400 mt-1">Tạo bởi {ev.creator.name}</p>}
+          {ev.description && <p className="text-xs text-slate-600 mt-1 whitespace-pre-wrap">{ev.description}</p>}
+          {ev.creator && <p className="text-[11px] text-slate-600 mt-1">Tạo bởi {ev.creator.name}</p>}
         </div>
         {canManage && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => openEdit(ev)} title="Sửa" className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+            <button onClick={() => openEdit(ev)} title="Sửa" className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors">
               <Edit3 className="w-4 h-4" />
             </button>
-            <button onClick={() => remove(ev)} title="Xóa" className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors">
+            <button onClick={() => remove(ev)} title="Xóa" className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-none text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
@@ -192,7 +192,7 @@ export function ProjectEventsPanel({ projectId, canManage }: { projectId: string
           {upcoming.length > 0 && (
             <Card>
               <CardContent className="p-0">
-                <p className="px-5 pt-4 pb-1 text-xs font-semibold text-slate-500 uppercase tracking-wide">Sắp tới</p>
+                <p className="px-5 pt-4 pb-1 text-xs font-semibold text-slate-600 uppercase tracking-wide">Sắp tới</p>
                 <div className="divide-y divide-slate-50">{upcoming.map((e) => renderEvent(e))}</div>
               </CardContent>
             </Card>
@@ -200,7 +200,7 @@ export function ProjectEventsPanel({ projectId, canManage }: { projectId: string
           {past.length > 0 && (
             <Card>
               <CardContent className="p-0">
-                <p className="px-5 pt-4 pb-1 text-xs font-semibold text-slate-400 uppercase tracking-wide">Đã qua</p>
+                <p className="px-5 pt-4 pb-1 text-xs font-semibold text-slate-600 uppercase tracking-wide">Đã qua</p>
                 <div className="divide-y divide-slate-50">{past.map((e) => renderEvent(e, true))}</div>
               </CardContent>
             </Card>
@@ -257,9 +257,7 @@ export function ProjectEventsPanel({ projectId, canManage }: { projectId: string
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
 
-          <p className="text-xs text-slate-500">
-            Khi lưu, mọi thành viên dự án sẽ nhận được thông báo về sự kiện này.
-          </p>
+
 
           <div className="flex gap-3 pt-1">
             <Button variant="outline" onClick={() => setModalOpen(false)} className="flex-1" disabled={saving}>Hủy</Button>

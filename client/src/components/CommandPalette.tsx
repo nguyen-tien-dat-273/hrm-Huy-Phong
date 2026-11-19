@@ -173,10 +173,10 @@ export function CommandPalette() {
         role="dialog"
         aria-modal="true"
         aria-label="Tìm nhanh và điều hướng"
-        className="modal-in relative w-full max-w-xl bg-white rounded-2xl shadow-2xl ring-1 ring-slate-900/5 overflow-hidden"
+        className="modal-in relative w-full max-w-xl bg-white rounded-none shadow-2xl ring-1 ring-slate-900/5 overflow-hidden"
       >
         <div className="flex items-center gap-3 px-4 border-b border-slate-100">
-          <Search className="w-4.5 h-4.5 text-slate-400 flex-shrink-0" />
+          <Search className="w-4.5 h-4.5 text-slate-600 flex-shrink-0" />
           <input
             ref={inputRef}
             value={query}
@@ -184,16 +184,16 @@ export function CommandPalette() {
             placeholder="Đi tới trang, hoặc gõ để tìm..."
             aria-label="Tìm lệnh"
             aria-autocomplete="list"
-            className="flex-1 h-14 bg-transparent text-[15px] text-slate-800 placeholder:text-slate-400 focus:outline-none"
+            className="flex-1 h-14 bg-transparent text-[15px] text-slate-800 placeholder:text-slate-600 focus:outline-none"
           />
-          <kbd className="hidden sm:block text-[11px] font-medium text-slate-400 border border-slate-200 rounded-md px-1.5 py-0.5">
+          <kbd className="hidden sm:block text-[11px] font-medium text-slate-600 border border-slate-200 rounded-none px-1.5 py-0.5">
             ESC
           </kbd>
         </div>
 
         <div ref={listRef} role="list" aria-label="Kết quả" className="max-h-[52vh] overflow-y-auto py-2">
           {visible.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-10">
+            <p className="text-sm text-slate-600 text-center py-10">
               Không có kết quả cho “{query}”
             </p>
           ) : (
@@ -205,7 +205,7 @@ export function CommandPalette() {
               return (
                 <div key={cmd.id}>
                   {showGroup && (
-                    <p className="px-4 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <p className="px-4 pt-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600">
                       {cmd.group}
                     </p>
                   )}
@@ -220,14 +220,14 @@ export function CommandPalette() {
                     }`}
                   >
                     <span
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                        active ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'
+                      className={`w-8 h-8 rounded-none flex items-center justify-center flex-shrink-0 ${
+                        active ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-600'
                       }`}
                     >
                       <Icon className="w-4 h-4" />
                     </span>
                     <span className="text-sm font-medium">{cmd.label}</span>
-                    {active && <CornerDownLeft className="w-3.5 h-3.5 ml-auto text-indigo-400" />}
+                    {active && <CornerDownLeft className="w-3.5 h-3.5 ml-auto text-indigo-600" />}
                   </button>
                 </div>
               );
@@ -235,11 +235,11 @@ export function CommandPalette() {
           )}
         </div>
 
-        <div className="flex items-center gap-4 px-4 py-2.5 border-t border-slate-100 bg-slate-50/80 text-[11px] text-slate-400">
+        <div className="flex items-center gap-4 px-4 py-2.5 border-t border-slate-100 bg-slate-50/80 text-[11px] text-slate-600">
           <span className="flex items-center gap-1"><ArrowUp className="w-3 h-3" /><ArrowDown className="w-3 h-3" /> di chuyển</span>
           <span className="flex items-center gap-1"><CornerDownLeft className="w-3 h-3" /> chọn</span>
           <span className="hidden sm:flex items-center gap-1">
-            <kbd className="border border-slate-200 rounded px-1">/</kbd> mở nhanh
+            <kbd className="border border-slate-200 rounded-none px-1">/</kbd> mở nhanh
           </span>
           <span className="ml-auto">{visible.length} mục</span>
         </div>

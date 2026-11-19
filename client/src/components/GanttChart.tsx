@@ -65,7 +65,6 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
       <EmptyState
         icon={<CalendarRange className="w-8 h-8" />}
         title="Chưa vẽ được tiến độ"
-        description="Chưa có tác vụ nào khai ngày bắt đầu hoặc hạn chót. Mở một tác vụ và điền ngày để nó hiện lên đây."
       />
     );
   }
@@ -85,10 +84,10 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
     <div className="space-y-3">
       {/* Thanh điều khiển */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-xl border border-slate-200 p-0.5 bg-white">
+        <div className="inline-flex rounded-none border border-slate-200 p-0.5 bg-white">
           <button
             onClick={() => setMode('assignee')}
-            className={`inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 h-8 rounded-none text-sm transition-colors ${
               mode === 'assignee' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
@@ -96,7 +95,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
           </button>
           <button
             onClick={() => setMode('status')}
-            className={`inline-flex items-center gap-1.5 px-3 h-8 rounded-lg text-sm transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-3 h-8 rounded-none text-sm transition-colors ${
               mode === 'status' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
@@ -104,7 +103,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 ml-auto text-xs text-slate-500">
+        <div className="flex flex-wrap items-center gap-3 ml-auto text-xs text-slate-600">
           {[
             ['bg-slate-400', 'Cần làm'],
             ['bg-blue-500', 'Đang làm'],
@@ -113,7 +112,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
             ['bg-red-500', 'Quá hạn'],
           ].map(([cls, label]) => (
             <span key={label} className="inline-flex items-center gap-1.5">
-              <span className={`w-3 h-2.5 rounded-sm ${cls}`} />
+              <span className={`w-3 h-2.5 rounded-none ${cls}`} />
               {label}
             </span>
           ))}
@@ -121,7 +120,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
       </div>
 
       {undated.length > 0 && (
-        <div className="flex items-start gap-2.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <div className="flex items-start gap-2.5 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-none px-4 py-3">
           <TriangleAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>
             {undated.length} tác vụ chưa có ngày nên không nằm trên biểu đồ:{' '}
@@ -132,7 +131,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
       )}
 
       {/* Vùng cuộn ngang. Cột tên dính trái để cuộn xa vẫn biết đang xem ai. */}
-      <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-x-auto bg-white dark:bg-slate-900">
+      <div className="border border-slate-200 dark:border-slate-800 rounded-none overflow-x-auto bg-white dark:bg-slate-900">
         <div style={{ minWidth: LABEL_WIDTH + gridWidth }}>
           {/* Hàng tháng */}
           <div className="flex border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/70">
@@ -154,7 +153,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
           {/* Hàng ngày */}
           <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-800/40">
             <div
-              className="flex-shrink-0 sticky left-0 z-20 bg-slate-50/40 dark:bg-slate-800/40 border-r border-slate-100 dark:border-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
+              className="flex-shrink-0 sticky left-0 z-20 bg-slate-50/40 dark:bg-slate-800/40 border-r border-slate-100 dark:border-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider"
               style={{ width: LABEL_WIDTH }}
             >
               Tác vụ
@@ -164,8 +163,8 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
                 key={d.key}
                 className={`text-center text-[11px] py-1.5 border-r border-slate-100 dark:border-slate-800 ${
                   d.isToday ? 'bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 font-bold'
-                  : d.isWeekend ? 'bg-slate-100/60 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500'
-                  : 'text-slate-500 dark:text-slate-400'
+                  : d.isWeekend ? 'bg-slate-100/60 dark:bg-slate-800/60 text-slate-600 dark:text-slate-400'
+                  : 'text-slate-600 dark:text-slate-400'
                 }`}
                 style={{ width: DAY_WIDTH }}
               >
@@ -184,7 +183,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
                 >
                   {group.profile && <Avatar name={group.profile.name} url={group.profile.avatar_url} size="sm" />}
                   <span className="text-sm font-semibold text-slate-700 truncate">{group.label}</span>
-                  <span className="text-xs text-slate-400 ml-auto">{group.bars.length}</span>
+                  <span className="text-xs text-slate-600 ml-auto">{group.bars.length}</span>
                 </div>
                 <div style={{ width: gridWidth }} />
               </div>
@@ -218,7 +217,7 @@ export function GanttChart({ tasks, profiles, onSelectTask }: Props) {
 
                     <button
                       onClick={() => onSelectTask?.(bar.task)}
-                      className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-md ${barColor(bar)} hover:brightness-110 transition-all shadow-sm`}
+                      className={`absolute top-1/2 -translate-y-1/2 h-5 rounded-none ${barColor(bar)} hover:brightness-110 transition-all shadow-sm`}
                       style={{ left: bar.offset * DAY_WIDTH + 2, width: bar.span * DAY_WIDTH - 4 }}
                       title={`${bar.task.title}\n${formatDate(bar.task.start_date)} → ${formatDate(bar.task.due_date)}${bar.overdue ? '\nQUÁ HẠN' : ''}`}
                     />

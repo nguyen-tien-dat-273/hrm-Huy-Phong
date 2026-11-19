@@ -20,6 +20,7 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import { formatDate } from '@/lib/utils';
 import type { DocumentType, ProjectDocument } from '@/types';
+import { Pagination, usePagination, PAGE_SIZE_TABLE, PAGE_SIZE_LIST } from '@/components/ui/Pagination';
 
 type Source = 'upload' | 'link';
 
@@ -29,6 +30,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
   const confirm = useConfirm();
 
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
+  const pg = usePagination(documents, PAGE_SIZE_LIST, [documents.length]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -189,7 +191,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-600">
           {documents.length} tài liệu · tối đa {formatFileSize(MAX_FILE_SIZE)} mỗi file
         </p>
         <Button onClick={openCreate} theme="admin" className="w-full sm:w-auto">
@@ -212,13 +214,13 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
           setModalOpen(true);
         }}
         onClick={() => fileInputRef.current?.click()}
-        className={`rounded-2xl border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
+        className={`rounded-none border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
           dragging ? 'border-blue-400 bg-blue-50/60' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50/60'
         }`}
       >
-        <Upload className={`w-7 h-7 mx-auto mb-2 ${dragging ? 'text-blue-500' : 'text-slate-400'}`} />
+        <Upload className={`w-7 h-7 mx-auto mb-2 ${dragging ? 'text-blue-500' : 'text-slate-600'}`} />
         <p className="text-sm text-slate-600 font-medium">Kéo thả file vào đây, hoặc bấm để chọn</p>
-        <p className="text-xs text-slate-400 mt-1">Word, PDF, Excel, PowerPoint, ảnh</p>
+        <p className="text-xs text-slate-600 mt-1">Word, PDF, Excel, PowerPoint, ảnh</p>
         <input
           ref={fileInputRef}
           type="file"
@@ -237,23 +239,22 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
       {loading ? (
         <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
       ) : loadError ? (
-        <div className="bg-white border border-slate-200 rounded-2xl"><ErrorState message={loadError} onRetry={load} /></div>
+        <div className="bg-white border border-slate-200 rounded-none"><ErrorState message={loadError} onRetry={load} /></div>
       ) : documents.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl">
+        <div className="bg-white border border-slate-200 rounded-none">
           <EmptyState
             icon={<FileText className="w-8 h-8" />}
             title="Chưa có tài liệu"
-            description="Tải BRD, SRS, hợp đồng hoặc thêm liên kết Google Docs của dự án."
           />
         </div>
       ) : (
-        <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-50 overflow-hidden">
-          {documents.map((doc) => {
+        <div className="bg-white border border-slate-200 rounded-none divide-y divide-slate-50 overflow-hidden">
+          {pg.rows.map((doc) => {
             const type = DOCUMENT_TYPE_CONFIG[doc.doc_type];
             const isLink = !!doc.external_url;
             return (
               <div key={doc.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5 hover:bg-slate-50/70 transition-colors">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isLink ? 'bg-cyan-50 text-cyan-600' : 'bg-slate-100 text-slate-500'}`}>
+                <div className={`w-10 h-10 rounded-none flex items-center justify-center flex-shrink-0 ${isLink ? 'bg-cyan-50 text-cyan-600' : 'bg-slate-100 text-slate-600'}`}>
                   {isLink ? <Link2 className="w-5 h-5" /> : <FileText className="w-5 h-5" />}
                 </div>
 
@@ -268,13 +269,13 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">
+                  <p className="text-xs text-slate-600 mt-0.5 truncate">
                     {isLink ? 'Google Docs' : doc.file_name}
                     {doc.size_bytes ? ` · ${formatFileSize(doc.size_bytes)}` : ''}
                     {doc.uploader?.name ? ` · ${doc.uploader.name}` : ''}
                     {` · ${formatDate(doc.created_at)}`}
                   </p>
-                  {doc.note && <p className="text-xs text-slate-400 mt-0.5 truncate">{doc.note}</p>}
+                  {doc.note && <p className="text-xs text-slate-600 mt-0.5 truncate">{doc.note}</p>}
                 </div>
 
                 <div className="flex items-center gap-1.5 ml-auto">
@@ -282,7 +283,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                     onClick={() => handleOpen(doc, false)}
                     disabled={busyId === doc.id}
                     title={isLink ? 'Mở liên kết' : 'Xem'}
-                    className="p-2 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                    className="p-2 rounded-none text-slate-600 hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
                   >
                     {busyId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
                   </button>
@@ -290,7 +291,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                     <button
                       onClick={() => handleOpen(doc, true)}
                       title="Tải về"
-                      className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                      className="p-2 rounded-none text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
                     >
                       <Download className="w-4 h-4" />
                     </button>
@@ -298,7 +299,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                   <button
                     onClick={() => handleDelete(doc)}
                     title="Xóa"
-                    className="p-2 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                    className="p-2 rounded-none text-slate-600 hover:text-red-600 hover:bg-red-50 transition-colors"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -306,6 +307,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
               </div>
             );
           })}
+          <Pagination className="px-4 pb-3" page={pg.page} total={pg.total} size={pg.size} noun="tài liệu" setPage={pg.setPage} />
         </div>
       )}
 
@@ -320,7 +322,7 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                 key={opt.key}
                 type="button"
                 onClick={() => setSource(opt.key)}
-                className={`flex-1 flex items-center justify-center gap-2 h-11 rounded-xl text-sm font-medium border transition-colors ${
+                className={`flex-1 flex items-center justify-center gap-2 h-11 rounded-none text-sm font-medium border transition-colors ${
                   source === opt.key
                     ? 'border-blue-300 bg-blue-50 text-blue-700'
                     : 'border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -338,17 +340,17 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors text-left"
+                className="w-full flex items-center gap-3 p-3.5 rounded-none border border-slate-200 hover:bg-slate-50 transition-colors text-left"
               >
-                <FileText className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                <FileText className="w-5 h-5 text-slate-600 flex-shrink-0" />
                 <span className="min-w-0 flex-1">
                   {file ? (
                     <>
                       <span className="block text-sm text-slate-800 truncate">{file.name}</span>
-                      <span className="block text-xs text-slate-500">{formatFileSize(file.size)}</span>
+                      <span className="block text-xs text-slate-600">{formatFileSize(file.size)}</span>
                     </>
                   ) : (
-                    <span className="text-sm text-slate-400">Chưa chọn file — bấm để chọn</span>
+                    <span className="text-sm text-slate-600">Chưa chọn file — bấm để chọn</span>
                   )}
                 </span>
               </button>
@@ -363,11 +365,6 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
                 placeholder="https://docs.google.com/document/d/..."
                 required
               />
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
-                Liên kết luôn trỏ tới <strong>bản mới nhất</strong> và quyền xem do Google Drive quản lý,
-                không phải hệ thống này. Với tài liệu cần làm bằng chứng (hợp đồng, bản đã chốt),
-                nên tải file PDF lên thay vì lưu liên kết.
-              </p>
             </>
           )}
 
@@ -397,18 +394,16 @@ export function ProjectDocuments({ projectId }: { projectId: string }) {
               tick, họ sẽ MẤT LUÔN quyền xem tài liệu mình vừa tải — policy
               `documents_select` đòi quyền `projects` mới đọc được tài liệu mật. */}
           {canManage && (
-            <label className="flex items-start gap-2.5 cursor-pointer select-none p-3 rounded-xl border border-slate-200">
+            <label className="flex items-start gap-2.5 cursor-pointer select-none p-3 rounded-none border border-slate-200">
               <input
                 type="checkbox"
                 checked={form.confidential}
                 onChange={(e) => setForm({ ...form, confidential: e.target.checked })}
-                className="mt-0.5 w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                className="mt-0.5 w-4 h-4 rounded-none border-slate-300 text-blue-600 focus:ring-blue-500"
               />
               <span>
                 <span className="block text-sm font-medium text-slate-800">Tài liệu mật</span>
-                <span className="block text-xs text-slate-500 leading-snug">
-                  Chỉ người có quyền Quản lý Dự án xem được. Thành viên thường trong dự án sẽ không thấy.
-                </span>
+
               </span>
             </label>
           )}

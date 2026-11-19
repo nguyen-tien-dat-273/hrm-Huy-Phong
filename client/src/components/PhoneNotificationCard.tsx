@@ -80,12 +80,12 @@ export function PhoneNotificationCard() {
       <CardContent>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${state === 'on' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-none ${state === 'on' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
               {state === 'on' ? <BellRing className="h-5 w-5" /> : <Smartphone className="h-5 w-5" />}
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-800">{state === 'on' ? 'Đang bật trên thiết bị này' : 'Nhận thông báo kể cả khi đóng HRM'}</p>
-              <p className="mt-1 text-xs leading-relaxed text-slate-500">{STATE_COPY[state]}</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-600">{STATE_COPY[state]}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

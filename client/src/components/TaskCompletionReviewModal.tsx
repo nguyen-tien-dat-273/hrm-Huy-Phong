@@ -126,7 +126,7 @@ export function TaskCompletionReviewModal({
         <div className="space-y-4">
           <div>
             <p className="text-base font-semibold text-slate-800">{task.title}</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-600">
               {requesterName ? `${requesterName} · ` : ''}
               {request ? `Nộp lúc ${new Date(request.created_at).toLocaleString('vi-VN')}` : ''}
             </p>
@@ -135,15 +135,15 @@ export function TaskCompletionReviewModal({
           {loading ? (
             <Skeleton className="h-28" />
           ) : loadError ? (
-            <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
+            <p className="rounded-none bg-red-50 p-3 text-sm text-red-700">{loadError}</p>
           ) : !request ? (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            <p className="rounded-none bg-amber-50 p-3 text-sm text-amber-800">
               Không tìm thấy báo cáo nghiệm thu đang chờ duyệt cho task này.
             </p>
           ) : (
             <>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-1 text-xs font-semibold uppercase text-slate-500">Báo cáo kết quả</p>
+              <div className="rounded-none border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-1 text-xs font-semibold uppercase text-slate-600">Báo cáo kết quả</p>
                 <p className="whitespace-pre-wrap text-sm text-slate-700">{request.request_note}</p>
               </div>
               <div className="flex flex-col gap-2">
@@ -168,16 +168,12 @@ export function TaskCompletionReviewModal({
                       <FileText className="h-4 w-4" /> {request.evidence_file_name || 'File minh chứng'}
                     </a>
                   ) : (
-                    <p className="text-sm text-slate-500">Không mở được file minh chứng: {request.evidence_file_name}</p>
+                    <p className="text-sm text-slate-600">Không mở được file minh chứng: {request.evidence_file_name}</p>
                   )
                 )}
               </div>
 
-              {!canReview ? (
-                <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">
-                  Chỉ trưởng dự án mới được nghiệm thu, và không ai tự duyệt task của mình.
-                </p>
-              ) : returning ? (
+              {!canReview ? null : returning ? (
                 <div className="space-y-3">
                   <Textarea
                     label="Lý do trả lại (ít nhất 10 ký tự)"

@@ -138,7 +138,7 @@ export function ProjectTaskWorkflowPanel({
                 <ShieldCheck className="h-4 w-4 text-indigo-600" />
                 Yêu cầu task chờ nghiệm thu
               </h3>
-              <p className="mt-1 text-xs text-slate-500">Gia hạn deadline và hoàn thành task cần Project lead duyệt.</p>
+
             </div>
             <Badge className="bg-amber-50 text-amber-700">{requests.length} chờ xử lý</Badge>
           </div>
@@ -148,13 +148,13 @@ export function ProjectTaskWorkflowPanel({
             <ul className="divide-y divide-slate-100">
               {requests.map((request) => (
                 <li key={request.id} className="flex flex-wrap items-start gap-3 py-3">
-                  <Clock3 className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" />
+                  <Clock3 className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-600" />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-slate-800">
                       {request.request_type === 'DEADLINE_EXTENSION' ? 'Gia hạn deadline' : 'Gửi nghiệm thu'}
-                      <span className="font-normal text-slate-500"> · {details.taskNames.get(request.task_id) ?? 'Task'}</span>
+                      <span className="font-normal text-slate-600"> · {details.taskNames.get(request.task_id) ?? 'Task'}</span>
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-600">
                       {details.peopleNames.get(request.requested_by) ?? 'Nhân viên'} · {new Date(request.created_at).toLocaleString('vi-VN')}
                     </p>
                     {request.request_type === 'DEADLINE_EXTENSION' && (
@@ -169,13 +169,13 @@ export function ProjectTaskWorkflowPanel({
                         href={request.evidence_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-lg text-sm font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                        className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-none text-sm font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                       >
                         Mở link minh chứng
                       </a>
                     )}
                     {request.evidence_file_signed_url && (
-                      <a href={request.evidence_file_signed_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-lg text-sm font-medium text-indigo-700 underline underline-offset-2">
+                      <a href={request.evidence_file_signed_url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex min-h-10 items-center gap-1 rounded-none text-sm font-medium text-indigo-700 underline underline-offset-2">
                         Mở file minh chứng: {request.evidence_file_name || 'tệp đính kèm'}
                       </a>
                     )}

@@ -134,13 +134,9 @@ export function EmployeeImportModal({ open, profiles, onClose, onImported }: Emp
       size="xl"
     >
       <div className="space-y-5">
-        <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3">
+        <div className="flex items-start gap-3 rounded-none border border-blue-200 bg-blue-50/70 px-4 py-3">
           <FileSpreadsheet className="mt-0.5 h-5 w-5 flex-shrink-0 text-blue-600" />
           <div className="min-w-0 text-sm leading-relaxed text-blue-900">
-            <p>
-              Import <strong>cập nhật hồ sơ đã có</strong>, không tạo tài khoản đăng nhập mới.
-              Người chưa có tài khoản thì tạo ở trang này trước, rồi import lại.
-            </p>
             <p className="mt-1 text-xs">
               Khớp theo <strong>Mã nhân viên</strong>, không có thì khớp theo email.
               Ô để trống nghĩa là <strong>không đổi</strong> — không phải xoá.
@@ -166,7 +162,7 @@ export function EmployeeImportModal({ open, profiles, onClose, onImported }: Emp
           <Button theme="admin" disabled={busy} onClick={() => fileInput.current?.click()}>
             <Upload className="h-4 w-4" /> {busy && !preview ? 'Đang đọc…' : 'Chọn file Excel'}
           </Button>
-          {fileName && <span className="truncate text-xs text-slate-500">{fileName}</span>}
+          {fileName && <span className="truncate text-xs text-slate-600">{fileName}</span>}
         </div>
 
         {/* ---- Bước 2: xem trước ---- */}
@@ -179,7 +175,7 @@ export function EmployeeImportModal({ open, profiles, onClose, onImported }: Emp
             </div>
 
             {preview.rejected.length > 0 && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="rounded-none border border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="flex items-center gap-2 text-xs font-bold text-amber-800">
                   <TriangleAlert className="h-4 w-4" />
                   {preview.rejected.length} dòng bị bỏ qua
@@ -199,7 +195,7 @@ export function EmployeeImportModal({ open, profiles, onClose, onImported }: Emp
             )}
 
             {preview.writable.length > 0 && (
-              <div className="rounded-xl border border-slate-200">
+              <div className="rounded-none border border-slate-200">
                 <p className="border-b border-slate-100 px-4 py-2.5 text-xs font-bold text-slate-700">
                   Những thay đổi sẽ được ghi
                 </p>
@@ -208,16 +204,16 @@ export function EmployeeImportModal({ open, profiles, onClose, onImported }: Emp
                     <li key={row.line} className="px-4 py-2.5">
                       <p className="text-xs font-semibold text-slate-800">
                         {row.matched!.name}
-                        <span className="ml-1.5 font-normal text-slate-400">dòng {row.line}</span>
+                        <span className="ml-1.5 font-normal text-slate-600">dòng {row.line}</span>
                       </p>
                       <ul className="mt-1 space-y-0.5">
                         {Object.entries(row.changes).map(([field, value]) => (
                           <li key={field} className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                            <span className="text-slate-500">{fieldLabel(field)}:</span>
-                            <span className="text-slate-400 line-through">
+                            <span className="text-slate-600">{fieldLabel(field)}:</span>
+                            <span className="text-slate-600 line-through">
                               {String((row.matched as unknown as Record<string, unknown>)[field] ?? '—')}
                             </span>
-                            <ArrowRight className="h-3 w-3 text-slate-300" />
+                            <ArrowRight className="h-3 w-3 text-slate-600" />
                             <strong className="text-indigo-700">{String(value)}</strong>
                           </li>
                         ))}
@@ -233,7 +229,7 @@ export function EmployeeImportModal({ open, profiles, onClose, onImported }: Emp
         {/* ---- Bước 3: ghi ---- */}
         <div className="flex items-center justify-end gap-2">
           {busy && preview && (
-            <span className="mr-auto text-xs text-slate-500">
+            <span className="mr-auto text-xs text-slate-600">
               Đang ghi {written}/{preview.writable.length}…
             </span>
           )}
@@ -261,7 +257,7 @@ function Summary({ label, value, tone }: { label: string; value: number; tone: '
   }[tone];
 
   return (
-    <div className={`rounded-xl border px-4 py-3 text-center ${style}`}>
+    <div className={`rounded-none border px-4 py-3 text-center ${style}`}>
       <strong className="block text-2xl font-bold tabular-nums">{value}</strong>
       <span className="text-[11px] font-semibold">{label}</span>
     </div>

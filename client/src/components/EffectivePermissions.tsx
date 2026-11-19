@@ -58,9 +58,9 @@ export function EffectivePermissions({ profile }: { profile: Profile }) {
 
   if (effective.length === 0) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="rounded-none border border-slate-200 bg-slate-50 px-4 py-3">
         <p className="text-xs font-bold text-slate-600">Quyền quản trị đang có hiệu lực</p>
-        <p className="mt-1 text-xs leading-relaxed text-slate-500">
+        <p className="mt-1 text-xs leading-relaxed text-slate-600">
           Không có quyền quản trị nào. Người này chỉ dùng được khu nhân viên.
         </p>
       </div>
@@ -68,28 +68,19 @@ export function EffectivePermissions({ profile }: { profile: Profile }) {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <div className="rounded-none border border-slate-200 bg-white px-4 py-3">
       <div className="flex items-start gap-2">
         <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-indigo-600" />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-bold text-slate-700">
             Quyền quản trị đang có hiệu lực ({effective.length})
           </p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500">
-            {fullAdmin
-              ? 'Vai trò Admin/CEO có sẵn mọi quyền — không cấp phát từng cái, nên không gỡ lẻ được.'
-              : 'Mỗi quyền ghi rõ đến từ đâu. Muốn gỡ thì phải gỡ ở ĐÚNG nguồn đã cấp.'}
-          </p>
         </div>
       </div>
 
       {multiSource.length > 0 && (
-        <p className="mt-2.5 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-800">
+        <p className="mt-2.5 flex items-start gap-1.5 rounded-none bg-amber-50 px-2.5 py-2 text-[11px] leading-relaxed text-amber-800">
           <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-          <span>
-            {multiSource.length} quyền đến từ <strong>nhiều nguồn cùng lúc</strong>. Bỏ tick ở một
-            chỗ sẽ không gỡ được — phải gỡ ở tất cả các nguồn ghi bên dưới.
-          </span>
         </p>
       )}
 
@@ -105,7 +96,7 @@ export function EffectivePermissions({ profile }: { profile: Profile }) {
                 <span
                   key={source.kind}
                   title={meta.fixAt ?? undefined}
-                  className={`rounded-md border px-1.5 py-0.5 text-[10px] font-bold ${meta.style}`}
+                  className={`rounded-none border px-1.5 py-0.5 text-[11px] font-bold ${meta.style}`}
                 >
                   {meta.label}
                 </span>
@@ -115,16 +106,6 @@ export function EffectivePermissions({ profile }: { profile: Profile }) {
         ))}
       </ul>
 
-      {effective.some((e) => e.sources.some((s) => s.kind === 'POSITION')) && (
-        <p className="mt-3 border-t border-slate-100 pt-2.5 text-[11px] leading-relaxed text-slate-500">
-          Quyền gắn nhãn <strong className="text-indigo-700">Vị trí</strong> đến từ chức danh của
-          người này, gỡ ở{' '}
-          <Link to="/admin/organization?tab=positions" className="font-semibold text-indigo-600 hover:text-indigo-700">
-            Cơ cấu tổ chức → Vị trí
-          </Link>
-          . Gỡ ở đó sẽ ảnh hưởng tới <strong>mọi người</strong> giữ cùng vị trí.
-        </p>
-      )}
     </div>
   );
 }

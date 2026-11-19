@@ -54,14 +54,12 @@ export function ReminderRulesCard() {
     <Card>
       <CardHeader>
         <CardTitle>Nhắc nhở tự động</CardTitle>
-        <p className="text-xs text-slate-500">
-          Hệ thống tự gửi thông báo (chuông và điện thoại) khi sắp đến hạn hoặc đang chờ xử lý. Cần bật “Gửi thông báo tự động” ở trên.
-        </p>
+
       </CardHeader>
       <CardContent className="space-y-5">
         {groups.map((group) => (
           <div key={group}>
-            <p className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <p className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
               <Bell className="h-3.5 w-3.5" /> {group}
             </p>
             <div className="divide-y divide-slate-100">
@@ -69,12 +67,12 @@ export function ReminderRulesCard() {
                 <div key={rule.code} className="flex items-center justify-between gap-4 py-2.5">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-800">{rule.label}</p>
-                    <p className="text-xs leading-relaxed text-slate-500">{rule.description}</p>
-                    <p className="text-xs text-slate-400">Gửi cho: {rule.audience}</p>
+                    <p className="text-xs leading-relaxed text-slate-600">{rule.description}</p>
+                    <p className="text-xs text-slate-600">Gửi cho: {rule.audience}</p>
                   </div>
                   <div className="flex flex-shrink-0 items-center gap-3">
                     {rule.param !== null && rule.param_unit && (
-                      <label className="flex items-center gap-1 text-xs text-slate-500">
+                      <label className="flex items-center gap-1 text-xs text-slate-600">
                         <span className="hidden sm:inline">{rule.param_label}</span>
                         <input
                           type="number"
@@ -82,7 +80,7 @@ export function ReminderRulesCard() {
                           value={rule.param}
                           onChange={(e) => setRules((prev) => prev.map((r) => (r.code === rule.code ? { ...r, param: Number(e.target.value) } : r)))}
                           onBlur={(e) => void patch(rule.code, { param: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
-                          className="h-8 w-16 rounded-lg border border-slate-200 px-2 text-right text-sm"
+                          className="h-8 w-16 rounded-none border border-slate-300 px-2 text-right text-sm"
                         />
                         {rule.param_unit}
                       </label>

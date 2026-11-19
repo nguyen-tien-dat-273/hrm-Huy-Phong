@@ -201,7 +201,7 @@ export function LeaveQuotaPanel() {
       <Card className="!rounded-none border-2 border-slate-400 dark:border-slate-600 shadow-sm">
         <CardContent className="p-0">
           {rows.length === 0 ? (
-            <p className="px-5 py-10 text-center text-sm font-bold text-slate-400">
+            <p className="px-5 py-10 text-center text-sm font-bold text-slate-600">
               Không có nhân sự nào khớp bộ lọc.
             </p>
           ) : (
@@ -226,7 +226,7 @@ export function LeaveQuotaPanel() {
                           <div className="min-w-0">
                             <p className="font-black text-slate-900 dark:text-slate-100 truncate text-xs">{p.name}</p>
                             {p.department && (
-                              <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate">{p.department}</p>
+                              <p className="text-[11px] font-medium text-slate-600 dark:text-slate-400 truncate">{p.department}</p>
                             )}
                           </div>
                         </td>
@@ -279,7 +279,7 @@ export function LeaveQuotaPanel() {
       </Card>
       <Pager page={currentPage} total={rows.length} noun="người" onPage={setPage} />
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-slate-600">
         Số liệu tính cho năm {year}. Sau khi áp dụng migration, số dư lấy từ sổ phát sinh
         cấp phép, sử dụng, hoàn phép và điều chỉnh; nghỉ ốm/không lương không trừ hạn mức phép năm.
       </p>
